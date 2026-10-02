@@ -525,10 +525,10 @@ moved or renamed. Deleted workspaces go to the library's `trash` folder.
 
 **FlowJo workspaces** (FlowJo 10 `.wsp`) import their samples, gates,
 compensation matrices and scales. The import dialog lists every population as
-exact, approximated or unsupported, and says why. For example:
-- an ellipse drawn on transformed axes;
-- a curly quadrant;
-- a gate on uncompensated data.
+exact, approximated or unsupported, and says why: a curly quadrant, for
+example, imports with straight dividers. Gates FlowJo drew on uncompensated
+data keep uncompensated values; time and linear axes with a gain are converted
+from FlowJo's units; ellipses are read from FlowJo's display space.
 
 Add the FCS files and CytoWeave matches them. With **Compare every population
 count with FlowJo's**, the **FlowJo migration report** shows FlowJo's count,
@@ -536,14 +536,22 @@ CytoWeave's count, the difference and the likely cause, population by
 population.
 
 FlowJo's biexponential scale is reproduced exactly, from FlowJo's own table
-algorithm. FlowJo's logicle departs from the reference logicle that
-CytoWeave and Gating-ML use at widths above 0.5, so polygon edges on such
-axes are reported as approximated.
+algorithm. On FlowJo's own test workspaces CytoWeave reproduces the counts
+FlowJo saved; on real workspaces it matches them exactly at least as often as
+FlowKit does, and within 0.1–0.3% for large populations (FlowJo evaluates
+gates at its display resolution, which moves events near gate boundaries).
 
 **Gating-ML 2.0** import and export covers:
-- rectangle, polygon, ellipsoid, quadrant and Boolean gates;
-- the flin, flog, fasinh, logicle, hyperlog and ratio transformations;
-- spectrum matrices.
+- rectangle, polygon, ellipsoid, quadrant and Boolean gates, including gates
+  of three or more dimensions (evaluated in all of them, though a plot shows
+  two);
+- the flin, flog, fasinh, logicle, hyperlog and ratio transformations, with
+  their bounds;
+- spectrum matrices, including spectral unmixing matrices, and the
+  compensation each gate dimension names.
+
+All 190 gates of ISAC's Gating-ML 2.0 compliance suite select exactly the
+expected events.
 
 Re-importing a CytoWeave export restores names, colours and scales exactly.
 Gating-ML has no biexponential, so biexponential axes are written as their
@@ -621,8 +629,13 @@ pipelines, as the app does, against answers known in advance:
 | Normalization | Same-donor anchors in two batches | Batch distance reduced 27× |
 | Scales | BD's FlowJo lookup tables | Biexponential within 5e-6 (the tables' precision) |
 | Statistics | R 4.x | t-tests, Wilcoxon, Benjamini–Hochberg and t quantiles agree |
+| Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
+| FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-colour workspaces at least as close to FlowJo as FlowKit |
+| Reference tools | FlowKit 1.3.2 and FlowIO | FCS decoding, compensation, spectral unmixing and transforms agree |
+| FCS files | 16 instrument and malformed test files | All readable files read and written back bit-exact; malformed ones refused with a clear message |
 
-Details, tolerances and how to run it are in
+The last four rows use public test data that `node validation/fetch.mjs`
+downloads and checksums. Details, tolerances and how to run it are in
 [validation/README.md](validation/README.md).
 
 ## Privacy and security
@@ -646,6 +659,9 @@ used for diagnosis.
   `.wsp` from FlowJo 10 or 11.
 - Curly quadrants import with straight dividers. Template group gates import
   as per-sample copies, merged where samples agree.
+- FlowJo evaluates gates at its display resolution; CytoWeave evaluates them
+  exactly, so a few events near gate boundaries can differ from FlowJo's
+  counts (the migration report shows how many).
 - Event data in CSV are not imported, only annotations.
 - Imaging flow data (CellView, Amnis) are not supported.
 - Spectral unmixing needs the raw detector channels; files that hold only
@@ -685,8 +701,13 @@ Windows on x64 and ARM64.
 ```sh
 go test -race ./...
 node --test "web/lib/*.test.mjs"
+node validation/fetch.mjs
 node validation/run.mjs
 ```
+
+`fetch.mjs` downloads the public test data the validation uses (about 140 MB,
+into the git-ignored `validation/cache/`); without it those suites are
+skipped.
 
 ### Code layout
 

@@ -152,9 +152,16 @@ export function transformToGatingML(spec) {
 
 // Do two specs define the same function (to 1e-9 of the scale over the axis)?
 export function sameTransformFunction(a, b) {
+  // Bounds (boundMin, boundMax) must agree; the functions are compared without them.
+  const bound = (spec, name) => (Number.isFinite(spec?.[name]) ? spec[name] : null);
+  if (bound(a, 'boundMin') !== bound(b, 'boundMin') || bound(a, 'boundMax') !== bound(b, 'boundMax')) return false;
+  const unbounded = (spec) => {
+    const { boundMin, boundMax, ...rest } = spec ?? {};
+    return rest;
+  };
   try {
-    const ta = createTransform(a);
-    const tb = createTransform(b);
+    const ta = createTransform(unbounded(a));
+    const tb = createTransform(unbounded(b));
     for (let k = 0; k <= 10; k += 1) {
       const y = -0.1 + (1.2 * k) / 10;
       const x = tb.inverse(y);
@@ -212,6 +219,7 @@ function customInfo(el) {
       color: attr(info, 'color'),
       spec: attr(info, 'spec'),
       channel: attr(info, 'channel'),
+      compensation: attr(info, 'compensation'),
       quadrants: Object.fromEntries(children(info, 'quadrant').map((q) => [attr(q, 'id'), { name: attr(q, 'name'), color: attr(q, 'color'), type: attr(q, 'type') }])),
     };
   }
@@ -274,15 +282,23 @@ export function importGatingML(input, options = {}) {
       continue;
     }
     const info = customInfo(t);
+    // boundMin / boundMax (Gating-ML 2.0 §5.1): transformed values are clamped to them.
+    const bounds = {};
+    for (const name of ['boundMin', 'boundMax']) {
+      const value = numberAttr(t, name, TRANSFORMS_NS);
+      if (value === undefined) continue;
+      if (Number.isFinite(value)) bounds[name] = value;
+      else warnings.push(`Transformation "${id}": its ${name} is not a number and was ignored.`);
+    }
     if (result.ratio) {
       const channel = info?.channel ?? id;
       const { numerator, denominator, A, B, C } = result.ratio;
       derived.push({ id: newId('d'), kind: 'ratio', params: { A, B, C }, seed: null, inputs: [numerator, denominator], outputs: [channel], created, meta: { origin: 'imported', gatingMLId: id } });
       transforms.push({ id, type: 'ratio', channel, numerator, denominator, A, B, C });
-      transformById.set(id, { ratio: result.ratio, channel });
+      transformById.set(id, { ratio: result.ratio, channel, bounds });
       continue;
     }
-    let { spec } = result;
+    let spec = { ...result.spec, ...bounds };
     if (info?.spec) {
       try {
         const original = JSON.parse(info.spec);
@@ -311,19 +327,47 @@ export function importGatingML(input, options = {}) {
       warnings.push('A spectrumMatrix without an id was ignored.');
       continue;
     }
-    if (!fluorochromes.length || rows.length !== fluorochromes.length || rows.some((r) => r.length !== detectors.length) || rows.flat().some((v) => !Number.isFinite(v))) {
-      warnings.push(`${where} is incomplete (it needs one spectrum row of detector coefficients per fluorochrome) and was ignored.`);
+    const inverted = String(attr(m, 'matrix-inverted-already', TRANSFORMS_NS) ?? 'false').toLowerCase() === 'true';
+    // A spectrum matrix has a row of detector coefficients per fluorochrome; an inverted one (the
+    // unmixing matrix itself) has a row of fluorochrome coefficients per detector.
+    const [rowCount, rowLength] = inverted ? [detectors.length, fluorochromes.length] : [fluorochromes.length, detectors.length];
+    if (!fluorochromes.length || !detectors.length || rows.length !== rowCount || rows.some((r) => r.length !== rowLength) || rows.flat().some((v) => !Number.isFinite(v))) {
+      warnings.push(`${where} is incomplete (it needs one row of ${inverted ? 'fluorochrome coefficients per detector, as it is marked inverted' : 'detector coefficients per fluorochrome'}) and was ignored.`);
       matrices.set(id, { error: true });
       continue;
     }
     if (fluorochromes.length !== detectors.length) {
-      warnings.push(`${where} has ${fluorochromes.length} fluorochromes and ${detectors.length} detectors; CytoWeave compensation needs a square matrix (spectral unmixing matrices are not imported).`);
-      matrices.set(id, { error: true });
+      // Spectral unmixing: each fluorochrome becomes a channel computed from the raw detectors by
+      // ordinary least squares, W = Sᵀ(S Sᵀ)⁻¹ (detectors × fluorochromes), unless given inverted.
+      const f = fluorochromes.length;
+      const d = detectors.length;
+      let unmixing;
+      if (inverted) {
+        unmixing = rows.flat();
+      } else {
+        const gram = [];
+        for (let i = 0; i < f; i += 1) for (let j = 0; j < f; j += 1) gram.push(rows[i].reduce((sum, v, k) => sum + v * rows[j][k], 0));
+        let inverse;
+        try {
+          inverse = invertMatrix(gram, f);
+        } catch {
+          warnings.push(`${where}: its fluorochrome spectra are linearly dependent, so it cannot unmix; it was ignored.`);
+          matrices.set(id, { error: true });
+          continue;
+        }
+        unmixing = [];
+        for (let k = 0; k < d; k += 1) for (let j = 0; j < f; j += 1) {
+          let sum = 0;
+          for (let i = 0; i < f; i += 1) sum += rows[i][k] * inverse[i * f + j];
+          unmixing.push(sum);
+        }
+      }
+      derived.push({ id: newId('d'), kind: 'unmix', name: id, inputs: detectors.slice(), outputs: fluorochromes.slice(), params: { matrix: unmixing }, created, meta: { origin: 'imported', gatingMLId: id } });
+      matrices.set(id, { unmix: true, fluorochromes, detectors });
       continue;
     }
     const n = detectors.length;
     let matrix = Float64Array.from(rows.flat());
-    const inverted = String(attr(m, 'matrix-inverted-already', TRANSFORMS_NS) ?? 'false').toLowerCase() === 'true';
     if (inverted) {
       try {
         matrix = invertMatrix(matrix, n);
@@ -337,6 +381,18 @@ export function importGatingML(input, options = {}) {
     if (fluorochromes.some((f, i) => f !== detectors[i])) compensation.fluorochromes = fluorochromes.slice();
     compensations.push(compensation);
     matrices.set(id, { compensation, fluorochromes, detectors });
+  }
+
+  // Ratio inputs named by a matrix's fluorochromes (compensated dimensions) are read from the
+  // detector channel of the same matrix row, where CytoWeave keeps the compensated values.
+  for (const record of derived.filter((d) => d.kind === 'ratio')) {
+    record.inputs = record.inputs.map((name) => {
+      for (const m of matrices.values()) {
+        const i = m.compensation ? m.fluorochromes.indexOf(name) : -1;
+        if (i >= 0) return m.detectors[i];
+      }
+      return name;
+    });
   }
 
   // Gate records, with CytoWeave ids assigned up front so references may point forward.
@@ -388,6 +444,7 @@ export function importGatingML(input, options = {}) {
       const t = transformById.get(ref);
       if (!t?.ratio) throw new SkipGate(`${where}: its new-dimension refers to "${ref}", which is not a readable fratio transformation`);
       channel = t.channel;
+      transform = { ...IDENTITY_TRANSFORM, ...t.bounds };
       compensationRef ??= attr(newDimension, 'compensation-ref', GATING_NS);
     } else {
       channel = attr(fcs, 'name', DATATYPE_NS) ?? attr(child(dimEl, 'parameter'), 'name') ?? attr(dimEl, 'name');
@@ -400,6 +457,7 @@ export function importGatingML(input, options = {}) {
       if (t.ratio) {
         // A ratio referenced like an ordinary transformation: read it as the derived dimension.
         channel = t.channel;
+        transform = { ...IDENTITY_TRANSFORM, ...t.bounds };
       } else {
         transform = t.spec;
       }
@@ -408,19 +466,28 @@ export function importGatingML(input, options = {}) {
       missingCompensationRef = true;
       compensationRef = 'uncompensated';
     }
+    // The CytoWeave compensation reference the dimension keeps (see engine.js): the file's
+    // matrix, none, or an imported matrix.
+    let compensation = compensationRef === 'FCS' ? 'file' : 'uncompensated';
     if (compensationRef !== 'FCS' && compensationRef !== 'uncompensated') {
       const m = matrices.get(compensationRef);
       if (!m) {
         warnings.push(`${where}: unknown compensation "${compensationRef}"; the dimension was read as uncompensated.`);
         compensationRef = 'uncompensated';
-      } else if (!m.error) {
+      } else if (m.error) {
+        throw new SkipGate(`${where}: its compensation "${compensationRef}" could not be read`);
+      } else if (m.unmix) {
+        // Unmixed dimensions are the fluorochrome channels computed from the raw detectors.
+        compensation = 'uncompensated';
+      } else {
         // Compensated dimensions are named by fluorochrome; CytoWeave keeps the compensated values
         // in the detector channel of the same matrix row.
         const i = m.fluorochromes.indexOf(channel);
         if (i >= 0) channel = m.detectors[i];
+        compensation = m.compensation.id;
       }
     }
-    return { channel, transform: { ...transform }, compensationRef };
+    return { channel, transform: { ...transform }, compensationRef, compensation };
   };
 
   const gates = [];
@@ -432,7 +499,9 @@ export function importGatingML(input, options = {}) {
       name: name ?? gmlId,
       parentId: null,
       type: null,
-      dims: dims.map((d) => ({ channel: d.channel, transform: d.transform })),
+      // A CytoWeave export marks gates that follow each sample's compensation; other documents'
+      // dimensions keep the compensation they name.
+      dims: dims.map((d) => (info?.compensation === 'sample' ? { channel: d.channel, transform: d.transform } : { channel: d.channel, transform: d.transform, compensation: d.compensation })),
       geometry: null,
       scope: null,
       overrides: {},
@@ -470,7 +539,8 @@ export function importGatingML(input, options = {}) {
             gate.type = 'rectangle';
             gate.geometry = { min: [bounds[0][0], bounds[1][0]], max: [bounds[0][1], bounds[1][1]] };
           } else {
-            throw new SkipGate(`${where} has ${dims.length} dimensions; CytoWeave imports 1-D and 2-D rectangle gates only`);
+            gate.type = 'rectangle';
+            gate.geometry = { min: bounds.map((b) => b[0]), max: bounds.map((b) => b[1]) };
           }
           gates.push(gate);
           break;
@@ -509,7 +579,8 @@ export function importGatingML(input, options = {}) {
             gate.geometry = { min: mean[0] - half, max: mean[0] + half };
             warnings.push(`${where} is one-dimensional and was imported as a range; an event exactly on its upper end is now outside.`);
           } else {
-            throw new SkipGate(`${where} has ${n} dimensions; CytoWeave imports 1-D and 2-D ellipsoids only`);
+            gate.type = 'ellipsoid';
+            gate.geometry = { mean, covariance, distanceSquare: d2 };
           }
           gates.push(gate);
           break;
@@ -539,14 +610,13 @@ export function importGatingML(input, options = {}) {
       values: children(d, 'value').map((v) => Number(textContent(v).trim())).sort((a, b) => a - b),
     }));
     if (!dividers.length) throw new SkipGate(`${where} has no dividers`);
-    if (dividers.length > 2) throw new SkipGate(`${where} has ${dividers.length} dividers; CytoWeave imports quadrant gates with 1 or 2 dividers`);
     if (dividers.some((d) => !d.values.length || !d.values.every(Number.isFinite))) throw new SkipGate(`${where} has a divider without numeric values`);
     const single = dividers.every((d) => d.values.length === 1);
     const quadLink = newId('q');
     const splitLinks = dividers.map(() => newId('s'));
     const out = [];
     for (const q of record.quadrants) {
-      const qinfo = info?.quadrants?.[q.gmlId] ?? {};
+      const qinfo = { ...(info?.quadrants?.[q.gmlId] ?? {}), compensation: info?.compensation };
       const intervals = dividers.map(() => null);
       for (const position of children(q.el, 'position')) {
         const ref = attr(position, 'divider_ref', GATING_NS);
@@ -563,7 +633,7 @@ export function importGatingML(input, options = {}) {
       const qrecord = { ...record, parentGmlId: record.parentGmlId };
       const make = (dims) => base(idMap.get(q.gmlId), q.gmlId, qinfo.name, qinfo, qrecord, dims);
       let gate;
-      if (single && used.length === 2) {
+      if (single && dividers.length <= 2 && used.length === 2) {
         gate = make(dividers.map((d) => d.dim));
         const right = intervals[0] === 1;
         const up = intervals[1] === 1;
@@ -583,7 +653,7 @@ export function importGatingML(input, options = {}) {
           gate.geometry = { min: null, max: null };
         } else {
           gate.type = 'rectangle';
-          gate.geometry = { min: [null, null], max: [null, null] };
+          gate.geometry = { min: dividers.map(() => null), max: dividers.map(() => null) };
         }
         warnings.push(`${where}: Quadrant "${q.gmlId}" has no positions and covers every event.`);
       } else {
@@ -599,7 +669,7 @@ export function importGatingML(input, options = {}) {
           gate.geometry = { min: bounds[0][0], max: bounds[0][1] };
         } else {
           gate.type = 'rectangle';
-          gate.geometry = { min: [bounds[0][0], bounds[1][0]], max: [bounds[0][1], bounds[1][1]] };
+          gate.geometry = { min: bounds.map((b) => b[0]), max: bounds.map((b) => b[1]) };
         }
       }
       gate.meta.gatingMLQuadrantGate = gmlId;
@@ -639,7 +709,7 @@ export function importGatingML(input, options = {}) {
           geometry: { op: 'not', operands: [id] },
           scope: null,
           overrides: {},
-          meta: { origin: 'imported', source: 'gating-ml', helper: true, note: `Complement of "${ref}" (Gating-ML use-as-complement)` },
+          meta: { origin: 'imported', source: 'gating-ml', helper: true, complementOf: ref, note: `Complement of "${ref}" (Gating-ML use-as-complement)` },
         };
         helpers.set(id, helper);
         out.push(helper);
@@ -731,7 +801,7 @@ export function exportGatingML(workspace, options = {}) {
     selected = allGates.filter((g) => wanted.has(g.id));
   }
   const excluded = new Map();
-  const exportable = new Set(['rectangle', 'range', 'polygon', 'ellipse', 'quadrant', 'split', 'boolean']);
+  const exportable = new Set(['rectangle', 'range', 'polygon', 'ellipse', 'ellipsoid', 'quadrant', 'split', 'boolean']);
   for (const gate of selected) {
     if (gate.type === 'category') excluded.set(gate.id, 'category gates (on cluster or QC labels) cannot be expressed in Gating-ML');
     else if (!exportable.has(gate.type)) excluded.set(gate.id, `the gate type "${gate.type}" cannot be expressed in Gating-ML`);
@@ -830,9 +900,38 @@ export function exportGatingML(workspace, options = {}) {
   }
   const derivedRecords = workspace.derived ?? [];
   const derivedOf = (channel) => derivedRecords.find((d) => (d.outputs ?? []).includes(channel));
-  const compensationFor = (channel) => {
-    if (compRef === 'uncompensated') return 'uncompensated';
+  // Unmixing (non-square spectrum) matrices of the gates' unmixed channels: written inverted, a
+  // row of fluorochrome coefficients per detector.
+  const unmixIds = new Map();
+  const unmixFor = (record) => {
+    let id = unmixIds.get(record.id);
+    if (!id) {
+      id = claim(record.name ?? record.id);
+      unmixIds.set(record.id, id);
+      const f = record.outputs.length;
+      const names = (tag, list) => element(tag, {}, list.map((c) => element('data-type:fcs-dimension', { 'data-type:name': c })));
+      matrixElements.push(element('transforms:spectrumMatrix', { 'transforms:id': id, 'transforms:matrix-inverted-already': 'true' }, [
+        names('transforms:fluorochromes', record.outputs), names('transforms:detectors', record.inputs),
+        ...record.inputs.map((_, i) => element('transforms:spectrum', {}, record.outputs.map((__, j) => element('transforms:coefficient', { 'transforms:value': formatNumber(Number(record.params.matrix[i * f + j])) })))),
+      ]));
+    }
+    return id;
+  };
+  const pinnedWarned = new Set();
+  const compensationFor = (channel, pinned) => {
     const d = derivedOf(channel);
+    if (d?.kind === 'unmix') return unmixFor(d);
+    // A dimension that names its own compensation (see engine.js) keeps it.
+    if (pinned === 'uncompensated') return 'uncompensated';
+    if (pinned === 'file') return 'FCS';
+    if (pinned !== undefined && pinned !== null) {
+      if (matrixIds.has(pinned)) return matrixIds.get(pinned);
+      if (!pinnedWarned.has(pinned)) {
+        pinnedWarned.add(pinned);
+        warnings.push(`A gate names the compensation "${pinned}", which is not in the workspace; its dimensions were written with the samples' compensation.`);
+      }
+    }
+    if (compRef === 'uncompensated') return 'uncompensated';
     const source = d?.kind === 'ratio' ? d.inputs?.[0] : channel;
     if (compensatedChannels === null) return /^(FSC|SSC|Time|Event)/i.test(source ?? '') ? 'uncompensated' : compRefId;
     return compensatedChannels.has(source) ? compRefId : 'uncompensated';
@@ -845,7 +944,10 @@ export function exportGatingML(workspace, options = {}) {
   const derivedWarned = new Set();
   const convertedWarned = new Set();
   const transformPlan = (spec) => {
-    const plan = transformToGatingML(spec);
+    let plan = transformToGatingML(spec);
+    const bounded = Number.isFinite(spec?.boundMin) || Number.isFinite(spec?.boundMax);
+    // A bounded identity scale needs a transformation to carry its bounds: flin with T = 1, A = 0.
+    if (plan.identity && bounded) plan = { local: 'flin', params: { T: 1, A: 0 } };
     if (plan.error || plan.identity || plan.raw) return plan;
     const key = createTransform(spec).key;
     let id = transformIds.get(key);
@@ -856,13 +958,15 @@ export function exportGatingML(workspace, options = {}) {
       const params = {};
       for (const [name, value] of Object.entries(plan.params)) params[`transforms:${name}`] = formatNumber(value);
       const info = withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', { spec: JSON.stringify(spec) })]) : null;
-      transformElements.push(element('transforms:transformation', { 'transforms:id': id }, [info, element(`transforms:${plan.local}`, params)]));
+      const attrs = { 'transforms:id': id };
+      for (const name of ['boundMin', 'boundMax']) if (Number.isFinite(spec?.[name])) attrs[`transforms:${name}`] = formatNumber(spec[name]);
+      transformElements.push(element('transforms:transformation', attrs, [info, element(`transforms:${plan.local}`, params)]));
     }
     return { ...plan, id };
   };
   const ratioFor = (channel) => {
     const d = derivedOf(channel);
-    if (!d) return null;
+    if (!d || d.kind === 'unmix') return null;
     if (d.kind !== 'ratio' || d.inputs?.length !== 2) {
       if (!derivedWarned.has(channel)) {
         derivedWarned.add(channel);
@@ -889,7 +993,7 @@ export function exportGatingML(workspace, options = {}) {
   const dimensionPlan = (dim, gateName) => {
     const plan = transformPlan(dim.transform);
     if (plan.error) throw new SkipGate(`Gate "${gateName}": ${plan.error}`);
-    const attrs = { 'gating:compensation-ref': compensationFor(dim.channel) };
+    const attrs = { 'gating:compensation-ref': compensationFor(dim.channel, dim.compensation) };
     if (plan.id) attrs['gating:transformation-ref'] = plan.id;
     const ratio = ratioFor(dim.channel);
     const inner = ratio
@@ -941,6 +1045,9 @@ export function exportGatingML(workspace, options = {}) {
   for (const [key, members] of groups) groupIds.set(key, claim(`${members[0].type === 'quadrant' ? 'Quadrants' : 'Split'}_${members[0].linkId ?? members[0].id}`));
 
   const infoElement = (attrs, kids = []) => (withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', attrs, kids)]) : null);
+  // compensation="sample": the gate follows each sample's compensation in CytoWeave, so a
+  // re-import leaves its dimensions unpinned.
+  const gateInfo = (gate) => ({ name: gate.name, type: gate.type, color: gate.color, compensation: gate.dims?.length && gate.dims.every((d) => d.compensation === undefined || d.compensation === null) ? 'sample' : undefined });
   const gateAttrs = (gate, id) => {
     const attrs = { 'gating:id': id };
     if (gate.parentId) attrs['gating:parent_id'] = gateIds.get(gate.parentId);
@@ -959,7 +1066,7 @@ export function exportGatingML(workspace, options = {}) {
         case 'polygon': {
           const plans = gate.dims.map((d) => dimensionPlan(d, gate.name));
           gateElements.push(element('gating:PolygonGate', gateAttrs(gate, id), [
-            infoElement({ name: gate.name, type: gate.type, color: gate.color }),
+            infoElement(gateInfo(gate)),
             ...plans.map((p) => dimensionElement(p)),
             ...geometry.vertices.map(([x, y]) => element('gating:vertex', {}, [coordinate(plans[0].map(x)), coordinate(plans[1].map(y))])),
           ]));
@@ -968,13 +1075,13 @@ export function exportGatingML(workspace, options = {}) {
         case 'rectangle': {
           const plans = gate.dims.map((d) => dimensionPlan(d, gate.name));
           const dimEls = plans.map((p, k) => dimensionElement(p, { 'gating:min': mapBound(p, geometry.min?.[k]), 'gating:max': mapBound(p, geometry.max?.[k]) }));
-          gateElements.push(element('gating:RectangleGate', gateAttrs(gate, id), [infoElement({ name: gate.name, type: gate.type, color: gate.color }), ...dimEls]));
+          gateElements.push(element('gating:RectangleGate', gateAttrs(gate, id), [infoElement(gateInfo(gate)), ...dimEls]));
           break;
         }
         case 'range': {
           const plan = dimensionPlan(gate.dims[0], gate.name);
           gateElements.push(element('gating:RectangleGate', gateAttrs(gate, id), [
-            infoElement({ name: gate.name, type: gate.type, color: gate.color }),
+            infoElement(gateInfo(gate)),
             dimensionElement(plan, { 'gating:min': mapBound(plan, geometry.min), 'gating:max': mapBound(plan, geometry.max) }),
           ]));
           break;
@@ -986,11 +1093,25 @@ export function exportGatingML(workspace, options = {}) {
           const slopes = plans.map((p, k) => p.slopeAt(geometry.center[k]));
           for (let i = 0; i < 2; i += 1) for (let j = 0; j < 2; j += 1) covariance[i][j] *= slopes[i] * slopes[j];
           gateElements.push(element('gating:EllipsoidGate', gateAttrs(gate, id), [
-            infoElement({ name: gate.name, type: gate.type, color: gate.color }),
+            infoElement(gateInfo(gate)),
             ...plans.map((p) => dimensionElement(p)),
             element('gating:mean', {}, [coordinate(plans[0].map(geometry.center[0])), coordinate(plans[1].map(geometry.center[1]))]),
             element('gating:covarianceMatrix', {}, covariance.map((row) => element('gating:row', {}, row.map((v) => element('gating:entry', { 'data-type:value': formatNumber(v) }))))),
             element('gating:distanceSquare', { 'data-type:value': '1' }),
+          ]));
+          break;
+        }
+        case 'ellipsoid': {
+          const plans = gate.dims.map((d) => dimensionPlan(d, gate.name));
+          const { mean, distanceSquare } = geometry;
+          const slopes = plans.map((p, k) => p.slopeAt(mean[k]));
+          const covariance = geometry.covariance.map((row, i) => row.map((v, j) => v * slopes[i] * slopes[j]));
+          gateElements.push(element('gating:EllipsoidGate', gateAttrs(gate, id), [
+            infoElement(gateInfo(gate)),
+            ...plans.map((p) => dimensionElement(p)),
+            element('gating:mean', {}, mean.map((v, k) => coordinate(plans[k].map(v)))),
+            element('gating:covarianceMatrix', {}, covariance.map((row) => element('gating:row', {}, row.map((v) => element('gating:entry', { 'data-type:value': formatNumber(v) }))))),
+            element('gating:distanceSquare', { 'data-type:value': formatNumber(distanceSquare) }),
           ]));
           break;
         }
@@ -1018,7 +1139,7 @@ export function exportGatingML(workspace, options = {}) {
           });
           const attrs = { 'gating:id': groupId };
           if (gate.parentId) attrs['gating:parent_id'] = gateIds.get(gate.parentId);
-          const info = withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', { type: gate.type }, members.map((m) => element('cytoweave:quadrant', { id: gateIds.get(m.id), name: m.name, color: m.color, type: m.type })))]) : null;
+          const info = withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', { type: gate.type, compensation: gateInfo(gate).compensation }, members.map((m) => element('cytoweave:quadrant', { id: gateIds.get(m.id), name: m.name, color: m.color, type: m.type })))]) : null;
           gateElements.push(element('gating:QuadrantGate', attrs, [info, ...dividers, ...quadrantEls]));
           break;
         }
@@ -1039,7 +1160,7 @@ export function exportGatingML(workspace, options = {}) {
           // Gating-ML's and/or need two references; repeating the single operand is equivalent.
           if (op !== 'not' && operands.length === 1) operands = [operands[0], operands[0]];
           gateElements.push(element('gating:BooleanGate', gateAttrs(gate, id), [
-            infoElement({ name: gate.name, type: gate.type, color: gate.color }),
+            infoElement(gateInfo(gate)),
             element(`gating:${op}`, {}, operands.map((ref) => element('gating:gateReference', { 'gating:ref': ref }))),
           ]));
           break;

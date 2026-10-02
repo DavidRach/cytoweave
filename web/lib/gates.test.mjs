@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  boundaryTest,
   convexHull,
   difference,
   gateOutline,
@@ -25,9 +26,50 @@ test('rectangle, range and polygon membership', () => {
   assert.deepEqual(Array.from(membership('rectangle', { min: [0.4, null], max: [null, null] }, xs, ys, null)), [1, 2, 3, 5]);
   assert.deepEqual(Array.from(membership('range', { min: 0.45, max: 0.8 }, xs, null, null)), [1, 3, 5]);
   const triangle = { vertices: [[0, 0], [1, 0], [0, 1]] };
-  assert.deepEqual(Array.from(membership('polygon', triangle, xs, ys, null)), [0, 3]);
+  // (0.5, 0.5) is on the hypotenuse: Gating-ML polygons include their edges.
+  assert.deepEqual(Array.from(membership('polygon', triangle, xs, ys, null)), [0, 1, 3]);
   // Candidates restrict the result.
   assert.deepEqual(Array.from(membership('polygon', triangle, xs, ys, Uint32Array.from([3, 4]))), [3]);
+});
+
+test('polygon edges and vertices are inside, on every side', () => {
+  const square = pointTest('polygon', { vertices: [[0, 0], [2, 0], [2, 2], [0, 2]] });
+  for (const [x, y] of [[0, 1], [2, 1], [1, 0], [1, 2], [0, 0], [2, 2]]) assert.equal(square(x, y), true, `${x}, ${y}`);
+  assert.equal(square(2.0000001, 1), false);
+  // A slanted edge, exactly representable in float32 (the ISAC suite's Poly1u case).
+  const slanted = pointTest('polygon', { vertices: [[0, 0], [200000, 100000], [200000, 200000], [100000, 200000]] });
+  const x = Math.fround(14.8);
+  assert.equal(slanted(x, x / 2), true);
+  assert.equal(slanted(x, Math.fround(7.39)), false);
+});
+
+test('upper half-open sides exclude +Infinity; lower sides include −Infinity', () => {
+  const values = Float64Array.from([Infinity, -Infinity, Number.NaN, 2, 0]);
+  const zeros = new Float64Array(values.length).fill(1);
+  const members = (quadrant) => Array.from(membership('quadrant', { center: [1, 0], quadrant }, values, zeros, null));
+  assert.deepEqual(members('UR'), [3]);
+  assert.deepEqual(members('UL'), [1, 4]);
+  assert.deepEqual(Array.from(membership('split', { threshold: 1, side: 'hi' }, values, null, null)), [3]);
+  assert.deepEqual(Array.from(membership('split', { threshold: 1, side: 'lo' }, values, null, null)), [1, 4]);
+  assert.deepEqual(Array.from(membership('range', { min: null, max: 1 }, values, null, null)), [1, 4]);
+});
+
+test('events at a boundary are decided by the exact values', () => {
+  // Stored (rounded) values put event 0 just outside and event 1 just inside; the exact values
+  // say the opposite. Event 2 is far from the boundary and is not recomputed.
+  const stored = Float32Array.from([0.5000001, 0.4999999, 0.2]);
+  const exact = [0.4999999999, 0.5000000001, 0.2];
+  const asked = [];
+  const refine = { near: boundaryTest('range', { min: null, max: 0.5 }), exact: (e) => { asked.push(e); return exact[e] < 0.5; } };
+  assert.deepEqual(Array.from(membership('range', { min: null, max: 0.5 }, stored, null, null, 3, refine)), [0, 2]);
+  assert.deepEqual(asked, [0, 1]);
+  assert.equal(boundaryTest('category', { values: [1] }), null);
+  const nearEllipse = boundaryTest('ellipse', { center: [0.5, 0.5], radii: [0.2, 0.1], angle: 0 });
+  assert.equal(nearEllipse(0.7, 0.5), true);
+  assert.equal(nearEllipse(0.69, 0.5), false);
+  const nearPolygon = boundaryTest('polygon', { vertices: [[0, 0], [1, 0], [0, 1]] });
+  assert.equal(nearPolygon(0.5, 0.5000001), true);
+  assert.equal(nearPolygon(0.4, 0.4), false);
 });
 
 test('ellipse membership honors rotation', () => {

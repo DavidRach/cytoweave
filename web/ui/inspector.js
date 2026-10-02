@@ -2,7 +2,7 @@
 
 import { h, icon, clear, formatCount, formatPercent, iconButton } from './dom.js';
 import { showMenu, toast } from './overlays.js';
-import { channelTransform, countOf, describePopulation, gateRobustness, population } from '../lib/engine.js';
+import { channelTransform, countOf, describePopulation, gateRobustness, isMultidimensional, population } from '../lib/engine.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { formatStatistic, wilsonInterval } from '../lib/stats.js';
 import { ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
@@ -60,11 +60,16 @@ export function mountInspector(app) {
     const overridden = Boolean(gate.overrides?.[sampleId]);
     const overrideCount = Object.keys(gate.overrides ?? {}).length;
     const dims = gate.dims.map((d) => channelLabel(ws, d.channel)).join(' × ');
-    const typeName = { rectangle: 'Rectangle', range: 'Range', polygon: 'Polygon', ellipse: 'Ellipse', quadrant: 'Quadrant', split: 'Split', boolean: 'Boolean', category: 'Category' }[gate.type];
+    const typeName = { rectangle: 'Rectangle', range: 'Range', polygon: 'Polygon', ellipse: 'Ellipse', ellipsoid: 'Ellipsoid', quadrant: 'Quadrant', split: 'Split', boolean: 'Boolean', category: 'Category' }[gate.type];
+    // Dimensions that name their own compensation (imported Gating-ML) rather than the sample's.
+    const compensationName = (ref) => (ref === 'uncompensated' ? 'none' : ref === 'file' ? "the file's matrix" : ws.compensations.find((c) => c.id === ref)?.name ?? 'a missing matrix');
+    const pinned = gate.dims.filter((d) => d.compensation !== undefined && d.compensation !== null);
+    const pinnedText = pinned.length ? [...new Set(pinned.map((d) => compensationName(d.compensation)))].join(', ') : null;
     const content = [
       h('dl.kv',
         h('dt', 'Type'), h('dd', typeName),
         gate.dims.length ? [h('dt', 'Axes'), h('dd', { title: dims }, dims)] : null,
+        pinnedText ? [h('dt', 'Compensation'), h('dd', { title: 'This gate keeps the compensation its Gating-ML file names, whatever the sample uses.' }, pinnedText)] : null,
         h('dt', 'Path'), h('dd', { title: gatePath(ws, gate.id) }, gatePath(ws, gate.id)),
         h('dt', 'Applies to'), h('dd', gate.scope?.groupId ? ws.groups.find((g) => g.id === gate.scope.groupId)?.name ?? 'a group' : 'All samples'),
         h('dt', 'Origin'), h('dd', gate.meta?.origin === 'auto' ? `Proposed from the data (${gate.meta.method ?? 'density'})` : gate.meta?.origin === 'imported' ? 'Imported' : gate.meta?.origin === 'agent' ? 'Added by an AI agent' : 'Drawn')),
@@ -84,7 +89,7 @@ export function mountInspector(app) {
         onclick: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate'),
       })));
     content.push(swatches);
-    if (gate.type !== 'boolean' && gate.type !== 'category' && view) content.push(robustnessBlock(ws, view, gate));
+    if (gate.type !== 'boolean' && gate.type !== 'category' && !isMultidimensional(gate) && view) content.push(robustnessBlock(ws, view, gate));
     return section('Gate', ...content);
   }
 
@@ -106,7 +111,9 @@ export function mountInspector(app) {
       const scope = store.ui.editScope === 'sample' ? { sampleId } : {};
       store.commit(setGateGeometry(store.ws, gate.id, next, scope), `Edit ${gate.name}`);
     };
-    if (gate.type === 'rectangle') {
+    if (gate.type === 'ellipsoid' || (gate.type === 'rectangle' && gate.dims.length !== 2)) {
+      wrap.append(h('div.muted', `An imported ${gate.dims.length}-dimensional ${gate.type === 'ellipsoid' ? 'ellipsoid' : 'rectangle'} on ${gate.dims.map((d) => d.channel).join(', ')}. It is evaluated in all its dimensions but cannot be drawn or edited on a 2-D plot.`));
+    } else if (gate.type === 'rectangle') {
       wrap.append(h('div.row',
         field('x min', geometry.min[0], tx, (v) => commit({ ...geometry, min: [v, geometry.min[1]] })),
         field('x max', geometry.max[0], tx, (v) => commit({ ...geometry, max: [v, geometry.max[1]] }))),

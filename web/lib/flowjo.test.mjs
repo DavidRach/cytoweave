@@ -40,6 +40,8 @@ const booleanNode = (kind, name, count, dependents, children = '') => `<${kind} 
     <Subpopulations>${children}</Subpopulations>
   </${kind}>`;
 
+// FlowJo keeps ellipses in display bins (256 across each axis); center, a and b are given in
+// bins here.
 function ellipseGate(x, y, center, a, b, theta) {
   const [cx, cy] = center;
   const c = Math.sqrt(a * a - b * b);
@@ -96,7 +98,7 @@ function sampleXML({ id, file, biexWidth, lymph, extra = true }) {
   ].map(([name, dims], i) => population(name, 100 + i, rectangle(dims), '', ` quadId="QUAD${id}"`)).join('');
   const cd3Children = [
     quads,
-    population('Blob', 40, ellipseGate('FSC-A', 'SSC-A', BLOB.center, BLOB.a, BLOB.b, BLOB.theta)),
+    population('Blob', 40, ellipseGate('FSC-A', 'SSC-A', BLOB.center.map((v) => v / 1024), BLOB.a / 1024, BLOB.b / 1024, BLOB.theta)),
     population('Not big', 900, polygon('FSC-A', 'SSC-A', [[0, 0], [50000, 0], [50000, 50000]], '').replace('eventsInside="1"', 'eventsInside="0"')),
   ].join('');
   const singletsChildren = [
@@ -264,9 +266,12 @@ test('the fidelity report flags every approximation', () => {
   assert.equal(fidelityOf(result, name, 'Lymphocytes/Singlets/CD3+/Q2: FITC+ , PE+').status, 'imported');
   // FlowJo's biex is reproduced exactly, so a polygon on it is exact too.
   assert.equal(fidelityOf(result, name, 'Biex polygon').status, 'imported');
+  // A gate on uncompensated FITC-A keeps uncompensated values, so it is exact.
   const raw = fidelityOf(result, name, 'Raw FITC');
-  assert.equal(raw.status, 'approximated');
-  assert.match(raw.detail, /uncompensated FITC-A/);
+  assert.equal(raw.status, 'imported');
+  assert.match(raw.detail, /uncompensated FITC-A, which the gate keeps/);
+  const rawGate = gateAt(result.samples.find((s) => s.name === name), 'Raw FITC');
+  assert.deepEqual(rawGate.dims.map((d) => [d.channel, d.compensation]), [['FITC-A', 'uncompensated'], ['SSC-A', undefined]]);
   const odd = fidelityOf(result, name, 'PerCP odd');
   assert.equal(odd.status, 'approximated');
   assert.match(odd.detail, /miltenyi/);
@@ -293,6 +298,8 @@ test('ellipses on unequal and nonlinear axes', () => {
   };
   for (const t of [0.3, 1.1, 2.5, 4]) close(onBoundary([(40 + 30 * Math.cos(t)) / 100, (40 + 10 * Math.sin(t)) / 1000]), 1, 1e-12);
 
+  // FlowJo's ellipse lives in display space, so on a log axis it is still an ellipse in scale space,
+  // exactly: centre, radii and angle are its display coordinates over 256.
   const xml = `<Workspace version="20.0" ${NS}><SampleList><Sample>
     <DataSet uri="x.fcs" sampleID="7"/>
     <Transformations>
@@ -300,16 +307,19 @@ test('ellipses on unequal and nonlinear axes', () => {
       <transforms:log transforms:offset="1" transforms:decades="4"><data-type:parameter data-type:name="B"/></transforms:log>
     </Transformations>
     <SampleNode name="x.fcs" count="10" sampleID="7"><Subpopulations>
-      ${population('Log ellipse', 5, ellipseGate('A', 'B', [500, 1000], 300, 100, 0.2))}
+      ${population('Log ellipse', 5, ellipseGate('A', 'B', [128, 100], 60, 20, 0.2))}
     </Subpopulations></SampleNode>
   </Sample></SampleList></Workspace>`;
   const result = importFlowJo(xml);
   const gate = result.samples[0].gates[0];
   assert.equal(gate.type, 'ellipse');
   assert.deepEqual(gate.dims[1].transform, { type: 'log', min: 1, max: 10000 });
-  const entry = result.fidelity.find((f) => f.path === 'Log ellipse');
-  assert.equal(entry.status, 'approximated');
-  assert.match(entry.detail, /bend FlowJo's ellipse/);
+  close(gate.geometry.center[0], 0.5, 1e-12);
+  close(gate.geometry.center[1], 100 / 256, 1e-12);
+  close(gate.geometry.radii[0], 60 / 256, 1e-12);
+  close(gate.geometry.radii[1], 20 / 256, 1e-12);
+  close(gate.geometry.angle, 0.2, 1e-12);
+  assert.equal(result.fidelity.find((f) => f.path === 'Log ellipse').status, 'imported');
 });
 
 test('merging a group builds one tree with per-sample overrides', () => {
@@ -341,8 +351,14 @@ test('merging a group builds one tree with per-sample overrides', () => {
   assert.ok(helper.meta.helper);
   // Populations only in sample 1 are reported.
   assert.ok(fidelity.some((f) => f.path === 'Biex polygon' && f.status === 'approximated' && /absent from 1 sample/.test(f.detail)));
-  // Sample 2's FITC any differs only through its transform: re-expressed, no override.
-  assert.deepEqual(byPath('Lymphocytes/Singlets/FITC any').overrides, {});
+  // Sample 2's FITC any (0 to 262144) differs through its transform: its lower bound re-expressed
+  // matches, but 262144 lies beyond the end of sample 2's biex table, where FlowJo clamps data to
+  // the top edge, while sample 1's table reaches past it; sample 2 keeps its top-edge bound.
+  const fitcAny = byPath('Lymphocytes/Singlets/FITC any');
+  assert.deepEqual(Object.keys(fitcAny.overrides), ['2']);
+  close(fitcAny.overrides['2'].min, fitcAny.geometry.min, 1e-12);
+  assert.equal(fitcAny.overrides['2'].max, 1);
+  assert.ok(fitcAny.geometry.max < 1);
   // Keys can follow CytoWeave's sample ids.
   const keyed = mergeFlowJoGates(result.samples, { keyOf: (s) => `cw-${s.sampleId}` });
   assert.deepEqual(Object.keys(keyed.gates.find((g) => g.meta.flowJoPath === 'Lymphocytes').overrides), ['cw-2']);
@@ -367,8 +383,12 @@ test('transform, channel and compensation variants', () => {
   const logicle = flowJoTransform(el('<transforms:logicle transforms:T="1000" transforms:W="3" transforms:M="4.5" transforms:A="0"/>'));
   assert.equal(logicle.status, 'unsupported');
   assert.match(logicle.detail, /invalid/);
+  // A logicle of any width imports as the reference logicle, exactly.
+  assert.deepEqual(flowJoTransform(el('<transforms:logicle transforms:T="262144" transforms:W="1" transforms:M="4.5" transforms:A="0"/>')), { parameter: null, spec: { type: 'logicle', T: 262144, W: 1, M: 4.5, A: 0 }, status: 'imported', detail: '' });
+  // A linear axis with a gain: FlowJo's coordinates are gain × the stored values.
+  assert.deepEqual(flowJoTransform(el('<transforms:linear transforms:minRange="1" transforms:maxRange="65" gain="0.01"/>')), { parameter: null, spec: { type: 'linear', min: 1, max: 65 }, status: 'imported', detail: '', unit: 100 });
   assert.deepEqual(flowJoTransform(el('<transforms:fasinh transforms:length="256" transforms:maxRange="262144" transforms:T="262144" transforms:M="4.5" transforms:A="0.5"/>')).spec, { type: 'fasinh', T: 262144, M: 4.5, A: 0.5 });
-  assert.equal(flowJoTransform(el('<transforms:linear transforms:minRange="0" transforms:maxRange="1024" gain="2"/>')).status, 'approximated');
+  assert.equal(flowJoTransform(el('<transforms:linear transforms:minRange="0" transforms:maxRange="1024" gain="2"/>')).unit, 0.5);
   assert.deepEqual(flowJoChannel('Comp-FITC-A'), { channel: 'FITC-A', compensated: true });
   assert.deepEqual(flowJoChannel('<PE-A>'), { channel: 'PE-A', compensated: true });
   assert.deepEqual(flowJoChannel('FSC-A'), { channel: 'FSC-A', compensated: false });

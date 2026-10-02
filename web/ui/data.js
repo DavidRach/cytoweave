@@ -150,6 +150,7 @@ export class DataStore {
     const record = recordOverride ?? ws.samples.find((s) => s.id === view.id);
     if (!record) return;
     view.record = record;
+    view.syncWorkspace(ws);
     const comp = this.compensationFor(record, view);
     try {
       view.setCompensation(comp);

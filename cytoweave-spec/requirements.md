@@ -33,7 +33,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| D1 | Read FCS 2.0, 3.0, 3.1 and 3.2, all data types, several data sets per file; repair common vendor deviations and report every repair | done |
+| D1 | Read FCS 2.0, 3.0, 3.1 and 3.2, all data types, several data sets per file; repair common vendor deviations and report every repair | done (checked on files from several instruments against FlowIO and fcsparser, `validation/`) |
 | D2 | Write FCS 3.1 for exported populations | done |
 | D3 | Read spillover from all common keywords | done |
 | D4 | Annotate samples (condition, subject, batch, …), from file names or a CSV table | done |
@@ -45,10 +45,10 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| G1 | Rectangle, polygon, freehand, ellipse, quadrant, range, split, Boolean and category gates with Gating-ML semantics | done (Boolean gates come from imports; drawing them is planned) |
+| G1 | Rectangle, polygon, freehand, ellipse, quadrant, range, split, Boolean and category gates with Gating-ML semantics; imported gates of three or more dimensions; a gate dimension may keep its own compensation | done (all 190 gates of ISAC's Gating-ML compliance suite match on every event; Boolean gates come from imports; drawing them is planned) |
 | G2 | Shared gates with per-sample overrides and group scopes | done |
 | G3 | Plot types: pseudocolor, dot, density, contour, zebra, histogram, cumulative; backgating; overlays | done |
-| G4 | Scales: linear, log, logicle (reference), arcsinh, FlowJo biexponential (exact), fasinh and hyperlog (import) | done |
+| G4 | Scales: linear, log, logicle (reference), arcsinh, FlowJo biexponential (exact), fasinh and hyperlog (import); Gating-ML bounds | done (FlowJo's counts follow the reference logicle, not BD's published logicle tables: `validation/README.md`) |
 | G5 | Magic-wand gating: density basins and histogram valleys | done |
 | G6 | Statistics of FlowJo's set plus confidence intervals for frequencies | done |
 | G7 | Batch tables, CSV/TSV export, heat maps | done |
@@ -122,8 +122,8 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| I1 | FlowJo 10 workspaces imported with a per-population fidelity report and count comparison | done |
-| I2 | Gating-ML 2.0 import and export | done |
+| I1 | FlowJo 10 workspaces imported with a per-population fidelity report and count comparison | done (on real workspaces, FlowJo's saved counts reproduced at least as often as FlowKit does; FlowJo's display-resolution gating moves 0.1–0.3% of large populations) |
+| I2 | Gating-ML 2.0 import and export, including spectrum (unmixing) matrices, ratio dimensions and per-dimension compensation | done |
 | I3 | CLR export; ACS containers | done |
 | I4 | FlowJo workspace export | planned |
 
@@ -141,5 +141,5 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | --- | --- | --- |
 | V1 | Unit tests of every analysis module against independently known values | done |
 | V2 | End-to-end validation against simulated truth and published references in CI | done |
-| V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | planned |
+| V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | partial: ISAC's Gating-ML suite, FlowKit, FlowIO and FlowJo's saved counts done; the R tools are planned |
 | V4 | Accessible: keyboard operation, labelled controls, colour maps safe for colour-vision deficiency | partial |

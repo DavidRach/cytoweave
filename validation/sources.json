@@ -1,0 +1,1282 @@
+{
+ "about": "External data for the validation suites. node validation/fetch.mjs downloads each file into validation/cache/<dataset>/ and checks its SHA-256. The files are not part of the repository or of the CytoWeave program; each keeps its own licence.",
+ "datasets": {
+  "gatingml": {
+   "title": "Gating-ML 2.0 compliance test suite (ISAC)",
+   "description": "Gating-ML 2.0 gate files with list-mode data and the expected membership of every event in every gate, as distributed in the Bioconductor package gatingMLData (J. Spidlen, N. Gopalakrishnan).",
+   "source": "https://bioconductor.org/packages/gatingMLData (mirror: https://github.com/bioc/gatingMLData)",
+   "licence": "Distributed by ISAC for testing Gating-ML compliance; the Bioconductor package is GPL. CytoWeave downloads it for testing and does not redistribute it.",
+   "base": "https://raw.githubusercontent.com/bioc/gatingMLData/49e357f82f972a50c74a3c80d92e4841d9b99055/inst/extdata/Gml2/",
+   "files": [
+    {
+     "path": "FCSFiles/9399_1_3_NKR.fcs",
+     "size": 3989718,
+     "sha256": "319c78181eab2fb63fa3a7cb866b0854d254ef16366c9f99bd5ac44a0e3ac39c"
+    },
+    {
+     "path": "FCSFiles/data1.fcs",
+     "size": 216432,
+     "sha256": "cba7812f5bbce700786d22d97cf9858c1301878aa840c64eadcd263a3a0a5508"
+    },
+    {
+     "path": "FCSFiles/data2.fcs",
+     "size": 602926,
+     "sha256": "b4f37e4f532894a81591856983f7faa77224b6c4be3d9ef2c10bc8a118639af7"
+    },
+    {
+     "path": "Gating-MLFiles/gates1.xml",
+     "size": 37571,
+     "sha256": "b3aad58d7ae8d0216b26eb2283bac128416280d162b370947b0d00902a87f09c"
+    },
+    {
+     "path": "Gating-MLFiles/gates2.xml",
+     "size": 44132,
+     "sha256": "188d4ac9670207f3514d329c0055aeceedc4d8abd7be98d1c0b9377e87063b7e"
+    },
+    {
+     "path": "Gating-MLFiles/gates3.xml",
+     "size": 39529,
+     "sha256": "3c0dcd176f0bf2b738bcf52351735e0ff18c20af45dd7e7ba929a132b9cb554a"
+    },
+    {
+     "path": "Gating-MLFiles/gates4.xml",
+     "size": 14700,
+     "sha256": "9c05a65db7c00042973881adadf420720035a8478b77cd9ed78c86ac9a17e548"
+    },
+    {
+     "path": "Gating-MLFiles/gates5.xml",
+     "size": 5506,
+     "sha256": "97d7705b9c0f826cbbe057ee8ad3322fd0b3b389cd61ed32f3b3543f4d45543a"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_And1.txt",
+     "size": 26734,
+     "sha256": "6351c9894d0241d0ab382d1def32464f6867a42760e25d9f6c266352ea78e948"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_And2.txt",
+     "size": 26734,
+     "sha256": "0bd1e100b67f2e4f54faf9b308ec4e72cad9b824d3cd8304e04c68083c56a7e0"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_And3.txt",
+     "size": 26734,
+     "sha256": "dc0aa071ec86d02064b08c3097ab660a095668173d19cf447eb445b4fecc2e80"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_And4.txt",
+     "size": 26734,
+     "sha256": "dc0aa071ec86d02064b08c3097ab660a095668173d19cf447eb445b4fecc2e80"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Ellipse1.txt",
+     "size": 26734,
+     "sha256": "551afe4b22cc518b24aa1bb6c45e3924f2c9bfd8ca5385c6a4cd5b9fcb572c64"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Ellipsoid3D.txt",
+     "size": 26734,
+     "sha256": "b36f8a303ee84adf0ff05540e2829d79fa831e50d58fe4578d9401174e99284e"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FL2N-FL4N.txt",
+     "size": 26734,
+     "sha256": "627f23d679b450bb9347fd219935e8500462c7e8ef0e11fc06e76f4439e744d0"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FL2N-FL4P.txt",
+     "size": 26734,
+     "sha256": "68c3046732ac0d96a0cce241ab36ea2d853791626afc7c9b70d1e259c58b570c"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FL2P-FL4N.txt",
+     "size": 26734,
+     "sha256": "c65ccf5eba241c42abc49e571ea0e275adc0f04cb8b6d327c2964c8d4180bdb2"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FL2P-FL4P.txt",
+     "size": 26734,
+     "sha256": "711317c507007e4378c51d87aa0a4ce7fed66863fa4d605dd9690c355f12694b"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FSCD-FL1P.txt",
+     "size": 26734,
+     "sha256": "c3b974a6174ca9771693e45d50cb5a6f6249dc9eca57ea09b92bb5479c4423b8"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FSCD-SSCN-FL1N.txt",
+     "size": 26734,
+     "sha256": "33f7a2414475e94f0a61096fdd8a2278fe128165122be6ecc6718e2b4017b6ba"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FSCN-SSCN.txt",
+     "size": 26734,
+     "sha256": "7953bf063932806e41d5895d1852f07f0b90b8dff28daddebca9fcd00e96742b"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FSCN-SSCP-FL1P.txt",
+     "size": 26734,
+     "sha256": "125f457f320d30144b0722d9af3671abeac754ee77bc8b9d3a869d152e995338"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_FSCP-SSCN-FL1N.txt",
+     "size": 26734,
+     "sha256": "f8a03fd256234b09bf0043f3dbcf7f5e9f8237efa81923cb173a0605dd2a42da"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Not1.txt",
+     "size": 26734,
+     "sha256": "baaf1ddb29dc4420b8c7b490b7a7b04d14682da4d2cf6854f390c55b09967002"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Or1.txt",
+     "size": 26734,
+     "sha256": "d3f553b9d99b4b6e90b1c806f2b2914e57f575886bc95004ddb804908ac7ca53"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Or2.txt",
+     "size": 26734,
+     "sha256": "e2c5089befaae36415637319c9a87a48358038eceae22fbae20405c109ed280a"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ParAnd2.txt",
+     "size": 26734,
+     "sha256": "0bd1e100b67f2e4f54faf9b308ec4e72cad9b824d3cd8304e04c68083c56a7e0"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ParAnd3.txt",
+     "size": 26734,
+     "sha256": "dc0aa071ec86d02064b08c3097ab660a095668173d19cf447eb445b4fecc2e80"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Polygon1.txt",
+     "size": 26734,
+     "sha256": "d71f825872ce4426dbfe81596e70fa359063403a42c264b755ad3213bcafd253"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Polygon2.txt",
+     "size": 26734,
+     "sha256": "201b2aa4b68abdd49342f3b4b6eff8d1f10c31b609ec6e8af55218275c02104a"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Polygon3NS.txt",
+     "size": 26734,
+     "sha256": "3d36aee59d5840b53e8352cac9b0a8ef487c0a2f5b74965c939bb7835661e2b9"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Polygon4.txt",
+     "size": 26734,
+     "sha256": "cc0293264d2c9d4bc1c2d4fed4bf4321dd9b2b1eeea9ac7bd01cb71074143e37"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Range1.txt",
+     "size": 26734,
+     "sha256": "7f2ab239615266f4a2f88dc2f741cb15675b7323287c10f865a5583cecd9ae40"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Range2.txt",
+     "size": 26734,
+     "sha256": "8303d47ef93ab2a620b03b054491cdf6ad0ab131fac19fbc2365ba0fc1109d90"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_RatRange1.txt",
+     "size": 26734,
+     "sha256": "833ee464e09ca104bd44011de173929b690be038bcacdcb0e4d05b677f6b3bf1"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_RatRange1Bound.txt",
+     "size": 26734,
+     "sha256": "82a8a021fccadf6fe23a423845b8152863c40e97027488875a32899fcd99ecb9"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_RatRange1a.txt",
+     "size": 26734,
+     "sha256": "3665954f3e44b5fdd8e002c69bde94eab37a46e654acfb2c46b78a7be689bf2c"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_RatRange1aBound.txt",
+     "size": 26734,
+     "sha256": "3665954f3e44b5fdd8e002c69bde94eab37a46e654acfb2c46b78a7be689bf2c"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_RatRange2.txt",
+     "size": 26734,
+     "sha256": "c73a5e26851acdd02748f682ba7b3d6f8d559fc71e0377e2d13aa6d1e8c169b4"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Rectangle1.txt",
+     "size": 26734,
+     "sha256": "75e0a899b1caf78e90d9c71eba6a893c70cddd2211b9a2535a0f106a6b4c094e"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Rectangle2.txt",
+     "size": 26734,
+     "sha256": "75e0a899b1caf78e90d9c71eba6a893c70cddd2211b9a2535a0f106a6b4c094e"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Rectangle3.txt",
+     "size": 26734,
+     "sha256": "ebd4b7dd9c6eaa5bd50bbc8e17682dade33b4f4f9dea09921a748d3bb298ebd9"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Rectangle4.txt",
+     "size": 26734,
+     "sha256": "d95a878cef9df65a84132595062ef40e8a839bf5028c2bee1bf3b8ab10efa847"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_Rectangle5.txt",
+     "size": 26734,
+     "sha256": "56e87ebc994b88c94f6fdf7208cb25e904ca1a90f1be551f63aa2eddb6b483da"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScalePar1.txt",
+     "size": 26734,
+     "sha256": "f8d767207e1c709e8cc33aa07e913e33ac713730f67cc3f47b57183c9cc4044a"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange1.txt",
+     "size": 26734,
+     "sha256": "3e58f9281a6f5cbd17a9b06b30346645a7a3e5eae40ddab9a8566c9452ad57cd"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange1Bound.txt",
+     "size": 26734,
+     "sha256": "35e3fe41b87413899de300316628732e4ce17fe5c79bd43df2850e99f9c8f589"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange1c.txt",
+     "size": 26734,
+     "sha256": "d83287d413b8dd3fa0853af9dffed0901e234f99b12744b2790a048fb4e023fd"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange2.txt",
+     "size": 26734,
+     "sha256": "d0b36303b5cc3a14cc3fb5903a591d7105284c3c35b5dcfc0323d30d2122005a"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange2Bound.txt",
+     "size": 26734,
+     "sha256": "86a892c76819a2f3420d49727bb908192c6fe04517920d4d3903822e9cbb11e1"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange2c.txt",
+     "size": 26734,
+     "sha256": "a467e3cf0ff3df22873bf265f55dd42a6cda5c9efe449acb484c417317257d58"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange2cBound.txt",
+     "size": 26734,
+     "sha256": "82332ff9d85420fb4357a71b301eaf2617b8fe06aa858c9f086a60b210d33a58"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange3.txt",
+     "size": 26734,
+     "sha256": "6834f33e0ef31361188a693555f028068210e4981094367db9092ddf2e550a40"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange3Bound.txt",
+     "size": 26734,
+     "sha256": "8f852304548945d02b2168ff01165de47382c6bc9336048148ab759fb2247805"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange3c.txt",
+     "size": 26734,
+     "sha256": "14e6c4b79d8e5a7f280a26771bdbca270173a38318dcede26f6bb24cb76beb8f"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange4.txt",
+     "size": 26734,
+     "sha256": "b423c697c90dd31ec8c58a98b3d5ceef922f6e7a939a273f024bb14bd5e5d726"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange4Bound.txt",
+     "size": 26734,
+     "sha256": "9bde5c7bf723a76ed1b7a30fe3e72491f898a697206ccac0979b0623ccd06a88"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange4c.txt",
+     "size": 26734,
+     "sha256": "18145597f8d0f4b66522ad3e5667bcbec1935db9c8c9a167200c14579bab973e"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange5.txt",
+     "size": 26734,
+     "sha256": "a048cc0c6c823eb235e7428226a7fe71134b872ecdc298a2422bd4efe57dc1bc"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange5c.txt",
+     "size": 26734,
+     "sha256": "672dd05342923e2eeb84390c85a4d5ba85e6f6cde4801e89094c96118e120955"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange6.txt",
+     "size": 26734,
+     "sha256": "2fafbcd2da27a1ba608d03f4a21bbefa5fd00c278046811b4c5542eb1606604b"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange6Bound.txt",
+     "size": 26734,
+     "sha256": "e5dda3bf383a7e655ed1d65c4796480def1fb0dc326a31c672dad81d109c200f"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange6c.txt",
+     "size": 26734,
+     "sha256": "9e52fba5d42608cbf47ace05149fa7ac6ef8f26724dc5d3c08872d936296ee42"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange7c.txt",
+     "size": 26734,
+     "sha256": "16ae1b00d2b6dbd19f5f29fbe4c9b2e64b882b4217ccd98edc64d626e779d2c0"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRange8c.txt",
+     "size": 26734,
+     "sha256": "7d20b4b1b7d6c387f25069448b2b8c29991d774830227bdd8c8f1ec24cc77c5a"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRect1.txt",
+     "size": 26734,
+     "sha256": "fcef36f73814b272ceec4264b4385c3270832947e4eb45d76ee6c211523d4c4b"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRect1Bound.txt",
+     "size": 26734,
+     "sha256": "3e21ea26c6b59582ab6ea75d09cae19588069f1e90cab4d7f32e4d870bb66d55"
+    },
+    {
+     "path": "ExpectedResults/set_1/Results_ScaleRect1Bound2.txt",
+     "size": 26734,
+     "sha256": "a1756f8889e255cc5eecffe3b6cf22d961ae5f63778d56678292623ce46f81d1"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Cube3Du.txt",
+     "size": 20000,
+     "sha256": "bbbdd7e7916327af3d67bed8409359bb8449225f4ce73991acb4582e7d25dd3c"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Cube3DuP.txt",
+     "size": 20000,
+     "sha256": "539df6309d81668431ca948e17f9950450ecd938142bf2b53c64a0d496f69adc"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Cube3DuPAsBool.txt",
+     "size": 20000,
+     "sha256": "539df6309d81668431ca948e17f9950450ecd938142bf2b53c64a0d496f69adc"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Cube3Dul.txt",
+     "size": 20000,
+     "sha256": "bbbdd7e7916327af3d67bed8409359bb8449225f4ce73991acb4582e7d25dd3c"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipseca.txt",
+     "size": 20000,
+     "sha256": "09649b949f58cf0b6adcd2d80c3acf2c95450d5dd4fedce49e367cbc41293b63"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipsech.txt",
+     "size": 20000,
+     "sha256": "98bc3ba772507d54efa465a7a6197dd7a7b3a514d5c6941609be29a15dcd0dcf"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipsecl.txt",
+     "size": 20000,
+     "sha256": "c93cab3cce47dc98d8143e2ca21db23e5511eac29b03bd662c2f50ab99b6e811"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipseclb.txt",
+     "size": 20000,
+     "sha256": "86304c2b01e79accb261eace025b9d55bd70b2614bdeb4895098fb1619b3d319"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipseua.txt",
+     "size": 20000,
+     "sha256": "fda6885547d960201e537f2c99fe825dcebde1c8da6c4a50d1dd53a621aa0385"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipseuh.txt",
+     "size": 20000,
+     "sha256": "ccb6ba73f739bf99c5194201d89914c31de8851df138d6f6053070cf6a71a6e0"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipseul.txt",
+     "size": 20000,
+     "sha256": "2ac4a7b563accdac2860b9126f24de1e46f127e8b7f813ec779268c10f310879"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipseulb.txt",
+     "size": 20000,
+     "sha256": "4d1fd907742cf781233f248643c905efe1634eab3fb4012fae32f36faa593cd2"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Ellipseulb2.txt",
+     "size": 20000,
+     "sha256": "678e2b2811b7cf85264927e6d72d75f8afcbad975f7a1041421365c8b155c8a7"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_HyperCube1.txt",
+     "size": 20000,
+     "sha256": "93ce6e70360da22249bfa44ff45bd66dc498d58a9eb7a19f025edb6019f61046"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_NotRectcl.txt",
+     "size": 20000,
+     "sha256": "6907f4d608808051dadccd7078be60eddaead4c924c721d8b258de159c4ef7c2"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1c.txt",
+     "size": 20000,
+     "sha256": "51d7e3e0f27c0843b0c133ead92767e39cf2a004ebb95ab0c5d770218377af6a"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1ca.txt",
+     "size": 20000,
+     "sha256": "e14ff8a089adb63e5c4dc6df50f23b62585be31e5b31040a44b72e8816d0ddfb"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1cab.txt",
+     "size": 20000,
+     "sha256": "2de0c9a4f1859c7a00b221f174bf5f242514e7b070e1897c533e40206bdd3b56"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1ch.txt",
+     "size": 20000,
+     "sha256": "46a68603ae2a3ad1452d6fd6e9626ddd060360ab657aa9759e6bd49d34564ba5"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1chb.txt",
+     "size": 20000,
+     "sha256": "a18d435588298e0c4ae18fdf29657c3b6e068146dddafea2e15e97880704d7cb"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1cl.txt",
+     "size": 20000,
+     "sha256": "f18fe1f7b2a429123560a5faa33941be1331b31f9a01eb7f569031d3eb8d6784"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1clb.txt",
+     "size": 20000,
+     "sha256": "a3f5a9a1e5b9717329eb0f47d65e08bafd0f5b8d7ce7101e4f41efba4e042827"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1u.txt",
+     "size": 20000,
+     "sha256": "c839b25db015cce975c426995adefe790156be0709f30e8835d059713c234251"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1ua.txt",
+     "size": 20000,
+     "sha256": "8d49a8e855f71bf02d1157f7a443ee69406b6a7196717f5bf6972aac0de8379e"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1uab.txt",
+     "size": 20000,
+     "sha256": "0db9578628377ae5bb1fd938e9feddcfcb335263039b8a2d77af714cc12b332f"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1uab2.txt",
+     "size": 20000,
+     "sha256": "d88d50071d341542cdd8162ae4ee2808024c832114ca08a8ef60235a4ef24ff7"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1uh.txt",
+     "size": 20000,
+     "sha256": "3a712abcb4d0098a22602a47db1620d0ca72ec644e00d2afa36965925d08fffa"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1uhb.txt",
+     "size": 20000,
+     "sha256": "2426ecd1ce0df1c213a138f64285b24f3dccc39b5c36ec21204356c4bdbac51b"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1ul.txt",
+     "size": 20000,
+     "sha256": "d9acdc97dc5245fa2dd7047fb79bedfe36cb595bca6a77f2e31c4c04e6732758"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Poly1ulb.txt",
+     "size": 20000,
+     "sha256": "178ed7ecf966d479c873e22f5d383f57616aae353bc1295348437a8ab86c3074"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_RectMix1.txt",
+     "size": 20000,
+     "sha256": "130f2689e7331b4806f530f4241ab260df7ec0c7611eb5b5476c36812a3a0430"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Rectch.txt",
+     "size": 20000,
+     "sha256": "d53a5688263c0492a8d9faa705add2593051a14303dd8c80f65322c1aedf86f2"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_RectchAndNotRectcl.txt",
+     "size": 20000,
+     "sha256": "df09d36e34cb669b24645ab6162b767a4abf21f9256375140e245d5cd58320f9"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_RectchAndNotRectcl2.txt",
+     "size": 20000,
+     "sha256": "df09d36e34cb669b24645ab6162b767a4abf21f9256375140e245d5cd58320f9"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Rectcl.txt",
+     "size": 20000,
+     "sha256": "5d1d1662fc5053b279e516463610be74c8fdfb8f093a972d6d1ced058e0218ed"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_RectclAgain.txt",
+     "size": 20000,
+     "sha256": "5d1d1662fc5053b279e516463610be74c8fdfb8f093a972d6d1ced058e0218ed"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_RectclAndRectch.txt",
+     "size": 20000,
+     "sha256": "5d1d1662fc5053b279e516463610be74c8fdfb8f093a972d6d1ced058e0218ed"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_RectclOrRectch.txt",
+     "size": 20000,
+     "sha256": "d53a5688263c0492a8d9faa705add2593051a14303dd8c80f65322c1aedf86f2"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Rectuh.txt",
+     "size": 20000,
+     "sha256": "d8a163bed46052662d280839f939088c2a123a8405ab71747a446ed03bc82225"
+    },
+    {
+     "path": "ExpectedResults/set_2/Results_Rectul.txt",
+     "size": 20000,
+     "sha256": "52406ede5314c83e41e10b1efd7ba47328337f4ddcaa9ce4d0d12f8e7148de05"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q1.txt",
+     "size": 249200,
+     "sha256": "9fdf28d40e4ff05b28db3bc7985b13727d32d56122059dd3594aee9ef4563730"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q1A.txt",
+     "size": 249200,
+     "sha256": "06766540ec8c9f9914e932a051c7b7881a97abe8c9285107af7846115b380678"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q1B.txt",
+     "size": 249200,
+     "sha256": "06766540ec8c9f9914e932a051c7b7881a97abe8c9285107af7846115b380678"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q1C.txt",
+     "size": 249200,
+     "sha256": "8fe223a33e6d364cd30d119805f8653cef204e64442e9dd32d7bfb4aea4d0dba"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q1D.txt",
+     "size": 249200,
+     "sha256": "b055ab36be4865d0dde60bd2085839b36365236a2268f5d1d0d247d07ac2f9bc"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q1E.txt",
+     "size": 249200,
+     "sha256": "89b69b8edc144f05f9065df0ca5947ff716625d0d110e740ab3d18a1045c7aa8"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q2.txt",
+     "size": 249200,
+     "sha256": "a24ee1c4aeb7e7c1e81e1f27ae89ec6780cb49d93a62f2aa056554e7ffd358ea"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q2A.txt",
+     "size": 249200,
+     "sha256": "f169d8d8105d0876da94f837f16e5878e0939bd35cecc6f8b243d2887db3131e"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q2B.txt",
+     "size": 249200,
+     "sha256": "f169d8d8105d0876da94f837f16e5878e0939bd35cecc6f8b243d2887db3131e"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q2C.txt",
+     "size": 249200,
+     "sha256": "f5b0710a9b0dae01021e59e88cfcdd1ca4eb049635ba2acde52449a2570c0a00"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q2D.txt",
+     "size": 249200,
+     "sha256": "4846e0656d65975957f26fde65f12433fe3e1aa3e5e34a39aa329627fa18bea8"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q2E.txt",
+     "size": 249200,
+     "sha256": "8bc7357a7c0099884c6942d7bff1f93a3a4459eaa91992c4c9b1a902c1674c47"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q3.txt",
+     "size": 249200,
+     "sha256": "e5bb7c7ad09f6c91a3b500aff79bad3b9b20fe63e861e2c7f4666f9eccd20a3b"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q3A.txt",
+     "size": 249200,
+     "sha256": "5215b0c01d02e710ba8480ea87b4657e215062282a5b989f9e46001017b012f9"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q3B.txt",
+     "size": 249200,
+     "sha256": "5215b0c01d02e710ba8480ea87b4657e215062282a5b989f9e46001017b012f9"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q3C.txt",
+     "size": 249200,
+     "sha256": "2ec7f5456b61c3c995b5542d980098b76fa419df5fceab7f7674394312a81512"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q3D.txt",
+     "size": 249200,
+     "sha256": "45e0542bda80c360c3752de03536109213100254554cd0e9af15bd4d1b235bde"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q3E.txt",
+     "size": 249200,
+     "sha256": "5bd5eccfe970836917ed04a9fbe02b7f666618470bc91492dac10d7e10fdfad4"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q4.txt",
+     "size": 249200,
+     "sha256": "e8491a7d3eb012fe346489a89a344b76e6d963f598f8a8fb59b2844d2db56664"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q4A.txt",
+     "size": 249200,
+     "sha256": "79ef77d70540afb70f371266d8fffe1f001c6f2206b89b3fa423cafbc88ad9a1"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q4B.txt",
+     "size": 249200,
+     "sha256": "79ef77d70540afb70f371266d8fffe1f001c6f2206b89b3fa423cafbc88ad9a1"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q4C.txt",
+     "size": 249200,
+     "sha256": "44a85d8d9169a0b9dfbe4d28f3972ed50fb412ed3e345bb92ab1d38899856a4f"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q4D.txt",
+     "size": 249200,
+     "sha256": "075ae1738241d90bbb78609912837477ad5b4a1aa89e44fe195565f9a382ea32"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q4E.txt",
+     "size": 249200,
+     "sha256": "d56e2293c2a9f578f26d8c531caf372e150dc4cc4eed94ea799eb81a26916b45"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q5.txt",
+     "size": 249200,
+     "sha256": "536d2d91c3b4bec298b5dbf5c38d38d69bbc1f7e7efc6680a35a59fce93955e5"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q6.txt",
+     "size": 249200,
+     "sha256": "dd3746553feadd0766e48be3c3114a44a3bc2819e52071133f74f8c62e21945d"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_Q7.txt",
+     "size": 249200,
+     "sha256": "ad85c02e22ad19c0f88aa9eae196f10f6c4d0806e46caa8524dac9dd521cefa3"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_my3DRectangleGate.txt",
+     "size": 249200,
+     "sha256": "367b5a0e3b78b1153bd664eadcaf530ad05cfcf8153d59952ea9cb5edf4e9c18"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myBooleanAnd.txt",
+     "size": 249200,
+     "sha256": "48f5ad0441e3cfce3796737671f4af21c5f8df1d6ab5a6042cdbd3f4aa1a5935"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myBooleanNot.txt",
+     "size": 249200,
+     "sha256": "79de92a2686b751e837893c1ad74779b64515071b0e511f048f539f8f1cabd70"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myBooleanOr.txt",
+     "size": 249200,
+     "sha256": "2aa38e048154dfedc441f41bd0721e678cb8e26c812a10bea352163b65c53118"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myBooleanOrWithParent.txt",
+     "size": 249200,
+     "sha256": "48f5ad0441e3cfce3796737671f4af21c5f8df1d6ab5a6042cdbd3f4aa1a5935"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myEllipseGate.txt",
+     "size": 249200,
+     "sha256": "08801c38ce4b09deef731e496cfb7a33aab116ac00b5e6e70fc388ab17b2de00"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myEllipsoidGate.txt",
+     "size": 249200,
+     "sha256": "74451918a76b80d30571545b7f147a54dd8b5a02c0e081913d74592af49dbba4"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonGate.txt",
+     "size": 249200,
+     "sha256": "bb1c98e71960732340a580b6e7edeb02737f2e712c669e7af5ee63a734642d15"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonGate2ArcSinHLin.txt",
+     "size": 249200,
+     "sha256": "d88ae02d23dfc262d011f0d02956f42df2c92db125c36a7be3d8acbc577128f1"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonGate3LogLin.txt",
+     "size": 249200,
+     "sha256": "0c7fc52fbc505db65bbe4dac19293a6abbd20547c7550484d31037e94640e6d3"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonGateWithCustomSpillover.txt",
+     "size": 249200,
+     "sha256": "af6d36121347cad700d2d67bd818a71bdc9db2ffdc0e22139594a314f1688441"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonGateWithFCSSpillover.txt",
+     "size": 249200,
+     "sha256": "08ca7294d7567ad2af46e7d3a666bfb0653e375ddaf9a1558771bc9aa3de2c65"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonGateWithSpilloverSameAsFCS.txt",
+     "size": 249200,
+     "sha256": "08ca7294d7567ad2af46e7d3a666bfb0653e375ddaf9a1558771bc9aa3de2c65"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonGateWithoutSpillover.txt",
+     "size": 249200,
+     "sha256": "065ce231fa6b6713c992edab5a30fb1d41a75e0b5cd0f4ff99990cd17832f98f"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonWCustNonSqSpecArcSinH.txt",
+     "size": 249200,
+     "sha256": "8943ed2c68d201cb8e90aecf19713a6225eb1efebdaf846be8cb1a2f6ce5eebc"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonWCustNonSqSpecInvAlrd.txt",
+     "size": 249200,
+     "sha256": "7506674a2f7f6590098aef7cb139ec7e9f84bdcbf068ff8b309cc35e149ead4a"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonWCustSpillAndArcSinH.txt",
+     "size": 249200,
+     "sha256": "b7f0aa2a40981b47dfa2fba09ff9edfe093c0273e9d0059d80c0c2a5cf70d9ed"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonWFCSSpillAndArcSinH.txt",
+     "size": 249200,
+     "sha256": "78a0a020d948a8fe4c61e5ea25d1b0c8d22f4cd82ed4b770963e38374d06653e"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonWithCustInvAlrSpil.txt",
+     "size": 249200,
+     "sha256": "af6d36121347cad700d2d67bd818a71bdc9db2ffdc0e22139594a314f1688441"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myPolygonWithCustNonSqSpecMat.txt",
+     "size": 249200,
+     "sha256": "7506674a2f7f6590098aef7cb139ec7e9f84bdcbf068ff8b309cc35e149ead4a"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRangeGate1.txt",
+     "size": 249200,
+     "sha256": "d9affce73b2927cd3425bf307afbbcdba988641839ed6e04f7f7a58abb9cfa89"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRangeGate2.txt",
+     "size": 249200,
+     "sha256": "d9affce73b2927cd3425bf307afbbcdba988641839ed6e04f7f7a58abb9cfa89"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRect4LogicleArcSinHFCSComp.txt",
+     "size": 249200,
+     "sha256": "1511fba15c6cf3be03f52191a6e380e62caef1612cf95aaf712468dc3a673241"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRect4bHyperlogArcSinHFCSComp.txt",
+     "size": 249200,
+     "sha256": "6864dffaaa48866c22d2d1a337bc4f825c65cfb96000e31f64b5fca31b0e06aa"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRectangleGate.txt",
+     "size": 249200,
+     "sha256": "c806e99951123a156efe7211a93b16152112ad62bc63203d98516d5975a79fd8"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRectangleGate2Logicle.txt",
+     "size": 249200,
+     "sha256": "7b8c875d8e3f0717edaaa8a63ab00d6a723b37983816b454581a633d46de1373"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRectangleGate2bHyperlog.txt",
+     "size": 249200,
+     "sha256": "968422fd20d93f233571f71e60a05f26e8c3d80ec886e7396344a727cd10e8ab"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRectangleGate3LogicleArcSinH.txt",
+     "size": 249200,
+     "sha256": "220bcff367a7c1d5bad51c9c2ec0a9665b1ec830e07e9eceac127ac3b9514d19"
+    },
+    {
+     "path": "ExpectedResults/set_3/Results_myRectangleGate3bHyperlogArcSinH.txt",
+     "size": 249200,
+     "sha256": "f5f43002546d951086db24ade9d4d1931846ed496026f7dfb8d5f2fc4366c6e8"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant2_NN.txt",
+     "size": 249200,
+     "sha256": "27928196134e021ceeb2c96aabe8ddded165c66abff82c05b098af8652537962"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant2_NP.txt",
+     "size": 249200,
+     "sha256": "421691b2ef40af4ee028f67008d261de310e1735919fa5613b83a448b12b8953"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant2_PN.txt",
+     "size": 249200,
+     "sha256": "22ee2ca22ad8edd1ef650b1b619952424a17a2a21000a36aafa2cb64ad162fe2"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant2_PP.txt",
+     "size": 249200,
+     "sha256": "4007a5f17e88050a43d31a2b786ee458d58903e80d514851e03173f7b8eccc03"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant3_NN.txt",
+     "size": 249200,
+     "sha256": "27928196134e021ceeb2c96aabe8ddded165c66abff82c05b098af8652537962"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant3_NP.txt",
+     "size": 249200,
+     "sha256": "421691b2ef40af4ee028f67008d261de310e1735919fa5613b83a448b12b8953"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant3_PN.txt",
+     "size": 249200,
+     "sha256": "22ee2ca22ad8edd1ef650b1b619952424a17a2a21000a36aafa2cb64ad162fe2"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant3_PP.txt",
+     "size": 249200,
+     "sha256": "4007a5f17e88050a43d31a2b786ee458d58903e80d514851e03173f7b8eccc03"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant4_NN.txt",
+     "size": 249200,
+     "sha256": "89bd265356c5560e65031bb045c05d4619c741de6da50ba90c3ce99902f27062"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant4_NP.txt",
+     "size": 249200,
+     "sha256": "8d5d11848309f21c69156d9683d45168dd15dc254ae72f019349aa5d5cd9fca7"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant4_PN.txt",
+     "size": 249200,
+     "sha256": "e1a98407ae7bae606f11f8f88c54e2a7f6643b88c7deb5eda0afc3cfbe253c44"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant4_PP.txt",
+     "size": 249200,
+     "sha256": "ba5805c0083c68167385d5a8b69949a1f97673d26873b6d036a8a2c17d76d2cd"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant_NN.txt",
+     "size": 249200,
+     "sha256": "707198bbdae36642bf7d6834c55f3cc9e15a687953796c62fe21e49968df6303"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant_NP.txt",
+     "size": 249200,
+     "sha256": "3cf88d392523c8c0bd2bb923f3b7c7eb67962860b3f3ad2b48ce8f6f87014021"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant_PN.txt",
+     "size": 249200,
+     "sha256": "61fa606827b423e547efa7a0cb85dad29b4853976fc792267ca44ff0d558e0db"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myQuadrant_PP.txt",
+     "size": 249200,
+     "sha256": "a6f924b07a8f496b3a8ddbbfd6cd1e8f0115fadd3c1da15e2e6b0dcb7cae67fa"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myRange1.txt",
+     "size": 249200,
+     "sha256": "769cb5e23b2637a2897870ebbbae277051bde485b90e3c7571c2bcc0303569cb"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myRange2.txt",
+     "size": 249200,
+     "sha256": "93257851a7f0cdd7465de94f26fe720107ff09a6580e2436b78a90aca8602370"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myRange3.txt",
+     "size": 249200,
+     "sha256": "4ee4ff1dedd62bb83f178f69ce2121a8db6a9aca56124ffc0659d1daa4b6daa0"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myRange4.txt",
+     "size": 249200,
+     "sha256": "4ee4ff1dedd62bb83f178f69ce2121a8db6a9aca56124ffc0659d1daa4b6daa0"
+    },
+    {
+     "path": "ExpectedResults/set_4/Results_myRange5.txt",
+     "size": 249200,
+     "sha256": "ad3a0d2fb99fd310ed9760ffda6836100658a58f0ca577cb27029c6ca104ee48"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_Not_myPolygon1.txt",
+     "size": 249200,
+     "sha256": "bebd784592e4964b40ce6afef7d021e758489fdadeb0e8988b2e8862d30fb585"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_Not_myPolygon2.txt",
+     "size": 249200,
+     "sha256": "2329043f8e382d1a79f8c208cd5ba78a2f1a742102652f60883ecc68b40a023e"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myAnd1.txt",
+     "size": 249200,
+     "sha256": "25f320213a4e370622f1dc504ac094dbbd035678e3d29018acc45fcbddd449a9"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myAnd2.txt",
+     "size": 249200,
+     "sha256": "0c314926a1ccf811db8a2bb64963e5afb43048868ede556ee0e3a3dac08a912d"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myAnd3.txt",
+     "size": 249200,
+     "sha256": "fdbce3c07d17b533d4ca087f4348f344007e5a502f6c29b64acec49e052e210e"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myAnd4.txt",
+     "size": 249200,
+     "sha256": "b2c62a56910f9258bf55dc69cc2b160983a9a3414bf2b3f0e089fe96870ce77f"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myNotNot.txt",
+     "size": 249200,
+     "sha256": "15d455edcb268fc3d5a5adb9cd17f0936569d4cbe64e5422ecfd970f7b9b978e"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myOr1.txt",
+     "size": 249200,
+     "sha256": "9f52b8e964b49a89bb5ed0795096267dc0ec6b9968d38dd619a22265fa476690"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myOr2.txt",
+     "size": 249200,
+     "sha256": "a26ecaaf81594f1830dca94e9d5a8603e3d6f68decbc5d0c6140b75521f3bcd6"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myOr3.txt",
+     "size": 249200,
+     "sha256": "4ec7bc23d4c7da0f6494f3bf06598723fd4cb83b3c0e9b94053399450c749cd9"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myOr4.txt",
+     "size": 249200,
+     "sha256": "63a997d9a693d50311e1a52944b5a3dbbcbe85dac9612179e82d16b81931bace"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myPolygon1.txt",
+     "size": 249200,
+     "sha256": "15d455edcb268fc3d5a5adb9cd17f0936569d4cbe64e5422ecfd970f7b9b978e"
+    },
+    {
+     "path": "ExpectedResults/set_5/Results_myPolygon2.txt",
+     "size": 249200,
+     "sha256": "8b919a1a386bff74d3cc2b98e47865830bb9d1e50423fec44148a86c3ce233e8"
+    }
+   ]
+  },
+  "flowkit": {
+   "title": "FlowKit 1.3.2 test data",
+   "description": "FlowJo 10 workspaces with their FCS files (an 8-colour intracellular cytokine panel; synthetic diamond and line examples), compensation and spectral reference events, and FCS files from several instruments, as used by FlowKit's own tests.",
+   "source": "https://github.com/whitews/FlowKit (tag 1.3.2)",
+   "licence": "Part of FlowKit's repository (BSD-3-Clause); the provenance of the real data files is not documented there. CytoWeave downloads them for testing and does not redistribute them.",
+   "base": "https://raw.githubusercontent.com/whitews/FlowKit/f2159043b6a56e527d4baacf97490caf8354618e/data/",
+   "files": [
+    {
+     "path": "8_color_data_set/8_color_ICS.wsp",
+     "size": 436096,
+     "sha256": "b2715caff97e3a2d6c44077d4e1801296c58c0c762ccb2111a802fcd4213d239"
+    },
+    {
+     "path": "8_color_data_set/8_color_ICS.xml",
+     "size": 16313,
+     "sha256": "86a30d5db16c52292e1f7408211a73496720f9f3c6aefb2b734746d26dc23a21"
+    },
+    {
+     "path": "8_color_data_set/8_color_ICS_boolean_gate_testing.wsp",
+     "size": 369836,
+     "sha256": "df22c6c62b60eaa0b0579b4cd942c8ca7f87ac7a15a45cf6fe9932b4502c22be"
+    },
+    {
+     "path": "8_color_data_set/8_color_ICS_dot_gate_name.wsp",
+     "size": 441204,
+     "sha256": "b1f2cadf5ba48a22a2006d85a540a666573b21975a5408b87c5404c2874dfc30"
+    },
+    {
+     "path": "8_color_data_set/8_color_ICS_sample_without_gates.wsp",
+     "size": 142440,
+     "sha256": "576f68067537c40e197496f7223702181f1657f01e8b9e8e27117a9424b298a2"
+    },
+    {
+     "path": "8_color_data_set/8_color_ICS_simple.wsp",
+     "size": 174084,
+     "sha256": "c617bdd3402347a60502fa78fd2f6d51c788c138d5574b12976663648108e471"
+    },
+    {
+     "path": "8_color_data_set/8_color_ICS_with_ellipse.wsp",
+     "size": 458755,
+     "sha256": "fcaa2ff486ea15f2a8c06603c9bc8f67db6fc110fc12f9150dff3a54261b5b4a"
+    },
+    {
+     "path": "8_color_data_set/den_comp.csv",
+     "size": 713,
+     "sha256": "5580e24205a75d93339a42dcde473441e37dfdfc770e7703f5d73cf5dabb564e"
+    },
+    {
+     "path": "8_color_data_set/den_comp_null_channel.csv",
+     "size": 562,
+     "sha256": "0e303f1acfa482bec836c7debbc5844e6702a8acf19fd987d9a282f6ddeaf5f5"
+    },
+    {
+     "path": "8_color_data_set/reused_quad_gate_with_child.wsp",
+     "size": 79627,
+     "sha256": "6751de9c58d8a5e5bb612acf2cb669452a35832726944c07ac50339c80019d7a"
+    },
+    {
+     "path": "8_color_data_set/fcs_files/101_DEN084Y5_15_E01_008_clean.fcs",
+     "size": 17412282,
+     "sha256": "55e2e1231e6a2b310856ef0722b59bb938277c446fe392f53dc007983ecead6d"
+    },
+    {
+     "path": "8_color_data_set/fcs_files/101_DEN084Y5_15_E03_009_clean.fcs",
+     "size": 17040102,
+     "sha256": "d089c36358716d8c9ec5efc8f3c56b21e318aaff9fa0e7dc515bf3eff54009da"
+    },
+    {
+     "path": "8_color_data_set/fcs_files/101_DEN084Y5_15_E05_010_clean.fcs",
+     "size": 17119362,
+     "sha256": "3eec1cb3f72477aa35a2ecf0d72361af2e4d502832228336a72464e8af9a563a"
+    },
+    {
+     "path": "simple_diamond_example/simple_diamond_example_quad_gate.wsp",
+     "size": 22413,
+     "sha256": "9c0f3d3514a01b4221a04cc5df41b0fc7873dc4dbb51f1cce50c61fc2c8ef83b"
+    },
+    {
+     "path": "simple_diamond_example/test_data_diamond_01.fcs",
+     "size": 1600503,
+     "sha256": "58c901bf006bd8d4ce79d234eb3a49f57c9f4a4d47f557cb2f816edf94f51ac1"
+    },
+    {
+     "path": "simple_diamond_example/test_data_diamond_asinh_rect.wsp",
+     "size": 18910,
+     "sha256": "e43f37e94cd53cb5e80f47cc55ef1ae5c14e6e23ccfb45fbef4418b45021d107"
+    },
+    {
+     "path": "simple_diamond_example/test_data_diamond_asinh_rect2.wsp",
+     "size": 18925,
+     "sha256": "fdd56d94fc7e66e9a7dd0e39b689070afc678712191388ac9f4f106e85183bfd"
+    },
+    {
+     "path": "simple_diamond_example/test_data_diamond_biex_rect.wsp",
+     "size": 15480,
+     "sha256": "0429aae923a59daca893a96157a8697e831186d43d4f957095e61131960610de"
+    },
+    {
+     "path": "simple_line_example/data_set_simple_line_100.fcs",
+     "size": 1297,
+     "sha256": "b620d2e81afafe87bca9c4c43141eda3840220614581b735cd7acd8591143595"
+    },
+    {
+     "path": "simple_line_example/simple_poly_and_rect.wsp",
+     "size": 26994,
+     "sha256": "3dffd8451bd524385826f0adcebd1f997487e4eb09eec6183b201bce3505b1a9"
+    },
+    {
+     "path": "simple_line_example/simple_poly_and_rect_v2_poly50.wsp",
+     "size": 27037,
+     "sha256": "a8c1494ddac3faa74864c45023c8874bfa8ab374ff31ab895b59bc260fe4a579"
+    },
+    {
+     "path": "simple_line_example/single_ellipse_51_events.wsp",
+     "size": 16528,
+     "sha256": "7b5e45587bb023255bf7942d94399c2b84c286312ca078b7f3c0be8e39cba278"
+    },
+    {
+     "path": "index_sorted/index_sorted_example.fcs",
+     "size": 25938,
+     "sha256": "0e562897a8b995861463fe388af88d57c85276725d3f1d67f5bbb9c0e7016cf4"
+    },
+    {
+     "path": "multi_dataset_fcs/coulter.lmd",
+     "size": 944166,
+     "sha256": "3182e8522907b09e3d2ef4e50983502b86db52ea55aaf8528a10d6b408e3e46a"
+    },
+    {
+     "path": "noncompliant/data_start_offset_discrepancy_example.fcs",
+     "size": 6263,
+     "sha256": "414fdccae26a65996324261ab028fb1c762e448313ebcf6207894b4dc43eef47"
+    },
+    {
+     "path": "noncompliant/data_stop_offset_discrepancy_example.fcs",
+     "size": 6263,
+     "sha256": "49956b68a5131af1bba423a26fdaabd9fdf109b51d5f421a42971c09c920cc9d"
+    },
+    {
+     "path": "spectral_data/spectral_comp_matrix.npy",
+     "size": 12800,
+     "sha256": "5877dbbe472d0f02999b18550f0edb6fe4fd5926a2c1d8b43efe48f095daf5d6"
+    },
+    {
+     "path": "spectral_data/spectral_fluoro_indices.npy",
+     "size": 512,
+     "sha256": "5e3909dfa2757a97e864c5d570c59966d9d7981c51adf712c9b19a6ad8001120"
+    },
+    {
+     "path": "spectral_data/spectral_raw_events.npy",
+     "size": 4400128,
+     "sha256": "4a979982d307369d6765c4d22038baa80281920d533b62825a024850f4bf916f"
+    },
+    {
+     "path": "spectral_data/truth/spectral_comp_events.npy",
+     "size": 4400128,
+     "sha256": "87733362a621852aa301c41b074b1628ca632ecf3e6031bfe25bd82f4546549d"
+    },
+    {
+     "path": "test_comp_example.fcs",
+     "size": 773944,
+     "sha256": "fb33bf60546d40fa7e892c67f51681f8af59d3be818a212035c649437f00a105"
+    },
+    {
+     "path": "comp_complete_example.csv",
+     "size": 610,
+     "sha256": "cd0f06384c4328025c52b4b7b157fbff3dcb128b7f30ce3db4138011193b4eaf"
+    },
+    {
+     "path": "test_data_2d_01.fcs",
+     "size": 80500,
+     "sha256": "9dbc58f110b6928df55b5720d5e176975918f587213960fef62b1930f3a52113"
+    },
+    {
+     "path": "100715.fcs",
+     "size": 4166144,
+     "sha256": "733b0f6d959527116860f4c78f0908db33fc71388c7717737b340c100b9f46e7"
+    },
+    {
+     "path": "109567.fcs",
+     "size": 10250368,
+     "sha256": "6011d295c4718f79ae9f768790cdea9fa85445452b963d2cf7715b9f2d52a353"
+    },
+    {
+     "path": "113548.fcs",
+     "size": 11340160,
+     "sha256": "57d5235a672383f06178de869e3e7a9b657006ce097aa9a8165d1e77585c39e8"
+    }
+   ]
+  },
+  "fcsparser": {
+   "title": "fcsparser test files",
+   "description": "FCS files from several instruments (Cytek xP5, BD FACSCalibur, LSR II and Fortessa, Miltenyi MACSQuant in FCS 2.0, 3.0 and 3.1, Guava Muse with several data sets, CyFlow Cube 8) and deliberately malformed files. FACS_Diva/facs_diva_test.fcs is left out: it appears to be a clinical panel of unknown origin.",
+   "source": "https://github.com/eyurtsev/fcsparser",
+   "licence": "MIT (\u00a9 2018 Eugene Yurtsev). CytoWeave downloads the files for testing and does not redistribute them.",
+   "base": "https://raw.githubusercontent.com/eyurtsev/fcsparser/da70aaa7ec92ff3bd9ce00aec4eea7c77ee8c096/fcsparser/tests/data/FlowCytometers/",
+   "files": [
+    {
+     "path": "Cytek_xP5/Cytek_xP5.fcs",
+     "size": 1043904,
+     "sha256": "dd6aaa9a034c40ab5f3a2ce1ea4c8eab7d00a053426917e07a09f8d8d76ca51a"
+    },
+    {
+     "path": "FACSCaliburHTS/Sample_Well_A02.fcs",
+     "size": 601136,
+     "sha256": "bf3fb0140c63ca583a01ec5d6af46df1d00f2e2cd6151f5533ab13a7d7f34e27"
+    },
+    {
+     "path": "Fortessa/FCS_3.0_Fortessa_PBS_Specimen_001_A1_A01.fcs",
+     "size": 512210,
+     "sha256": "fa9011c86e8ad043ab623656646f329aea907e9655e20f94ade97eea4b9dc177"
+    },
+    {
+     "path": "GuavaMuse/Guava Muse.fcs",
+     "size": 8488938,
+     "sha256": "f9b0ca844ecee33c935a6c5e6a7d81c5afe155ce40f0ed663bc51f0d9c98f0e9"
+    },
+    {
+     "path": "HTS_BD_LSR-II/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs",
+     "size": 659953,
+     "sha256": "47ecbe42cc442449aa2739731c2d32d8dbcca58fbaa135cf30583cca234f9277"
+    },
+    {
+     "path": "MiltenyiBiotec/FCS2.0/EY_2013-07-19_PBS_FCS_2.0_Custom_Without_Add_Well_A1.001.fcs",
+     "size": 643582,
+     "sha256": "28c442794bf920c72cb7c84cdca0e972d5cbace49727ddedde9d717c8b049128"
+    },
+    {
+     "path": "MiltenyiBiotec/FCS3.0/FCS3.0_Custom_Compatible.fcs",
+     "size": 641900,
+     "sha256": "9a56d8825ea533356443c3b849bef82c6027ca3b4eea9e52a4b74e2be25219ff"
+    },
+    {
+     "path": "MiltenyiBiotec/FCS3.1/EY_2013-07-19_PBS_FCS_3.1_Custom_Add_Well_A1.001.fcs",
+     "size": 887703,
+     "sha256": "4b79ab8f5fb252de71034136c788a06cf3baf25f7f5c7e6101a97ecb22c0190c"
+    },
+    {
+     "path": "MiltenyiBiotec/FCS3.1/EY_2013-07-19_PBS_FCS_3.1_Custom_Without_Add_Well_A1.001.fcs",
+     "size": 762767,
+     "sha256": "986a95927a946e11cc15528d80fca891e26aa884509b1f50a04414508dc38516"
+    },
+    {
+     "path": "MiltenyiBiotec/FCS3.1/EY_2013-07-19_PBS_FCS_3.1_Well_A1.001.fcs",
+     "size": 887613,
+     "sha256": "8cfedc08f387a53cd492c98b5150c3a85ad704499aec07190de5bb249897598e"
+    },
+    {
+     "path": "MiltenyiBiotec/FCS3.1/SG_2014-09-26_Duplicate_Names.fcs",
+     "size": 294908,
+     "sha256": "7ee7e214e54161ebea46aea860ef6c050dfdb1e093cd1d97684fbfd4bcb87cc4"
+    },
+    {
+     "path": "corrupted/corrupted.fcs",
+     "size": 10,
+     "sha256": "20f17232f1485cb999fb594671ab502d37ae44f88fc7eaeb5b3ffa6288c6c96d"
+    },
+    {
+     "path": "cyflow_cube_8/cyflow_cube_8.fcs",
+     "size": 58393,
+     "sha256": "08b8ef7fc49d34c56543551cc4c16bbf50c85af49d89b3abbe40d6f6a5d6a8d9"
+    },
+    {
+     "path": "cytek-nl-2000/sample_header.fcs",
+     "size": 3931,
+     "sha256": "1961e20bab436832ab1fad6f3563993d27181b263d8cc5d54274173b628e1fc3"
+    },
+    {
+     "path": "fake_bitmask_error/fcs1_cleaned.lmd",
+     "size": 704367,
+     "sha256": "6250ffa9c5aca9da3c362297ed481a403594d109ce04f4e5e6504b9a70ed4493"
+    },
+    {
+     "path": "fake_large_fcs/fake_large_fcs.fcs",
+     "size": 512211,
+     "sha256": "45234ff32577dc15fb06af813cc103bbd3ceb44a66ba0be5db14a2434a200341"
+    }
+   ]
+  }
+ }
+}

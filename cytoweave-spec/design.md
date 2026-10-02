@@ -113,6 +113,8 @@ FCS bytes ─parseFCS→ columns (Float32, linear scale values)
 - **Speed.** Per-event transforms of logicle, hyperlog and biex use a dense
   lookup table with linear interpolation (≈ 1e-7 of the axis), so a million
   events take milliseconds.
+- **Bounds.** A transform may carry Gating-ML's `boundMin`/`boundMax`, which
+  clamp its output.
 
 ### Gates
 
@@ -120,9 +122,19 @@ FCS bytes ─parseFCS→ columns (Float32, linear scale values)
   a `{channel, transform}` per dimension, as in Gating-ML. A gate keeps its
   meaning when a plot's axes change, and imports and exports without loss.
 - **Boundary semantics** follow Gating-ML: rectangles and ranges are
-  half-open `[min, max)`, polygons use even–odd ray casting, and ellipses
-  include their boundary. Quadrants and splits are linked families that move
-  together.
+  half-open `[min, max)` (an open upper side still excludes +∞), polygons use
+  even–odd ray casting and include their edges, and ellipses include their
+  boundary. Quadrants and splits are linked families that move together.
+- **Exact boundaries.** Scaled columns are float32 and logicle-type scales
+  come from a lookup table, so membership is tested on them and events within
+  rounding distance of a boundary are re-decided from double-precision values
+  (compensation, ratios and transforms recomputed for that event).
+- **Compensation per dimension.** A dimension may name its own compensation
+  (`'uncompensated'`, `'file'` or a matrix id), as Gating-ML's
+  `compensation-ref` does; without one it follows the sample's.
+- **More than two dimensions.** Imported rectangles and ellipsoids may have
+  three or more dimensions; they are evaluated in all of them and are not
+  drawn on 2-D plots.
 - **Per-sample adjustments** are `overrides` on the gate, not copies. A
   template stays one gate with exceptions, and the review queue can list
   them.
@@ -135,7 +147,10 @@ FCS bytes ─parseFCS→ columns (Float32, linear scale values)
 `SampleView` (`web/lib/engine.js`) owns one decoded data set and caches the
 following:
 
-- compensated columns, keyed by matrix;
+- compensated columns, keyed by matrix (the sample's, and any that a gate
+  dimension names);
+- channels computed on demand from the workspace's derived records: Gating-ML
+  ratios and spectral unmixing;
 - scaled columns, keyed by channel and transform key;
 - populations, keyed by a 53-bit hash of the gate chain: the type, dimensions
   and effective geometry of the gate and of all its ancestors.

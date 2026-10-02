@@ -233,13 +233,16 @@ test('report rows rank and explain differences', () => {
   const migration = {
     samples: [{ sampleId: 'w1', flowJoName: 'A1', note: null, counts: { P: 1000, 'P/C': 500, 'P/D': 200, Q: 50 } }, { sampleId: 'w2', flowJoName: 'A2', note: 'FlowJo recorded 10 events; the file has 9', counts: { P: 10 } }],
     gates: { P: 'g1', 'P/C': 'g2', 'P/D': 'g3', Q: 'g4' },
-    fidelity: { paths: [{ path: 'P/D', status: 'approximated', note: "Comp-FITC-A: FlowJo's logicle with W 1 differs from the reference logicle CytoWeave uses" }] },
+    fidelity: { paths: [{ path: 'P/D', status: 'approximated', note: 'an ellipse defined in data units was mapped to the closest ellipse on its transformed axes' }] },
   };
   const rows = explainCountRows(migrationCountRows(migration, { w1: { P: 1080, 'P/C': 500, 'P/D': 201, Q: null }, w2: { P: 10 } }), migration);
   assert.deepEqual(rows.map((r) => [r.sampleName, r.path, r.status]), [['A1', 'P', 'differs'], ['A1', 'Q', 'missing'], ['A1', 'P/D', 'close'], ['A2', 'P', 'exact'], ['A1', 'P/C', 'exact']]);
   assert.match(rows[0].causes.join(' '), /compensation/);
   assert.match(rows[2].causes.join(' '), /parent population already differs/);
-  assert.match(rows[2].causes.join(' '), /FlowJo's logicle differs from the reference logicle/);
+  assert.match(rows[2].causes.join(' '), /the ellipse was refitted on the transformed axes/);
   const off = explainCountRows(migrationCountRows(migration, { w2: { P: 7 } }), migration);
   assert.match(off[0].causes.join(' '), /may not be the one FlowJo analyzed/);
+  // A few events on a small population: boundary events, not a setup problem.
+  const few = explainCountRows(migrationCountRows(migration, { w1: { P: 1000, 'P/C': 500, 'P/D': 200, Q: 44 } }), migration);
+  assert.match(few.find((r) => r.path === 'Q').causes.join(' '), /only 6 events differ: events on the gate boundary/);
 });

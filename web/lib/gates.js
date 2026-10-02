@@ -10,6 +10,8 @@
 //   range     { min, max }                         one dimension
 //   polygon   { vertices: [[x, y], ...] }
 //   ellipse   { center: [x, y], radii: [rx, ry], angle }   angle in radians
+//   ellipsoid { mean, covariance, distanceSquare }  any number of dimensions (imported)
+//   A rectangle may have more than two dimensions (imported); it is then evaluated by membershipN.
 //   quadrant  { center: [x, y], quadrant: 'UR'|'UL'|'LL'|'LR' }  four linked gates share linkId
 //   split     { threshold, side: 'lo'|'hi' }       two linked gates share linkId
 //   category  { values: [...] }                    a derived channel (clusters, QC masks) in values
@@ -17,36 +19,202 @@
 
 import { createTransform } from './transforms.js';
 
-export const GATE_TYPES = ['rectangle', 'range', 'polygon', 'ellipse', 'quadrant', 'split', 'category', 'boolean'];
+export const GATE_TYPES = ['rectangle', 'range', 'polygon', 'ellipse', 'ellipsoid', 'quadrant', 'split', 'category', 'boolean'];
 
 export const QUADRANTS = ['UL', 'UR', 'LR', 'LL'];
 
 // Members of `candidates` (a Uint32Array of event indices, or null for all events) that fall in
-// the geometry. xs and ys are the dimensions' scaled columns.
-export function membership(type, geometry, xs, ys, candidates, count = xs?.length ?? 0) {
+// the geometry. xs and ys are the dimensions' scaled columns. With `refine` ({ near, exact }),
+// events that near(x, y) places within rounding distance of the boundary are decided by
+// exact(event) instead: the scaled columns are float32 (and logicle-type scales come from a lookup
+// table), so only an exact recomputation agrees with double-precision references at the boundary.
+export function membership(type, geometry, xs, ys, candidates, count = xs?.length ?? 0, refine = null) {
   const test = pointTest(type, geometry);
   const out = new Uint32Array(candidates ? candidates.length : count);
+  const total = candidates ? candidates.length : count;
+  const near = refine?.near;
+  const oneD = type === 'range' || type === 'split' || type === 'category';
   let n = 0;
-  if (type === 'range' || type === 'split' || type === 'category') {
-    if (candidates) {
-      for (let k = 0; k < candidates.length; k += 1) {
-        const e = candidates[k];
-        if (test(xs[e], 0)) out[n++] = e;
-      }
-    } else {
-      for (let e = 0; e < count; e += 1) if (test(xs[e], 0)) out[n++] = e;
-    }
-    return out.slice(0, n);
-  }
-  if (candidates) {
-    for (let k = 0; k < candidates.length; k += 1) {
-      const e = candidates[k];
-      if (test(xs[e], ys[e])) out[n++] = e;
-    }
-  } else {
-    for (let e = 0; e < count; e += 1) if (test(xs[e], ys[e])) out[n++] = e;
+  for (let k = 0; k < total; k += 1) {
+    const e = candidates ? candidates[k] : k;
+    const x = xs[e];
+    const y = oneD ? 0 : ys[e];
+    const inside = near && near(x, y) ? refine.exact(e) : test(x, y);
+    if (inside) out[n++] = e;
   }
   return out.slice(0, n);
+}
+
+// Members for gates of any number of dimensions: rectangles with three or more dimensions and
+// ellipsoids. columns are the dimensions' scaled columns; refine as in membership.
+export function membershipN(type, geometry, columns, candidates, count = columns[0]?.length ?? 0, refine = null) {
+  const test = pointTestN(type, geometry);
+  const near = refine?.near;
+  const d = columns.length;
+  const point = new Float64Array(d);
+  const total = candidates ? candidates.length : count;
+  const out = new Uint32Array(total);
+  let n = 0;
+  for (let k = 0; k < total; k += 1) {
+    const e = candidates ? candidates[k] : k;
+    for (let i = 0; i < d; i += 1) point[i] = columns[i][e];
+    const inside = near && near(point) ? refine.exact(e) : test(point);
+    if (inside) out[n++] = e;
+  }
+  return out.slice(0, n);
+}
+
+// A predicate (point) → boolean for N-dimensional geometries:
+//   rectangle { min: [...], max: [...] }   half-open [min, max) per dimension; null bounds are open
+//   ellipsoid { mean: [...], covariance: [[...]], distanceSquare }   (x − μ)ᵀ Σ⁻¹ (x − μ) ≤ D²
+export function pointTestN(type, geometry) {
+  switch (type) {
+    case 'rectangle': {
+      const lo = geometry.min.map((v) => v ?? -Infinity);
+      const hi = geometry.max.map((v) => v ?? Infinity);
+      return (p) => {
+        for (let i = 0; i < lo.length; i += 1) if (!(p[i] >= lo[i] && p[i] < hi[i])) return false;
+        return true;
+      };
+    }
+    case 'ellipsoid': {
+      const { mean, distanceSquare } = geometry;
+      const inverse = invertSymmetric(geometry.covariance);
+      const d = mean.length;
+      const delta = new Float64Array(d);
+      return (p) => {
+        for (let i = 0; i < d; i += 1) delta[i] = p[i] - mean[i];
+        let q = 0;
+        for (let i = 0; i < d; i += 1) for (let j = 0; j < d; j += 1) q += delta[i] * inverse[i][j] * delta[j];
+        return q <= distanceSquare;
+      };
+    }
+    default: throw new Error(`Gate type ${type} has no N-dimensional point test.`);
+  }
+}
+
+// Near the boundary of an N-dimensional geometry (see boundaryTest)?
+export function boundaryTestN(type, geometry, rel = BOUNDARY_TOLERANCE) {
+  switch (type) {
+    case 'rectangle': {
+      const edges = [...geometry.min, ...geometry.max].map((v, k) => [k % geometry.min.length, v]).filter(([, v]) => v !== null && v !== undefined && Number.isFinite(v));
+      return (p) => edges.some(([i, v]) => Math.abs(p[i] - v) <= rel * Math.max(1, Math.abs(v)));
+    }
+    case 'ellipsoid': {
+      const { mean, distanceSquare } = geometry;
+      const inverse = invertSymmetric(geometry.covariance);
+      const scale = Math.max(1, ...mean.map(Math.abs));
+      // q = D² on the boundary; a coordinate error δ changes q by at most 2·√(q·λmax)·δ.
+      let lambda = 0;
+      for (const row of inverse) lambda = Math.max(lambda, row.reduce((sum, v) => sum + Math.abs(v), 0));
+      const band = 2 * Math.sqrt(distanceSquare * lambda) * rel * scale;
+      const d = mean.length;
+      return (p) => {
+        let q = 0;
+        for (let i = 0; i < d; i += 1) for (let j = 0; j < d; j += 1) q += (p[i] - mean[i]) * inverse[i][j] * (p[j] - mean[j]);
+        return Math.abs(q - distanceSquare) <= band;
+      };
+    }
+    default: return null;
+  }
+}
+
+// Inverse of a small symmetric positive-definite matrix (Gauss–Jordan with partial pivoting).
+function invertSymmetric(matrix) {
+  const n = matrix.length;
+  const a = matrix.map((row, i) => [...row.map(Number), ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
+  for (let c = 0; c < n; c += 1) {
+    let pivot = c;
+    for (let r = c + 1; r < n; r += 1) if (Math.abs(a[r][c]) > Math.abs(a[pivot][c])) pivot = r;
+    if (Math.abs(a[pivot][c]) < 1e-300) throw new Error('The ellipsoid covariance matrix is singular.');
+    [a[c], a[pivot]] = [a[pivot], a[c]];
+    const div = a[c][c];
+    for (let k = 0; k < 2 * n; k += 1) a[c][k] /= div;
+    for (let r = 0; r < n; r += 1) {
+      if (r === c) continue;
+      const f = a[r][c];
+      if (f !== 0) for (let k = 0; k < 2 * n; k += 1) a[r][k] -= f * a[c][k];
+    }
+  }
+  return a.map((row) => row.slice(n));
+}
+
+// The relative distance within which float32 scaled values may fall on the wrong side of a
+// boundary (float32 rounding is 6e-8; lookup-table interpolation adds about 1e-7).
+export const BOUNDARY_TOLERANCE = 1e-6;
+
+// A predicate (x, y) → boolean: is the point within rounding distance of the geometry's
+// boundary? Null for geometries without one (categories).
+export function boundaryTest(type, geometry, rel = BOUNDARY_TOLERANCE) {
+  const tol = (v) => rel * Math.max(1, Math.abs(v));
+  const near = (v, edge) => edge !== null && edge !== undefined && Number.isFinite(edge) && Math.abs(v - edge) <= tol(edge);
+  switch (type) {
+    case 'rectangle': {
+      const [x0, y0] = geometry.min ?? [null, null];
+      const [x1, y1] = geometry.max ?? [null, null];
+      return (x, y) => near(x, x0) || near(x, x1) || near(y, y0) || near(y, y1);
+    }
+    case 'range': return (x) => near(x, geometry.min) || near(x, geometry.max);
+    case 'split': return (x) => near(x, geometry.threshold);
+    case 'quadrant': {
+      const [cx, cy] = geometry.center;
+      return (x, y) => near(x, cx) || near(y, cy);
+    }
+    case 'ellipse': {
+      const [cx, cy] = geometry.center;
+      const [rx, ry] = geometry.radii;
+      const cos = Math.cos(geometry.angle ?? 0);
+      const sin = Math.sin(geometry.angle ?? 0);
+      // q = 1 on the boundary; a coordinate error δ changes q by about 2δ / r.
+      const band = (2 * rel * Math.max(1, Math.abs(cx), Math.abs(cy), rx, ry)) / Math.min(rx, ry);
+      return (x, y) => {
+        const dx = x - cx;
+        const dy = y - cy;
+        const u = dx * cos + dy * sin;
+        const v = -dx * sin + dy * cos;
+        return Math.abs((u * u) / (rx * rx) + (v * v) / (ry * ry) - 1) <= band;
+      };
+    }
+    case 'polygon': {
+      const { vertices } = geometry;
+      const n = vertices.length;
+      let scale = 1;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const [vx, vy] of vertices) {
+        scale = Math.max(scale, Math.abs(vx), Math.abs(vy));
+        minY = Math.min(minY, vy);
+        maxY = Math.max(maxY, vy);
+      }
+      const t = rel * scale;
+      // Edges indexed by horizontal bands, so each point checks only the edges near its y.
+      const edges = [];
+      for (let i = 0, j = n - 1; i < n; j = i, i += 1) {
+        const [xi, yi] = vertices[i];
+        const [xj, yj] = vertices[j];
+        edges.push({ xi, yi, dx: xj - xi, dy: yj - yi, length: Math.hypot(xj - xi, yj - yi), x0: Math.min(xi, xj) - t, x1: Math.max(xi, xj) + t, y0: Math.min(yi, yj) - t, y1: Math.max(yi, yj) + t });
+      }
+      const bandCount = Math.min(256, 4 * n);
+      const lo = minY - t;
+      const height = (maxY + t - lo) / bandCount || 1;
+      const bands = Array.from({ length: bandCount }, () => []);
+      for (const edge of edges) {
+        const first = Math.max(0, Math.floor((edge.y0 - lo) / height));
+        const last = Math.min(bandCount - 1, Math.floor((edge.y1 - lo) / height));
+        for (let k = first; k <= last; k += 1) bands[k].push(edge);
+      }
+      return (x, y) => {
+        const k = Math.floor((y - lo) / height);
+        if (!(k >= 0 && k < bandCount)) return false;
+        for (const edge of bands[k]) {
+          if (y < edge.y0 || y > edge.y1 || x < edge.x0 || x > edge.x1) continue;
+          if (edge.length === 0 ? Math.hypot(x - edge.xi, y - edge.yi) <= t : Math.abs(edge.dx * (y - edge.yi) - edge.dy * (x - edge.xi)) <= t * edge.length) return true;
+        }
+        return false;
+      };
+    }
+    default: return null;
+  }
 }
 
 // A predicate (x, y) → boolean for the geometry, with precomputed constants.
@@ -64,17 +232,19 @@ export function pointTest(type, geometry) {
       const hi = geometry.max ?? Infinity;
       return (x) => x >= lo && x < hi;
     }
+    // Upper sides are half-open intervals [t, +∞), as in Gating-ML: +Infinity (a ratio over zero)
+    // is in none of them, while −Infinity is in the lower side.
     case 'split': {
       const t = geometry.threshold;
-      return geometry.side === 'hi' ? (x) => x >= t : (x) => x < t;
+      return geometry.side === 'hi' ? (x) => x >= t && x < Infinity : (x) => x < t;
     }
     case 'quadrant': {
       const [cx, cy] = geometry.center;
       switch (geometry.quadrant) {
-        case 'UR': return (x, y) => x >= cx && y >= cy;
-        case 'UL': return (x, y) => x < cx && y >= cy;
+        case 'UR': return (x, y) => x >= cx && x < Infinity && y >= cy && y < Infinity;
+        case 'UL': return (x, y) => x < cx && y >= cy && y < Infinity;
         case 'LL': return (x, y) => x < cx && y < cy;
-        case 'LR': return (x, y) => x >= cx && y < cy;
+        case 'LR': return (x, y) => x >= cx && x < Infinity && y < cy;
         default: throw new Error(`Unknown quadrant ${geometry.quadrant}`);
       }
     }
@@ -102,8 +272,8 @@ export function pointTest(type, geometry) {
   }
 }
 
-// Even–odd ray casting with a bounding-box prefilter. Points on the left/bottom edge count as
-// inside, on the right/top edge as outside, so adjacent polygons never share an event.
+// Even–odd ray casting with a bounding-box prefilter. Points on an edge are inside (Gating-ML 2.0
+// polygons include their boundary, as the ISAC compliance suite's expected results show).
 export function polygonTest(vertices) {
   const n = vertices.length;
   const xs = new Float64Array(n);
@@ -121,6 +291,9 @@ export function polygonTest(vertices) {
     for (let i = 0, j = n - 1; i < n; j = i, i += 1) {
       const yi = ys[i];
       const yj = ys[j];
+      // On the edge: collinear with it (exact cross product) and within its extent.
+      if (y >= Math.min(yi, yj) && y <= Math.max(yi, yj) && x >= Math.min(xs[i], xs[j]) && x <= Math.max(xs[i], xs[j])
+        && (xs[j] - xs[i]) * (y - yi) === (x - xs[i]) * (yj - yi)) return true;
       if ((yi > y) !== (yj > y)) {
         const xCross = xs[i] + ((y - yi) * (xs[j] - xs[i])) / (yj - yi);
         if (x < xCross) inside = !inside;
@@ -373,6 +546,8 @@ export function remapScale(value, from, to) {
 export function gateOutline(gate, geometry, plotDims) {
   const [px, py] = plotDims;
   const dims = gate.dims;
+  // Gates of three or more dimensions (imported) have no outline on a 2-D plot.
+  if (gate.type === 'ellipsoid' || (gate.type === 'rectangle' && dims.length !== 2)) return null;
   if (gate.type === 'range' || gate.type === 'split') {
     const onX = px && dims[0].channel === px.channel;
     const onY = py && dims[0].channel === py.channel;

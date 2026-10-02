@@ -382,11 +382,20 @@ function decodeASCII(bytes, start, end, parameters, eventCount, columns, diagnos
 }
 
 // Converts channel values to scale values: $PnE log amplification, then $PnG gain for linear data.
-function linearize(columns, parameters, diagnostics) {
+function linearize(columns, parameters, diagnostics, types = []) {
   for (const param of parameters) {
     const column = columns[param.index];
     const [decades, offset] = param.amp;
-    if (decades > 0) {
+    if (decades > 0 && (types[param.index] === 'F' || types[param.index] === 'D') && column.every((v) => !(v > decades))) {
+      // FCS 3.1 requires $PnE 0,0 for floating-point data, but some instruments (Guava Muse) store
+      // log10 of the value with $PnE giving the decades: values within 0–decades, which 10^x
+      // restores. Their $PnG is that of the matching linear channel, which they then equal.
+      const scale = param.gain > 0 ? offset / param.gain : offset;
+      for (let e = 0; e < column.length; e += 1) column[e] = scale * 10 ** column[e];
+      param.logAmplified = true;
+      param.gainApplied = param.gain !== 1;
+      diagnostics.push({ level: 'info', code: 'log-decades', message: `${param.name}: floating-point values with $P${param.index + 1}E "${decades},${offset}" lie within 0–${decades}, so they were read as decades (log10) and converted to linear${param.gain !== 1 ? `, with the gain ${param.gain} applied` : ''}.` });
+    } else if (decades > 0) {
       const range = param.range > 0 ? param.range : 2 ** (Number.isFinite(param.bits) ? param.bits : 10);
       const factor = decades / range;
       for (let e = 0; e < column.length; e += 1) column[e] = offset * 10 ** (factor * column[e]);
@@ -473,7 +482,12 @@ function parseDataset(bytes, base, options, version) {
   }
   let eventCount = intKeyword(keywords, '$TOT');
   const offsets = resolveDataOffsets(header, keywords, eventBytes, eventCount ?? 0, base, bytes.length, diagnostics);
-  if (offsets.end >= bytes.length) {
+  if (offsets.start >= bytes.length && (eventCount ?? 1) > 0) {
+    // Only the HEADER and TEXT are present (a truncated copy, or a file saved as keywords only).
+    const message = `The file ends at byte ${bytes.length}, before its DATA segment (bytes ${offsets.start}–${offsets.end}): it holds only the keywords.`;
+    if (!options.headerOnly) throw new FCSError(message, 'truncated');
+    diagnostics.push({ level: 'error', code: 'no-data', message });
+  } else if (offsets.end >= bytes.length) {
     diagnostics.push({ level: 'warning', code: 'truncated', message: `The DATA segment should end at byte ${offsets.end} but the file has ${bytes.length} bytes.` });
     offsets.end = bytes.length - 1;
   }
@@ -481,8 +495,8 @@ function parseDataset(bytes, base, options, version) {
     if (!(eventBytes > 0)) throw new FCSError('$TOT is missing and cannot be inferred for this data type.');
     eventCount = Math.floor((offsets.end - offsets.start + 1) / eventBytes);
     diagnostics.push({ level: 'warning', code: 'no-tot', message: `$TOT is missing; ${eventCount} events were inferred from the DATA length.` });
-  } else if (eventBytes > 0 && Number.isInteger(eventBytes)) {
-    const fits = Math.floor((offsets.end - offsets.start + 1) / eventBytes);
+  } else if (eventBytes > 0 && Number.isInteger(eventBytes) && offsets.start < bytes.length) {
+    const fits = Math.max(0, Math.floor((offsets.end - offsets.start + 1) / eventBytes));
     if (fits < eventCount) {
       diagnostics.push({ level: 'error', code: 'truncated', message: `$TOT says ${eventCount} events but the DATA segment holds ${fits}; only those were read.` });
       eventCount = fits;
@@ -490,7 +504,7 @@ function parseDataset(bytes, base, options, version) {
   }
   if (options.maxEvents !== undefined && eventCount > options.maxEvents) eventCount = options.maxEvents;
   const columns = options.headerOnly ? parameters.map(() => new Float32Array(0)) : decodeData(bytes, offsets.start, offsets.end, keywords, parameters, eventCount, diagnostics);
-  if (!options.headerOnly && options.linearize !== false) linearize(columns, parameters, diagnostics);
+  if (!options.headerOnly && options.linearize !== false) linearize(columns, parameters, diagnostics, types);
 
   // CRC: eight ASCII characters after the last segment (FCS 3.1); 00000000 means not computed.
   let crc = null;

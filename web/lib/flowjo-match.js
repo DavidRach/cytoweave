@@ -337,7 +337,6 @@ export function explainCountRows(rows, migration) {
     if (note) {
       if (note.status === 'unsupported') causes.push(`not imported: ${note.note}`);
       else {
-        if (/FlowJo's logicle/.test(note.note)) causes.push("FlowJo's logicle differs from the reference logicle, so polygon edges shift slightly");
         if (/ellipse/i.test(note.note)) causes.push('the ellipse was refitted on the transformed axes');
         if (/uncompensated|compensat/i.test(note.note)) causes.push('the gate was drawn on differently compensated data');
         if (!causes.length || /curly|gain|not supported|absent/i.test(note.note)) causes.push(note.note);
@@ -347,6 +346,8 @@ export function explainCountRows(rows, migration) {
     if (sample?.note) causes.push(`the FCS file may not be the one FlowJo analyzed (${sample.note})`);
     if (row.status === 'missing' && !note) causes.push('the population was not recomputed on this sample (its data could not be loaded or the gate does not apply)');
     if (row.status === 'close' && !causes.length) causes.push('events on the gate boundary: FlowJo evaluates gates at its display resolution');
+    // A small population differs by many percent when only a few boundary events move.
+    if (row.status === 'differs' && !causes.length && Math.abs(row.difference) <= 20) causes.push(`only ${Math.abs(row.difference)} event${Math.abs(row.difference) === 1 ? '' : 's'} differ: events on the gate boundary, which FlowJo evaluates at its display resolution`);
     if (row.status === 'differs' && !causes.length) causes.push("check this sample's compensation and the gate's position on its data");
     row.causes = [...new Set(causes)];
   }

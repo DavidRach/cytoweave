@@ -18,25 +18,54 @@ that are known in advance:
     `data/LICENSE-BD-FlowJo-LUTs.txt`.
   - Identities from the literature, such as logicle with W = 0 being
     Gating-ML's fasinh.
+- **Public test data and reference tools.**
+  - ISAC's Gating-ML 2.0 compliance suite: gate files, list-mode data and the
+    expected membership of every event in every gate.
+  - FlowJo 10 workspaces with their FCS files and FlowJo's saved counts, and
+    FlowKit 1.3.2's results on them (FlowKit's test data).
+  - FCS files from several instruments, including deliberately malformed
+    ones (fcsparser's test data), with FlowIO's decoding of them.
 
 ## Running the checks
 
 With Node.js 22 or later, from the repository root:
 
 ```bash
+node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-The run needs no network or downloads and takes about 15 seconds.
+`fetch.mjs` downloads the public test data (about 140 MB) into
+`validation/cache/` and checks every file against the SHA-256 recorded in
+`sources.json`, which also records each data set's source and licence. Files
+already present are not downloaded again. The data are not part of the
+repository or of the CytoWeave program. Without them, the suites that need them
+are skipped and the others still run; the run needs no network and takes about
+20 seconds.
 
 | Option | Effect |
 | --- | --- |
-| `fcs`, `compensation`, `gating`, `qc`, `spectral`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `reference` | Run only these suites |
+| `fcs`, `compensation`, `gating`, `qc`, `spectral`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `reference`, `gatingml`, `flowkit`, `fcsparser` | Run only these suites |
 | `--verbose` | Print every check, not only failures |
+| `--require-data` | Fail, rather than skip, when the public test data are missing |
 
-The command exits with status 1 when a check fails. Continuous integration runs
-every suite on each pull request and each push to `main`
+The command exits with status 1 when a check fails. Continuous integration
+fetches the data (cached between runs) and runs every suite with
+`--require-data` on each pull request and each push to `main`
 (`.github/workflows/ci.yml`).
+
+### Reference results
+
+`reference/flowkit.json` holds FlowKit's and FlowIO's results on the public
+data, so the checks need no Python. `reference/generate_flowkit.py` writes it:
+
+```bash
+node validation/fetch.mjs flowkit fcsparser
+uv run --python 3.12 --with flowkit==1.3.2 python validation/reference/generate_flowkit.py
+```
+
+`reference/fcsparser.json` holds the first data rows that fcsparser's own tests
+expect (MIT licence), for files that FlowIO cannot read.
 
 ## What is checked
 
@@ -53,9 +82,84 @@ every suite on each pull request and each push to `main`
 | `normalization` | `trainCytoNorm`, `applyCytoNorm`, `batchDiagnostics` (`normalize.js`) | Two batches' anchor samples from the same donor, so every difference is batch effect | Mean earth mover's distance between batches at least halved | 1.1e-3 → 3.9e-5 of the arcsinh axis (27× smaller) |
 | `debarcode` | `debarcode` (`debarcode.js`) | A pooled plate of 20 palladium-barcoded wells (6-choose-3) whose truth knows every event's well | > 99% of assigned cells in their true well; > 85% of cells assigned; < 8% of doublets assigned (1 in 20 doublets joins two cells of one well and is rightly assigned) | 100%; 98.7%; 5.1% |
 | `transforms` | FlowJo biexponential (`transforms.js`) | 52 of BD's FlowJo biex lookup tables: width basis −1 to −1000, extra negative decades 0, 0.5 and 1 | Table values within 2e-5 (the tables print 6 digits); event positions within 0.05 of 4096 channels | 4.9e-6; 0.002 channel |
+| `flowjo` | FlowJo import, migration and engine (`flowjo.js`, `flowjo-match.js`) | The bundled FlowJo example: a workspace whose counts are computed independently, as FlowJo evaluates each gate | Every population's count equal to FlowJo's; every population converted exactly | 56 of 56; all |
+| `gatingml` | Gating-ML import (`gatingml.js`) and the engine, as the app imports a file | ISAC's Gating-ML 2.0 compliance suite (5 gate files, 3 data files): expected membership of every event | Every gate matches on every event | 190 of 190 gates (12.4 million event decisions) |
+| `flowkit` | FCS reader, compensation, OLS unmixing, transforms, FlowJo import | FlowKit 1.3.2 and FlowIO 1.4 on FlowKit's test data; FlowJo's counts saved in 13 workspaces | FCS values within 1e-6; compensation within 1e-5; unmixing within 1e-7 of the largest value (float32); transforms within 1e-6. FlowJo counts: wherever FlowKit reproduces one, CytoWeave does too, and per workspace at least as many exact counts as FlowKit and a mean difference no larger | 4e-8; equal; 1.5e-8; 1e-10. 51 of 51 reproduced; real 8-colour workspaces 9–13 exact vs FlowKit's 8–12, mean difference 1.40–1.78% vs 1.41–1.79%; synthetic workspaces all exact |
+| `fcsparser` | FCS reader (`fcs.js`) | 16 files from Cytek, BD, Miltenyi (FCS 2.0–3.1), Guava, Partec and malformed files; FlowIO's decoding and fcsparser's published rows | Every readable file read; malformed ones refused clearly; values within 1e-6 of FlowIO and of fcsparser; written and read back bit-exact | 14 files, 17 data sets; both refused with a message; 0; 3e-9; bit-exact |
 | `reference` | `hypothesis.js`, `transforms.js` | R 4.x: `t.test` (Welch, Student, paired), `wilcox.test` with ties, `p.adjust` (BH), `qt` | Within 1e-5 (tests), 1e-4 (Wilcoxon p), 1e-9 (`qt`) | All agree |
 
 ## Notes
+
+### Agreement with FlowJo on real workspaces
+
+FlowJo saves each population's count in the workspace, so a workspace with its
+FCS files is a direct test. On FlowKit's synthetic test workspaces CytoWeave
+reproduces every count FlowJo saved. On its real 8-colour intracellular
+cytokine workspaces (three samples of about 290 000 events), CytoWeave and
+FlowKit both differ from FlowJo by 0.1–0.3% on large populations and by a few
+events on small ones; CytoWeave matches FlowJo exactly at least as often as
+FlowKit does. FlowJo evaluates gates at its display resolution (the gates
+record `gateResolution="256"`), which moves events near gate boundaries; how it
+does so exactly is not documented, and neither tool reproduces it yet.
+
+Comparing with FlowJo's counts found and fixed four import errors:
+- **Time.** FlowJo shows and gates the time parameter in seconds, the stored
+  value × the time axis' gain (or $TIMESTEP without one). CytoWeave keeps the
+  stored values, so time gates are converted. Without this, a time gate kept
+  0.4% of events instead of 98%.
+- **Linear gains.** FlowJo's coordinates on a linear axis with a gain are gain ×
+  the stored value; they are now converted rather than flagged as approximate.
+- **Ellipses.** FlowJo stores ellipses in its 256 × 256 display space, not in
+  data units; their foci and edge points are now read as such (the major axis
+  from the edge points, the minor from the foci, as FlowKit does).
+- **Biexponential ends.** FlowJo clamps values beyond its biex table to the
+  table's ends (the table stops just short of the top of scale, at 261 622 for
+  the default width), so saturated events sit on the top edge, inside gates
+  drawn to it. CytoWeave used to continue the scale past the ends.
+
+### The Gating-ML compliance suite
+
+Running ISAC's suite found these, all now fixed:
+- `boundMin` and `boundMax` on transformations (clamping) were ignored.
+- Gates of three or more dimensions (rectangles, ellipsoids, quadrant gates
+  with three dividers or several values per divider) were skipped. They are
+  evaluated in all their dimensions but cannot be drawn on a 2-D plot.
+- Each gate dimension may name its own compensation (a matrix, the file's, or
+  none). CytoWeave applied the sample's compensation to every gate; a dimension
+  now keeps the one its file names. CytoWeave's own exports mark gates that
+  follow the sample's compensation, so they round-trip unchanged.
+- Spectrum matrices with more detectors than fluorochromes are spectral
+  unmixing; they become channels unmixed from the raw detectors by ordinary
+  least squares.
+- Ratio (fratio) dimensions were imported but their channels never computed.
+- Polygon edges belong to the polygon; the upper side of a quadrant or split is
+  half-open, so +∞ (a ratio over zero) falls in none.
+- Events within rounding distance of a gate boundary are decided from
+  double-precision values: stored columns are float32 and logicle-type scales
+  come from a lookup table, which put a few such events on the wrong side.
+
+### FlowJo's published logicle tables
+
+BD's FlowJo logicle tables (the same 2020 publication as the biex tables) are
+reproduced exactly, to 0.01 of 4096 channels for all 224, by the Moore–Parks
+reference construction with one change: the constant d taken after the
+solver's first step (RTSAFE from d = b/2) rather than at convergence. The curve
+then lacks the logicle condition at zero, so its series and exponential forms
+disagree where they meet (a jump of 9 channels at W = 1), and from W = 1.5 it
+turns back on itself. FlowJo's own counts do not follow this curve, however: on
+the real workspaces above (logicle W = 1), the reference logicle agrees better
+with FlowJo, and an ellipse (drawn in display space, so sensitive to the
+scale) is within 2% with the reference and 14% off with the tables' curve. So
+CytoWeave imports FlowJo's logicle as the reference logicle.
+
+### Floating-point log channels
+
+FCS 3.1 asks for $PnE 0,0 on floating-point data. Guava Muse files instead
+store log10 of the value with $PnE giving the decades. CytoWeave reads such
+values (all within 0 to the decades) as decades, with the channel's gain; each
+log channel then equals its linear partner. FlowIO applies the channel formula
+to them, giving almost constant values; those channels are left out of the
+comparison with FlowIO.
 
 ### FlowJo's biexponential is not a logicle
 
@@ -73,9 +177,10 @@ BD's tables for width bases −1, −1.58 and −2.51 are identical to the table
 −3.16. FlowJo therefore clamps the width basis at −√10, and CytoWeave does the
 same.
 
-FlowJo's own *logicle* also departs from the Moore–Parks reference by up to
-about 100 channels at W = 1 (see `cytoweave-spec/research.md`, §3A.2).
-CytoWeave implements the reference logicle, as Gating-ML specifies.
+BD's tables for FlowJo's *logicle* depart from the Moore–Parks reference by up
+to about 100 channels at W = 1, but FlowJo's counts follow the reference (see
+"FlowJo's published logicle tables" above). CytoWeave implements the reference
+logicle, as Gating-ML specifies.
 
 ### What a simulated truth can and cannot show
 
@@ -88,6 +193,7 @@ realistic. The simulator models the effects that make real analyses hard:
 - clogs, bubbles and drift;
 - batch effects and bead-measured sensitivity loss.
 
-Real data can still fail in ways it does not model. Comparisons with
-FlowRepository datasets and with FlowKit, flowCore, PeacoQC and FlowSOM on the
-same files are on the roadmap.
+Real data can still fail in ways it does not model, which is why the suites
+above also run on real instrument files and real FlowJo workspaces.
+Comparisons with flowCore, PeacoQC, FlowSOM and CytoNorm in R on public data
+sets are next on the roadmap.

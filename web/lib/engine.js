@@ -5,10 +5,11 @@
 // Populations are memoized under a content hash of the gate chain (type, dimensions, effective
 // geometry, parents), so editing one gate recomputes only that gate and its descendants.
 
-import { compensate } from './compensation.js';
+import { compensate, invertMatrix } from './compensation.js';
 import { applyTransform, createTransform, defaultTransform } from './transforms.js';
-import { difference, intersect, membership, offsetGeometry, union } from './gates.js';
+import { boundaryTest, boundaryTestN, difference, intersect, membership, membershipN, offsetGeometry, pointTest, pointTestN, union } from './gates.js';
 import { describe } from './stats.js';
+import { readSpillover } from './fcs.js';
 import { ROOT, effectiveGeometry, gateApplies, gateById } from './workspace.js';
 
 // cyrb53: a fast 53-bit string hash (public domain, bryc), for cache keys.
@@ -25,6 +26,36 @@ export function hash53(text, seed = 0) {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
+// A compensation's state on one sample: compensated float32 columns and, for exact boundary
+// decisions, the inverse matrix.
+function compensationContext(raw, comp) {
+  const context = { key: comp ? `${comp.id}:${hash53(Array.from(comp.matrix).join(','))}` : 'none', comp, columns: new Map(), exact: null, note: null };
+  if (!comp) return context;
+  const present = comp.channels.filter((c) => raw.has(c));
+  if (!present.length) return context;
+  let channels = comp.channels;
+  let matrix = comp.matrix;
+  if (present.length < comp.channels.length) {
+    const idx = present.map((c) => comp.channels.indexOf(c));
+    const n = comp.channels.length;
+    matrix = [];
+    for (const i of idx) for (const j of idx) matrix.push(comp.matrix[i * n + j]);
+    channels = present;
+    context.note = `Compensation channels missing from this sample were left out: ${comp.channels.filter((c) => !raw.has(c)).join(', ')}.`;
+  }
+  const columns = {};
+  for (const c of channels) columns[c] = raw.get(c);
+  const result = compensate(columns, { channels, matrix });
+  for (const [name, column] of Object.entries(result)) context.columns.set(name, column);
+  context.exact = { channels, inverse: invertMatrix(matrix, channels.length), index: new Map(channels.map((c, i) => [c, i])) };
+  return context;
+}
+
+// Compensation references (gate dimensions may name one; Gating-ML's compensation-ref):
+//   undefined / null   the sample's own compensation
+//   'uncompensated'    none
+//   'file'             the file's $SPILLOVER
+//   a compensation id  that workspace compensation
 export class SampleView {
   constructor(record, dataset) {
     this.id = record.id;
@@ -34,9 +65,18 @@ export class SampleView {
     this.raw = new Map(dataset.parameters.map((p) => [p.name, dataset.data[p.index]]));
     this.parameters = dataset.parameters;
     this.compensation = null;
-    this.compensated = new Map();
+    this.own = compensationContext(this.raw, null);
+    this.compensated = this.own.columns;
+    // Other compensations that gate dimensions name: reference → context.
+    this.contexts = new Map();
+    this.compensations = [];
     this.derived = new Map();
     this.derivedVersion = new Map();
+    // Channels computed on demand from other channels, from the workspace's derived records
+    // (Gating-ML fratio, and non-square spectrum matrices): name → { kind, inputs, params, key }.
+    this.computed = new Map();
+    this.computedSource = null;
+    this.computedColumns = new Map();
     this.scaledCache = new Map();
     this.populationCache = new Map();
     this.statCache = new Map();
@@ -47,45 +87,38 @@ export class SampleView {
     let total = 0;
     for (const column of this.raw.values()) total += column.byteLength;
     for (const column of this.compensated.values()) total += column.byteLength;
+    for (const context of this.contexts.values()) for (const column of context?.columns.values() ?? []) total += column.byteLength;
     for (const column of this.derived.values()) total += column.byteLength;
+    for (const column of this.computedColumns.values()) total += column.byteLength;
     for (const column of this.scaledCache.values()) total += column.byteLength;
     return total;
+  }
+
+  get compensationKey() {
+    return this.own.key;
+  }
+
+  get compensationNote() {
+    return this.own.note;
   }
 
   // Applies a compensation ({ id, channels, matrix }) or null. Channels the data lack are
   // ignored with a note rather than failing, as controls often omit unused detectors.
   setCompensation(comp) {
     const key = comp ? `${comp.id}:${hash53(Array.from(comp.matrix).join(','))}` : 'none';
-    if (key === this.compensationKey) return;
-    this.compensationKey = key;
+    if (key === this.own.key) return;
     this.compensation = comp;
-    this.compensated = new Map();
-    this.compensationNote = null;
-    if (comp) {
-      const present = comp.channels.filter((c) => this.raw.has(c));
-      if (present.length) {
-        let channels = comp.channels;
-        let matrix = comp.matrix;
-        if (present.length < comp.channels.length) {
-          const idx = present.map((c) => comp.channels.indexOf(c));
-          const n = comp.channels.length;
-          matrix = [];
-          for (const i of idx) for (const j of idx) matrix.push(comp.matrix[i * n + j]);
-          channels = present;
-          this.compensationNote = `Compensation channels missing from this sample were left out: ${comp.channels.filter((c) => !this.raw.has(c)).join(', ')}.`;
-        }
-        const columns = {};
-        for (const c of channels) columns[c] = this.raw.get(c);
-        const result = compensate(columns, { channels, matrix });
-        for (const [name, column] of Object.entries(result)) this.compensated.set(name, column);
-      }
-    }
+    this.own = compensationContext(this.raw, comp);
+    this.compensated = this.own.columns;
     this.bumpVersion();
   }
 
   bumpVersion() {
     const derived = [...this.derivedVersion.entries()].map(([k, v]) => `${k}=${v}`).join(',');
-    this.version = hash53(`${this.compensationKey ?? 'none'}|${derived}`);
+    const computed = [...this.computed.entries()].map(([k, v]) => `${k}=${v.key}`).join(',');
+    const contexts = [...this.contexts.entries()].map(([k, v]) => `${k}=${v?.key}`).join(',');
+    this.computedColumns.clear();
+    this.version = hash53(`${this.own.key}|${derived}|${computed}|${contexts}`);
     this.scaledCache.clear();
     this.populationCache.clear();
     this.statCache.clear();
@@ -99,6 +132,53 @@ export class SampleView {
     this.bumpVersion();
   }
 
+  // Follows the workspace: its compensations (for gate dimensions that name one) and the computed
+  // channels of its derived records.
+  syncWorkspace(ws) {
+    if (ws.compensations !== this.compensations) {
+      this.compensations = ws.compensations ?? [];
+      if (this.contexts.size) {
+        this.contexts.clear();
+        this.bumpVersion();
+      }
+    }
+    this.syncComputed(ws.derived);
+  }
+
+  // Defines the computed channels of derived records without stored columns: ratios
+  // ({ kind: 'ratio', inputs: [x, y], outputs: [name], params: { A, B, C } }) and unmixing
+  // ({ kind: 'unmix', inputs: detectors, outputs: fluorochromes, params: { matrix } }, matrix
+  // detectors × fluorochromes, row-major).
+  syncComputed(records = []) {
+    if (records === this.computedSource) return;
+    this.computedSource = records;
+    let changed = false;
+    const seen = new Set();
+    const define = (name, entry) => {
+      seen.add(name);
+      if (this.computed.get(name)?.key !== entry.key) {
+        this.computed.set(name, entry);
+        changed = true;
+      }
+    };
+    for (const record of records) {
+      if (record.files) continue;
+      if (record.kind === 'ratio' && record.outputs?.[0] && record.inputs?.length === 2) {
+        define(record.outputs[0], { kind: 'ratio', inputs: record.inputs, params: record.params ?? {}, key: JSON.stringify(['ratio', record.inputs, record.params]) });
+      } else if (record.kind === 'unmix' && record.inputs?.length && record.outputs?.length && record.params?.matrix?.length === record.inputs.length * record.outputs.length) {
+        const key = hash53(JSON.stringify(['unmix', record.inputs, record.outputs, record.params.matrix]));
+        record.outputs.forEach((name, j) => define(name, { kind: 'unmix', inputs: record.inputs, params: { matrix: record.params.matrix, j, f: record.outputs.length }, key: `${key}:${j}` }));
+      }
+    }
+    for (const name of [...this.computed.keys()]) {
+      if (!seen.has(name)) {
+        this.computed.delete(name);
+        changed = true;
+      }
+    }
+    if (changed) this.bumpVersion();
+  }
+
   removeDerived(name) {
     if (this.derived.delete(name)) {
       this.derivedVersion.delete(name);
@@ -106,15 +186,101 @@ export class SampleView {
     }
   }
 
-  hasChannel(name) {
-    return this.raw.has(name) || this.derived.has(name);
+  // The compensation context of a reference (see above); null when it cannot be resolved.
+  context(ref) {
+    if (ref === undefined || ref === null) return this.own;
+    if (this.contexts.has(ref)) return this.contexts.get(ref);
+    let comp = null;
+    if (ref === 'file') {
+      const spill = readSpillover(this.dataset.keywords ?? {}, this.parameters);
+      comp = spill && !spill.identity ? { id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) } : null;
+    } else if (ref !== 'uncompensated') {
+      const found = this.compensations.find((c) => c.id === ref);
+      if (!found) return null;
+      comp = { id: found.id, channels: found.channels, matrix: found.matrix };
+    }
+    const key = comp ? `${comp.id}:${hash53(Array.from(comp.matrix).join(','))}` : 'none';
+    let context;
+    try {
+      context = key === this.own.key ? this.own : compensationContext(this.raw, comp);
+    } catch {
+      context = null;
+    }
+    this.contexts.set(ref, context);
+    return context;
+  }
+
+  hasChannel(name, ref) {
+    if (ref !== undefined && ref !== null && !this.context(ref)) return false;
+    if (this.raw.has(name) || this.derived.has(name)) return true;
+    const entry = this.computed.get(name);
+    return Boolean(entry && entry.inputs.every((input) => this.raw.has(input) || this.derived.has(input)));
   }
 
   // Linear values of a channel: compensated when the compensation covers it.
-  column(name) {
-    const column = this.compensated.get(name) ?? this.derived.get(name) ?? this.raw.get(name);
-    if (!column) throw new Error(`The sample "${this.record.name}" has no channel "${name}".`);
+  column(name, ref) {
+    const context = this.context(ref);
+    const column = context?.columns.get(name) ?? this.derived.get(name) ?? this.raw.get(name) ?? (this.hasChannel(name, ref) ? this.computedColumn(name, ref) : undefined);
+    if (!column) throw new Error(`The sample "${this.record.name}" has no channel "${name}"${context ? '' : ` (compensation "${ref}" is not available)`}.`);
     return column;
+  }
+
+  // fratio (Gating-ML 2.0 §5.3.1): A·(x − B) / (y − C) of the (compensated) inputs, in IEEE
+  // arithmetic: ±Infinity where y = C (in no gate's upper half-open interval), NaN for 0/0.
+  // Unmixing: Σᵢ detectorᵢ · W[i][j].
+  computedColumn(name, ref) {
+    const entry = this.computed.get(name);
+    if (!entry) return undefined;
+    const cacheKey = `${name}|${ref ?? ''}`;
+    let column = this.computedColumns.get(cacheKey);
+    if (column) return column;
+    column = new Float32Array(this.eventCount);
+    const inputs = entry.inputs.map((input) => this.column(input, ref));
+    if (entry.kind === 'ratio') {
+      const [x, y] = inputs;
+      const { A = 1, B = 0, C = 0 } = entry.params;
+      for (let i = 0; i < column.length; i += 1) column[i] = (A * (x[i] - B)) / (y[i] - C);
+    } else {
+      const { matrix, j, f } = entry.params;
+      const weights = inputs.map((_, i) => matrix[i * f + j]);
+      for (let e = 0; e < column.length; e += 1) {
+        let sum = 0;
+        for (let i = 0; i < inputs.length; i += 1) sum += inputs[i][e] * weights[i];
+        column[e] = sum;
+      }
+    }
+    this.computedColumns.set(cacheKey, column);
+    return column;
+  }
+
+  // A channel's value for one event in double precision: the stored columns are float32, so
+  // compensated values and computed channels are recomputed from the raw data, as reference
+  // tools do.
+  exactValue(name, e, ref) {
+    const context = this.context(ref);
+    const exact = context?.exact;
+    const j = exact?.index.get(name);
+    if (j !== undefined) {
+      const n = exact.channels.length;
+      let sum = 0;
+      for (let i = 0; i < n; i += 1) {
+        const w = exact.inverse[i * n + j];
+        if (w !== 0) sum += this.raw.get(exact.channels[i])[e] * w;
+      }
+      return sum;
+    }
+    const entry = !this.raw.has(name) && !this.derived.has(name) ? this.computed.get(name) : null;
+    if (entry?.kind === 'ratio') {
+      const { A = 1, B = 0, C = 0 } = entry.params;
+      return (A * (this.exactValue(entry.inputs[0], e, ref) - B)) / (this.exactValue(entry.inputs[1], e, ref) - C);
+    }
+    if (entry?.kind === 'unmix') {
+      const { matrix, j: k, f } = entry.params;
+      let sum = 0;
+      entry.inputs.forEach((input, i) => { sum += this.exactValue(input, e, ref) * matrix[i * f + k]; });
+      return sum;
+    }
+    return this.column(name, ref)[e];
   }
 
   isCompensated(name) {
@@ -122,12 +288,12 @@ export class SampleView {
   }
 
   // A channel's values in a transform's scale space, cached.
-  scaled(name, spec) {
+  scaled(name, spec, ref) {
     const transform = createTransform(spec);
-    const key = `${name}|${transform.key}`;
+    const key = `${name}|${transform.key}|${ref ?? ''}`;
     let column = this.scaledCache.get(key);
     if (!column) {
-      column = applyTransform(this.column(name), transform);
+      column = applyTransform(this.column(name, ref), transform);
       this.scaledCache.set(key, column);
       if (this.scaledCache.size > 96) {
         const first = this.scaledCache.keys().next().value;
@@ -140,7 +306,7 @@ export class SampleView {
   channelInfo(name) {
     const p = this.parameters.find((param) => param.name === name);
     if (p) return p;
-    if (this.derived.has(name)) return { name, type: 'derived', range: 1, label: '', marker: '' };
+    if (this.derived.has(name) || this.computed.has(name)) return { name, type: 'derived', range: 1, label: '', marker: '' };
     return null;
   }
 }
@@ -189,6 +355,7 @@ export function population(view, ws, gateId) {
   if (!gateId || gateId === ROOT) return null;
   const gate = gateById(ws, gateId);
   if (!gate) throw new GateError(`No gate ${gateId}.`);
+  view.syncWorkspace?.(ws);
   if (!gateApplies(ws, gate, view.id)) return undefined;
   const key = `${view.version}|${gateSignature(ws, gate, view.id)}`;
   if (view.populationCache.has(key)) return view.populationCache.get(key);
@@ -218,14 +385,34 @@ export function evaluateGate(view, ws, gate, geometry, parent) {
     }
     return intersect(parent, result ?? null);
   }
-  for (const dim of gate.dims) if (!view.hasChannel(dim.channel)) return undefined;
+  for (const dim of gate.dims) if (!view.hasChannel(dim.channel, dim.compensation)) return undefined;
   if (gate.type === 'category') {
-    const column = view.column(gate.dims[0].channel);
+    const column = view.column(gate.dims[0].channel, gate.dims[0].compensation);
     return membership('category', geometry, column, null, parent, view.eventCount);
   }
-  const xs = view.scaled(gate.dims[0].channel, gate.dims[0].transform);
-  const ys = gate.dims[1] ? view.scaled(gate.dims[1].channel, gate.dims[1].transform) : null;
-  return membership(gate.type, geometry, xs, ys, parent, view.eventCount);
+  const columns = gate.dims.map((d) => view.scaled(d.channel, d.transform, d.compensation));
+  if (isMultidimensional(gate)) return membershipN(gate.type, geometry, columns, parent, view.eventCount, exactRefinement(view, gate, geometry));
+  return membership(gate.type, geometry, columns[0], columns[1] ?? null, parent, view.eventCount, exactRefinement(view, gate, geometry));
+}
+
+// Gates evaluated point by point in any number of dimensions (see gates.js membershipN).
+export function isMultidimensional(gate) {
+  return gate.type === 'ellipsoid' || (gate.type === 'rectangle' && gate.dims.length !== 2);
+}
+
+// Decides events at a gate's boundary from double-precision values (see membership).
+function exactRefinement(view, gate, geometry) {
+  const multi = isMultidimensional(gate);
+  const near = multi ? boundaryTestN(gate.type, geometry) : boundaryTest(gate.type, geometry);
+  if (!near) return null;
+  const forward = gate.dims.map((d) => createTransform(d.transform).forward);
+  const exactPoint = (e) => gate.dims.map((d, i) => forward[i](view.exactValue(d.channel, e, d.compensation)));
+  if (multi) {
+    const test = pointTestN(gate.type, geometry);
+    return { near, exact: (e) => test(exactPoint(e)) };
+  }
+  const test = pointTest(gate.type, geometry);
+  return { near, exact: (e) => { const [x, y = 0] = exactPoint(e); return test(x, y); } };
 }
 
 export function countOf(indices, view) {
@@ -323,7 +510,7 @@ export function describePopulation(view, ws, gateId, channels) {
 
 export function gateRobustness(view, ws, gateId, options = {}) {
   const gate = gateById(ws, gateId);
-  if (!gate || gate.type === 'boolean' || gate.type === 'category') return null;
+  if (!gate || gate.type === 'boolean' || gate.type === 'category' || isMultidimensional(gate)) return null;
   const parent = gate.parentId ? population(view, ws, gate.parentId) : null;
   if (parent === undefined) return null;
   const parentCount = countOf(parent, view);

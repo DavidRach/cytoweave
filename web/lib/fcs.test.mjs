@@ -175,3 +175,32 @@ test('technology detection and acquisition summary', () => {
 test('non-FCS input is rejected clearly', () => {
   assert.throws(() => parseFCS(encoder.encode('hello world, this is not an FCS file at all, not even close to it')), /Not an FCS file/);
 });
+
+test('floating-point log channels stored as decades are read as 10^x', () => {
+  // Guava Muse writes log10 of the value as floats with $PnE "4.0,1.0" (FCS 3.1 asks for 0,0).
+  // The writer emits $P1E 0,0; patch it in place to 4,1 (same length, so offsets hold).
+  const withAmp = (bytes) => {
+    const text = new TextDecoder('latin1').decode(bytes);
+    const at = text.indexOf('$P1E|0,0|');
+    const out = bytes.slice();
+    out.set(new TextEncoder().encode('$P1E|4,1|'), at);
+    return out;
+  };
+  const d = parseFCS(withAmp(writeFCS({ parameters: [{ name: 'FSC-HLog', label: '', range: 10000 }], data: [Float32Array.from([2, 0.5, 3.25])], keywords: {} }))).datasets[0];
+  [100, Math.sqrt(10), 10 ** 3.25].forEach((v, e) => assert.ok(Math.abs(d.data[0][e] - v) < 1e-4 * v, `event ${e}`));
+  assert.ok(d.diagnostics.some((x) => x.code === 'log-decades'));
+  // Values beyond the decades are channel values: the FCS formula applies, 10^(4·512/1024) = 100.
+  const channels = parseFCS(withAmp(writeFCS({ parameters: [{ name: 'L', label: '', range: 1024 }], data: [Float32Array.from([512, 1024])], keywords: {} }))).datasets[0];
+  assert.ok(Math.abs(channels.data[0][0] - 100) < 1e-3);
+  assert.ok(!channels.diagnostics.some((x) => x.code === 'log-decades'));
+});
+
+test('a file cut off before its DATA segment is reported, and its keywords still read', () => {
+  const bytes = writeFCS({ parameters: [{ name: 'FSC-A', label: '', range: 1024 }], data: [Float32Array.from([1, 2, 3])], keywords: {} });
+  const dataStart = Number(new TextDecoder().decode(bytes.subarray(26, 34)).trim());
+  const cut = bytes.subarray(0, dataStart);
+  assert.throws(() => parseFCS(cut), /before its DATA segment.*only the keywords/);
+  const keywords = parseFCS(cut, { headerOnly: true }).datasets[0];
+  assert.equal(keywords.eventCount, 3);
+  assert.deepEqual(keywords.diagnostics.map((d) => d.code), ['no-data']);
+});

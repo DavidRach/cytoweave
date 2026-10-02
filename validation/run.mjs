@@ -7,15 +7,22 @@
 //   node validation/run.mjs [suite …] [--verbose]
 //
 // Suites: fcs, compensation, gating, qc, spectral, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, reference (all by default). Exits with status 1 when a check fails.
+// normalization, debarcode, transforms, flowjo, reference, gatingml, flowkit, fcsparser (all by
+// default). Exits with status 1 when a check fails.
+//
+// Suites marked "external data" need files that node validation/fetch.mjs downloads into
+// validation/cache/; without them the suite is skipped (and fails with --require-data, as in CI).
 
 import { generateExample } from '../web/lib/examples.js';
-import { parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
+import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck } from '../web/lib/compensation.js';
-import { SampleView, population } from '../web/lib/engine.js';
-import { createWorkspace, addGates } from '../web/lib/workspace.js';
+import { SampleView, countOf, population } from '../web/lib/engine.js';
+import { importFlowJo } from '../web/lib/flowjo.js';
+import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
+import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset } from '../web/lib/workspace.js';
+import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, flowRateCheck } from '../web/lib/qc.js';
-import { autoGateControl, referenceSpectrum, extractAutofluorescence, unmixWithAutofluorescence } from '../web/lib/spectral.js';
+import { autoGateControl, referenceSpectrum, extractAutofluorescence, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
 import { dnaHistogram, fitDeanJettFox, fitWatsonPragmatic } from '../web/lib/cellcycle.js';
 import { fitProliferation } from '../web/lib/proliferation.js';
 import { flowsom } from '../web/lib/flowsom.js';
@@ -23,12 +30,13 @@ import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
 import { trainCytoNorm, applyCytoNorm, batchDiagnostics } from '../web/lib/normalize.js';
 import { combinationKey, debarcode } from '../web/lib/debarcode.js';
 import { welchTTest, studentTTest, pairedTTest, mannWhitneyU, adjustPValues, studentTQuantile } from '../web/lib/hypothesis.js';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createTransform, applyTransform, biexTable } from '../web/lib/transforms.js';
 import { createRandom, sampleIndices } from '../web/lib/random.js';
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
+const requireData = args.includes('--require-data');
 const requested = args.filter((a) => !a.startsWith('--'));
 
 const results = [];
@@ -69,6 +77,77 @@ function pearson(a, b) {
 function median(values) {
   const s = Float64Array.from(values).sort();
   return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : Number.NaN;
+}
+
+// External data (validation/sources.json, fetched into validation/cache/ by fetch.mjs).
+const sources = JSON.parse(readFileSync(new URL('./sources.json', import.meta.url), 'utf8'));
+class MissingData extends Error {}
+function dataset(name) {
+  const set = sources.datasets[name];
+  const root = new URL(`./cache/${name}/`, import.meta.url);
+  const missing = set.files.filter((f) => {
+    const path = new URL(f.path, root);
+    return !existsSync(path) || statSync(path).size !== f.size;
+  });
+  if (missing.length) throw new MissingData(`${missing.length} of ${set.files.length} files of "${name}" are missing; run node validation/fetch.mjs ${name}`);
+  return { read: (path) => readFileSync(new URL(path, root)), text: (path) => readFileSync(new URL(path, root), 'utf8'), files: set.files.map((f) => f.path) };
+}
+
+// A NumPy .npy array (little-endian float64 or int64, C order): { shape, values }.
+function readNpy(bytes) {
+  const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (b.toString('latin1', 1, 6) !== 'NUMPY') throw new Error('not a .npy file');
+  const start = b[6] === 1 ? 10 : 12;
+  const length = b[6] === 1 ? b.readUInt16LE(8) : b.readUInt32LE(8);
+  const header = b.toString('latin1', start, start + length);
+  const descr = /'descr':\s*'([^']+)'/.exec(header)?.[1];
+  if (/'fortran_order':\s*True/.test(header)) throw new Error('Fortran-ordered .npy files are not read');
+  const shape = /'shape':\s*\(([^)]*)\)/.exec(header)[1].split(',').map((v) => v.trim()).filter(Boolean).map(Number);
+  const data = b.subarray(start + length);
+  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  if (descr === '<f8') return { shape, values: new Float64Array(buffer) };
+  if (descr === '<i8') return { shape, values: Float64Array.from(new BigInt64Array(buffer), Number) };
+  throw new Error(`.npy data type ${descr} is not read`);
+}
+
+// A FlowJo workspace imported as the app imports it (match samples, build the migration with
+// FlowJo's compensation and scales) and every population recomputed by the engine, as the
+// migration report does. files: [{ name, bytes }]. Returns the report rows (FlowJo's count beside
+// CytoWeave's) and the import's fidelity entries.
+function flowJoMigration(xml, files) {
+  const result = importFlowJo(xml);
+  let ws = createWorkspace('FlowJo import');
+  const datasets = new Map();
+  for (const file of files) {
+    const data = parseFCS(file.bytes).datasets[0];
+    const record = sampleFromDataset(data, { name: file.name });
+    datasets.set(record.id, data);
+    ws = addSamples(ws, [record]);
+  }
+  const plan = buildFlowJoMigration(ws, result, matchFlowJoSamples(result.samples, ws.samples), { scales: true, compensation: true });
+  ws = plan.ws;
+  const counts = {};
+  for (const target of plan.migration.samples) {
+    if (!target.sampleId) continue;
+    const record = ws.samples.find((s) => s.id === target.sampleId);
+    const data = datasets.get(record.id);
+    const view = new SampleView(record, data);
+    const id = record.compensationId ?? 'none';
+    if (id === 'file') {
+      const spill = readSpillover(data.keywords, data.parameters);
+      if (spill && !spill.identity) view.setCompensation({ id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) });
+    } else if (id !== 'none') {
+      const comp = ws.compensations.find((c) => c.id === id);
+      view.setCompensation({ id: comp.id, channels: comp.channels, matrix: comp.matrix });
+    }
+    const out = {};
+    for (const [path, gateId] of Object.entries(plan.migration.gates)) {
+      const members = population(view, ws, gateId);
+      out[path] = members === undefined ? null : countOf(members, view);
+    }
+    counts[target.sampleId] = out;
+  }
+  return { rows: migrationCountRows(plan.migration, counts), fidelity: result.fidelity };
 }
 
 // --- Suites ---------------------------------------------------------------------------------------
@@ -399,6 +478,323 @@ const suites = {
     check('transforms', `FlowJo biex reproduces BD's lookup tables (${tables.length} tables, width basis −1 to −1000; worst: ${worstTable})`, `max relative difference ${worstRelative.toExponential(1)}`, worstRelative < 2e-5, '< 2e-5 (tables print 6 digits)');
     check('transforms', 'FlowJo biex: event positions', `max ${fmt(worstChannel, 3)} of 4096 channels`, worstChannel < 0.05, '< 0.05 channel');
   },
+  flowjo() {
+    // The bundled FlowJo example: its workspace's counts are computed independently of the import
+    // (examples.js), the way FlowJo evaluates each gate.
+    const { files, attachments } = generateExample('flowjo-workspace', { scale: 0.25 });
+    const { rows, fidelity } = flowJoMigration(attachments.find((a) => /\.wsp$/.test(a.name)).text, files);
+    const exact = rows.filter((r) => r.status === 'exact').length;
+    check('flowjo', `bundled FlowJo workspace: populations whose count equals FlowJo's (${new Set(rows.map((r) => r.sampleName)).size} samples)`, `${exact} of ${rows.length}`, exact === rows.length && rows.length > 40, 'all');
+    const approximated = fidelity.filter((f) => f.status !== 'imported');
+    check('flowjo', 'bundled FlowJo workspace: populations converted exactly', approximated.length ? approximated.map((f) => `${f.path}: ${f.detail}`).slice(0, 2).join('; ') : 'all', !approximated.length, 'all');
+  },
+  // External data: the ISAC Gating-ML 2.0 compliance suite. Each gate file is imported as the app
+  // imports it (compensations, ratio and unmixed channels, gates) into a workspace whose sample
+  // uses the file's own spillover, and every gate is evaluated by the engine on every event.
+  gatingml() {
+    const data = dataset('gatingml');
+    const sets = { 1: 'data1.fcs', 2: 'data2.fcs', 3: '9399_1_3_NKR.fcs', 4: '9399_1_3_NKR.fcs', 5: '9399_1_3_NKR.fcs' };
+    // Result files named differently from their gates (as in flowUtils' runner of the suite).
+    const abbreviated = {
+      myPolygonWithCustInvAlrSpil: 'myPolygonGateWithCustomInvertedAlreadySpillover',
+      myPolygonWithCustNonSqSpecMat: 'myPolygonGateWithCustomNonSquareSpectrumMatrix',
+      myPolygonWCustNonSqSpecInvAlrd: 'myPolygonGateWithCustomNonSquareSpectrumMatrixInvertedAlready',
+      myPolygonWCustNonSqSpecArcSinH: 'myPolygonGateWithCustomNonSquareSpectrumMatrixOnArcSinH',
+      myPolygonWCustSpillAndArcSinH: 'myPolygonGateWithCustomSpilloverAndArcSinH',
+      myPolygonWFCSSpillAndArcSinH: 'myPolygonGateWithFCSSpilloverAndArcSinH',
+      myRect4bHyperlogArcSinHFCSComp: 'myRectangleGate4bHyperlogArcSinHFCSCompensated',
+      myRect4LogicleArcSinHFCSComp: 'myRectangleGate4LogicleArcSinHFCSCompensated',
+    };
+    let gatesTotal = 0;
+    let eventsTotal = 0;
+    for (const [set, fcsName] of Object.entries(sets)) {
+      const fcs = parseFCS(data.read(`FCSFiles/${fcsName}`)).datasets[0];
+      const imported = importGatingML(data.text(`Gating-MLFiles/gates${set}.xml`));
+      let ws = createWorkspace(`Gating-ML compliance set ${set}`);
+      ws = addSamples(ws, [sampleFromDataset(fcs, { name: fcsName })]);
+      for (const comp of imported.compensations) ws = addCompensation(ws, { ...comp, source: 'imported' }).ws;
+      for (const record of imported.derived) ws = addDerived(ws, record).ws;
+      ws = addGates(ws, imported.gates).ws;
+      const record = ws.samples[0];
+      const view = new SampleView(record, fcs);
+      const spill = readSpillover(fcs.keywords, fcs.parameters);
+      if (record.compensationId === 'file' && spill) view.setCompensation({ id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) });
+      const byId = new Map();
+      for (const gate of ws.gates) {
+        if (gate.meta?.gatingMLId) byId.set(gate.meta.gatingMLId, gate);
+        if (gate.meta?.complementOf) byId.set(`Not_${gate.meta.complementOf}`, gate);
+      }
+      const expected = data.files.filter((f) => f.startsWith(`ExpectedResults/set_${set}/Results_`));
+      const failures = [];
+      for (const file of expected) {
+        const name = file.slice(file.lastIndexOf('Results_') + 8, -4);
+        const gate = byId.get(abbreviated[name] ?? name);
+        if (!gate) {
+          failures.push(`${name} not imported`);
+          continue;
+        }
+        const truth = data.text(file).split(/\r?\n/).filter((line) => /^[01]$/.test(line.trim()));
+        const members = population(view, ws, gate.id);
+        if (members === undefined) {
+          failures.push(`${name} could not be evaluated`);
+          continue;
+        }
+        const inside = new Uint8Array(fcs.eventCount);
+        if (members === null) inside.fill(1);
+        else for (const e of members) inside[e] = 1;
+        let wrong = truth.length === fcs.eventCount ? 0 : Math.abs(truth.length - fcs.eventCount);
+        for (let e = 0; e < Math.min(truth.length, fcs.eventCount); e += 1) if (inside[e] !== Number(truth[e])) wrong += 1;
+        if (wrong) failures.push(`${name}: ${wrong} events differ`);
+      }
+      gatesTotal += expected.length;
+      eventsTotal += expected.length * fcs.eventCount;
+      const ok = failures.length === 0;
+      check('gatingml', `set ${set} (gates${set}.xml on ${fcsName}, ${fcs.eventCount.toLocaleString('en')} events): gates whose every event matches`, ok ? `${expected.length} of ${expected.length}` : `${expected.length - failures.length} of ${expected.length}; ${failures.slice(0, 4).join('; ')}`, ok, 'all');
+      if (imported.warnings.length) check('gatingml', `set ${set}: imports without warnings`, imported.warnings.slice(0, 2).join(' | '), false, 'none');
+    }
+    if (verbose) console.log(`     gatingml: ${gatesTotal} gates, ${eventsTotal.toLocaleString('en')} event decisions`);
+  },
+  // External data: FlowKit 1.3.2's test data, compared with FlowKit's own results
+  // (validation/reference/flowkit.json, written by generate_flowkit.py) and with FlowJo's counts.
+  flowkit() {
+    const data = dataset('flowkit');
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowkit.json', import.meta.url), 'utf8'));
+    const relative = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
+
+    // FCS decoding: events, per-channel sums, extremes and sampled events (FlowKit reports time in
+    // seconds, $TIMESTEP × the stored value).
+    let worst = 0;
+    let where = '';
+    let files = 0;
+    let countsMatch = true;
+    for (const [path, entries] of Object.entries(ref.fcs)) {
+      const parsed = parseFCS(data.read(path));
+      (Array.isArray(entries) ? entries : [entries]).forEach((expected, k) => {
+        files += 1;
+        const set = parsed.datasets[k];
+        if (set?.eventCount !== expected.events) countsMatch = false;
+        const timestep = Number.parseFloat(set.keywords.$TIMESTEP) || 1;
+        for (const channel of expected.channels) {
+          const parameter = set.parameters.find((p) => p.name === channel.name);
+          if (!parameter) {
+            worst = Infinity;
+            where = `${path}: no ${channel.name}`;
+            continue;
+          }
+          const column = set.data[parameter.index];
+          const unit = parameter.type === 'time' ? timestep : 1;
+          let sum = 0;
+          let min = Infinity;
+          let max = -Infinity;
+          for (const v of column) {
+            sum += v * unit;
+            if (v * unit < min) min = v * unit;
+            if (v * unit > max) max = v * unit;
+          }
+          const differences = [Math.abs(sum - channel.sum) / Math.max(1, Math.abs(channel.sum), column.length), relative(min, channel.min), relative(max, channel.max), ...expected.picks.map((e, i) => relative(column[e] * unit, channel.values[i]))];
+          const d = Math.max(...differences);
+          if (d > worst) {
+            worst = d;
+            where = `${path}, ${channel.name}`;
+          }
+        }
+      });
+    }
+    check('flowkit', `FCS decoding agrees with FlowKit/FlowIO (${files} data sets from ${Object.keys(ref.fcs).length} files, incl. a two-data-set LMD file and offset errors)`, `events ${countsMatch ? 'equal' : 'DIFFER'}; values within ${worst.toExponential(1)} (worst ${where})`, countsMatch && worst < 1e-6, 'equal; < 1e-6 relative');
+
+    // Compensation with the file's spillover.
+    const compSet = parseFCS(data.read(ref.compensation.file)).datasets[0];
+    const spill = readSpillover(compSet.keywords, compSet.parameters);
+    const raw = Object.fromEntries(compSet.parameters.map((p) => [p.name, compSet.data[p.index]]));
+    const compensated = { ...raw, ...compensate(raw, { channels: spill.channels, matrix: spill.matrix }) };
+    let compWorst = 0;
+    for (const channel of ref.compensation.channels) {
+      if (!spill.channels.includes(channel.name)) continue;
+      ref.compensation.picks.forEach((e, i) => { compWorst = Math.max(compWorst, relative(compensated[channel.name][e], channel.values[i])); });
+      let sum = 0;
+      for (const v of compensated[channel.name]) sum += v;
+      compWorst = Math.max(compWorst, Math.abs(sum - channel.sum) / Math.max(1, Math.abs(channel.sum), compSet.eventCount));
+    }
+    check('flowkit', `compensation with the file's $SPILL agrees with FlowKit (${spill.channels.length} channels)`, `within ${compWorst.toExponential(1)}`, compWorst < 1e-5, '< 1e-5 relative (float32 storage)');
+
+    // Spectral unmixing (OLS) against FlowKit's stored result.
+    const events = readNpy(data.read('spectral_data/spectral_raw_events.npy'));
+    const truth = readNpy(data.read('spectral_data/truth/spectral_comp_events.npy'));
+    const matrix = readNpy(data.read('spectral_data/spectral_comp_matrix.npy'));
+    const [n, width] = events.shape;
+    const { detectorColumns, unmixed } = ref.spectral;
+    const columns = detectorColumns.map((j) => Float64Array.from({ length: n }, (_, e) => events.values[e * width + j]));
+    const { abundances } = unmixOLS(columns, { names: detectorColumns.slice(0, unmixed).map(String), matrix: matrix.values });
+    let spectralWorst = 0;
+    let spectralScale = 0;
+    for (let f = 0; f < unmixed; f += 1) {
+      const j = detectorColumns[f];
+      for (let e = 0; e < n; e += 1) {
+        const t = truth.values[e * width + j];
+        spectralWorst = Math.max(spectralWorst, Math.abs(abundances[f][e] - t));
+        spectralScale = Math.max(spectralScale, Math.abs(t));
+      }
+    }
+    check('flowkit', `spectral unmixing (OLS, ${matrix.shape[1]} detectors → ${unmixed}) agrees with FlowKit on ${n.toLocaleString('en')} events`, `max difference ${(spectralWorst / spectralScale).toExponential(1)} of the largest value`, spectralWorst / spectralScale < 1e-7, '< 1e-7 (abundances are stored as float32)');
+
+    // Transforms.
+    let forwardWorst = 0;
+    let inverseWorst = 0;
+    let forwardWhere = '';
+    let inverseWhere = '';
+    for (const t of ref.transforms) {
+      const transform = createTransform(t.cytoweave);
+      t.values.forEach((x, i) => {
+        if (t.forward[i] === null) return;
+        const d = Math.abs(transform.forward(x) - t.forward[i]);
+        if (d > forwardWorst) { forwardWorst = d; forwardWhere = `${t.name} at ${x}`; }
+      });
+      t.scales.forEach((y, i) => {
+        if (t.inverse[i] === null) return;
+        const d = relative(transform.inverse(y), t.inverse[i]);
+        if (d > inverseWorst) { inverseWorst = d; inverseWhere = `${t.name} at ${y}`; }
+      });
+    }
+    check('flowkit', `transforms agree with FlowKit (${ref.transforms.length}: logicle, hyperlog, asinh, FlowJo biex): forward, in scale units`, `within ${forwardWorst.toExponential(1)} (worst ${forwardWhere})`, forwardWorst < 1e-6, '< 1e-6');
+    check('flowkit', 'transforms agree with FlowKit: inverse, relative to the data value', `within ${inverseWorst.toExponential(1)} (worst ${inverseWhere})`, inverseWorst < 1e-6, '< 1e-6');
+
+    // FlowJo workspaces: CytoWeave's counts beside FlowJo's (saved in the workspace) and FlowKit's.
+    const fcsFiles = new Map();
+    const filesIn = (dir) => data.files.filter((f) => f.startsWith(dir) && /\.fcs$/.test(f) && !f.slice(dir.length).includes('/')).map((f) => {
+      if (!fcsFiles.has(f)) fcsFiles.set(f, { name: f.slice(dir.length), bytes: data.read(f) });
+      return fcsFiles.get(f);
+    });
+    let reproduced = 0;
+    let reproducedTotal = 0;
+    const missed = [];
+    for (const [path, expected] of Object.entries(ref.workspaces)) {
+      const dir = path.startsWith('8_color') ? '8_color_data_set/fcs_files/' : `${path.split('/')[0]}/`;
+      const { rows } = flowJoMigration(data.text(path), filesIn(dir));
+      const flowKit = new Map((expected.populations ?? []).map((p) => [`${p.sample}|${p.path.join('/')}`, p.count]));
+      const valid = rows.filter((r) => r.flowjo >= 0);
+      let ours = 0;
+      let theirs = 0;
+      let oursError = 0;
+      let theirsError = 0;
+      let compared = 0;
+      for (const row of valid) {
+        const fk = flowKit.get(`${row.sampleName}|${row.path}`);
+        if (row.cytoweave === row.flowjo) ours += 1;
+        if (fk === undefined) continue;
+        compared += 1;
+        if (fk === row.flowjo) {
+          theirs += 1;
+          reproducedTotal += 1;
+          if (row.cytoweave === row.flowjo) reproduced += 1;
+          else missed.push(`${path}: ${row.sampleName} ${row.path} (FlowJo ${row.flowjo}, CytoWeave ${row.cytoweave})`);
+        }
+        if (row.flowjo > 0) {
+          oursError += Math.abs((row.cytoweave ?? 0) - row.flowjo) / row.flowjo;
+          theirsError += Math.abs(fk - row.flowjo) / row.flowjo;
+        }
+      }
+      const name = path.split('/').pop();
+      if (!expected.error && !valid.length) {
+        // FlowJo saved no counts (-1): CytoWeave against FlowKit alone.
+        const same = rows.filter((r) => r.cytoweave === flowKit.get(`${r.sampleName}|${r.path}`)).length;
+        check('flowkit', `${name}: FlowJo saved no counts; populations whose count equals FlowKit's`, `${same} of ${rows.length}`, same === rows.length && rows.length > 0, 'all');
+        continue;
+      }
+      if (expected.error || !compared) {
+        check('flowkit', `${name}: populations whose count equals FlowJo's (FlowKit cannot read it: ${(expected.error ?? 'no populations').split(':')[0]})`, `${ours} of ${valid.length}`, valid.length > 0, 'imported and evaluated');
+        continue;
+      }
+      const meanOurs = (100 * oursError) / compared;
+      const meanTheirs = (100 * theirsError) / compared;
+      check('flowkit', `${name}: populations whose count equals FlowJo's, CytoWeave vs FlowKit (${valid.length} populations); mean difference from FlowJo`, `${ours} vs ${theirs}; ${meanOurs.toFixed(3)}% vs ${meanTheirs.toFixed(3)}%`, ours >= theirs && meanOurs <= meanTheirs + 0.01, 'at least as many; mean no larger');
+    }
+    check('flowkit', 'FlowJo counts that FlowKit reproduces exactly, CytoWeave reproduces too', `${reproduced} of ${reproducedTotal}${missed.length ? `; missed ${missed.slice(0, 3).join('; ')}` : ''}`, reproduced === reproducedTotal, 'all');
+  },
+  // External data: FCS files from several instruments and deliberately malformed files
+  // (fcsparser's tests), against FlowIO's decoding and fcsparser's published values.
+  fcsparser() {
+    const data = dataset('fcsparser');
+    const flowio = JSON.parse(readFileSync(new URL('./reference/flowkit.json', import.meta.url), 'utf8')).corpus;
+    const published = JSON.parse(readFileSync(new URL('./reference/fcsparser.json', import.meta.url), 'utf8')).files;
+    const relative = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
+    let read = 0;
+    let sets = 0;
+    let exactTrip = true;
+    const failures = [];
+    let worst = 0;
+    let worstWhere = '';
+    let compared = 0;
+    const flowIOFailed = [];
+    const clear = [];
+    for (const path of data.files) {
+      let parsed;
+      try {
+        parsed = parseFCS(data.read(path));
+      } catch (error) {
+        if (error instanceof FCSError) clear.push(`${path}: ${error.message}`);
+        else failures.push(`${path}: ${error.constructor.name}: ${error.message}`);
+        continue;
+      }
+      read += 1;
+      for (const d of parsed.datasets) {
+        sets += 1;
+        const again = load({ bytes: writeFCS({ parameters: d.parameters.map((p) => ({ name: p.name, label: p.label, range: p.range })), data: d.data, keywords: d.keywords }) });
+        for (let p = 0; p < d.parameters.length && exactTrip; p += 1) {
+          for (let e = 0; e < d.eventCount; e += 1) if (!Object.is(d.data[p][e], again.data[p][e])) { exactTrip = false; break; }
+        }
+      }
+      const reference = flowio[path];
+      if (!reference || reference.error) {
+        flowIOFailed.push(path.split('/').pop());
+        continue;
+      }
+      reference.forEach((expected, k) => {
+        const d = parsed.datasets[k];
+        compared += 1;
+        if (d?.eventCount !== expected.events) {
+          failures.push(`${path} #${k}: ${d?.eventCount} events, FlowIO ${expected.events}`);
+          return;
+        }
+        const timestep = Number.parseFloat(d.keywords.$TIMESTEP) || 1;
+        const decades = new Set(d.diagnostics.filter((x) => x.code === 'log-decades').map((x) => x.message.split(':')[0]));
+        expected.channels.forEach((channel, i) => {
+          const parameter = d.parameters[i];
+          // Float values stored as decades: FlowIO applies the channel formula to them (below).
+          if (decades.has(parameter.name)) return;
+          const unit = parameter.type === 'time' ? timestep : 1;
+          expected.picks.forEach((e, j) => {
+            const diff = relative(d.data[i][e] * unit, channel.values[j]);
+            if (diff > worst) { worst = diff; worstWhere = `${path} #${k}, ${parameter.name}`; }
+          });
+        });
+      });
+    }
+    check('fcsparser', `files from ${data.files.length} instruments and tests read (data sets)`, `${read} files, ${sets} data sets${failures.length ? `; ${failures.slice(0, 2).join('; ')}` : ''}`, read === data.files.length - clear.length && !failures.length, 'all readable files');
+    check('fcsparser', 'malformed files are refused with a clear message', clear.map((c) => c.split(': ').slice(1).join(': ')).join(' | ') || 'none', clear.length === 2, 'the truncated and keywords-only files');
+    check('fcsparser', `decoded values agree with FlowIO (${compared} data sets; FlowIO cannot read ${flowIOFailed.join(', ')})`, `within ${worst.toExponential(1)} (worst ${worstWhere})`, worst < 1e-6 && compared >= 15, '< 1e-6 relative');
+    // Guava Muse stores each log channel as log10 of its linear channel (as floats, against FCS
+    // 3.1): decoded as decades, every log channel equals its linear channel.
+    let pairWorst = 0;
+    let pairs = 0;
+    for (const d of parseFCS(data.read('GuavaMuse/Guava Muse.fcs')).datasets) {
+      for (const parameter of d.parameters.filter((p) => /-HLog$/.test(p.name))) {
+        const linear = d.parameters.find((p) => p.name === parameter.name.replace(/Log$/, 'Lin'));
+        if (!linear) continue;
+        pairs += 1;
+        const a = d.data[parameter.index];
+        const b = d.data[linear.index];
+        for (let e = 0; e < a.length; e += 1) pairWorst = Math.max(pairWorst, Math.abs(a[e] - b[e]) / Math.max(1e-3, Math.abs(b[e])));
+      }
+    }
+    check('fcsparser', `floating-point log channels stored as decades (Guava Muse): each equals its linear channel (${pairs} pairs)`, `within ${pairWorst.toExponential(1)}`, pairs === 12 && pairWorst < 1e-5, '< 1e-5 relative');
+    let rawWorst = 0;
+    for (const [path, { rows }] of Object.entries(published)) {
+      const d = parseFCS(data.read(path), { linearize: false }).datasets[0];
+      rows.forEach((row, e) => row.forEach((v, p) => { rawWorst = Math.max(rawWorst, relative(d.data[p][e], v)); }));
+    }
+    check('fcsparser', `stored values equal fcsparser's published rows (${Object.keys(published).length} files, incl. 3-byte integers, large-file offsets and masked bits)`, `within ${rawWorst.toExponential(1)}`, rawWorst < 1e-6, '< 1e-6 relative');
+    check('fcsparser', 'every data set is written and read back', exactTrip ? 'bit-exact' : 'differs', exactTrip, 'bit-exact');
+  },
   reference() {
     // R: t.test / wilcox.test on the sleep data set (extra sleep, group 1 vs group 2).
     const g1 = [0.7, -1.6, -0.2, -1.2, -0.1, 3.4, 3.7, 0.8, 0.0, 2.0];
@@ -426,6 +822,7 @@ const suites = {
 // --- Run ------------------------------------------------------------------------------------------
 
 const names = requested.length ? requested : Object.keys(suites);
+const skipped = [];
 const started = performance.now();
 for (const name of names) {
   if (!suites[name]) {
@@ -436,6 +833,12 @@ for (const name of names) {
   try {
     await suites[name]();
   } catch (error) {
+    if (error instanceof MissingData) {
+      skipped.push(name);
+      console.log(`- ${name}: skipped (external data: ${error.message})`);
+      if (requireData) check(name, 'external data present', error.message, false, 'present (--require-data)');
+      continue;
+    }
     check(name, 'suite ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
   }
   const mine = results.filter((r) => r.suite === name);
@@ -443,4 +846,5 @@ for (const name of names) {
 }
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
+if (skipped.length) console.log(`Skipped for want of external data: ${skipped.join(', ')} (node validation/fetch.mjs downloads it).`);
 if (failed.length) process.exit(1);

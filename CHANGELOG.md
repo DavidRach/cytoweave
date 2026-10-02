@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **FlowJo import.** Comparing with the counts FlowJo saved in real workspaces found these, now fixed:
+  - Time gates were read in the wrong units (FlowJo uses seconds) and could keep almost no events.
+  - FlowJo's linear axis gains were ignored.
+  - Ellipses were read in data units; FlowJo stores them in its display space.
+  - Values beyond the ends of FlowJo's biexponential scale now sit on its edges, as in FlowJo, so saturated events fall inside gates drawn to the edge.
+  - FCS files named on the command line are opened before a FlowJo workspace named with them, so its samples match.
+- **Gating-ML import.** Running ISAC's compliance suite found these, now fixed:
+  - Transformation bounds (`boundMin`, `boundMax`) were ignored.
+  - Gates of three or more dimensions, and quadrant gates with three dividers, were skipped.
+  - Ratio dimensions were imported but never computed.
+  - A gate's dimensions now keep the compensation the file names for them, rather than the sample's.
+  - Events on a polygon's edge are inside it.
+- **Gate boundaries** are decided in double precision, so an event within rounding distance of a boundary falls on the same side as in reference tools.
+- **FCS files:** Guava Muse log channels (log10 values stored as floating point) are read correctly, and a file cut off before its data now says so instead of failing.
+
+### Added
+
+- Gating-ML spectral unmixing matrices (more detectors than fluorochromes) import as unmixed channels.
+- Gates of three or more dimensions are evaluated in all of them; the inspector shows their axes and any compensation a gate keeps.
+- The migration report explains differences of a few events as boundary events.
+
+### Validation
+
+- New suites against public data, which `node validation/fetch.mjs` downloads and checksums:
+  - ISAC's Gating-ML 2.0 compliance suite: all 190 gates match on every event.
+  - FlowKit 1.3.2 and FlowIO: FCS decoding, compensation, spectral unmixing and transforms agree; on FlowJo workspaces CytoWeave reproduces FlowJo's saved counts at least as often as FlowKit.
+  - FCS files from several instruments and malformed files.
+- A check that the bundled FlowJo example reproduces all 56 of its counts.
+
 ## 0.1.0 (2026-10-02)
 
 CytoWeave is a free, open-source (Apache 2.0) workbench for flow cytometry analysis: conventional, spectral and mass cytometry. It runs on your own computer as one self-contained program, with no licence server, account, Python or R. Files are analyzed in the browser and never leave your machine.

@@ -363,9 +363,11 @@ async function start() {
       const gml = await import('./lib/gatingml.js');
       const text = new TextDecoder().decode(await readBytes(item));
       const result = gml.importGatingML(text);
-      const { addGates, addCompensation } = await import('./lib/workspace.js');
+      const { addGates, addCompensation, addDerived } = await import('./lib/workspace.js');
       let next = store.ws;
       for (const comp of result.compensations ?? []) next = addCompensation(next, { ...comp, source: 'imported' }).ws;
+      // Ratio dimensions (fratio) become channels computed from their inputs.
+      for (const record of result.derived ?? []) if (!next.derived.some((d) => d.kind === 'ratio' && d.outputs?.[0] === record.outputs[0])) next = addDerived(next, record).ws;
       next = addGates(next, result.gates.map((g) => ({ ...g, meta: { ...(g.meta ?? {}), origin: 'imported' } })), 'import-gating-ml').ws;
       store.commit(next, `Import ${result.gates.length} gates from ${item.name}`);
       toast(`Imported ${result.gates.length} gates${result.warnings?.length ? ` with ${result.warnings.length} warning(s)` : ''}.`, { kind: result.warnings?.length ? undefined : 'ok' });
@@ -945,9 +947,14 @@ async function start() {
       if (!response.ok) continue;
       items.push({ file: { size: file.size }, name: file.name, bytes: new Uint8Array(await response.arrayBuffer()), folder: file.folder ?? null, order: items.length });
     }
+    // As for dropped files: CytoWeave workspaces first, then the FCS files, then what refers to
+    // them (FlowJo workspaces match their samples, Gating-ML, tables, archives).
     const fcs = items.filter((item) => /\.(fcs|lmd)$/i.test(item.name));
-    for (const item of items.filter((i) => !fcs.includes(i))) await app.importFiles([Object.assign(new File([item.bytes], item.name), { folder: item.folder })]);
+    const workspaces = items.filter((item) => /\.(cwz|json)$/i.test(item.name));
+    const asFile = (item) => Object.assign(new File([item.bytes], item.name), { folder: item.folder });
+    for (const item of workspaces) await app.importFiles([asFile(item)]);
     if (fcs.length) await importFCSItems(fcs);
+    for (const item of items.filter((i) => !fcs.includes(i) && !workspaces.includes(i))) await app.importFiles([asFile(item)]);
   };
   if (info?.files?.length) await app.openStartupFiles(info.files);
   // Programs on this computer (AI agents through "cytoweave mcp") act in this window.
