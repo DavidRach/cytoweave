@@ -239,7 +239,8 @@ signal and report progress.
 
   These remove PeacoQC's false removals on clean and drifting files while
   still catching clogs and bubbles (`validation/`). The classic algorithm
-  stays available.
+  stays available as an exact port of PeacoQC 1.22: it removes the same
+  events as PeacoQC in R.
 - **Counterfactual unmixing.** One population is unmixed with up to seven
   models:
   - OLS;

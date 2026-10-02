@@ -1277,6 +1277,178 @@
      "sha256": "45234ff32577dc15fb06af813cc103bbd3ceb44a66ba0be5db14a2434a200341"
     }
    ]
+  },
+  "rpackages": {
+   "title": "Example data of the R packages PeacoQC, FlowSOM and CytoNorm",
+   "description": "PeacoQC's 111.fcs; FlowSOM's 68983.fcs with the FlowJo workspace gated on it; CytoNorm's six control files (three batches, the same two volunteers in each).",
+   "source": "https://github.com/saeyslab (PeacoQC, FlowSOM, CytoNorm: inst/extdata)",
+   "licence": "Distributed with GPL-licensed R packages. CytoWeave downloads them for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "PeacoQC/111.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/PeacoQC/1c0ff6d3123840c7fff198864b99a9421ab5a897/inst/extdata/111.fcs",
+     "size": 885422,
+     "sha256": "28b00aac4b3f5acb451e7b3318360ba2d57a50c9fd6b8c387abc3bcb05bdfa7e"
+    },
+    {
+     "path": "FlowSOM/68983.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/FlowSOM/013247af703e8426cd5d244db34cc88c66f8014d/inst/extdata/68983.fcs",
+     "size": 1389689,
+     "sha256": "ccf75633447c7acec4e30174b82e79ec9ba5164981f05186328b62da4bc3896c"
+    },
+    {
+     "path": "FlowSOM/gating.wsp",
+     "url": "https://raw.githubusercontent.com/saeyslab/FlowSOM/013247af703e8426cd5d244db34cc88c66f8014d/inst/extdata/gating.wsp",
+     "size": 116072,
+     "sha256": "eb6a54ac56ed74a98d625c69f388f6aefdf91d6239ed24dad9e59c6ac0ba9273"
+    },
+    {
+     "path": "CytoNorm/Gates_PTLG021_Unstim_Control_1.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/CytoNorm/278f352d8edffd7a5d3e6b0b76c402d991a1e7a9/inst/extdata/Gates_PTLG021_Unstim_Control_1.fcs",
+     "size": 225607,
+     "sha256": "852c6c346168e4e39e7d990729d41aa6cd53d0794debeb73bc396292678f58b8"
+    },
+    {
+     "path": "CytoNorm/Gates_PTLG021_Unstim_Control_2.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/CytoNorm/278f352d8edffd7a5d3e6b0b76c402d991a1e7a9/inst/extdata/Gates_PTLG021_Unstim_Control_2.fcs",
+     "size": 225601,
+     "sha256": "53e2e57ef6a2c376ab43ce18b096e16d3043b1ea48c6a990b4fb2d08b6166bcd"
+    },
+    {
+     "path": "CytoNorm/Gates_PTLG028_Unstim_Control_1.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/CytoNorm/278f352d8edffd7a5d3e6b0b76c402d991a1e7a9/inst/extdata/Gates_PTLG028_Unstim_Control_1.fcs",
+     "size": 225607,
+     "sha256": "78b8d9afab4e79e72b6efe8c4f4e50e452ec82936481de1b7056b2f11d88dcb1"
+    },
+    {
+     "path": "CytoNorm/Gates_PTLG028_Unstim_Control_2.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/CytoNorm/278f352d8edffd7a5d3e6b0b76c402d991a1e7a9/inst/extdata/Gates_PTLG028_Unstim_Control_2.fcs",
+     "size": 225603,
+     "sha256": "d299ad706a5d643b2bc3ac4b49899a76b7cd2f6bc214a1fe6c1f4aada14b04f4"
+    },
+    {
+     "path": "CytoNorm/Gates_PTLG034_Unstim_Control_1.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/CytoNorm/278f352d8edffd7a5d3e6b0b76c402d991a1e7a9/inst/extdata/Gates_PTLG034_Unstim_Control_1.fcs",
+     "size": 225593,
+     "sha256": "413a942f6fd62a0743c65fd3b3cbe5f5952771bfefcfa898f6a5dfa54ca59d43"
+    },
+    {
+     "path": "CytoNorm/Gates_PTLG034_Unstim_Control_2.fcs",
+     "url": "https://raw.githubusercontent.com/saeyslab/CytoNorm/278f352d8edffd7a5d3e6b0b76c402d991a1e7a9/inst/extdata/Gates_PTLG034_Unstim_Control_2.fcs",
+     "size": 225597,
+     "sha256": "2b7c0a98b1ac11f9198a1e04f6193383226c92e9ac396fc393a6bf36b9a185cd"
+    }
+   ]
+  },
+  "zenodo-skull": {
+   "title": "Skull bone marrow chimera: compensation controls and two samples (Zenodo 22808501)",
+   "description": "Single-stain compensation controls of a BD LSRFortessa panel and two bone-marrow samples, from \"Example of skull bone marrow chimera using congenic mice\".",
+   "source": "https://zenodo.org/records/22808501 (doi:10.5281/zenodo.22808501)",
+   "licence": "CC BY 4.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "Compensation Controls_B 530,2f,30 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_B%20530,2f,30%20Stained%20Control.fcs/content",
+     "size": 322236,
+     "sha256": "00adbf8b749ae80c4bb6b6e34fcd95b92389d4df8c93106f0231479d076edf95"
+    },
+    {
+     "path": "Compensation Controls_B 710,2f,50 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_B%20710,2f,50%20Stained%20Control.fcs/content",
+     "size": 244710,
+     "sha256": "74cc9e90f85810af3137246811a82967799e964fb5d005aaecd099ef846fb1ba"
+    },
+    {
+     "path": "Compensation Controls_R 670,2f,14 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_R%20670,2f,14%20Stained%20Control.fcs/content",
+     "size": 132684,
+     "sha256": "14bd04a3275e2e9203604a339156b2a85c660d1c1db09d8853538d2ea7d32dbe"
+    },
+    {
+     "path": "Compensation Controls_R 730,2f,45 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_R%20730,2f,45%20Stained%20Control.fcs/content",
+     "size": 118077,
+     "sha256": "88a3aba53143615e6d0ad6e0d36042422fd7e611316cfffbb5849820c19c5c54"
+    },
+    {
+     "path": "Compensation Controls_R 780,2f,60 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_R%20780,2f,60%20Stained%20Control.fcs/content",
+     "size": 197802,
+     "sha256": "4f818b21b68c2252580bbff015e5d94e10a64de912abca78e94b9aaee6549707"
+    },
+    {
+     "path": "Compensation Controls_U 450,2f,50 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_U%20450,2f,50%20Stained%20Control.fcs/content",
+     "size": 181429,
+     "sha256": "5fb0ee489db6e403911100dd7758cd12428864f5af6c80b749c49d9f1d6aec01"
+    },
+    {
+     "path": "Compensation Controls_V 450,2f,50 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_V%20450,2f,50%20Stained%20Control.fcs/content",
+     "size": 189441,
+     "sha256": "6fcf0b162176d3dcf7cffbb741a20f543bfcd5c56bcd4bdd3ed4f22e66057c96"
+    },
+    {
+     "path": "Compensation Controls_V 525,2f,50 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_V%20525,2f,50%20Stained%20Control.fcs/content",
+     "size": 252977,
+     "sha256": "d0b7092bc512384cfd6baedc1718616e770a31fd9b91c490f37b4ecdbe127592"
+    },
+    {
+     "path": "Compensation Controls_V 610,2f,20 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_V%20610,2f,20%20Stained%20Control.fcs/content",
+     "size": 188564,
+     "sha256": "bccad82a22d27d9ee5484973fdc109e827c2ff8f6d8353c8d1a4efa808547442"
+    },
+    {
+     "path": "Compensation Controls_V 660,2f,20 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_V%20660,2f,20%20Stained%20Control.fcs/content",
+     "size": 228781,
+     "sha256": "8e3211c372549bd7192879d8ff0d5c77970a38f7f5acee982b64039686d57153"
+    },
+    {
+     "path": "Compensation Controls_V 710,2f,50 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_V%20710,2f,50%20Stained%20Control.fcs/content",
+     "size": 208454,
+     "sha256": "4a5aa3e5127b3b5c4a87e11e902e8a07079d538a46accc3f08556022204fd32f"
+    },
+    {
+     "path": "Compensation Controls_V 780,2f,60 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_V%20780,2f,60%20Stained%20Control.fcs/content",
+     "size": 189004,
+     "sha256": "7d828c83be368d06ccc5c702ecd3e7a332b6607b04c626c09ff2bb88cf4dd999"
+    },
+    {
+     "path": "Compensation Controls_Y 586,2f,15 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_Y%20586,2f,15%20Stained%20Control.fcs/content",
+     "size": 191380,
+     "sha256": "2d68031aca6a4752cc685f68b233acd058567cc44a2fe7505039d78198819845"
+    },
+    {
+     "path": "Compensation Controls_Y 610,2f,20 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_Y%20610,2f,20%20Stained%20Control.fcs/content",
+     "size": 208892,
+     "sha256": "b96cccbb99f346a23249570a91fb0ea349209db521f8278cdeb42e9d4211a663"
+    },
+    {
+     "path": "Compensation Controls_Y 780,2f,60 Stained Control.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Compensation%20Controls_Y%20780,2f,60%20Stained%20Control.fcs/content",
+     "size": 185747,
+     "sha256": "834e8cc52ecd565864c0c9a8291a5fcfe2856392c27a6a9c4450afbeb109945b"
+    },
+    {
+     "path": "Skull BM Broad_Tube_017.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Skull%20BM%20Broad_Tube_017.fcs/content",
+     "size": 1247227,
+     "sha256": "7b824a7bc24f59089442c167105a9117ba53ed04881e6d626ed385002a632b1e"
+    },
+    {
+     "path": "Skull BM Broad_Tube_022.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/Skull%20BM%20Broad_Tube_022.fcs/content",
+     "size": 822979,
+     "sha256": "0e491d186ddcc8c208099d2466bbba616bffc30ae064b673e597af88beaa0d86"
+    }
+   ]
   }
  }
 }

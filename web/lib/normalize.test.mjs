@@ -104,13 +104,13 @@ test('monotone spline interpolates its knots exactly and is monotone between the
   }
 });
 
-test('CytoNorm quantiles are 0.001, 0.01 … 0.99, 0.999', () => {
-  const p = cytoNormProbabilities(101);
-  assert.equal(p.length, 101);
-  assert.equal(p[0], 0.001);
-  assert.equal(p[1], 0.01);
-  assert.equal(p[50], 0.5);
-  assert.equal(p[100], 0.999);
+test("CytoNorm quantiles are CytoNorm 2.x's: 0.01 … 0.99 by default", () => {
+  const p = cytoNormProbabilities();
+  assert.equal(p.length, 99);
+  close(p[0], 0.01, 1e-15);
+  close(p[49], 0.5, 1e-15);
+  close(p[98], 0.99, 1e-15);
+  close(cytoNormProbabilities(101)[0], 1 / 102, 1e-15);
 });
 
 test('CytoNorm aligns two batches with a known shift and scale and preserves rank order', () => {
@@ -162,6 +162,44 @@ test('clustered CytoNorm corrects cluster-specific batch effects', () => {
       const b = medianOf(normB.columns[name], inB);
       assert.ok(Math.abs(a - b) / ((a + b) / 2) < 0.02, `cluster ${cluster} ${name}: ${a} vs ${b}`);
     }
+  }
+});
+
+test('a batch with minCells or fewer cells in a cluster is left out of that goal and left unchanged there', () => {
+  const shift = { clusterShift: [0.6, -0.4] };
+  const anchorA = simulateBatch(9, 20000);
+  const full = simulateBatch(10, 20000, shift);
+  // Batch B keeps only 40 of its cluster-0 events (CytoNorm's minCells is 50).
+  const keep = [];
+  let small = 0;
+  full.labels.forEach((l, i) => { if (l === 1 || small++ < 40) keep.push(i); });
+  const pick = (column) => Float32Array.from(keep, (i) => column[i]);
+  const anchorB = {
+    sample: { ...full.sample, eventCount: keep.length, columns: { CD3: pick(full.sample.columns.CD3), CD4: pick(full.sample.columns.CD4) } },
+    labels: Int32Array.from(keep, (i) => full.labels[i]),
+  };
+  const model = trainCytoNorm([
+    { sample: anchorA.sample, batch: 'A', labels: anchorA.labels },
+    { sample: anchorB.sample, batch: 'B', labels: anchorB.labels },
+  ], { channels: ['CD3', 'CD4'], transforms: TRANSFORMS });
+  assert.ok(model.warnings.some((w) => /only 40 cells in batch B \(50 or fewer\)/.test(w)), model.warnings.join(' | '));
+  const validA = simulateBatch(11, 20000);
+  const validB = simulateBatch(12, 20000, shift);
+  const normA = applyCytoNorm(model, validA.sample, 'A', validA.labels);
+  const normB = applyCytoNorm(model, validB.sample, 'B', validB.labels);
+  for (const name of ['CD3', 'CD4']) {
+    let moved = 0;
+    validB.labels.forEach((l, i) => {
+      const before = validB.sample.columns[name][i];
+      const after = normB.columns[name][i];
+      if (l === 0) assert.equal(after, before, `${name}: batch B's sparse cluster is left unchanged`);
+      else if (Math.abs(after - before) > 1e-3 * Math.abs(before)) moved += 1;
+    });
+    assert.ok(moved > 10000, `${name}: batch B's other cluster is normalized (${moved} moved)`);
+    // The goal of cluster 0 is batch A's own quantiles, so batch A is mapped onto itself there.
+    validA.labels.forEach((l, i) => {
+      if (l === 0) close(normA.columns[name][i], validA.sample.columns[name][i], 1e-3 * Math.max(1, Math.abs(validA.sample.columns[name][i])), `${name}: batch A, cluster 0`);
+    });
   }
 });
 

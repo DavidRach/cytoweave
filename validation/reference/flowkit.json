@@ -7770,5 +7770,175 @@
     }
    ]
   }
+ },
+ "otherWorkspaces": {
+  "rpackages/FlowSOM/gating.wsp": {
+   "populations": [
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes"
+     ],
+     "count": 19225
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets"
+     ],
+     "count": 18702
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2"
+     ],
+     "count": 18585
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1+"
+     ],
+     "count": 923
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-"
+     ],
+     "count": 17470
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "B cells"
+     ],
+     "count": 2460
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1+",
+      "NK T cells"
+     ],
+     "count": 535
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1+",
+      "NK cells"
+     ],
+     "count": 312
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "T cells"
+     ],
+     "count": 10747
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "T cells",
+      "ab T cells"
+     ],
+     "count": 9191
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "T cells",
+      "gd T cells"
+     ],
+     "count": 1470
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "T cells",
+      "ab T cells",
+      "CD4 T cells"
+     ],
+     "count": 7482
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "T cells",
+      "ab T cells",
+      "CD8 T cells"
+     ],
+     "count": 1407
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "T cells",
+      "ab T cells",
+      "DN T cells"
+     ],
+     "count": 267
+    },
+    {
+     "sample": "68983.fcs",
+     "path": [
+      "Lymphocytes",
+      "Singlets",
+      "Singlets2",
+      "NK1_1-",
+      "T cells",
+      "ab T cells",
+      "DP T cells"
+     ],
+     "count": 6
+    }
+   ]
+  }
  }
 }

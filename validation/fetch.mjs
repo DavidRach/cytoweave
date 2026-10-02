@@ -47,7 +47,8 @@ async function download(url, file, path) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const response = await fetch(url);
+      // Some hosts (Zenodo) refuse requests without an identifying user agent.
+      const response = await fetch(url, { headers: { 'User-Agent': 'CytoWeave-validation (+https://github.com/robert-mcdermott/cytoweave)' } });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const bytes = Buffer.from(await response.arrayBuffer());
       const digest = sha256(bytes);
@@ -78,7 +79,8 @@ for (const [name, set] of Object.entries(manifest.datasets)) {
         continue;
       }
       try {
-        await download(set.base + file.path.split('/').map(encodeURIComponent).join('/'), file, path);
+        // A file's own url, or the data set's base followed by its path.
+        await download(file.url ?? set.base + file.path.split('/').map(encodeURIComponent).join('/'), file, path);
         fetched += 1;
       } catch (error) {
         failures += 1;

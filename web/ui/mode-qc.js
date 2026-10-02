@@ -613,7 +613,7 @@ export function mountQCMode(app, container) {
     settings: structuredClone(DEFAULT_SETTINGS),
     detailChannels: null,
     comparison: null,
-    norm: { channels: null, clustering: '', cofactor: null, nQ: 101, goal: 'mean', acknowledged: false, ackKey: '', result: null, histChannel: null },
+    norm: { channels: null, clustering: '', cofactor: null, nQ: 99, goal: 'mean', acknowledged: false, ackKey: '', result: null, histChannel: null },
     beads: { sampleId: null, scope: 'sample', baseline: 'file', results: new Map(), shownId: null },
     debarcode: { sampleId: null, channels: null, k: 3, keyMode: 'combination', csv: '', cofactor: 10, cutoff: 0.3, mahalanobis: 30, run: null, updating: false },
   });

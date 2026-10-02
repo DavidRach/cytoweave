@@ -18,6 +18,13 @@
   - Events on a polygon's edge are inside it.
 - **Gate boundaries** are decided in double precision, so an event within rounding distance of a boundary falls on the same side as in reference tools.
 - **FCS files:** Guava Muse log channels (log10 values stored as floating point) are read correctly, and a file cut off before its data now says so instead of failing.
+- **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-colour panel the matrix is now within 0.015 of FACSDiva's.
+- **Logicle width estimates** take the 5th percentile of the negative values, as flowCore's `estimateLogicle` does, rather than of all values, and are no longer held at 0.25 or more when the data have negative values.
+- **PeacoQC classic** is now an exact port of PeacoQC 1.22 (its density estimate, peak tracking, isolation tree and `smooth.spline` MAD test) and removes the same events as PeacoQC in R. The default refined mode is unchanged.
+
+### Changed
+
+- **CytoNorm** follows CytoNorm 2.x: 99 quantiles at 1/100 … 99/100 by default (was 101, including 0.001 and 0.999), and a batch with 50 or fewer cells in a cluster is left unchanged in that cluster and out of its goal, instead of being normalized from a handful of cells. Results of normalizations differ slightly from 0.1.
 
 ### Added
 
@@ -31,6 +38,8 @@
   - ISAC's Gating-ML 2.0 compliance suite: all 190 gates match on every event.
   - FlowKit 1.3.2 and FlowIO: FCS decoding, compensation, spectral unmixing and transforms agree; on FlowJo workspaces CytoWeave reproduces FlowJo's saved counts at least as often as FlowKit.
   - FCS files from several instruments and malformed files.
+  - flowCore, PeacoQC, FlowSOM and CytoNorm, run in R on public data (results committed in `validation/reference/r.json`, so the checks need no R): reading, compensation and logicle agree to 1e-7; PeacoQC removes the same events; FlowSOM maps every event alike; CytoNorm agrees to 1e-5.
+  - BD FACSDiva's spillover matrix, computed from 15 real single-stain controls of a public LSRFortessa panel.
 - A check that the bundled FlowJo example reproduces all 56 of its counts.
 
 ## 0.1.0 (2026-10-02)

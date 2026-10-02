@@ -2,7 +2,7 @@
 # set (validation/sources.json), which validation/run.mjs compares with CytoWeave's. Python is
 # needed only to regenerate the file, not to run the validation.
 #
-#   node validation/fetch.mjs flowkit fcsparser
+#   node validation/fetch.mjs flowkit fcsparser rpackages
 #   uv run --python 3.12 --with flowkit==1.3.2 python validation/reference/generate_flowkit.py
 
 import json
@@ -165,20 +165,26 @@ WORKSPACES = [
     ('simple_line_example/simple_poly_and_rect_v2_poly50.wsp', 'simple_line_example'),
     ('simple_line_example/single_ellipse_51_events.wsp', 'simple_line_example'),
 ]
-workspaces = {}
-for wsp_path, fcs_dir in WORKSPACES:
+
+
+def analyze(root, wsp_path, fcs_dir):
     try:
-        wsp = fk.Workspace(os.path.join(DATA, wsp_path), fcs_samples=os.path.join(DATA, fcs_dir))
+        wsp = fk.Workspace(os.path.join(root, wsp_path), fcs_samples=os.path.join(root, fcs_dir))
         wsp.analyze_samples(group_name='All Samples', use_mp=False)
         report = wsp.get_analysis_report()
-        workspaces[wsp_path] = {
+        return {
             'populations': [
                 {'sample': row.sample_id, 'path': [p for p in row.gate_path if p != 'root'] + [row.gate_name], 'count': int(row['count'])}
                 for _, row in report.iterrows()
             ],
         }
     except Exception as error:  # FlowKit does not read every workspace; record why.
-        workspaces[wsp_path] = {'error': f'{type(error).__name__}: {error}'}
+        return {'error': f'{type(error).__name__}: {error}'}
+
+
+workspaces = {wsp_path: analyze(DATA, wsp_path, fcs_dir) for wsp_path, fcs_dir in WORKSPACES}
+# FlowSOM's example workspace (the "rpackages" data set), compared in the bioconductor suite.
+other_workspaces = {'rpackages/FlowSOM/gating.wsp': analyze(os.path.join(HERE, '..', 'cache', 'rpackages'), 'FlowSOM/gating.wsp', 'FlowSOM')}
 
 out = {
     'about': 'FlowKit results on the "flowkit" data set; written by validation/reference/generate_flowkit.py.',
@@ -189,6 +195,7 @@ out = {
     'spectral': spectral,
     'transforms': transforms,
     'workspaces': workspaces,
+    'otherWorkspaces': other_workspaces,
 }
 
 

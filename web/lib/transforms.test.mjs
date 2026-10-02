@@ -163,8 +163,12 @@ test('W is estimated from the negative tail', () => {
   const values = new Float32Array(10000);
   for (let i = 0; i < values.length; i += 1) values[i] = i < 1000 ? -200 + (i % 100) : 100 + i * 10;
   const W = estimateLogicleW(values, 262144, 4.5);
-  // r ≈ −200 + something: W = (4.5 − log10(262144 / |r|)) / 2 ≈ 0.81.
-  assert.ok(W > 0.6 && W < 1.0, `W ${W}`);
+  // As flowCore: r is the 5th percentile (type 7) of the 1000 negatives, −200 … −101 ten times
+  // each: sorted[49] = −196, sorted[50] = −195, so r = −196 + 0.95 = −195.05.
+  close(W, (4.5 - Math.log10(262144 / 195.05)) / 2, 1e-9, 'W');
+  // Positive values do not move it.
+  const more = Float32Array.from({ length: 20000 }, (_, i) => (i < 10000 ? values[i] : 1e5));
+  close(estimateLogicleW(more, 262144, 4.5), W, 1e-12, 'W with more positives');
   const positive = Float32Array.from({ length: 1000 }, (_, i) => i + 1);
   assert.equal(estimateLogicleW(positive, 262144, 4.5), 0.25);
 });

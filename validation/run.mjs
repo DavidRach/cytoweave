@@ -7,8 +7,9 @@
 //   node validation/run.mjs [suite …] [--verbose]
 //
 // Suites: fcs, compensation, gating, qc, spectral, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, flowjo, reference, gatingml, flowkit, fcsparser (all by
-// default). Exits with status 1 when a check fails.
+// normalization, debarcode, transforms, flowjo, reference, gatingml, flowkit, fcsparser, diva,
+// bioconductor
+// (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
 // validation/cache/; without them the suite is skipped (and fails with --require-data, as in CI).
@@ -25,13 +26,13 @@ import { peacoQC, flowRateCheck } from '../web/lib/qc.js';
 import { autoGateControl, referenceSpectrum, extractAutofluorescence, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
 import { dnaHistogram, fitDeanJettFox, fitWatsonPragmatic } from '../web/lib/cellcycle.js';
 import { fitProliferation } from '../web/lib/proliferation.js';
-import { flowsom } from '../web/lib/flowsom.js';
+import { flowsom, mapToSOM, hclust, cutTree, distanceMatrix } from '../web/lib/flowsom.js';
 import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
 import { trainCytoNorm, applyCytoNorm, batchDiagnostics } from '../web/lib/normalize.js';
 import { combinationKey, debarcode } from '../web/lib/debarcode.js';
 import { welchTTest, studentTTest, pairedTTest, mannWhitneyU, adjustPValues, studentTQuantile } from '../web/lib/hypothesis.js';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createTransform, applyTransform, biexTable } from '../web/lib/transforms.js';
+import { createTransform, applyTransform, biexTable, estimateLogicleW } from '../web/lib/transforms.js';
 import { createRandom, sampleIndices } from '../web/lib/random.js';
 
 const args = process.argv.slice(2);
@@ -794,6 +795,197 @@ const suites = {
     }
     check('fcsparser', `stored values equal fcsparser's published rows (${Object.keys(published).length} files, incl. 3-byte integers, large-file offsets and masked bits)`, `within ${rawWorst.toExponential(1)}`, rawWorst < 1e-6, '< 1e-6 relative');
     check('fcsparser', 'every data set is written and read back', exactTrip ? 'bit-exact' : 'differs', exactTrip, 'bit-exact');
+  },
+  // External data: a BD LSRFortessa panel's 15 single-stain controls (Zenodo 22808501, CC BY 4.0)
+  // and FACSDiva's own spillover matrix, computed from them and stored in the samples.
+  diva() {
+    const data = dataset('zenodo-skull');
+    const sample = parseFCS(data.read('Skull BM Broad_Tube_017.fcs')).datasets[0];
+    const diva = readSpillover(sample.keywords, sample.parameters);
+    const detectors = diva.channels;
+    const inputs = data.files.filter((f) => f.startsWith('Compensation Controls_')).map((f) => {
+      const d = parseFCS(data.read(f)).datasets[0];
+      // "B 530,2f,30 Stained Control" → the B 530/30 detector.
+      const [laser, filter] = f.replace('Compensation Controls_', '').split(' ');
+      const [wavelength, , width] = filter.split(',');
+      return { channel: detectors.find((c) => c.startsWith(`${laser} ${wavelength}/${width}`)), columns: columnsOf(d) };
+    });
+    const n = detectors.length;
+    for (const [method, tolerance] of [['median', 0.02], ['regression', 0.03]]) {
+      const result = computeSpillover(inputs, detectors, { method, range: 262144 });
+      let worst = 0;
+      let where = '';
+      for (let i = 0; i < n; i += 1) {
+        for (let j = 0; j < n; j += 1) {
+          const d = Math.abs(result.matrix[i * n + j] - diva.matrix[i * n + j]);
+          if (d > worst) { worst = d; where = `${detectors[i]} → ${detectors[j]}: ${fmt(result.matrix[i * n + j], 4)} vs ${fmt(diva.matrix[i * n + j], 4)}`; }
+        }
+      }
+      check('diva', `spillover from ${inputs.length} real single-stain controls (${method}, no manual gating) vs BD FACSDiva's matrix (${n * (n - 1)} entries)`, `largest difference ${fmt(worst, 4)} (${where})`, inputs.length === 15 && worst < tolerance, `< ${tolerance}`);
+    }
+  },
+  // External data: the Bioconductor packages flowCore, PeacoQC, FlowSOM and CytoNorm, run by
+  // reference/generate_r.R on their own example files, a FACSDiva file, a FlowKit file and the
+  // simulated QC wells; their results (reference/r.json) beside CytoWeave's on the same input.
+  bioconductor() {
+    const ref = JSON.parse(readFileSync(new URL('./reference/r.json', import.meta.url), 'utf8'));
+    const sets = { rpackages: dataset('rpackages'), 'zenodo-skull': dataset('zenodo-skull'), flowkit: dataset('flowkit') };
+    const simulated = new Map(generateExample('qc-showcase', {}).files.map((f) => [`simulated/${f.name}`, f.bytes]));
+    const inSet = {
+      'rpackages/111.fcs': 'PeacoQC/111.fcs',
+      'rpackages/68983.fcs': 'FlowSOM/68983.fcs',
+      'rpackages/Gates_PTLG021_Unstim_Control_1.fcs': 'CytoNorm/Gates_PTLG021_Unstim_Control_1.fcs',
+      'flowkit/101_DEN084Y5_15_E01_008_clean.fcs': '8_color_data_set/fcs_files/101_DEN084Y5_15_E01_008_clean.fcs',
+    };
+    const bytesOf = (key) => {
+      if (simulated.has(key)) return simulated.get(key);
+      const [set, ...rest] = key.split('/');
+      return sets[set].read(inSet[key] ?? rest.join('/'));
+    };
+    // A file as R reads it (linear values), and compensated by the spillover matrix it carries.
+    const read = (key) => {
+      const d = load({ bytes: bytesOf(key) });
+      const columns = columnsOf(d);
+      const spill = readSpillover(d.keywords, d.parameters);
+      const compensated = spill && !spill.identity ? { ...columns, ...compensate(columns, { channels: spill.channels, matrix: spill.matrix }) } : columns;
+      return { d, columns, compensated };
+    };
+    const relative = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
+    const logicleOf = (p) => ({ type: 'logicle', T: p.T, W: p.W, M: p.M, A: p.A });
+    // The largest relative difference over a summary's picked events and channel sums.
+    const against = (summary, columns, label) => {
+      let worst = 0;
+      let where = '';
+      for (const channel of summary.channels) {
+        const column = columns[channel.name];
+        if (!column) return { worst: Infinity, where: `${label}: no ${channel.name}` };
+        summary.picks.forEach((e, j) => {
+          const d = relative(column[e], channel.values[j]);
+          if (d > worst) { worst = d; where = `${label} ${channel.name} event ${e}`; }
+        });
+        let sum = 0;
+        for (let e = 0; e < column.length; e += 1) sum += column[e];
+        const d = relative(sum, channel.sum);
+        if (d > worst) { worst = d; where = `${label} ${channel.name} sum`; }
+      }
+      return { worst, where };
+    };
+    const versions = ref.versions;
+
+    // flowCore: reading, compensation, estimateLogicle and the logicle transform.
+    let readWorst = { worst: 0, where: '' };
+    let compWorst = { worst: 0, where: '' };
+    let widthWorst = 0;
+    let widthWhere = '';
+    let widths = 0;
+    for (const f of ref.flowCore.files) {
+      const { d, columns, compensated } = read(f.file);
+      // flowCore divides Time by its $PnG (CytoWeave keeps Time in its stored units): not compared.
+      const fluor = { ...f.read, channels: f.read.channels.filter((c) => d.parameters.find((p) => p.name === c.name)?.type !== 'time') };
+      if (d.eventCount !== f.read.events) readWorst = { worst: Infinity, where: `${f.file}: ${d.eventCount} events, flowCore ${f.read.events}` };
+      for (const [into, result] of [[readWorst, against(fluor, columns, f.file)], ...(f.compensated ? [[compWorst, against(f.compensated, compensated, f.file)]] : [])]) {
+        if (result.worst > into.worst) Object.assign(into, result);
+      }
+      for (const [channel, p] of Object.entries(f.logicle ?? {})) {
+        widths += 1;
+        const W = estimateLogicleW(compensated[channel], p.T, p.M);
+        const diff = Math.abs(W - p.W);
+        if (diff > widthWorst) { widthWorst = diff; widthWhere = `${f.file} ${channel}: ${fmt(W, 5)} vs ${fmt(p.W, 5)}`; }
+      }
+    }
+    check('bioconductor', `values read agree with flowCore ${versions.flowCore} read.FCS (${ref.flowCore.files.length} files: PeacoQC's, FlowSOM's, CytoNorm's, a FACSDiva file and a FlowKit file; Time excluded)`, `within ${readWorst.worst.toExponential(1)}${readWorst.where ? ` (worst ${readWorst.where})` : ''}`, readWorst.worst < 1e-6, '< 1e-6 relative');
+    check('bioconductor', "compensation by each file's own spillover matrix agrees with flowCore compensate", `within ${compWorst.worst.toExponential(1)} (worst ${compWorst.where})`, compWorst.worst < 1e-6, '< 1e-6 relative');
+    check('bioconductor', `logicle widths estimated from the data agree with flowCore estimateLogicle (${widths} channels)`, `within ${widthWorst.toExponential(1)} (worst ${widthWhere})`, widths > 0 && widthWorst < 1e-6, '< 1e-6');
+    let forwardWorst = 0;
+    let inverseWorst = 0;
+    for (const t of ref.flowCore.logicle) {
+      const transform = createTransform(logicleOf(t));
+      t.values.forEach((x, i) => { forwardWorst = Math.max(forwardWorst, Math.abs(transform.forward(x) - t.forward[i])); });
+      t.scales.forEach((y, i) => { inverseWorst = Math.max(inverseWorst, relative(transform.inverse(y), t.inverse[i])); });
+    }
+    check('bioconductor', `logicle transform agrees with flowCore logicleTransform and its inverse (${ref.flowCore.logicle.length} parameter sets)`, `forward within ${forwardWorst.toExponential(1)}, inverse within ${inverseWorst.toExponential(1)}`, forwardWorst < 1e-9 && inverseWorst < 1e-9, '< 1e-9');
+
+    // PeacoQC: CytoWeave's classic mode is a port of PeacoQC; every event's verdict must agree.
+    const peaco = [];
+    for (const p of ref.PeacoQC) {
+      const { d, compensated } = read(p.file);
+      const transforms = Object.fromEntries(Object.entries(p.logicle).map(([channel, q]) => [channel, logicleOf(q)]));
+      for (const channel of p.channels) transforms[channel] ??= { type: 'linear', min: 0, max: 1 };
+      const sample = { eventCount: d.eventCount, channels: d.parameters.map((q) => ({ name: q.name, type: q.type, range: q.range })), columns: compensated, keywords: d.keywords };
+      const result = peacoQC(sample, { channels: p.channels, transforms, mode: 'classic', method: 'all' });
+      const removedByR = new Uint8Array(d.eventCount);
+      for (const [a, b] of p.removed) removedByR.fill(1, a, b + 1);
+      let differing = 0;
+      let removed = 0;
+      for (let e = 0; e < d.eventCount; e += 1) {
+        const out = result.mask[e] ? 0 : 1;
+        removed += out;
+        if (out !== removedByR[e]) differing += 1;
+      }
+      peaco.push({ file: p.file.split('/').pop(), differing, ours: (100 * removed) / d.eventCount, theirs: p.percentageRemoved, binsAgree: result.eventsPerBin === p.eventsPerBin });
+    }
+    const differing = peaco.reduce((s, p) => s + p.differing, 0);
+    check('bioconductor', `PeacoQC ${versions.PeacoQC} (all checks, isolation tree and MAD) and CytoWeave's classic mode remove the same events (${peaco.length} files: 3 real and 4 simulated wells with clogs, bubbles and drift)`, `${differing} events differ; removed ${peaco.map((p) => `${p.file} ${p.ours.toFixed(2)}% vs ${p.theirs.toFixed(2)}%`).join(', ')}`, differing === 0 && peaco.every((p) => p.binsAgree) && peaco.length === 7, '0 events differ, same bins');
+
+    // FlowSOM: mapping to R's own map and R's metaclustering of it are deterministic and must agree;
+    // whole runs depend on each implementation's random numbers, so they are compared as R compares
+    // with itself across seeds.
+    const fs = ref.FlowSOM;
+    const { d, compensated } = read(fs.file);
+    const n = d.eventCount;
+    const dim = fs.channels.length;
+    const data = new Float32Array(n * dim);
+    fs.channels.forEach((channel, j) => {
+      const q = fs.logicle[channel];
+      const transform = createTransform(logicleOf(q));
+      const column = compensated[channel];
+      // flowCore's logicle runs from 0 to M.
+      for (let e = 0; e < n; e += 1) data[e * dim + j] = transform.forward(column[e]) * q.M;
+    });
+    const som = { codes: Float64Array.from(fs.codes), nodes: fs.nodes, dim, xdim: 10, ydim: 10 };
+    const { mapping } = mapToSOM(som, data, n);
+    let mapped = 0;
+    for (let e = 0; e < n; e += 1) if (mapping[e] === fs.mapping[e]) mapped += 1;
+    check('bioconductor', `events mapped to the nearest node of FlowSOM ${versions.FlowSOM}'s own map (${fs.nodes} nodes, ${dim} channels)`, `${mapped} of ${n} agree`, mapped === n && n === fs.events, 'all');
+    const cut = cutTree(hclust(distanceMatrix(som.codes, som.nodes, dim, 'euclidean'), som.nodes, 'average'), 10);
+    const treeAri = adjustedRandIndex(Int32Array.from(cut), Int32Array.from(fs.hclustAverage10));
+    check('bioconductor', "R's metaclustering of the map (hclust, average linkage, 10 metaclusters) reproduced", `ARI ${fmt(treeAri, 6)}`, treeAri > 1 - 1e-9, '1');
+    const rLabels = fs.labels.map((s) => Int32Array.from(s, Number));
+    const ours = [];
+    for (const seed of [1, 2, 3]) {
+      const { labels } = flowsom(data, n, dim, { seed, k: 10 });
+      for (const theirs of rLabels) ours.push(adjustedRandIndex(labels, theirs));
+    }
+    const mean = (values) => values.reduce((s, v) => s + v, 0) / values.length;
+    check('bioconductor', `whole FlowSOM runs (3 seeds each, 10 metaclusters): CytoWeave vs R, beside R vs R across seeds`, `mean ARI ${fmt(mean(ours))} (${fmt(Math.min(...ours))}–${fmt(Math.max(...ours))}) vs ${fmt(mean(fs.ariBetweenSeeds))} (${fmt(Math.min(...fs.ariBetweenSeeds))}–${fmt(Math.max(...fs.ariBetweenSeeds))})`, mean(ours) >= mean(fs.ariBetweenSeeds) - 0.02, 'mean no lower than R vs R − 0.02');
+    // FlowSOM's FlowJo workspace for the same file. The file was rewritten by flowCore after FlowJo
+    // gated it (it carries flowCore's keywords): every event lies inside the Lymphocytes polygon,
+    // yet FlowJo saved 13 fewer, so FlowKit's counts are the reference and FlowJo's are shown.
+    const flowKit = new Map(JSON.parse(readFileSync(new URL('./reference/flowkit.json', import.meta.url), 'utf8'))
+      .otherWorkspaces['rpackages/FlowSOM/gating.wsp'].populations.map((p) => [p.path.join('/'), p.count]));
+    const { rows } = flowJoMigration(sets.rpackages.text('FlowSOM/gating.wsp'), [{ name: '68983.fcs', bytes: sets.rpackages.read('FlowSOM/68983.fcs') }]);
+    const sameAsFlowKit = rows.filter((r) => r.cytoweave === flowKit.get(r.path)).length;
+    const fromFlowJo = Math.max(...rows.map((r) => Math.abs(r.cytoweave - r.flowjo)));
+    const top = rows.find((r) => r.path === 'Lymphocytes');
+    check('bioconductor', `FlowSOM's FlowJo workspace (gating.wsp): populations whose count equals FlowKit's; largest difference from FlowJo's saved counts`, `${sameAsFlowKit} of ${rows.length}; ${fromFlowJo} events (Lymphocytes: ${top.cytoweave} vs FlowJo's ${top.flowjo})`, sameAsFlowKit === rows.length && rows.length === flowKit.size && fromFlowJo <= top.cytoweave - top.flowjo, "all; no more than FlowJo's difference at the top gate");
+
+    // CytoNorm: trained on volunteer 1 of each of 3 batches, applied to all 6 files.
+    const cn = ref.CytoNorm;
+    const spec = { type: 'arcsinh', cofactor: cn.cofactor, max: 10000 };
+    const transforms = Object.fromEntries(cn.channels.map((c) => [c, spec]));
+    const sampleOf = (file) => qcSample(load({ bytes: sets.rpackages.read(`CytoNorm/${file}`) }));
+    for (const [run, tolerance, required] of [[cn.quantileNorm, 1e-9, '< 1e-9 relative'], [cn.cytoNorm, 1e-5, '< 1e-5 relative (R writes the normalized files as 32-bit floats)']]) {
+      const labelsOf = (f) => (f.clusters ? Int32Array.from(f.clusters, Number) : null);
+      const training = run.files.filter((f) => f.training).map((f) => ({ sample: sampleOf(f.file), batch: f.batch, ...(f.clusters ? { labels: labelsOf(f) } : {}) }));
+      const model = trainCytoNorm(training, { channels: cn.channels, transforms, nQ: run.nQ, goal: cn.goal });
+      let worst = { worst: 0, where: '' };
+      for (const f of run.files) {
+        const result = against(f, applyCytoNorm(model, sampleOf(f.file), f.batch, labelsOf(f)).columns, f.file);
+        if (result.worst > worst.worst) worst = result;
+      }
+      const clusters = run.files[0].clusters ? `, given R's metacluster of each event` : '';
+      check('bioconductor', `${run.method} of CytoNorm ${versions.CytoNorm}: normalized values agree (${run.files.length} files, ${cn.channels.length} channels, ${run.nQ} quantiles${clusters})`, `within ${worst.worst.toExponential(1)} (worst ${worst.where})`, worst.worst < tolerance, required);
+    }
   },
   reference() {
     // R: t.test / wilcox.test on the sleep data set (extra sleep, group 1 vs group 2).

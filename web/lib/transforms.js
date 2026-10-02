@@ -130,16 +130,26 @@ export function createLogicle(params) {
   return { forward, inverse, params: { T, W, M, A }, x1, bottom, top: T, constants: { a, b, c, d, f, w, x0, x1, x2 } };
 }
 
-// Parks et al. 2006 (as in flowCore's estimateLogicle): with r the 5th percentile of the data,
-// W = (M − log10(T / |r|)) / 2 when r < 0. Data without a negative tail get `minimum` (default
-// 0.25 decades), which keeps a narrow linear region around zero.
+// Parks et al. 2006 (as in flowCore's estimateLogicle): with r the 5th percentile of the negative
+// values, W = (M − log10(T / |r|)) / 2. Data without negative values get `minimum` (default 0.25
+// decades), which keeps a narrow linear region around zero.
 export function estimateLogicleW(values, T, M = 4.5, options = {}) {
+  // As flowCore's estimateLogicle: r is the 5th percentile (R's default, type 7) of the negative
+  // values only, plus machine epsilon. flowCore gives W = 0 when nothing is negative and stops
+  // when W < 0; CytoWeave keeps `minimum` (0.25 decades) and 0 respectively.
   const minimum = options.minimum ?? 0.25;
-  const r = quantile(values, options.quantile ?? 0.05);
-  let W = minimum;
-  if (r < 0 && Number.isFinite(r)) W = (M - Math.log10(T / Math.abs(r))) / 2;
-  if (!Number.isFinite(W)) W = minimum;
-  return Math.min(Math.max(W, minimum), M / 2, 2);
+  let count = 0;
+  for (let i = 0; i < values.length; i += 1) if (values[i] < 0) count += 1;
+  if (!count) return minimum;
+  const negatives = new Float64Array(count);
+  for (let i = 0, k = 0; i < values.length; i += 1) if (values[i] < 0) negatives[k++] = values[i];
+  negatives.sort();
+  const pos = (options.quantile ?? 0.05) * (count - 1);
+  const lo = Math.floor(pos);
+  const r = negatives[lo] + (negatives[Math.min(count - 1, lo + 1)] - negatives[lo]) * (pos - lo) + EPS;
+  const W = (M - Math.log10(T / Math.abs(r))) / 2;
+  if (!Number.isFinite(W)) return minimum;
+  return Math.min(Math.max(W, 0), M / 2, 2);
 }
 
 // --- Other transforms --------------------------------------------------------------------

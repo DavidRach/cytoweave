@@ -49,9 +49,22 @@ large files is checked against them.
      (Guava) and files cut off before their data.
    - FlowJo's logicle (G4): BD's tables are reproduced by formula, but FlowJo's
      counts follow the reference logicle, which CytoWeave keeps.
-2. **R reference comparisons (V3).** flowCore, PeacoQC 1.22, FlowSOM and
-   CytoNorm on public data sets (`research.md` §6), with their outputs kept as
-   reference results in `validation/reference/`.
+2. **R reference comparisons (V3): done.** `validation/reference/generate_r.R`
+   runs flowCore 2.24, PeacoQC 1.22, FlowSOM 2.20 and CytoNorm 2.0.12 on their
+   own example data, a FACSDiva file, a FlowKit file and the simulated QC
+   wells; the results are committed (`r.json`), so the checks need no R.
+   - flowCore: values read, compensation, estimated logicle widths and the
+     logicle transform agree to 1e-7 or better. This fixed `estimateLogicleW`,
+     which took the 5th percentile of all values instead of the negatives.
+   - PeacoQC: the classic mode is now an exact port of 1.22 (R's `density()`,
+     peak tracking, the isolation tree's rising gain limit and
+     `smooth.spline`), and removes the same events on all 7 files.
+   - FlowSOM: events map to the same nodes of R's map and R's metaclustering
+     is reproduced; whole runs agree with R as closely as R's own seeds do.
+   - CytoNorm: now 2.x's 99 quantiles, and a batch with 50 or fewer cells in a
+     cluster is left unchanged there, as in CytoNorm. Agrees to 1e-5.
+   - FACSDiva: spillover from 15 real single-stain controls within 0.015 of
+     Diva's own matrix, after leaving saturated events out of the positives.
 3. **Large files (D6).**
    - Stream FCS data from the host with HTTP range requests.
    - Keep populations as bitsets once they are large.

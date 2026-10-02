@@ -141,5 +141,5 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | --- | --- | --- |
 | V1 | Unit tests of every analysis module against independently known values | done |
 | V2 | End-to-end validation against simulated truth and published references in CI | done |
-| V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | partial: ISAC's Gating-ML suite, FlowKit, FlowIO and FlowJo's saved counts done; the R tools are planned |
+| V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | done: ISAC's Gating-ML suite, FlowKit, FlowIO, FlowJo's saved counts, FACSDiva's spillover, and flowCore, PeacoQC, FlowSOM and CytoNorm in R |
 | V4 | Accessible: keyboard operation, labelled controls, colour maps safe for colour-vision deficiency | partial |

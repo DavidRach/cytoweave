@@ -709,6 +709,8 @@ CytoNorm: Van Gassen 2020, DOI 10.1002/cyto.a.23904. CytoNorm 2.0: Quintelier et
 
 **JS:** trivial cost. Parity needs FlowSOM parity plus the monoH.FC port.
 
+**CytoWeave** follows 2.x: 99 quantiles at (1:99)/100, and identity for a batch with `minCells` or fewer cells in a cluster, which is left out of the goal. Given R's metacluster for each cell, it agrees with CytoNorm 2.0.12 to 9e-14 (QuantileNorm) and 7e-6 (clustered; R writes 32-bit floats). See validation/README.md, "Agreement with the R packages".
+
 ---
 
 #### 3B.9 cyCombine

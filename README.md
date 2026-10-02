@@ -323,8 +323,9 @@ the signal's own trend by more than its noise and by at least 1.5% of the
 axis, and requires isolation-tree splits to be contiguous in time. As
 published, PeacoQC removes events from clean files and cuts the ends of
 drifting ones; the refined variant does neither, and still catches clogs and
-bubbles. The validation suite measures both. The classic algorithm is one
-click away under **Sensitivity**, where both results can be compared.
+bubbles. The validation suite measures both. The classic algorithm, a port
+of PeacoQC 1.22 that removes the same events as PeacoQC in R, is one click
+away under **Sensitivity**, where both results can be compared.
 
 **Normalize** trains CytoNorm on reference samples, one per batch, and
 applies it. It first checks that batch and condition are not confounded. It
@@ -626,15 +627,17 @@ pipelines, as the app does, against answers known in advance:
 | Proliferation | True precursor frequencies | Division index within 3% |
 | Debarcoding | True wells of a 20-sample barcoded plate | 100% of assigned cells in their true well; 98.7% of cells assigned |
 | Clustering | 23 true populations | FlowSOM adjusted Rand index 0.91 |
-| Normalization | Same-donor anchors in two batches | Batch distance reduced 27× |
+| Normalization | Same-donor anchors in two batches | Batch distance reduced 25× |
 | Scales | BD's FlowJo lookup tables | Biexponential within 5e-6 (the tables' precision) |
 | Statistics | R 4.x | t-tests, Wilcoxon, Benjamini–Hochberg and t quantiles agree |
 | Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
 | FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-colour workspaces at least as close to FlowJo as FlowKit |
 | Reference tools | FlowKit 1.3.2 and FlowIO | FCS decoding, compensation, spectral unmixing and transforms agree |
 | FCS files | 16 instrument and malformed test files | All readable files read and written back bit-exact; malformed ones refused with a clear message |
+| R packages | flowCore, PeacoQC 1.22, FlowSOM and CytoNorm in R, on their example data and other public files | Values read, compensated and logicle-scaled within 1e-7; PeacoQC (classic) removes the same events; FlowSOM maps every event alike and agrees with R as closely as R agrees with itself; CytoNorm within 1e-5 |
+| BD FACSDiva | Its spillover matrix from 15 real single-stain controls | Every entry within 0.015 (median method), with no manual gating |
 
-The last four rows use public test data that `node validation/fetch.mjs`
+The last six rows use public test data that `node validation/fetch.mjs`
 downloads and checksums. Details, tolerances and how to run it are in
 [validation/README.md](validation/README.md).
 
