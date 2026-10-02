@@ -1,0 +1,249 @@
+// The right-hand inspector: the selected sample, population and gate, with live statistics.
+
+import { h, icon, clear, formatCount, formatPercent, iconButton } from './dom.js';
+import { showMenu, toast } from './overlays.js';
+import { channelTransform, countOf, describePopulation, gateRobustness, population } from '../lib/engine.js';
+import { createTransform, formatNumber } from '../lib/transforms.js';
+import { formatStatistic, wilsonInterval } from '../lib/stats.js';
+import { ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
+import { CATEGORICAL } from '../lib/colormaps.js';
+
+export function mountInspector(app) {
+  const { store, data } = app;
+  const container = document.getElementById('inspector');
+  let robustnessCache = new Map();
+
+  function section(title, ...content) {
+    return h('section.inspector-section', h('h3', title), ...content);
+  }
+
+  function render() {
+    clear(container);
+    const ws = store.ws;
+    const sampleId = store.ui.sampleId;
+    const sample = ws.samples.find((s) => s.id === sampleId);
+    if (!sample) {
+      container.append(section('Inspector', h('p.muted', 'Select a sample to see its populations, statistics and acquisition details.')));
+      return;
+    }
+    const view = data.view(sampleId);
+    const gateId = store.ui.gateId;
+    const gate = gateId ? gateById(ws, gateId) : null;
+    container.append(populationSection(ws, view, gate));
+    if (gate) container.append(gateSection(ws, view, gate, sampleId));
+    if (view) container.append(statisticsSection(ws, view, gate));
+    container.append(sampleSection(ws, sample, view));
+  }
+
+  function populationSection(ws, view, gate) {
+    if (!view) return section('Population', h('p.muted', data.statusOf(store.ui.sampleId) === 'loading' ? 'Loading events…' : 'Events not loaded.'));
+    const indices = population(view, ws, gate?.id ?? ROOT);
+    if (indices === undefined) return section('Population', h('p.muted', 'This population does not apply to this sample.'));
+    const count = countOf(indices, view);
+    const parent = gate ? population(view, ws, gate.parentId ?? ROOT) : null;
+    const parentCount = gate ? countOf(parent, view) : view.eventCount;
+    const freqParent = gate ? (100 * count) / (parentCount || 1) : 100;
+    const grand = gate?.parentId ? gateById(ws, gate.parentId) : null;
+    const grandCount = grand ? countOf(population(view, ws, grand.parentId ?? ROOT), view) : view.eventCount;
+    const [lo, hi] = wilsonInterval(count, parentCount || 1);
+    return section(gate ? gate.name : 'All events',
+      h('div.big-stat', h('span.value', gate ? formatPercent(freqParent) : formatCount(count)), h('span.unit', gate ? `of ${gate.parentId ? gateById(ws, gate.parentId)?.name : 'all events'}` : 'events')),
+      gate ? h('div.muted', { style: { fontSize: '11.5px', marginTop: '2px' } }, `95% CI ${formatPercent(lo * 100)} – ${formatPercent(hi * 100)} (binomial)`) : null,
+      h('div.stat-grid',
+        h('div.stat-tile', h('div.k', 'Events'), h('div.v', formatCount(count))),
+        h('div.stat-tile', h('div.k', '% of total'), h('div.v', formatPercent((100 * count) / (view.eventCount || 1)))),
+        h('div.stat-tile', h('div.k', '% of grandparent'), h('div.v', gate?.parentId ? formatPercent((100 * count) / (grandCount || 1)) : '—'))));
+  }
+
+  function gateSection(ws, view, gate, sampleId) {
+    const geometry = effectiveGeometry(gate, sampleId);
+    const overridden = Boolean(gate.overrides?.[sampleId]);
+    const overrideCount = Object.keys(gate.overrides ?? {}).length;
+    const dims = gate.dims.map((d) => channelLabel(ws, d.channel)).join(' × ');
+    const typeName = { rectangle: 'Rectangle', range: 'Range', polygon: 'Polygon', ellipse: 'Ellipse', quadrant: 'Quadrant', split: 'Split', boolean: 'Boolean', category: 'Category' }[gate.type];
+    const content = [
+      h('dl.kv',
+        h('dt', 'Type'), h('dd', typeName),
+        gate.dims.length ? [h('dt', 'Axes'), h('dd', { title: dims }, dims)] : null,
+        h('dt', 'Path'), h('dd', { title: gatePath(ws, gate.id) }, gatePath(ws, gate.id)),
+        h('dt', 'Applies to'), h('dd', gate.scope?.groupId ? ws.groups.find((g) => g.id === gate.scope.groupId)?.name ?? 'a group' : 'All samples'),
+        h('dt', 'Origin'), h('dd', gate.meta?.origin === 'auto' ? `Proposed from the data (${gate.meta.method ?? 'density'})` : gate.meta?.origin === 'imported' ? 'Imported' : gate.meta?.origin === 'agent' ? 'Added by an AI agent' : 'Drawn')),
+    ];
+    if (gate.meta?.note) content.push(h('div.callout.accent', { style: { marginTop: '8px' } }, icon('sparkles'), h('span', gate.meta.note)));
+    content.push(geometryEditor(gate, geometry, sampleId));
+    if (overridden || overrideCount) {
+      content.push(h('div.callout.warn', { style: { marginTop: '8px' } }, icon('info'),
+        h('div', overridden ? 'This gate is adjusted for this sample.' : `Adjusted for ${overrideCount} other sample(s).`,
+          overridden ? h('div', { style: { marginTop: '6px' } }, h('button.btn.small', { type: 'button', onclick: () => store.commit(clearOverride(store.ws, gate.id, sampleId), 'Reset gate for sample') }, 'Use the shared gate')) : null)));
+    }
+    const swatches = h('div.row', { style: { flexWrap: 'wrap', gap: '4px', marginTop: '10px' } },
+      ...CATEGORICAL.slice(0, 12).map((color) => h('button', {
+        type: 'button',
+        title: color,
+        style: { width: '18px', height: '18px', borderRadius: '5px', border: color === gate.color ? '2px solid var(--text)' : '1px solid var(--line)', background: color },
+        onclick: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate'),
+      })));
+    content.push(swatches);
+    if (gate.type !== 'boolean' && gate.type !== 'category' && view) content.push(robustnessBlock(ws, view, gate));
+    return section('Gate', ...content);
+  }
+
+  // Numeric editing of a gate's position, in data units (the inverse of the gate's transforms).
+  function geometryEditor(gate, geometry, sampleId) {
+    const wrap = h('div', { style: { marginTop: '10px' } });
+    const tx = gate.dims[0] ? createTransform(gate.dims[0].transform) : null;
+    const ty = gate.dims[1] ? createTransform(gate.dims[1].transform) : null;
+    const field = (label, value, transform, onCommit) => {
+      const input = h('input.input.small.num', { value: Number.isFinite(value) ? formatNumber(transform.inverse(value)).replace('−', '-') : '', title: 'Data value' });
+      input.addEventListener('change', () => {
+        const parsed = parseValue(input.value);
+        if (!Number.isFinite(parsed)) return;
+        onCommit(transform.forward(parsed));
+      });
+      return h('label.field', { style: { marginBottom: '6px' } }, h('span', label), input);
+    };
+    const commit = (next) => {
+      const scope = store.ui.editScope === 'sample' ? { sampleId } : {};
+      store.commit(setGateGeometry(store.ws, gate.id, next, scope), `Edit ${gate.name}`);
+    };
+    if (gate.type === 'rectangle') {
+      wrap.append(h('div.row',
+        field('x min', geometry.min[0], tx, (v) => commit({ ...geometry, min: [v, geometry.min[1]] })),
+        field('x max', geometry.max[0], tx, (v) => commit({ ...geometry, max: [v, geometry.max[1]] }))),
+      h('div.row',
+        field('y min', geometry.min[1], ty, (v) => commit({ ...geometry, min: [geometry.min[0], v] })),
+        field('y max', geometry.max[1], ty, (v) => commit({ ...geometry, max: [geometry.max[0], v] }))));
+    } else if (gate.type === 'range') {
+      wrap.append(h('div.row',
+        field('min', geometry.min, tx, (v) => commit({ ...geometry, min: v })),
+        field('max', geometry.max, tx, (v) => commit({ ...geometry, max: v }))));
+    } else if (gate.type === 'split') {
+      wrap.append(field('Threshold', geometry.threshold, tx, (v) => commit({ ...geometry, threshold: v })));
+    } else if (gate.type === 'quadrant') {
+      wrap.append(h('div.row',
+        field('x', geometry.center[0], tx, (v) => commit({ ...geometry, center: [v, geometry.center[1]] })),
+        field('y', geometry.center[1], ty, (v) => commit({ ...geometry, center: [geometry.center[0], v] }))));
+    } else if (gate.type === 'polygon') {
+      wrap.append(h('div.muted', `${geometry.vertices.length} vertices. Drag them on the plot; arrow keys nudge the gate.`));
+    } else if (gate.type === 'ellipse') {
+      wrap.append(h('div.row',
+        field('center x', geometry.center[0], tx, (v) => commit({ ...geometry, center: [v, geometry.center[1]] })),
+        field('center y', geometry.center[1], ty, (v) => commit({ ...geometry, center: [geometry.center[0], v] }))));
+    }
+    return wrap;
+  }
+
+  function parseValue(text) {
+    const t = String(text).trim().replace('−', '-').toUpperCase();
+    const m = t.match(/^(-?[\d.]+)\s*([KM])?$/);
+    if (m) return Number.parseFloat(m[1]) * (m[2] === 'K' ? 1e3 : m[2] === 'M' ? 1e6 : 1);
+    return Number.parseFloat(t);
+  }
+
+  // Gate robustness: how much the frequency depends on the exact boundary.
+  function robustnessBlock(ws, view, gate) {
+    const key = `${view.version}|${gate.id}|${JSON.stringify(effectiveGeometry(gate, view.id))}|${gate.parentId}`;
+    const holder = h('div', { style: { marginTop: '12px' } });
+    const show = (result) => {
+      clear(holder);
+      if (!result) return;
+      const canvas = h('canvas', { width: 240, height: 68 });
+      const ctx = canvas.getContext('2d');
+      const freqs = result.points.map((p) => p.frequency);
+      const min = Math.min(...freqs);
+      const max = Math.max(...freqs);
+      const span = max - min || 1;
+      ctx.strokeStyle = result.rating === 'robust' ? '#138a52' : result.rating === 'moderate' ? '#c27a00' : '#d63b4a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      result.points.forEach((p, i) => {
+        const x = 8 + (i / (result.points.length - 1)) * 224;
+        const y = 60 - ((p.frequency - min) / span) * 52;
+        if (i) ctx.lineTo(x, y);
+        else ctx.moveTo(x, y);
+      });
+      ctx.stroke();
+      const badge = result.rating === 'robust' ? 'ok' : result.rating === 'moderate' ? 'warn' : 'danger';
+      holder.append(
+        h('div.row', h('span.field-label', 'Boundary robustness'), h('span.grow'), h(`span.badge.${badge}`, result.rating)),
+        h('div.robustness', canvas, h('div.muted', { style: { fontSize: '11px' } }, `${result.sensitivity >= 0 ? '+' : ''}${result.sensitivity.toFixed(2)} pts per 1% of axis`)),
+        h('div.muted', { style: { fontSize: '11px' } }, result.rating === 'robust'
+          ? 'The boundary sits in a density valley: moving it slightly barely changes the frequency.'
+          : 'The boundary cuts through dense events: small changes in where it is drawn change the frequency. Consider moving it into a valley or reviewing it across samples.'));
+    };
+    if (robustnessCache.has(key)) show(robustnessCache.get(key));
+    else {
+      holder.append(h('button.btn.small', {
+        type: 'button',
+        onclick: () => {
+          const result = gateRobustness(view, ws, gate.id);
+          robustnessCache.set(key, result);
+          show(result);
+        },
+      }, icon('target'), 'Check boundary robustness'));
+    }
+    return holder;
+  }
+
+  function statisticsSection(ws, view, gate) {
+    const indices = population(view, ws, gate?.id ?? ROOT);
+    if (indices === undefined) return h('div');
+    // Spectral data: the unmixed abundances, when present, rather than the raw detectors.
+    const unmixed = [...view.derived.keys()].filter((name) => name.endsWith('(unmixed)') && !/^(AF signature|Residual) /.test(name));
+    const channels = unmixed.length ? unmixed : view.parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name);
+    const count = countOf(indices, view);
+    if (!channels.length || !count) return h('div');
+    const body = h('tbody');
+    const table = h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Median'), h('th.r', 'Mean'), h('th.r', 'rSD'))), body);
+    const stats = describePopulation(view, ws, gate?.id ?? ROOT, channels.slice(0, 60));
+    for (const channel of channels.slice(0, 60)) {
+      const d = stats?.[channel];
+      if (!d) continue;
+      body.append(h('tr', h('td', { title: channel }, channelLabel(ws, channel, { short: true })), h('td.r', formatStatistic('median', d.median)), h('td.r', formatStatistic('mean', d.mean)), h('td.r', formatStatistic('rsd', d.rsd))));
+    }
+    return section('Statistics', h('div', { style: { maxHeight: '320px', overflow: 'auto' } }, table),
+      h('div.muted', { style: { fontSize: '11px', marginTop: '6px' } }, unmixed.length ? 'Unmixed abundances.' : view.compensation ? 'Compensated values.' : 'Uncompensated values.'));
+  }
+
+  function sampleSection(ws, sample, view) {
+    const acq = sample.acquisition ?? {};
+    const compName = sample.compensationId === 'file' ? 'From the file' : sample.compensationId === 'none' ? 'None' : ws.compensations.find((c) => c.id === sample.compensationId)?.name ?? '—';
+    const compButton = h('button.btn.small', {
+      type: 'button',
+      onclick: (event) => {
+        const items = [
+          { label: 'From the file ($SPILLOVER)', disabled: !sample.hasFileSpillover, onSelect: () => store.commit(setSampleCompensation(store.ws, [sample.id], 'file'), 'Use file compensation') },
+          { label: 'None', onSelect: () => store.commit(setSampleCompensation(store.ws, [sample.id], 'none'), 'Remove compensation') },
+          ...ws.compensations.map((c) => ({ label: c.name, onSelect: () => store.commit(setSampleCompensation(store.ws, [sample.id], c.id), `Apply ${c.name}`) })),
+        ];
+        showMenu(event.currentTarget, items);
+      },
+    }, compName, icon('chevronDown'));
+    const items = [
+      ['File', sample.fileName],
+      ['Events', formatCount(sample.eventCount)],
+      ['Format', sample.fcsVersion],
+      ['Cytometer', acq.cytometer],
+      ['Date', acq.date],
+      ['Operator', acq.operator],
+      ['Software', acq.software],
+      ['Technology', sample.technology],
+      ['Role', sample.role],
+    ].filter(([, v]) => v);
+    const notes = [...(sample.diagnostics ?? [])];
+    if (view?.compensationNote) notes.push(view.compensationNote);
+    if (view?.compensationError) notes.push(`Compensation failed: ${view.compensationError}`);
+    return section('Sample',
+      h('dl.kv', ...items.flatMap(([k, v]) => [h('dt', k), h('dd', { title: String(v) }, String(v))])),
+      h('div.row', { style: { marginTop: '10px' } }, h('span.field-label', 'Compensation'), h('span.grow'), compButton),
+      ...notes.map((note) => h('div.callout.warn', { style: { marginTop: '8px' } }, icon('warning'), h('span', note))),
+      h('div', { style: { marginTop: '10px' } }, h('button.btn.small.ghost', { type: 'button', onclick: () => app.showKeywords(sample.id) }, icon('tag'), 'All keywords')));
+  }
+
+  return {
+    update(topics) {
+      if (topics.has('ws') || topics.has('data') || topics.has('sample') || topics.has('gate') || topics.has('scope')) render();
+    },
+    render,
+  };
+}

@@ -1,0 +1,978 @@
+// CytoWeave: application bootstrap, modes, shortcuts, file import and autosave.
+
+import { h, icon, clear, debounce, isTyping, formatBytes, formatCount, downloadBlob, modKey } from './ui/dom.js';
+import { showMenu, showDialog, promptDialog, confirmDialog, toast, progressToast, closeMenu } from './ui/overlays.js';
+import { createStore } from './ui/store.js';
+import { DataStore } from './ui/data.js';
+import { createLibrary, detectBackend, prefs } from './ui/storage.js';
+import { mountSidebar } from './ui/sidebar.js';
+import { mountInspector } from './ui/inspector.js';
+import { installActions } from './ui/actions.js';
+import { openPalette } from './ui/palette.js';
+import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
+import { WorkerClient } from './ui/workers.js';
+import { defaultTransform } from './lib/transforms.js';
+import {
+  ROOT,
+  addGroup,
+  addPlot,
+  updateGate,
+  addSamples,
+  createWorkspace,
+  gateById,
+  gateChildren,
+  parseWorkspace,
+  rename,
+  serializeWorkspace,
+  setSampleMeta,
+  updateSample,
+} from './lib/workspace.js';
+
+const VERSION = '0.1.0';
+
+const MODES = [
+  { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
+  { id: 'gate', label: 'Gate', icon: 'gate', load: () => import('./ui/mode-gate.js').then((m) => m.mountGateMode) },
+  { id: 'qc', label: 'QC', icon: 'qc', load: () => import('./ui/mode-qc.js').then((m) => m.mountQCMode) },
+  { id: 'compensate', label: 'Compensate', icon: 'compensate', load: () => import('./ui/mode-compensate.js').then((m) => m.mountCompensateMode) },
+  { id: 'spectral', label: 'Spectral', icon: 'spectral', load: () => import('./ui/mode-spectral.js').then((m) => m.mountSpectralMode) },
+  'sep',
+  { id: 'explore', label: 'Explore', icon: 'explore', load: () => import('./ui/mode-explore.js').then((m) => m.mountExploreMode) },
+  { id: 'tables', label: 'Tables', icon: 'table', load: () => import('./ui/mode-tables.js').then((m) => m.mountTablesMode) },
+  { id: 'compare', label: 'Compare', icon: 'compare', load: () => import('./ui/mode-compare.js').then((m) => m.mountCompareMode) },
+  'sep',
+  { id: 'figures', label: 'Figures', icon: 'figure', load: () => import('./ui/mode-figures.js').then((m) => m.mountFiguresMode) },
+  { id: 'report', label: 'Report', icon: 'report', load: () => import('./ui/mode-report.js').then((m) => m.mountReportMode) },
+];
+
+// --- Theme ---------------------------------------------------------------------------------------
+
+function applyTheme(preference) {
+  const dark = preference === 'dark' || (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+}
+
+async function start() {
+  const themePref = prefs.get('theme', 'system');
+  applyTheme(themePref);
+  const info = await detectBackend();
+  const library = createLibrary(info);
+
+  let ws = createWorkspace();
+  const lastId = prefs.get('lastWorkspace', null);
+  if (lastId) {
+    try {
+      ws = parseWorkspace(await library.loadWorkspace(lastId));
+    } catch {
+      prefs.set('lastWorkspace', null);
+    }
+  }
+
+  const store = createStore(ws);
+  store.state.ui.theme = themePref;
+  store.state.ui.tileSize = prefs.get('tileSize', 330);
+  store.state.ui.colormap = prefs.get('colormap', 'classic');
+  const app = { store, library, info, version: VERSION };
+  const data = new DataStore({ library, getWorkspace: () => store.ws, onChange: (topics) => store.notify(topics) });
+  app.data = data;
+  app.workers = {};
+  app.worker = (name) => {
+    app.workers[name] ??= new WorkerClient(`../workers/${name}-worker.js`, { max: 1 });
+    return app.workers[name];
+  };
+
+  installActions(app);
+  app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
+  app.exportCLR = () => import('./ui/import-flowjo.js').then((m) => m.exportCLRDialog(app));
+  app.compareColumn = (table, column) => {
+    store.state.ui.compare = { ...(store.state.ui.compare ?? {}), tab: 'one', source: 'table', tableId: table.id, columnId: column.id };
+    app.setMode('compare');
+  };
+  app.showFlowJoReport = () => import('./ui/import-flowjo.js').then((m) => m.showMigrationReport(app));
+  app.sidebar = mountSidebar(app);
+  app.inspector = mountInspector(app);
+
+  // --- Modes -------------------------------------------------------------------------------------
+
+  const workbench = document.getElementById('workbench');
+  const switcher = document.getElementById('mode-switcher');
+  let current = null;
+  let currentId = null;
+  let mounting = 0;
+
+  function renderSwitcher() {
+    clear(switcher);
+    for (const mode of MODES) {
+      if (mode === 'sep') {
+        switcher.append(h('span.mode-sep'));
+        continue;
+      }
+      if (mode.hidden) continue;
+      switcher.append(h(`button.mode-tab${store.ui.mode === mode.id ? '.active' : ''}`, { type: 'button', role: 'tab', title: mode.label, onclick: () => app.setMode(mode.id) }, icon(mode.icon), h('span', mode.label)));
+    }
+  }
+
+  app.setMode = async (id) => {
+    if (id === currentId && current) return;
+    const mode = MODES.find((m) => m !== 'sep' && m.id === id) ?? MODES[1];
+    const token = ++mounting;
+    store.setUI({ mode: mode.id }, ['mode']);
+    document.getElementById('app').dataset.mode = mode.id;
+    renderSwitcher();
+    current?.destroy();
+    current = null;
+    currentId = mode.id;
+    clear(workbench);
+    let mount;
+    try {
+      mount = await mode.load();
+    } catch (error) {
+      if (token !== mounting) return;
+      workbench.append(h('div.workbench-scroll', h('div.empty', icon(mode.icon), h('h3', `${mode.label} is not available in this build`), h('p', error.message))));
+      return;
+    }
+    if (token !== mounting) return;
+    current = mount(app, workbench);
+    current.update?.(new Set(['ws', 'data', 'sample', 'gate', 'selection', 'mode']));
+  };
+
+  // --- Selection -------------------------------------------------------------------------------
+
+  app.selectSample = (id) => {
+    if (!id) {
+      store.setUI({ sampleId: null }, ['sample']);
+      return;
+    }
+    data.pinned.clear();
+    data.pinned.add(id);
+    store.setUI({ sampleId: id }, ['sample']);
+    data.ensure(id).catch((error) => toast(error.message, { kind: 'error' }));
+  };
+
+  app.stepSample = (delta) => {
+    const list = app.sidebar.visibleSamples();
+    if (!list.length) return;
+    const index = list.findIndex((s) => s.id === store.ui.sampleId);
+    const next = list[(index + delta + list.length) % list.length];
+    app.selectSample(next.id);
+    // Prefetch the following sample so stepping through a plate feels instant.
+    const after = list[(index + 2 * delta + list.length) % list.length];
+    if (after) data.ensure(after.id).catch(() => {});
+  };
+
+  app.selectGate = (id, options = {}) => {
+    store.setUI({ gateId: id ?? null }, ['gate', 'lineage']);
+    if (!options.keepMode && store.ui.mode !== 'gate' && store.ui.mode !== 'tables' && store.ui.mode !== 'compare' && store.ui.mode !== 'explore') app.setMode('gate');
+  };
+
+  app.openPopulation = (id) => app.selectGate(id);
+
+  // Renames a population in a small field next to where it was created or clicked.
+  app.renameGateInline = (id, anchor) => {
+    const gate = gateById(store.ws, id);
+    if (!gate) return;
+    const rect = (anchor ?? document.querySelector('.tree-row.selected') ?? document.getElementById('workbench')).getBoundingClientRect();
+    const input = h('input.input', { value: gate.name, 'aria-label': 'Population name', style: { width: '240px' } });
+    const box = h('div.menu', { style: { left: `${Math.min(rect.left + 10, window.innerWidth - 270)}px`, top: `${Math.min(rect.top + 34, window.innerHeight - 90)}px`, padding: '8px', minWidth: '0' } },
+      h('div.field-label', { style: { margin: '0 0 6px 2px' } }, 'Name the population'), input,
+      h('div.muted', { style: { fontSize: '11px', margin: '6px 2px 0' } }, 'Enter to save · Esc to keep'));
+    document.getElementById('overlay-root').append(box);
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      box.remove();
+      const name = input.value.trim();
+      if (save && name && name !== gate.name) store.commit(updateGate(store.ws, id, { name }), `Rename ${gate.name} to ${name}`);
+    };
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') finish(true);
+      if (event.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  };
+
+  app.plotChannel = (channel) => {
+    app.setMode('gate');
+    const pop = store.ui.gateId ?? ROOT;
+    store.commit(addPlot(store.ws, { populationId: pop, x: channel, y: null, type: 'histogram' }).ws, `Plot ${channel}`, ['plots']);
+  };
+
+  app.loadAll = async () => {
+    const samples = store.ws.samples;
+    const progress = progressToast(`Loading ${samples.length} samples…`);
+    let done = 0;
+    for (const sample of samples) {
+      await data.ensure(sample.id).catch(() => {});
+      done += 1;
+      progress.update(done / samples.length);
+    }
+    progress.done(`Loaded ${done} samples.`);
+  };
+
+  // --- Files ---------------------------------------------------------------------------------
+
+  const fileInput = document.getElementById('file-input');
+  const folderInput = document.getElementById('folder-input');
+  app.pickFiles = (accept) => {
+    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.xml,.csv,.acs,.zip';
+    fileInput.value = '';
+    fileInput.click();
+  };
+  app.pickFolder = () => {
+    folderInput.value = '';
+    folderInput.click();
+  };
+  fileInput.addEventListener('change', () => app.importFiles([...fileInput.files]));
+  folderInput.addEventListener('change', () => app.importFiles([...folderInput.files]));
+
+  // Imports dropped or picked files by type. Entries: File objects or { name, bytes, folder }.
+  app.importFiles = async (files) => {
+    const items = files.map((file, order) => ({ file, name: file.name, folder: file.webkitRelativePath ? file.webkitRelativePath.split('/').slice(-2, -1)[0] : file.folder ?? null, order }));
+    const fcs = items.filter((item) => /\.(fcs|lmd)$/i.test(item.name) || (!/\.\w+$/.test(item.name) && item.file.size > 256));
+    const workspaces = items.filter((item) => /\.(cwz|json)$/i.test(item.name));
+    const flowjo = items.filter((item) => /\.wspt?$/i.test(item.name));
+    const gatingml = items.filter((item) => /\.xml$/i.test(item.name));
+    const tables = items.filter((item) => /\.(csv|tsv)$/i.test(item.name));
+    const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
+    for (const item of workspaces) await openWorkspaceFile(item);
+    if (fcs.length) await importFCSItems(fcs);
+    for (const item of archives) await importArchive(item);
+    for (const item of flowjo) await importFlowJo(item);
+    for (const item of gatingml) await importGatingML(item);
+    for (const item of tables) await importMetadataTable(item);
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml) and sample annotation tables (.csv, .tsv).', { kind: 'error' });
+  };
+
+  async function readBytes(item) {
+    if (item.bytes) return item.bytes;
+    return new Uint8Array(await item.file.arrayBuffer());
+  }
+
+  async function importFCSItems(items, options = {}) {
+    const progress = progressToast(`Reading ${items.length} FCS file${items.length > 1 ? 's' : ''}…`);
+    const files = [];
+    for (const item of items) {
+      files.push({ name: item.name, bytes: await readBytes(item), size: item.file?.size, order: item.order, folder: item.folder });
+    }
+    const { records, problems } = await data.importFCS(files, (done, total, name) => progress.update(done / total, `Reading ${name} (${done}/${total})`));
+    if (!records.length) {
+      progress.fail(problems[0] ?? 'No FCS data could be read.');
+      return [];
+    }
+    let next = addSamples(store.ws, records);
+    // Folders become groups.
+    const byFolder = new Map();
+    records.forEach((record) => {
+      const file = files.find((f) => f.name === record.fileName || record.fileName?.startsWith(f.name.replace(/\.(fcs|lmd)$/i, '')));
+      if (file?.folder) {
+        if (!byFolder.has(file.folder)) byFolder.set(file.folder, []);
+        byFolder.get(file.folder).push(record.id);
+      }
+    });
+    if (byFolder.size > 1 || (byFolder.size === 1 && !options.noGroups)) {
+      for (const [folder, ids] of byFolder) {
+        const existing = next.groups.find((g) => g.name === folder);
+        next = existing ? { ...next, groups: next.groups.map((g) => (g === existing ? { ...g, sampleIds: [...new Set([...g.sampleIds, ...ids])] } : g)) } : addGroup(next, folder, ids).ws;
+      }
+    }
+    next = seedChannelSettings(next, records);
+    store.commit(next, `Add ${records.length} sample${records.length > 1 ? 's' : ''}`, ['samples']);
+    progress.done(`Added ${records.length} sample${records.length > 1 ? 's' : ''}${problems.length ? `; ${problems.length} problem(s)` : ''}.`);
+    for (const problem of problems.slice(0, 3)) toast(problem, { kind: 'error' });
+    const first = records.find((r) => r.role === 'sample') ?? records[0];
+    if (!store.ui.sampleId || options.select !== false) app.selectSample(first.id);
+    if (store.ui.mode === 'welcome') app.setMode('gate');
+    return records;
+  }
+  app.importFCSItems = importFCSItems;
+
+  // Records a default scale for every new channel, so the workspace states the scales it uses.
+  function seedChannelSettings(ws, records) {
+    const settings = { ...ws.channelSettings };
+    let changed = false;
+    for (const record of records) {
+      const view = data.view(record.id);
+      if (!view) continue;
+      for (const p of view.parameters) {
+        if (settings[p.name]?.transform) continue;
+        settings[p.name] = { transform: defaultTransform(p, record.technology, p.type === 'fluorescence' || p.type === 'time' || p.type === 'instrument' ? view.column(p.name) : null) };
+        changed = true;
+      }
+    }
+    return changed ? { ...ws, channelSettings: settings } : ws;
+  }
+
+  async function openWorkspaceFile(item) {
+    let text = new TextDecoder().decode(await readBytes(item));
+    if (text.charCodeAt(0) === 0x1f) {
+      const stream = new Blob([await readBytes(item)]).stream().pipeThrough(new DecompressionStream('gzip'));
+      text = await new Response(stream).text();
+    }
+    let doc;
+    try {
+      doc = parseWorkspace(text);
+    } catch (error) {
+      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+      return;
+    }
+    await loadWorkspace(doc);
+    toast(`Opened ${doc.name}.`, { kind: 'ok' });
+  }
+
+  async function importArchive(item) {
+    try {
+      const { readACS } = await import('./lib/acs.js');
+      const archive = await readACS(await readBytes(item));
+      const fcsFiles = archive.files.filter((f) => /\.(fcs|lmd)$/i.test(f.name)).map((f, order) => ({ name: f.name.split('/').pop(), bytes: f.bytes, order }));
+      const workspaceFile = archive.files.find((f) => /\.(cwz|json)$/i.test(f.name));
+      if (workspaceFile) {
+        await openWorkspaceFile({ name: workspaceFile.name, bytes: workspaceFile.bytes });
+        if (fcsFiles.length) {
+          const { records } = await data.importFCS(fcsFiles);
+          data.forget(records.map((r) => r.id));
+          for (const sample of store.ws.samples) data.status.delete(sample.id);
+          if (store.ui.sampleId) app.selectSample(store.ui.sampleId);
+        }
+      } else if (fcsFiles.length) {
+        await importFCSItems(fcsFiles);
+      }
+    } catch (error) {
+      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  async function importFlowJo(item) {
+    try {
+      const flowjo = await import('./lib/flowjo.js');
+      const text = new TextDecoder().decode(await readBytes(item));
+      const result = flowjo.importFlowJo(text);
+      await app.applyFlowJoImport?.(result, item.name);
+    } catch (error) {
+      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  async function importGatingML(item) {
+    try {
+      const gml = await import('./lib/gatingml.js');
+      const text = new TextDecoder().decode(await readBytes(item));
+      const result = gml.importGatingML(text);
+      const { addGates, addCompensation } = await import('./lib/workspace.js');
+      let next = store.ws;
+      for (const comp of result.compensations ?? []) next = addCompensation(next, { ...comp, source: 'imported' }).ws;
+      next = addGates(next, result.gates.map((g) => ({ ...g, meta: { ...(g.meta ?? {}), origin: 'imported' } })), 'import-gating-ml').ws;
+      store.commit(next, `Import ${result.gates.length} gates from ${item.name}`);
+      toast(`Imported ${result.gates.length} gates${result.warnings?.length ? ` with ${result.warnings.length} warning(s)` : ''}.`, { kind: result.warnings?.length ? undefined : 'ok' });
+      for (const warning of (result.warnings ?? []).slice(0, 3)) toast(warning);
+    } catch (error) {
+      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  // A CSV whose first column names samples and whose other columns are metadata fields.
+  async function importMetadataTable(item) {
+    const text = new TextDecoder().decode(await readBytes(item));
+    const delimiter = item.name.toLowerCase().endsWith('.tsv') || text.split('\n')[0].includes('\t') ? '\t' : ',';
+    const rows = text.split(/\r?\n/).filter((line) => line.trim()).map((line) => line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, '')));
+    if (rows.length < 2) return;
+    const [header, ...body] = rows;
+    let next = store.ws;
+    let matched = 0;
+    for (const row of body) {
+      const key = row[0];
+      const sample = next.samples.find((s) => s.name === key || s.fileName === key || s.fileName === `${key}.fcs`);
+      if (!sample) continue;
+      matched += 1;
+      const meta = { ...sample.meta };
+      header.slice(1).forEach((field, i) => { if (row[i + 1] !== undefined && row[i + 1] !== '') meta[field.toLowerCase()] = row[i + 1]; });
+      next = updateSample(next, sample.id, { meta });
+    }
+    store.commit(next, `Annotate from ${item.name}`);
+    toast(`Annotated ${matched} of ${body.length} rows' samples from ${item.name}.`, { kind: matched ? 'ok' : 'error' });
+  }
+
+  // --- Examples -------------------------------------------------------------------------------
+
+  app.showExamples = async () => {
+    const { EXAMPLES } = await import('./lib/examples.js');
+    const list = h('div.welcome-grid');
+    const dialog = showDialog({ title: 'Example experiments', width: 'wide', content: [h('p', 'Simulated experiments that behave like real data. Each opens as a new workspace.'), list] });
+    for (const example of EXAMPLES) {
+      list.append(h('div.card.clickable', { onclick: () => { dialog.close(); app.openExample(example.id); } }, h('h4', example.title), h('p', example.description), h('div.tags', ...(example.tags ?? []).map((t) => h('span.badge', t)))));
+    }
+  };
+
+  app.openExample = async (id) => {
+    const { EXAMPLES } = await import('./lib/examples.js');
+    const example = EXAMPLES.find((e) => e.id === id);
+    if (!example) return;
+    if (store.ws.samples.length) {
+      await saveNow();
+    }
+    const progress = progressToast(`Generating ${example.title}…`);
+    try {
+      const worker = app.worker('simulate');
+      const result = await worker.call('generateExample', { id, options: {} }, { onProgress: (f, message) => progress.update(f * 0.6, message) });
+      await loadWorkspace(createWorkspace(example.title));
+      const items = result.files.map((file, order) => ({ name: file.name, bytes: new Uint8Array(file.bytes), order, folder: null }));
+      progress.update(0.65, 'Reading the generated files…');
+      const records = await importFCSItems(items, { noGroups: true, select: false });
+      progress.done();
+      applyExampleHints(records, result);
+      // Workspaces that come with an example (a FlowJo .wsp) open in their import dialog; not
+      // awaited, so a script or agent that opened the example is not held by the dialog.
+      for (const attachment of result.attachments ?? []) {
+        if (attachment.kind === 'flowjo') importFlowJo({ name: attachment.name, bytes: new TextEncoder().encode(attachment.text) });
+      }
+    } catch (error) {
+      progress.fail(`The example could not be generated: ${error.message}`);
+    }
+  };
+
+  // Applies an example's annotations: roles, stains and metadata per file, groups, channel scales
+  // and (on request) its suggested gating strategy. Ground-truth labels, when the simulator gives
+  // them, are attached for this session as a derived channel for checking clustering.
+  function applyExampleHints(records, result) {
+    const hints = result.workspaceHints ?? {};
+    let next = store.ws;
+    const byFile = new Map(records.map((r) => [r.fileName, r]));
+    for (const file of result.files) {
+      const record = byFile.get(file.name);
+      if (!record) continue;
+      const meta = { ...(hints.sampleMeta?.[file.name] ?? {}), ...(file.meta ?? {}) };
+      const patch = {};
+      if (meta.role) patch.role = meta.role;
+      if (meta.stain) patch.stain = meta.stain;
+      if (hints.barcodeKeys?.[file.name]) patch.barcodeKey = hints.barcodeKeys[file.name];
+      const fields = Object.fromEntries(Object.entries(meta).filter(([k, v]) => !['role', 'stain', 'truth', 'channels', 'eventCount', 'truthNames'].includes(k) && v !== undefined && v !== null && v !== '' && typeof v !== 'object'));
+      if (Object.keys(fields).length) patch.meta = { ...record.meta, ...fields };
+      if (Object.keys(patch).length) next = updateSample(next, record.id, patch);
+      // The simulator's per-event population index (meta.truth.labels; −1 for events outside any).
+      const truth = meta.truth?.labels;
+      if (truth && truth.length === record.eventCount) data.setDerived(record.id, 'Truth (simulated)', Float32Array.from(truth));
+    }
+    for (const group of hints.groups ?? []) {
+      const ids = (group.files ?? group.samples ?? []).map((name) => byFile.get(name)?.id).filter(Boolean);
+      if (ids.length) next = addGroup(next, group.name, ids, { color: group.color }).ws;
+    }
+    if (hints.channelSettings) next = { ...next, channelSettings: { ...next.channelSettings, ...hints.channelSettings } };
+    store.commit(next, 'Annotate example');
+    const first = next.samples.find((s) => s.role === 'sample') ?? next.samples[0];
+    if (first) app.selectSample(first.id);
+    app.setMode('gate');
+    const suggested = hints.suggestedGates ?? [];
+    if (suggested.length) {
+      toast(`This example comes with a suggested gating strategy (${suggested.length} gates). Gate it yourself, or add the suggestion.`, {
+        timeout: 15000,
+        action: {
+          label: 'Add suggested gates',
+          onClick: async () => {
+            const { addGates } = await import('./lib/workspace.js');
+            store.commit(addGates(store.ws, suggested.map((g) => ({ ...g, overrides: g.overrides ?? {} })), 'add-suggested-gates').ws, 'Add the suggested gates');
+          },
+        },
+      });
+    }
+  }
+
+  // --- Workspaces -------------------------------------------------------------------------------
+
+  async function loadWorkspace(doc) {
+    data.forget(store.ws.samples.map((s) => s.id));
+    store.reset(doc);
+    prefs.set('lastWorkspace', doc.id);
+    store.setUI({ sampleId: null, gateId: null, selectedSamples: new Set(), groupFilter: null }, ['sample', 'gate', 'selection']);
+    const first = doc.samples.find((s) => s.role === 'sample') ?? doc.samples[0];
+    if (first) app.selectSample(first.id);
+    app.setMode(doc.samples.length ? 'gate' : 'welcome');
+    updateTitle();
+  }
+  app.loadWorkspace = loadWorkspace;
+
+  app.openWorkspace = async (id) => {
+    try {
+      await saveNow();
+      const doc = parseWorkspace(await library.loadWorkspace(id));
+      await loadWorkspace(doc);
+    } catch (error) {
+      toast(error.message, { kind: 'error' });
+    }
+  };
+
+  const saveState = document.getElementById('save-state');
+  let saving = false;
+  async function saveNow() {
+    const ws = store.ws;
+    if (!store.isDirty() || saving) return;
+    if (!ws.samples.length && !ws.gates.length) return;
+    saving = true;
+    saveState.className = 'save-state saving';
+    try {
+      await library.saveWorkspace(ws.id, serializeWorkspace(ws));
+      prefs.set('lastWorkspace', ws.id);
+      store.markSaved(ws);
+      saveState.className = 'save-state';
+      saveState.title = `Saved to ${library.kind === 'desktop' ? library.location : 'this browser'}`;
+    } catch (error) {
+      saveState.className = 'save-state error';
+      saveState.title = `Not saved: ${error.message}`;
+    } finally {
+      saving = false;
+      if (store.isDirty()) autosave();
+    }
+  }
+  app.saveNow = saveNow;
+  const autosave = debounce(saveNow, 1200);
+
+  app.newWorkspace = async () => {
+    await saveNow();
+    await loadWorkspace(createWorkspace());
+  };
+
+  async function openLibraryDialog() {
+    let list = [];
+    try {
+      list = await library.listWorkspaces();
+    } catch (error) {
+      toast(error.message, { kind: 'error' });
+      return;
+    }
+    const body = h('tbody');
+    const dialog = showDialog({
+      title: 'Open a workspace',
+      width: 'wide',
+      content: [h('p', `Workspaces in ${library.kind === 'desktop' ? library.location : 'this browser'}.`), h('div', { style: { maxHeight: '60vh', overflow: 'auto' } }, h('table.data', h('thead', h('tr', h('th', 'Name'), h('th.r', 'Samples'), h('th', 'Modified'), h('th'))), body))],
+    });
+    for (const item of list) {
+      body.append(h(`tr${item.id === store.ws.id ? '.selected' : ''}`, { style: { cursor: 'pointer' }, onclick: () => { dialog.close(); app.openWorkspace(item.id); } },
+        h('td', item.name || 'Untitled'), h('td.r', String(item.samples ?? '')), h('td', new Date(item.modified).toLocaleString()),
+        h('td.r', h('button.icon-button.small', {
+          type: 'button',
+          title: 'Delete',
+          onclick: async (event) => {
+            event.stopPropagation();
+            if (!(await confirmDialog({ title: 'Delete workspace?', message: `Delete "${item.name}"? ${library.kind === 'desktop' ? 'It is moved to the library\'s trash folder.' : 'This cannot be undone.'}`, confirm: 'Delete', danger: true }))) return;
+            await library.deleteWorkspace(item.id);
+            event.target.closest('tr').remove();
+          },
+        }, icon('trash')))));
+    }
+    if (!list.length) body.append(h('tr', h('td', { colSpan: 4 }, h('span.muted', 'No saved workspaces yet.'))));
+  }
+
+  function exportWorkspaceFile() {
+    const text = serializeWorkspace(store.ws);
+    downloadBlob(new Blob([text], { type: 'application/json' }), `${store.ws.name.replace(/[^\w.-]+/g, '_') || 'workspace'}.cwz`);
+  }
+
+  async function exportGatingML() {
+    try {
+      const { exportGatingML: write } = await import('./lib/gatingml.js');
+      const xml = write(store.ws);
+      downloadBlob(new Blob([typeof xml === 'string' ? xml : xml.xml], { type: 'application/xml' }), `${store.ws.name.replace(/[^\w.-]+/g, '_') || 'gates'}.gating-ml.xml`);
+    } catch (error) {
+      toast(`Gating-ML export failed: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  async function exportBundle() {
+    const progress = progressToast('Packing the workspace with its FCS files…');
+    try {
+      const { createACS } = await import('./lib/acs.js');
+      const fcsFiles = [];
+      const seen = new Set();
+      for (const sample of store.ws.samples) {
+        if (!sample.sha256 || seen.has(sample.sha256)) continue;
+        seen.add(sample.sha256);
+        const bytes = data.session.get(sample.sha256) ?? await library.getFile(sample.sha256);
+        if (bytes) fcsFiles.push({ name: sample.fileName, bytes });
+        progress.update(seen.size / store.ws.samples.length);
+      }
+      let gatingML = null;
+      try {
+        const { exportGatingML: write } = await import('./lib/gatingml.js');
+        const result = write(store.ws);
+        gatingML = typeof result === 'string' ? result : result.xml;
+      } catch { /* optional */ }
+      const bytes = await createACS({ fcsFiles, workspaceJSON: serializeWorkspace(store.ws), gatingML });
+      downloadBlob(new Blob([bytes], { type: 'application/zip' }), `${store.ws.name.replace(/[^\w.-]+/g, '_') || 'workspace'}.acs`);
+      progress.done('Packed the workspace and its data as an ACS archive.');
+    } catch (error) {
+      progress.fail(`Packing failed: ${error.message}`);
+    }
+  }
+
+  document.getElementById('workspace-menu').addEventListener('click', (event) => {
+    showMenu(event.currentTarget, [
+      { label: 'New workspace', icon: 'plus', onSelect: () => app.newWorkspace() },
+      { label: 'Open…', icon: 'library', hint: `${modKey}⇧O`, onSelect: openLibraryDialog },
+      { label: 'Rename…', icon: 'edit', onSelect: async () => {
+        const name = await promptDialog({ title: 'Rename workspace', label: 'Name', value: store.ws.name });
+        if (name) store.commit(rename(store.ws, name), 'Rename workspace');
+      } },
+      { label: 'Save now', icon: 'save', hint: `${modKey}S`, onSelect: async () => { await saveNow(); toast('Saved.', { kind: 'ok' }); } },
+      '-',
+      { section: 'Export' },
+      { label: 'Workspace file (.cwz)', icon: 'download', onSelect: exportWorkspaceFile },
+      { label: 'Workspace with FCS files (ACS archive)', icon: 'download', onSelect: exportBundle },
+      { label: 'Gates as Gating-ML 2.0', icon: 'download', onSelect: exportGatingML },
+      { label: 'Population memberships (CLR)…', icon: 'download', onSelect: () => app.exportCLR() },
+      ...(store.ws.migrations?.length ? [{ label: 'FlowJo migration report…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
+      '-',
+      { section: 'Import' },
+      { label: 'FCS files…', icon: 'file', onSelect: () => app.pickFiles() },
+      { label: 'Workspace, FlowJo .wsp, Gating-ML or ACS…', icon: 'upload', onSelect: () => app.pickFiles('.cwz,.json,.wsp,.wspt,.xml,.acs,.zip') },
+      { label: 'Sample annotations (CSV)…', icon: 'tag', onSelect: () => app.pickFiles('.csv,.tsv') },
+      '-',
+      { label: 'Example experiments…', icon: 'flask', onSelect: () => app.showExamples() },
+      { label: 'Start page', icon: 'grid', onSelect: () => app.setMode('welcome') },
+    ]);
+  });
+
+  // --- Commands (palette) ----------------------------------------------------------------------
+
+  app.commands = () => [
+    ...MODES.filter((m) => m !== 'sep').map((m) => ({ label: `Go to ${m.label}`, icon: m.icon, run: () => app.setMode(m.id), keywords: m.id })),
+    { label: 'Add FCS files', icon: 'file', hint: `${modKey}O`, run: () => app.pickFiles() },
+    { label: 'Open a folder of FCS files', icon: 'folder', run: () => app.pickFolder() },
+    { label: 'Open an example experiment', icon: 'flask', run: () => app.showExamples() },
+    { label: 'New workspace', icon: 'plus', run: () => app.newWorkspace() },
+    { label: 'Open a saved workspace', icon: 'library', run: openLibraryDialog },
+    { label: 'Save workspace now', icon: 'save', hint: `${modKey}S`, run: saveNow },
+    { label: 'Export workspace file', icon: 'download', run: exportWorkspaceFile },
+    { label: 'Export gates as Gating-ML', icon: 'download', run: exportGatingML },
+    { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
+    { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
+    { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
+    { label: 'Toggle dark theme', icon: 'moon', run: () => toggleTheme() },
+    { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: showHelp },
+    { label: 'Load every sample', icon: 'download', run: () => app.loadAll() },
+  ];
+
+  // --- Top bar ----------------------------------------------------------------------------------
+
+  const undoButton = document.getElementById('undo-button');
+  const redoButton = document.getElementById('redo-button');
+  const themeButton = document.getElementById('theme-button');
+  undoButton.append(icon('undo'));
+  redoButton.append(icon('redo'));
+  document.getElementById('help-button').append(icon('help'));
+  document.getElementById('help-button').addEventListener('click', showHelp);
+  document.getElementById('command-button').addEventListener('click', () => openPalette(app));
+  undoButton.addEventListener('click', () => doUndo());
+  redoButton.addEventListener('click', () => doRedo());
+  themeButton.addEventListener('click', () => toggleTheme());
+
+  function doUndo() {
+    const label = store.undo();
+    if (label) toast(`Undid: ${label}`, { timeout: 1800 });
+  }
+  function doRedo() {
+    const label = store.redo();
+    if (label) toast(`Redid: ${label}`, { timeout: 1800 });
+  }
+
+  function toggleTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    const next = dark ? 'light' : 'dark';
+    prefs.set('theme', next);
+    store.state.ui.theme = next;
+    applyTheme(next);
+    renderTheme();
+    store.notify(['theme']);
+  }
+  function renderTheme() {
+    clear(themeButton).append(icon(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon'));
+  }
+  renderTheme();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (prefs.get('theme', 'system') === 'system') {
+      applyTheme('system');
+      renderTheme();
+      store.notify(['theme']);
+    }
+  });
+
+  function updateTitle() {
+    document.getElementById('workspace-name').textContent = store.ws.name;
+    document.title = `${store.ws.name} · CytoWeave`;
+    undoButton.disabled = !store.canUndo();
+    redoButton.disabled = !store.canRedo();
+    undoButton.title = store.canUndo() ? `Undo ${store.undoLabel()} (${modKey}Z)` : 'Nothing to undo';
+    redoButton.title = store.canRedo() ? `Redo ${store.redoLabel()} (⇧${modKey}Z)` : 'Nothing to redo';
+    saveState.className = `save-state${store.isDirty() ? ' dirty' : ''}`;
+  }
+
+  // --- Status bar -------------------------------------------------------------------------------
+
+  const statusbar = document.getElementById('statusbar');
+  function renderStatus() {
+    clear(statusbar);
+    const busy = [...store.state.busy.values()];
+    statusbar.append(...[
+      h('span.item', h(`span.dot${busy.length ? '.busy' : ''}`), busy.length ? busy[0] : 'Ready'),
+      h('span.item', icon('library'), library.kind === 'desktop' ? `Library: ${library.location}` : 'Library: this browser'),
+      h('span.item', `${store.ws.samples.length} samples · ${store.ws.gates.length} gates`),
+      h('span.item', `${data.views.size} loaded · ${formatBytes(data.totalBytes())}`),
+      h('span.spacer'),
+      store.ui.editScope === 'sample' ? h('span.item', h('span.badge.warn', 'Editing this sample only')) : null,
+      h('span.item', `CytoWeave ${VERSION}${info ? '' : ' · web'}`),
+      h('span.item.muted', 'Research use only')].filter(Boolean));
+  }
+
+  function showHelp() {
+    const rows = [
+      ['Search and commands', `${modKey}K`],
+      ['Undo / redo', `${modKey}Z / ⇧${modKey}Z`],
+      ['Add FCS files', `${modKey}O`],
+      ['Save now', `${modKey}S`],
+      ['Previous / next sample', '↑ / ↓'],
+      ['Select tool', 'V'],
+      ['Rectangle, polygon, ellipse, freehand', 'R, P, E, L'],
+      ['Quadrant, range, split', 'Q, H, S'],
+      ['Magic wand (density basin, histogram valley)', 'W'],
+      ['Keep a tool for several gates', '⇧ with its key, or double-click it'],
+      ['Finish a polygon', 'double-click, Enter, or click the first vertex'],
+      ['Nudge the selected gate', 'arrow keys (⇧ for larger steps)'],
+      ['Delete the selected gate', '⌫ / Delete'],
+      ['Rename the selected population', 'F2'],
+      ['Backgate', 'B'],
+      ['Go to a view', `${modKey}1 … ${modKey}9`],
+      ['Toggle sidebar / inspector', `${modKey}\\ / ${modKey}⇧\\`],
+    ];
+    showDialog({
+      title: 'Keyboard shortcuts',
+      content: h('table.data', h('tbody', ...rows.map(([action, keys]) => h('tr', h('td', action), h('td.r', h('kbd', keys)))))),
+    });
+  }
+
+  // --- Keyboard ---------------------------------------------------------------------------------
+
+  document.addEventListener('keydown', (event) => {
+    const mod = event.metaKey || event.ctrlKey;
+    if (mod && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      openPalette(app);
+      return;
+    }
+    if (isTyping(event)) return;
+    if (mod && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) doRedo();
+      else doUndo();
+      return;
+    }
+    if (mod && event.key.toLowerCase() === 'y') {
+      event.preventDefault();
+      doRedo();
+      return;
+    }
+    if (mod && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      saveNow().then(() => toast('Saved.', { kind: 'ok', timeout: 1500 }));
+      return;
+    }
+    if (mod && event.key.toLowerCase() === 'o') {
+      event.preventDefault();
+      if (event.shiftKey) openLibraryDialog();
+      else app.pickFiles();
+      return;
+    }
+    if (mod && event.key === '\\') {
+      event.preventDefault();
+      const el = document.getElementById('app');
+      el.classList.toggle(event.shiftKey ? 'inspector-closed' : 'sidebar-closed');
+      store.notify(['layout']);
+      return;
+    }
+    if (mod && /^[1-9]$/.test(event.key)) {
+      const modes = MODES.filter((m) => m !== 'sep' && !m.hidden);
+      const mode = modes[Number(event.key) - 1];
+      if (mode) {
+        event.preventDefault();
+        app.setMode(mode.id);
+      }
+      return;
+    }
+    if (mod || event.altKey) return;
+    if (event.key === '?') {
+      showHelp();
+      return;
+    }
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      if (document.activeElement?.closest?.('.plot-card') && store.ui.gateId) return; // nudging a gate
+      event.preventDefault();
+      app.stepSample(event.key === 'ArrowUp' ? -1 : 1);
+      return;
+    }
+    if (store.ui.mode === 'gate') {
+      const tool = GATE_TOOL_KEYS[event.key.toLowerCase()];
+      if (tool) {
+        store.setUI({ tool, stickyTool: event.shiftKey && tool !== 'pointer' }, ['tool']);
+        return;
+      }
+      if (event.key.toLowerCase() === 'b') {
+        store.setUI({ backgate: !store.ui.backgate }, ['backgate']);
+        return;
+      }
+      if ((event.key === 'Delete' || event.key === 'Backspace') && store.ui.gateId) {
+        event.preventDefault();
+        app.deleteGate(store.ui.gateId);
+        return;
+      }
+      if (event.key === 'F2' && store.ui.gateId) {
+        app.renameGateInline(store.ui.gateId);
+        return;
+      }
+      if (event.key === 'Escape') {
+        closeMenu();
+        if (store.ui.tool !== 'pointer') store.setUI({ tool: 'pointer', stickyTool: false }, ['tool']);
+      }
+    }
+  });
+
+  // --- Drag and drop ----------------------------------------------------------------------------
+
+  const dropOverlay = document.getElementById('drop-overlay');
+  let dragDepth = 0;
+  const hasFiles = (event) => [...(event.dataTransfer?.types ?? [])].includes('Files');
+  window.addEventListener('dragenter', (event) => {
+    if (!hasFiles(event)) return;
+    dragDepth += 1;
+    dropOverlay.hidden = false;
+  });
+  window.addEventListener('dragleave', (event) => {
+    if (!hasFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) dropOverlay.hidden = true;
+  });
+  window.addEventListener('dragover', (event) => {
+    if (hasFiles(event)) event.preventDefault();
+  });
+  window.addEventListener('drop', async (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    dropOverlay.hidden = true;
+    const files = await collectDropped(event.dataTransfer);
+    app.importFiles(files);
+  });
+
+  // Walks dropped folders (Chromium and Safari support webkitGetAsEntry).
+  async function collectDropped(transfer) {
+    const entries = [...transfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+    if (!entries.length) return [...transfer.files];
+    const out = [];
+    const walk = async (entry, folder) => {
+      if (entry.isFile) {
+        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+        if (folder) Object.defineProperty(file, 'folder', { value: folder });
+        out.push(file);
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        let batch;
+        do {
+          batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+          for (const child of batch) if (!child.name.startsWith('.')) await walk(child, entry.name);
+        } while (batch.length);
+      }
+    };
+    for (const entry of entries) await walk(entry, null);
+    return out;
+  }
+
+  // --- Store subscription ---------------------------------------------------------------------
+
+  store.subscribe((topics) => {
+    if (topics.has('ws') || topics.has('history') || topics.has('saved')) updateTitle();
+    if (topics.has('ws')) {
+      data.syncAll();
+      autosave();
+      // A selection that no longer exists (after undo or delete) falls back to its parent.
+      if (store.ui.gateId && !gateById(store.ws, store.ui.gateId)) store.setUI({ gateId: null }, ['gate']);
+      if (store.ui.sampleId && !store.ws.samples.some((s) => s.id === store.ui.sampleId)) store.setUI({ sampleId: store.ws.samples[0]?.id ?? null }, ['sample']);
+    }
+    if (topics.has('tiles')) prefs.set('tileSize', store.ui.tileSize);
+    app.sidebar.update(topics);
+    app.inspector.update(topics);
+    current?.update?.(topics);
+    renderStatus();
+  });
+
+  window.addEventListener('beforeunload', (event) => {
+    if (store.isDirty() && (store.ws.samples.length || store.ws.gates.length)) {
+      saveNow();
+      event.preventDefault();
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
+
+  // --- Start ------------------------------------------------------------------------------------
+
+  renderSwitcher();
+  updateTitle();
+  renderStatus();
+  app.sidebar.render();
+  app.inspector.render();
+  const first = store.ws.samples.find((s) => s.role === 'sample') ?? store.ws.samples[0];
+  if (first) {
+    app.selectSample(first.id);
+    await app.setMode('gate');
+  } else {
+    await app.setMode('welcome');
+  }
+
+  // Files named on the command line of the desktop program (or by a later launch), opened once
+  // per program run; files already in the workspace are not read again.
+  app.openStartupFiles = async (files) => {
+    const opened = new Set(prefs.get(`opened:${info.session}`, []));
+    const known = new Set(store.ws.samples.map((s) => s.fileName));
+    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
+    for (const file of files) opened.add(file.url);
+    prefs.set(`opened:${info.session}`, [...opened]);
+    if (!pending.length) return;
+    const items = [];
+    for (const file of pending) {
+      const response = await fetch(file.url);
+      if (!response.ok) continue;
+      items.push({ file: { size: file.size }, name: file.name, bytes: new Uint8Array(await response.arrayBuffer()), folder: file.folder ?? null, order: items.length });
+    }
+    const fcs = items.filter((item) => /\.(fcs|lmd)$/i.test(item.name));
+    for (const item of items.filter((i) => !fcs.includes(i))) await app.importFiles([Object.assign(new File([item.bytes], item.name), { folder: item.folder })]);
+    if (fcs.length) await importFCSItems(fcs);
+  };
+  if (info?.files?.length) await app.openStartupFiles(info.files);
+  // Programs on this computer (AI agents through "cytoweave mcp") act in this window.
+  if (info?.remoteControl) {
+    const { installRemote } = await import('./ui/remote.js');
+    app.remote = installRemote(app);
+  }
+  // A second "cytoweave <files>" launch hands its files to this window.
+  if (info) {
+    // The second launch also brings this window forward, so checking on focus is enough.
+    let checking = false;
+    const check = async () => {
+      if (checking || document.visibilityState !== 'visible') return;
+      checking = true;
+      const fresh = await detectBackend();
+      if (fresh?.files?.length) await app.openStartupFiles(fresh.files);
+      checking = false;
+    };
+    window.addEventListener('focus', check);
+    setInterval(check, 30000);
+  }
+  window.cytoweave = app;
+}
+
+start().catch((error) => {
+  console.error(error);
+  document.getElementById('workbench').append(h('div.empty', h('h3', 'CytoWeave could not start'), h('p', error.message)));
+});

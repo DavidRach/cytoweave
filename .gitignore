@@ -1,0 +1,9 @@
+/dist/
+/cytoweave
+*.exe
+*.test
+.DS_Store
+/validation/cache/
+/*.fcs
+/.claude/
+/product_research/
