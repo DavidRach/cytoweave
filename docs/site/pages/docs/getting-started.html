@@ -1,0 +1,85 @@
+---
+title: Getting started
+description: Start CytoWeave, find your way around the window, open an example experiment and analyze your own FCS files.
+lede: Start CytoWeave, find your way around the window, and work through an example experiment before you bring your own data.
+---
+      <h2 id="start">Start CytoWeave</h2>
+      <p>If you have not installed it yet, see <a href="../install.html">Install</a>. Then, in a terminal:</p>
+      <div class="code"><pre><code><span class="prompt">$ </span>cytoweave</code></pre></div>
+      <p>CytoWeave starts a local server on <code>http://127.0.0.1:8770</code> (or the next free port) and opens its window. If Chrome, Edge, Brave or Chromium is installed, the window is a desktop app window with its own browser profile; otherwise your default browser opens the address. Closing the window stops the program.</p>
+      <p>Files and folders named on the command line open directly. Running the command again while CytoWeave is open hands the files to the open window instead of starting a second copy:</p>
+      <div class="code"><pre><code><span class="prompt">$ </span>cytoweave ~/data/2026-09-30_panel1/ ~/data/controls/</code></pre></div>
+      <p>The window follows your system's light or dark appearance; the moon button at the top right switches it.</p>
+
+      <h2 id="window">The window</h2>
+      <shot name="gate" alt="The CytoWeave window in the Gate view: the sample list and population tree on the left, the gating path and plots in the middle, the T-cell frequency, gate geometry and statistics on the right">The Gate view of the PBMC example: samples and populations on the left, the gating path and plots in the middle, the inspector on the right.</shot>
+      <ul>
+        <li><strong>Top bar:</strong> the workspace name and its menu (a dot shows whether it is saved), the views, search and commands (<kbd>⌘K</kbd>), undo and redo, the theme and the keyboard shortcuts (<kbd>?</kbd>).</li>
+        <li><strong>Views,</strong> left to right: <strong>Gate</strong>, <strong>QC</strong>, <strong>Compensate</strong>, <strong>Spectral</strong>; <strong>Explore</strong>, <strong>Tables</strong>, <strong>Compare</strong>; <strong>Figures</strong> and <strong>Report</strong>. <kbd>⌘1</kbd> to <kbd>⌘9</kbd> switch between them.</li>
+        <li><strong>Samples</strong> (left, top): every sample with its event count, annotations and role, filtered by the group chips above the list. The percentage at the right is the selected population's frequency in that sample. <kbd>↑</kbd> and <kbd>↓</kbd> step through the samples.</li>
+        <li><strong>Populations</strong> (left, below): the gating tree with each population's frequency of its parent and count in the current sample. Right-click a population for everything you can do with it.</li>
+        <li><strong>Inspector</strong> (right): the selected population's frequency with its 95% confidence interval, its gate (type, axes, origin, exact coordinates you can type), statistics per channel, and the sample's keywords and diagnostics.</li>
+        <li><strong>Status bar:</strong> where the workspace is saved, the number of samples and gates, and how much sample data is loaded in memory.</li>
+      </ul>
+      <p><kbd>⌘\</kbd> hides the sidebar and <kbd>⇧⌘\</kbd> the inspector, for more room. On Windows and Linux, use <kbd>Ctrl</kbd> wherever this guide says <kbd>⌘</kbd>.</p>
+
+      <h2 id="examples">Example experiments</h2>
+      <p>The quickest way to learn CytoWeave is an example. Open one from the start page, or with <strong>Example experiments…</strong> in the workspace menu. Each opens as a new workspace.</p>
+      <shot name="start" alt="The start page: buttons to add FCS files, open a folder or import a workspace, recent workspaces, and cards for the example experiments">The start page, with the example experiments below your recent workspaces.</shot>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Example</th><th>What it shows</th><th>Try</th></tr></thead>
+          <tbody>
+            <tr><td><strong>PBMC immunophenotyping, 14 colours</strong></td><td>Six donors, unstimulated and stimulated, with a full set of compensation controls. The file's spillover matrix has one wrong value, and one sample has a clog.</td><td><a href="compensation.html#check">Check the compensation</a>, <a href="qc.html">QC</a>, <a href="statistics.html#compare">Compare</a></td></tr>
+            <tr><td><strong>Moving from FlowJo</strong></td><td>Four PBMC samples with the FlowJo 10 workspace made for them. It opens in the FlowJo import dialog.</td><td><a href="flowjo.html">The migration report</a></td></tr>
+            <tr><td><strong>Spectral 25-colour panel</strong></td><td>Raw data from 64 detectors, 25 single-stain references and an unstained control with lymphoid and myeloid autofluorescence.</td><td><a href="spectral.html">Unmixing</a></td></tr>
+            <tr><td><strong>Cell cycle</strong></td><td>Propidium iodide DNA content of an asynchronous and a nocodazole-arrested culture, with doublets and debris.</td><td><a href="assays.html#cell-cycle">The cell-cycle model</a></td></tr>
+            <tr><td><strong>T-cell proliferation</strong></td><td>CellTrace Violet dilution over four days, with and without stimulation, and a day-0 reference.</td><td><a href="assays.html#proliferation">The proliferation model</a></td></tr>
+            <tr><td><strong>Mass cytometry cohort</strong></td><td>Eight subjects in two batches with anchor samples, EQ beads and signal drift; non-classical monocytes are doubled in the case group.</td><td><a href="cohorts.html#normalize">Normalization</a>, <a href="statistics.html#screens">Screen clusters</a></td></tr>
+            <tr><td><strong>Barcoded mass cytometry plate</strong></td><td>Twenty samples pooled into one file with palladium barcodes and the barcode key.</td><td><a href="cohorts.html#debarcode">Debarcoding</a></td></tr>
+            <tr><td><strong>Index sort</strong></td><td>A presort and the index-sorted events of a 96-well plate.</td><td><a href="assays.html#index-sorting">The plate view</a></td></tr>
+            <tr><td><strong>Acquisition QC showcase</strong></td><td>Four wells: clean, a clog, gradual drift and an air bubble.</td><td><a href="qc.html">Acquisition QC</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>When an example comes with a gating strategy, a notice offers <strong>Add suggested gates</strong>; take it to start from a finished tree, or gate it yourself. Every example is generated in your browser by a simulator that models instruments, fluorochrome spectra, spillover, autofluorescence, cell populations, dead cells, debris, doublets and acquisition problems, and keeps the true identity of every event. Plots can be coloured by the <strong>Truth (simulated)</strong> channel, so you can see how well your gates agree with the truth.</p>
+
+      <h2 id="your-data">Your own data</h2>
+      <p>Drop FCS files or a folder on the window, click <strong>Add FCS files</strong> or <strong>Open a folder</strong> on the start page, or use the <strong>+</strong> button of the sample list. Each folder becomes a sample group. Then:</p>
+      <ol>
+        <li><strong>Annotate</strong> the samples: condition, subject, batch, timepoint and so on. <a href="opening-data.html#annotate">Annotations</a> drive groups, pairing and comparisons.</li>
+        <li><strong>Mark the controls</strong> (unstained, single stain, FMO, beads) and check the compensation in <a href="compensation.html">Compensate</a>, or unmix in <a href="spectral.html">Spectral</a>.</li>
+        <li>Run <a href="qc.html">QC</a> and add its "QC pass" gate at the top of the tree.</li>
+        <li><strong>Gate</strong> in the <a href="gating.html">Gate</a> view. Gates apply to every sample; switch the scope to <strong>This sample</strong> to adjust one for one sample.</li>
+        <li><strong>Review</strong> each important gate across the samples.</li>
+        <li><a href="explore.html">Explore</a>, build <a href="statistics.html#tables">Tables</a> and <a href="statistics.html#compare">Compare</a> groups as your question needs.</li>
+        <li>Build <a href="figures.html">Figures</a> and copy the <strong>Report</strong>'s methods paragraph.</li>
+      </ol>
+      <p>The workspace saves itself to your library as you work; see <a href="workspaces.html">Workspaces</a>.</p>
+
+      <h2 id="shortcuts">Keyboard shortcuts</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Action</th><th>Keys</th></tr></thead>
+          <tbody>
+            <tr><td>Search samples, populations, channels and commands</td><td><kbd>⌘K</kbd></td></tr>
+            <tr><td>Undo, redo</td><td><kbd>⌘Z</kbd>, <kbd>⇧⌘Z</kbd></td></tr>
+            <tr><td>Add FCS files, open a saved workspace</td><td><kbd>⌘O</kbd>, <kbd>⇧⌘O</kbd></td></tr>
+            <tr><td>Save now</td><td><kbd>⌘S</kbd></td></tr>
+            <tr><td>Previous, next sample</td><td><kbd>↑</kbd>, <kbd>↓</kbd></td></tr>
+            <tr><td>Select tool; rectangle, polygon, ellipse, freehand</td><td><kbd>V</kbd>; <kbd>R</kbd>, <kbd>P</kbd>, <kbd>E</kbd>, <kbd>L</kbd></td></tr>
+            <tr><td>Quadrant, range, split; magic wand</td><td><kbd>Q</kbd>, <kbd>H</kbd>, <kbd>S</kbd>; <kbd>W</kbd></td></tr>
+            <tr><td>Nudge the selected gate; delete it; rename the population</td><td>Arrow keys (with <kbd>⇧</kbd> for larger steps); <kbd>⌫</kbd>; <kbd>F2</kbd></td></tr>
+            <tr><td>Backgate</td><td><kbd>B</kbd></td></tr>
+            <tr><td>Go to a view</td><td><kbd>⌘1</kbd> … <kbd>⌘9</kbd></td></tr>
+            <tr><td>All shortcuts</td><td><kbd>?</kbd></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="opening-data.html"><h3>Opening data</h3><p>File types, groups, annotations and controls.</p></a>
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Plots, gate tools and adjusting gates per sample.</p></a>
+        <a class="card" href="agents.html"><h3>AI agents</h3><p>Let Claude Code gate while you watch.</p></a>
+      </div>

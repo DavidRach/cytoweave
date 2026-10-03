@@ -28,7 +28,7 @@ import {
   updateSample,
 } from './lib/workspace.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 const MODES = [
   { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
@@ -256,11 +256,9 @@ async function start() {
 
   async function importFCSItems(items, options = {}) {
     const progress = progressToast(`Reading ${items.length} FCS file${items.length > 1 ? 's' : ''}…`);
-    const files = [];
-    for (const item of items) {
-      files.push({ name: item.name, bytes: await readBytes(item), size: item.file?.size, order: item.order, folder: item.folder });
-    }
-    const { records, problems } = await data.importFCS(files, (done, total, name) => progress.update(done / total, `Reading ${name} (${done}/${total})`));
+    // Files are handed over as they are (a File is read in parts by the worker), not read here.
+    const files = items.map((item) => ({ name: item.name, file: item.bytes ? null : item.file instanceof Blob ? item.file : null, bytes: item.bytes ?? null, localUrl: item.localUrl ?? null, size: item.file?.size ?? item.size, order: item.order, folder: item.folder }));
+    const { records, problems } = await data.importFCS(files, (done, total, name) => progress.update(done / total, `Reading ${name} (${Math.min(total, Math.floor(done) + 1)}/${total})`));
     if (!records.length) {
       progress.fail(problems[0] ?? 'No FCS data could be read.');
       return [];
@@ -363,9 +361,11 @@ async function start() {
       const gml = await import('./lib/gatingml.js');
       const text = new TextDecoder().decode(await readBytes(item));
       const result = gml.importGatingML(text);
-      const { addGates, addCompensation } = await import('./lib/workspace.js');
+      const { addGates, addCompensation, addDerived } = await import('./lib/workspace.js');
       let next = store.ws;
       for (const comp of result.compensations ?? []) next = addCompensation(next, { ...comp, source: 'imported' }).ws;
+      // Ratio dimensions (fratio) become channels computed from their inputs.
+      for (const record of result.derived ?? []) if (!next.derived.some((d) => d.kind === 'ratio' && d.outputs?.[0] === record.outputs[0])) next = addDerived(next, record).ws;
       next = addGates(next, result.gates.map((g) => ({ ...g, meta: { ...(g.meta ?? {}), origin: 'imported' } })), 'import-gating-ml').ws;
       store.commit(next, `Import ${result.gates.length} gates from ${item.name}`);
       toast(`Imported ${result.gates.length} gates${result.warnings?.length ? ` with ${result.warnings.length} warning(s)` : ''}.`, { kind: result.warnings?.length ? undefined : 'ok' });
@@ -718,7 +718,7 @@ async function start() {
     statusbar.append(...[
       h('span.item', h(`span.dot${busy.length ? '.busy' : ''}`), busy.length ? busy[0] : 'Ready'),
       h('span.item', icon('library'), library.kind === 'desktop' ? `Library: ${library.location}` : 'Library: this browser'),
-      h('span.item', `${store.ws.samples.length} samples · ${store.ws.gates.length} gates`),
+      h('span.item', `${store.ws.samples.length} sample${store.ws.samples.length === 1 ? '' : 's'} · ${store.ws.gates.length} gate${store.ws.gates.length === 1 ? '' : 's'}`),
       h('span.item', `${data.views.size} loaded · ${formatBytes(data.totalBytes())}`),
       h('span.spacer'),
       store.ui.editScope === 'sample' ? h('span.item', h('span.badge.warn', 'Editing this sample only')) : null,
@@ -941,13 +941,24 @@ async function start() {
     if (!pending.length) return;
     const items = [];
     for (const file of pending) {
+      // FCS files stay where they are: the program copies them into the library and the worker
+      // reads them in parts. Other files are small and read here.
+      if (file.kind === 'fcs') {
+        items.push({ file: { size: file.size }, size: file.size, name: file.name, localUrl: file.url, folder: file.folder ?? null, order: items.length });
+        continue;
+      }
       const response = await fetch(file.url);
       if (!response.ok) continue;
       items.push({ file: { size: file.size }, name: file.name, bytes: new Uint8Array(await response.arrayBuffer()), folder: file.folder ?? null, order: items.length });
     }
+    // As for dropped files: CytoWeave workspaces first, then the FCS files, then what refers to
+    // them (FlowJo workspaces match their samples, Gating-ML, tables, archives).
     const fcs = items.filter((item) => /\.(fcs|lmd)$/i.test(item.name));
-    for (const item of items.filter((i) => !fcs.includes(i))) await app.importFiles([Object.assign(new File([item.bytes], item.name), { folder: item.folder })]);
+    const workspaces = items.filter((item) => /\.(cwz|json)$/i.test(item.name));
+    const asFile = (item) => Object.assign(new File([item.bytes], item.name), { folder: item.folder });
+    for (const item of workspaces) await app.importFiles([asFile(item)]);
     if (fcs.length) await importFCSItems(fcs);
+    for (const item of items.filter((i) => !fcs.includes(i) && !workspaces.includes(i))) await app.importFiles([asFile(item)]);
   };
   if (info?.files?.length) await app.openStartupFiles(info.files);
   // Programs on this computer (AI agents through "cytoweave mcp") act in this window.

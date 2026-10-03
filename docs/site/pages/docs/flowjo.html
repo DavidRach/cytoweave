@@ -1,0 +1,47 @@
+---
+title: FlowJo and Gating-ML
+description: Import FlowJo 10 workspaces into CytoWeave with a report of what converted exactly, compare every population count with FlowJo's in the migration report, and exchange gates with Gating-ML 2.0 and CLR.
+lede: Bring an analysis over from FlowJo and see, population by population, that it gives the same counts; exchange gates with other tools through Gating-ML.
+---
+      <h2 id="import">Importing a FlowJo workspace</h2>
+      <p>CytoWeave reads FlowJo 10 workspaces (<code>.wsp</code>, also written by FlowJo 11): their samples, gates, compensation matrices and scales. FlowJo 9 workspaces and FlowJo 11's <code>.flowjo</code> format are not read; export <code>.wsp</code> from FlowJo.</p>
+      <ol>
+        <li>Open the <code>.wsp</code> file: drop it on the window, or use <strong>Import a FlowJo workspace or Gating-ML…</strong> in the sample list's <strong>+</strong> menu.</li>
+        <li>The import dialog lists every population as <strong>exact</strong>, <strong>approximated</strong> or <strong>not imported</strong>, and says why: a curly quadrant, for example, imports with straight dividers. Gates FlowJo drew on uncompensated data keep uncompensated values, time and linear axes with a gain are converted from FlowJo's units, and ellipses are read from FlowJo's display space.</li>
+        <li>Match the FCS files: CytoWeave finds the workspace's files among the samples already open; <strong>Add the FCS files…</strong> or <strong>Add a folder…</strong> adds the rest.</li>
+        <li>Choose the <strong>Options</strong>:
+          <ul>
+            <li><strong>Axis scales:</strong> use FlowJo's scales, only for channels without one, or keep the current scales. Each gate keeps the scale it was drawn on either way; this only sets how plots draw the axes.</li>
+            <li><strong>Apply FlowJo's compensation</strong> to the matched samples.</li>
+            <li><strong>Then load the matched samples and compare every population count with FlowJo's.</strong></li>
+          </ul>
+        </li>
+        <li>Click <strong>Import</strong> (or <strong>Import gates only</strong> when no FCS file is matched).</li>
+      </ol>
+      <p>The <strong>Moving from FlowJo</strong> example opens straight into this dialog, with the FlowJo 10 workspace made for its four samples.</p>
+
+      <h2 id="report">The migration report</h2>
+      <shot name="flowjo" alt="The FlowJo migration report: 56 of 56 population counts agree exactly, with FlowJo's count, CytoWeave's count, the difference and the status of every population in every sample">The bundled FlowJo workspace: every count agrees exactly.</shot>
+      <p>After an import with the comparison, the <strong>FlowJo migration report</strong> recomputes every imported population from the FCS data and lists, for each population and sample, FlowJo's count, CytoWeave's count, the difference, a status (<strong>exact</strong>, <strong>within 1%</strong>, <strong>differs</strong> or <strong>not compared</strong>) and the likely cause of a difference. <strong>Show</strong> opens that population on that sample; <strong>Export CSV</strong> saves the table for your records; <strong>Recompute</strong> runs the comparison again. The report stays available from the workspace menu.</p>
+      <p>Small differences are expected. FlowJo evaluates gates at its display resolution, which moves events near gate boundaries: typically well under 1% of a large population, more for populations of a few dozen events. CytoWeave evaluates gates exactly. Larger differences usually mean different compensation, a different FCS file, or a population whose parent already differs.</p>
+      <p>FlowJo's biexponential scale is reproduced exactly, from FlowJo's own table algorithm, and checked against BD's published lookup tables. On FlowJo's own test workspaces CytoWeave reproduces the counts FlowJo saved; on real workspaces it matches them exactly at least as often as FlowKit does, and within 0.1–0.3% for large populations.</p>
+      <div class="callout"><p><strong>Limits.</strong> Curly quadrants import with straight dividers. Template group gates import as per-sample copies, merged where samples agree.</p></div>
+
+      <h2 id="gating-ml">Gating-ML 2.0</h2>
+      <p>Gating-ML is ISAC's standard for gates, transformations and compensation. Open a Gating-ML <code>.xml</code> file like any other file, and export with <strong>Workspace → Export → Gates as Gating-ML 2.0</strong>. Import and export cover:</p>
+      <ul>
+        <li>rectangle, polygon, ellipsoid, quadrant and Boolean gates, including gates of three or more dimensions (evaluated in all of them, though a plot shows two);</li>
+        <li>the flin, flog, fasinh, logicle, hyperlog and ratio transformations, with their bounds;</li>
+        <li>spectrum matrices, including spectral unmixing matrices, and the compensation each gate dimension names.</li>
+      </ul>
+      <p>All 190 gates of ISAC's Gating-ML 2.0 compliance suite select exactly the expected events. Re-importing a CytoWeave export restores names, colours and scales exactly. Gating-ML has no biexponential, so biexponential axes are written as their closest logicle, with the gate coordinates converted; the export warns when it does this.</p>
+
+      <h2 id="clr">Classification results (CLR)</h2>
+      <p><strong>Population memberships (CLR)…</strong> exports, for every event of a sample, a column per population or cluster saying whether the event belongs to it, for tools that read memberships. Choose the populations and the column names (population names, or paths when names repeat).</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="gating.html#review"><h3>Review across samples</h3><p>Check imported gates on every sample.</p></a>
+        <a class="card" href="compensation.html#check"><h3>Check the compensation</h3><p>Test the imported matrix against its controls.</p></a>
+        <a class="card" href="workspaces.html#export"><h3>Exports</h3><p>Every way to take an analysis out.</p></a>
+      </div>

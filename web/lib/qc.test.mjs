@@ -10,6 +10,8 @@ import {
   generalizedESD,
   isolationForest,
   isolationTreeSD,
+  isolationTreeSDClassic,
+  smoothSpline,
   makeBins,
   marginEvents,
   peacoQC,
@@ -325,4 +327,27 @@ test('refined PeacoQC keeps clean wells and catches the planted anomalies', asyn
     if (anomalous) assert.ok(caught / anomalous > 0.95, `${file.name}: caught ${(100 * caught / anomalous).toFixed(1)}%`);
     else assert.ok(falseRate < 0.01, `${file.name}: clean well lost ${(100 * falseRate).toFixed(2)}%`);
   }
+});
+
+test("smoothSpline reproduces R's smooth.spline(spar = 0.5)", () => {
+  // R 4.6: smooth.spline(seq_along(y), y, spar = 0.5)$y.
+  const y = [0.2, 0.5, 0.1, 0.9, 1.4, 1.1, 2.0, 1.7, 2.6, 3.1, 2.8, 3.9];
+  const r = [0.153745636365074, 0.328097075885929, 0.530042015925485, 0.803095405945159, 1.10145583658306, 1.3950990061936, 1.71529568190042, 2.05648086225473, 2.44317789215264, 2.83928260031081, 3.24140022139063, 3.69282776509244];
+  smoothSpline(y, 0.5).forEach((v, i) => assert.ok(Math.abs(v - r[i]) < 1e-12, `${i}: ${v} vs ${r[i]}`));
+  // 60 points: knots at a subset of the x values (.nknots.smspl).
+  const y2 = [-0.026, 0.269, 0.531, 0.388, 0.779, 0.847, 0.937, 1.195, 0.754, 1.249, 0.817, 0.683, 0.684, 0.774, 0.629, 0.396, 0.113, 0.011, 0.22, -0.151, -0.466, -0.69, -0.679, -1.09, -0.952, -1.077, -0.745, -0.797, -1.007, -1.186, -0.718, -0.643, -0.56, -0.431, -0.505, -0.138, 0.144, 0.058, 0.019, 0.533, 0.68, 0.595, 1.113, 0.709, 1.008, 0.529, 0.967, 1.216, 0.86, 0.707, 0.944, 0.526, 0.611, 0.065, -0.027, 0.001, -0.282, 0.033, -0.214, -0.701];
+  const fit = smoothSpline(y2, 0.5);
+  [[0, 0.0409215487038666], [16, 0.258384969819398], [29, -0.901059788750828], [44, 0.87841377943683], [59, -0.527079961261864]].forEach(([i, v]) => assert.ok(Math.abs(fit[i] - v) < 1e-12, `${i}`));
+});
+
+test("the classic isolation tree raises its gain limit after each split, as PeacoQC's does", () => {
+  // Bin 0 is far off and bin 1 less so: the first split isolates bin 0; splitting off bin 1 would
+  // gain less than that first split, so PeacoQC's tree stops, keeping bin 1.
+  const column = Float64Array.from({ length: 40 }, (_, i) => (i === 0 ? 10 : i === 1 ? 3 : (i % 5) * 0.1));
+  const classic = isolationTreeSDClassic([column], { gainLimit: 0.3 });
+  assert.equal(classic.good[0], 0);
+  assert.equal(classic.good[1], 1);
+  const free = isolationTreeSD([column], { gainLimit: 0.3 });
+  assert.equal(free.good[0], 0);
+  assert.equal(free.good[1], 0);
 });

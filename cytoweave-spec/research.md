@@ -76,7 +76,8 @@ CytoWeave's gate model should record `{dimension, compensation-ref, transformati
   - In 2020 BD published FlowJo transform lookup tables under the **MIT license** (`FlowJo Transformations Lookup Tables 2020.zip`, https://sourceforge.net/projects/flowcyt/files/Flow%20Cytometry%20Transformations/). The zip holds 224 logicle and 181 biex CSVs, 4096 rows each, mapping channel i (0–4095 of 4096) to a data value.
   - I compared the logicle LUTs (T = 262144, M = 4.41854, W 0–2, A 0–1) to the Moore–Parks reference evaluated at scale i/4096. The zero point x1 = (W+A)/(M+A) always matches.
   - The curves match to 0.00 channels only for W = 0 and W = 0.4. Elsewhere they deviate: about 1.4–1.8 channels at W = 0.5, about 90–108 channels (≈2.5% of axis) at W = 1.0, and hundreds of channels for W ≥ 1.5. The largest deviations are in the quasi-linear region.
-  - For W ≤ 1.2 the FlowJo curves are well fit by the logicle family with a *different* `d` constant. For example, W = 1 gives fitted d ≈ 1.73 versus the reference 2.44. This suggests FlowJo solves for or approximates d differently.
+  - **The construction behind the tables (measured, 2026-10):** the Moore–Parks reference with `d` taken after the solver's *first* RTSAFE step from d = b/2, every other step unchanged (including forcing the Taylor coefficient `taylor[1]` to 0). This reproduces all 224 logicle tables to within 0.01 of 4096 channels. With that `d` the logicle condition fails, so the series (near zero) and the exponential form disagree at x1 ± w/4: a jump of 0.1 channel at W = 0.5, 9 at W = 1, and for W ≥ 1.5 the curve turns back on itself (59 of the tables are not monotone). At W = 0.4 the first step lands within 1e-5 of the root, which is why the tables match the reference there.
+  - **FlowJo's counts do not follow these tables.** On FlowKit's real FlowJo 10.6 workspaces (logicle W = 1, three samples of ~290 000 events), the reference logicle agrees with FlowJo's saved counts better than the tables' curve does; an ellipse gate, drawn in display space and so sensitive to the scale, is within 2% with the reference and 14% off with the tables' curve. CytoWeave therefore imports FlowJo's logicle as the reference logicle (`validation/README.md`).
   - Implication: gates imported from FlowJo WSP (vertices stored in data space) evaluate correctly with any monotone transform except at polygon edges. Edges are straight lines in *display* space, so a different transform bends them slightly differently.
   - **A second BD artifact confirms this.** The zip also contains `FlowJo_transforms.xlsx`, a forward table f(x) in channels for x = −10000…262150 in steps of 10. It shows the same pattern against the reference forward transform: W = 0 exact at all A; W = 0.5 within ≤ 2 channels; W = 1 off by 89–109 channels; W = 1.5 off by > 900 channels **(measured)**.
   - **BD's own notes in that workbook:**
@@ -84,7 +85,7 @@ CytoWeave's gate model should record `{dimension, compensation-ref, transformati
     - Biex with width −100 roughly matches logicle with A = 0, W = 1, but differs by about ±3% in the low region.
     - FlowJo added logicle, using Wayne Moore's implementation, for Gating-ML compatibility. Biex is the legacy transform, kept for backward compatibility.
     - FlowJo treats combinations with **W + A > M/2** as invalid. That is stricter than Gating-ML's 2W + A ≤ M.
-  - CytoWeave should provide a "FlowJo-compatible logicle" mode backed by the BD LUTs (MIT, redistributable with notice) plus linear interpolation, alongside the Gating-ML reference mode. *(Measured with a JS port of the reference code; worth independent confirmation.)*
+  - ~~CytoWeave should provide a "FlowJo-compatible logicle" mode backed by the BD LUTs.~~ Superseded by the two findings above: the tables are reproduced by formula, and FlowJo's counts follow the reference logicle instead.
 
 #### 3A.3 FlowJo biexponential ("biex") (FlowJo legacy Java → cytolib → FlowKit)
 
@@ -708,6 +709,8 @@ CytoNorm: Van Gassen 2020, DOI 10.1002/cyto.a.23904. CytoNorm 2.0: Quintelier et
 
 **JS:** trivial cost. Parity needs FlowSOM parity plus the monoH.FC port.
 
+**CytoWeave** follows 2.x: 99 quantiles at (1:99)/100, and identity for a batch with `minCells` or fewer cells in a cluster, which is left out of the goal. Given R's metacluster for each cell, it agrees with CytoNorm 2.0.12 to 9e-14 (QuantileNorm) and 7e-6 (clustered; R writes 32-bit floats). See validation/README.md, "Agreement with the R packages".
+
 ---
 
 #### 3B.9 cyCombine
@@ -1220,7 +1223,11 @@ CytoWeave's reader should implement "scalpel" (repair while preserving metadata)
 - **Gate coordinates are stored in untransformed (compensated) data units**, and the dimension names carry the compensation prefix (`Comp-FITC-A`).
   - Transforms are per-sample, in `<Transformations>`.
   - Polygon edges are straight in *transformed display space*. FlowKit therefore transforms the vertices into display space and evaluates there. This reproduces FlowJo counts exactly in FlowKit's small test workspaces, but not universally: flow-atlas found 332/1067 exact and 953/1067 within 1% on a large real workspace, with residuals at polygon edges near the biex zero region.
-- **Ellipses** (`gating:EllipsoidGate` with `gating:foci` (2 vertices), `gating:edge` (4 vertices) and a `gating:distance` attribute) are stored in **256×256 display-bin space**. FlowKit converts them to 128-vertex polygons.
+- **Ellipses** (`gating:EllipsoidGate` with `gating:foci` (2 vertices), `gating:edge` (4 vertices) and a `gating:distance` attribute) are stored in **256×256 display-bin space**. FlowKit converts them to 128-vertex polygons, taking the major radius from the edge points and the minor from the foci; this reproduces FlowJo's count on FlowKit's synthetic ellipse and is within 2–3% of it on the real 8-colour workspace.
+- **Time** is shown and gated in seconds: the stored value × the time parameter's linear `gain` attribute (0.0102654811 in FlowKit's 8-colour workspace, where $TIMESTEP is 0.01), or × $TIMESTEP without one. FlowIO and FlowKit use $TIMESTEP, which misses a few events at a time gate's edges (measured, 2026-10).
+- **Linear gains:** on any `transforms:linear` axis with `gain`, FlowJo's coordinates are gain × the stored value.
+- **Biex beyond the table:** values outside the 4097-point table are clamped to its ends (as cytolib and FlowKit do). The table stops just short of the top of scale (261 622 for width −10), so saturated events sit on the top edge.
+- **Display resolution:** polygon vertices are snapped to the 256-bin grid (multiples of 1024 on a 0–262144 linear axis) and `gateResolution="256"`. FlowJo's counts on real workspaces differ from an exact evaluation (CytoWeave's or FlowKit's) by 0.1–0.3% on large populations, presumably from evaluation at this resolution; rounding each axis to the grid did not reproduce them (measured, 2026-10).
 - **Quadrants** are written as four sibling `Population`s, each with a one-sided `gating:RectangleGate` (min-only or max-only dimensions). They are not `gating:QuadrantGate`.
 - **Boolean gates** are `AndNode`/`OrNode`/`NotNode` elements with `Dependents/Dependent[@name]` holding '/'-joined *gate paths* (not ids). There is no complement flag.
 - `eventsInside="0"` means the gate's complement.

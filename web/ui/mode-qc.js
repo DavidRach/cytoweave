@@ -613,7 +613,7 @@ export function mountQCMode(app, container) {
     settings: structuredClone(DEFAULT_SETTINGS),
     detailChannels: null,
     comparison: null,
-    norm: { channels: null, clustering: '', cofactor: null, nQ: 101, goal: 'mean', acknowledged: false, ackKey: '', result: null, histChannel: null },
+    norm: { channels: null, clustering: '', cofactor: null, nQ: 99, goal: 'mean', acknowledged: false, ackKey: '', result: null, histChannel: null },
     beads: { sampleId: null, scope: 'sample', baseline: 'file', results: new Map(), shownId: null },
     debarcode: { sampleId: null, channels: null, k: 3, keyMode: 'combination', csv: '', cofactor: 10, cutoff: 0.3, mahalanobis: 30, run: null, updating: false },
   });
@@ -1486,7 +1486,7 @@ export function mountQCMode(app, container) {
             ...clusters.map((name) => h('option', { value: name, selected: N.clustering === name }, `Per cluster of “${name}”`)))),
         h('label.field', { title: 'Used when the workspace has no fixed scale for a channel' }, h('span', 'Arcsinh cofactor'),
           h('input.input.small', { type: 'number', min: 0.1, step: 1, value: S.norm.cofactor ?? (mostlyMass() ? 5 : 150), style: { width: '80px' }, onchange: (event) => { const v = Number.parseFloat(event.target.value); S.norm.cofactor = v > 0 ? v : null; render(); } })),
-        h('label.field', { title: 'Number of quantiles per channel (CytoNorm default 101)' }, h('span', 'Quantiles'),
+        h('label.field', { title: 'Number of quantiles per channel (CytoNorm default 99)' }, h('span', 'Quantiles'),
           h('input.input.small', { type: 'number', min: 5, max: 1001, step: 1, value: N.nQ, style: { width: '76px' }, onchange: (event) => { const v = Math.round(Number.parseFloat(event.target.value)); if (v >= 5) N.nQ = v; } })),
         h('label.field', h('span', 'Target distribution'), goalSelect)),
       clusters.length ? null : h('p.muted.qc-small', 'No clustering channel found. Without one, CytoNorm fits one model for all cells; cluster the samples first (for example FlowSOM in Explore) to normalize per cell type.'),

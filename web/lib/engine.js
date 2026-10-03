@@ -5,10 +5,13 @@
 // Populations are memoized under a content hash of the gate chain (type, dimensions, effective
 // geometry, parents), so editing one gate recomputes only that gate and its descendants.
 
-import { compensate } from './compensation.js';
+import { compensator } from './compensation.js';
+import { float32 } from './memory.js';
 import { applyTransform, createTransform, defaultTransform } from './transforms.js';
-import { difference, intersect, membership, offsetGeometry, union } from './gates.js';
-import { describe } from './stats.js';
+import { boundaryTest, boundaryTestN, membershipNSet, membershipSet, offsetGeometry, pointTest, pointTestN } from './gates.js';
+import { EventSet, differenceSets, intersectSets, unionSets } from './eventset.js';
+import { describe, summarize } from './stats.js';
+import { readSpillover } from './fcs.js';
 import { ROOT, effectiveGeometry, gateApplies, gateById } from './workspace.js';
 
 // cyrb53: a fast 53-bit string hash (public domain, bryc), for cache keys.
@@ -25,6 +28,118 @@ export function hash53(text, seed = 0) {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
+// A compensation's state on one sample: its compensated float32 columns, each computed when first
+// asked for (a large sample's first plots, on scatter, need none), and, for exact boundary
+// decisions, the inverse matrix.
+class CompensatedColumns {
+  constructor(compensated = null) {
+    this.compensated = compensated;
+  }
+
+  has(name) {
+    return Boolean(this.compensated?.channels.includes(name));
+  }
+
+  get(name) {
+    return this.compensated?.column(name);
+  }
+
+  // The columns computed so far.
+  values() {
+    return this.compensated?.computed() ?? [];
+  }
+}
+
+function compensationContext(raw, comp) {
+  const context = { key: comp ? `${comp.id}:${hash53(Array.from(comp.matrix).join(','))}` : 'none', comp, columns: new CompensatedColumns(), exact: null, note: null };
+  if (!comp) return context;
+  const present = comp.channels.filter((c) => raw.has(c));
+  if (!present.length) return context;
+  let channels = comp.channels;
+  let matrix = comp.matrix;
+  if (present.length < comp.channels.length) {
+    const idx = present.map((c) => comp.channels.indexOf(c));
+    const n = comp.channels.length;
+    matrix = [];
+    for (const i of idx) for (const j of idx) matrix.push(comp.matrix[i * n + j]);
+    channels = present;
+    context.note = `Compensation channels missing from this sample were left out: ${comp.channels.filter((c) => !raw.has(c)).join(', ')}.`;
+  }
+  const columns = {};
+  for (const c of channels) columns[c] = raw.get(c);
+  const compensated = compensator(columns, { channels, matrix }, float32);
+  context.columns = new CompensatedColumns(compensated);
+  context.exact = { channels, inverse: compensated.inverse, index: new Map(channels.map((c, i) => [c, i])) };
+  return context;
+}
+
+// What a sample view may keep in its caches, in bytes. A ten-million-event sample has 40 MB per
+// scaled column and up to 1.25 MB per population (a bitset), so the caches are bounded by size,
+// least recently used first, rather than by entry count.
+export const CACHE_LIMITS = { scaled: 384 * 1024 ** 2, populations: 128 * 1024 ** 2, indices: 128 * 1024 ** 2 };
+const MISSING = Symbol('missing');
+
+// A least-recently-used map bounded by the bytes of its values (and an entry count).
+class SizedCache {
+  constructor(limit, maxEntries = 4096) {
+    this.limit = limit;
+    this.maxEntries = maxEntries;
+    this.map = new Map();
+    this.bytes = 0;
+  }
+
+  get size() {
+    return this.map.size;
+  }
+
+  has(key) {
+    return this.map.has(key);
+  }
+
+  get(key) {
+    if (!this.map.has(key)) return undefined;
+    const value = this.map.get(key);
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    if (this.map.has(key)) this.delete(key);
+    this.map.set(key, value);
+    this.bytes += value?.byteLength ?? 0;
+    for (const [oldest, old] of this.map) {
+      if ((this.bytes <= this.limit && this.map.size <= this.maxEntries) || oldest === key) break;
+      this.map.delete(oldest);
+      this.bytes -= old?.byteLength ?? 0;
+    }
+  }
+
+  delete(key) {
+    if (!this.map.has(key)) return false;
+    this.bytes -= this.map.get(key)?.byteLength ?? 0;
+    return this.map.delete(key);
+  }
+
+  clear() {
+    this.map.clear();
+    this.bytes = 0;
+  }
+
+  keys() {
+    return this.map.keys();
+  }
+
+  values() {
+    return this.map.values();
+  }
+}
+
+// Compensation references (gate dimensions may name one; Gating-ML's compensation-ref):
+//   undefined / null   the sample's own compensation
+//   'uncompensated'    none
+//   'file'             the file's $SPILLOVER
+//   a compensation id  that workspace compensation
 export class SampleView {
   constructor(record, dataset) {
     this.id = record.id;
@@ -34,11 +149,22 @@ export class SampleView {
     this.raw = new Map(dataset.parameters.map((p) => [p.name, dataset.data[p.index]]));
     this.parameters = dataset.parameters;
     this.compensation = null;
-    this.compensated = new Map();
+    this.own = compensationContext(this.raw, null);
+    this.compensated = this.own.columns;
+    // Other compensations that gate dimensions name: reference → context.
+    this.contexts = new Map();
+    this.compensations = [];
     this.derived = new Map();
     this.derivedVersion = new Map();
-    this.scaledCache = new Map();
-    this.populationCache = new Map();
+    // Channels computed on demand from other channels, from the workspace's derived records
+    // (Gating-ML fratio, and non-square spectrum matrices): name → { kind, inputs, params, key }.
+    this.computed = new Map();
+    this.computedSource = null;
+    this.computedColumns = new Map();
+    this.scaledCache = new SizedCache(CACHE_LIMITS.scaled, 256);
+    this.populationCache = new SizedCache(CACHE_LIMITS.populations);
+    // Bitset populations expanded into indices for code that needs them (population()).
+    this.indexCache = new SizedCache(CACHE_LIMITS.indices, 256);
     this.statCache = new Map();
     this.version = 'none';
   }
@@ -47,47 +173,40 @@ export class SampleView {
     let total = 0;
     for (const column of this.raw.values()) total += column.byteLength;
     for (const column of this.compensated.values()) total += column.byteLength;
+    for (const context of this.contexts.values()) for (const column of context?.columns.values() ?? []) total += column.byteLength;
     for (const column of this.derived.values()) total += column.byteLength;
-    for (const column of this.scaledCache.values()) total += column.byteLength;
-    return total;
+    for (const column of this.computedColumns.values()) total += column.byteLength;
+    return total + this.scaledCache.bytes + this.populationCache.bytes + this.indexCache.bytes;
+  }
+
+  get compensationKey() {
+    return this.own.key;
+  }
+
+  get compensationNote() {
+    return this.own.note;
   }
 
   // Applies a compensation ({ id, channels, matrix }) or null. Channels the data lack are
   // ignored with a note rather than failing, as controls often omit unused detectors.
   setCompensation(comp) {
     const key = comp ? `${comp.id}:${hash53(Array.from(comp.matrix).join(','))}` : 'none';
-    if (key === this.compensationKey) return;
-    this.compensationKey = key;
+    if (key === this.own.key) return;
     this.compensation = comp;
-    this.compensated = new Map();
-    this.compensationNote = null;
-    if (comp) {
-      const present = comp.channels.filter((c) => this.raw.has(c));
-      if (present.length) {
-        let channels = comp.channels;
-        let matrix = comp.matrix;
-        if (present.length < comp.channels.length) {
-          const idx = present.map((c) => comp.channels.indexOf(c));
-          const n = comp.channels.length;
-          matrix = [];
-          for (const i of idx) for (const j of idx) matrix.push(comp.matrix[i * n + j]);
-          channels = present;
-          this.compensationNote = `Compensation channels missing from this sample were left out: ${comp.channels.filter((c) => !this.raw.has(c)).join(', ')}.`;
-        }
-        const columns = {};
-        for (const c of channels) columns[c] = this.raw.get(c);
-        const result = compensate(columns, { channels, matrix });
-        for (const [name, column] of Object.entries(result)) this.compensated.set(name, column);
-      }
-    }
+    this.own = compensationContext(this.raw, comp);
+    this.compensated = this.own.columns;
     this.bumpVersion();
   }
 
   bumpVersion() {
     const derived = [...this.derivedVersion.entries()].map(([k, v]) => `${k}=${v}`).join(',');
-    this.version = hash53(`${this.compensationKey ?? 'none'}|${derived}`);
+    const computed = [...this.computed.entries()].map(([k, v]) => `${k}=${v.key}`).join(',');
+    const contexts = [...this.contexts.entries()].map(([k, v]) => `${k}=${v?.key}`).join(',');
+    this.computedColumns.clear();
+    this.version = hash53(`${this.own.key}|${derived}|${computed}|${contexts}`);
     this.scaledCache.clear();
     this.populationCache.clear();
+    this.indexCache.clear();
     this.statCache.clear();
   }
 
@@ -99,6 +218,53 @@ export class SampleView {
     this.bumpVersion();
   }
 
+  // Follows the workspace: its compensations (for gate dimensions that name one) and the computed
+  // channels of its derived records.
+  syncWorkspace(ws) {
+    if (ws.compensations !== this.compensations) {
+      this.compensations = ws.compensations ?? [];
+      if (this.contexts.size) {
+        this.contexts.clear();
+        this.bumpVersion();
+      }
+    }
+    this.syncComputed(ws.derived);
+  }
+
+  // Defines the computed channels of derived records without stored columns: ratios
+  // ({ kind: 'ratio', inputs: [x, y], outputs: [name], params: { A, B, C } }) and unmixing
+  // ({ kind: 'unmix', inputs: detectors, outputs: fluorochromes, params: { matrix } }, matrix
+  // detectors × fluorochromes, row-major).
+  syncComputed(records = []) {
+    if (records === this.computedSource) return;
+    this.computedSource = records;
+    let changed = false;
+    const seen = new Set();
+    const define = (name, entry) => {
+      seen.add(name);
+      if (this.computed.get(name)?.key !== entry.key) {
+        this.computed.set(name, entry);
+        changed = true;
+      }
+    };
+    for (const record of records) {
+      if (record.files) continue;
+      if (record.kind === 'ratio' && record.outputs?.[0] && record.inputs?.length === 2) {
+        define(record.outputs[0], { kind: 'ratio', inputs: record.inputs, params: record.params ?? {}, key: JSON.stringify(['ratio', record.inputs, record.params]) });
+      } else if (record.kind === 'unmix' && record.inputs?.length && record.outputs?.length && record.params?.matrix?.length === record.inputs.length * record.outputs.length) {
+        const key = hash53(JSON.stringify(['unmix', record.inputs, record.outputs, record.params.matrix]));
+        record.outputs.forEach((name, j) => define(name, { kind: 'unmix', inputs: record.inputs, params: { matrix: record.params.matrix, j, f: record.outputs.length }, key: `${key}:${j}` }));
+      }
+    }
+    for (const name of [...this.computed.keys()]) {
+      if (!seen.has(name)) {
+        this.computed.delete(name);
+        changed = true;
+      }
+    }
+    if (changed) this.bumpVersion();
+  }
+
   removeDerived(name) {
     if (this.derived.delete(name)) {
       this.derivedVersion.delete(name);
@@ -106,15 +272,101 @@ export class SampleView {
     }
   }
 
-  hasChannel(name) {
-    return this.raw.has(name) || this.derived.has(name);
+  // The compensation context of a reference (see above); null when it cannot be resolved.
+  context(ref) {
+    if (ref === undefined || ref === null) return this.own;
+    if (this.contexts.has(ref)) return this.contexts.get(ref);
+    let comp = null;
+    if (ref === 'file') {
+      const spill = readSpillover(this.dataset.keywords ?? {}, this.parameters);
+      comp = spill && !spill.identity ? { id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) } : null;
+    } else if (ref !== 'uncompensated') {
+      const found = this.compensations.find((c) => c.id === ref);
+      if (!found) return null;
+      comp = { id: found.id, channels: found.channels, matrix: found.matrix };
+    }
+    const key = comp ? `${comp.id}:${hash53(Array.from(comp.matrix).join(','))}` : 'none';
+    let context;
+    try {
+      context = key === this.own.key ? this.own : compensationContext(this.raw, comp);
+    } catch {
+      context = null;
+    }
+    this.contexts.set(ref, context);
+    return context;
+  }
+
+  hasChannel(name, ref) {
+    if (ref !== undefined && ref !== null && !this.context(ref)) return false;
+    if (this.raw.has(name) || this.derived.has(name)) return true;
+    const entry = this.computed.get(name);
+    return Boolean(entry && entry.inputs.every((input) => this.raw.has(input) || this.derived.has(input)));
   }
 
   // Linear values of a channel: compensated when the compensation covers it.
-  column(name) {
-    const column = this.compensated.get(name) ?? this.derived.get(name) ?? this.raw.get(name);
-    if (!column) throw new Error(`The sample "${this.record.name}" has no channel "${name}".`);
+  column(name, ref) {
+    const context = this.context(ref);
+    const column = context?.columns.get(name) ?? this.derived.get(name) ?? this.raw.get(name) ?? (this.hasChannel(name, ref) ? this.computedColumn(name, ref) : undefined);
+    if (!column) throw new Error(`The sample "${this.record.name}" has no channel "${name}"${context ? '' : ` (compensation "${ref}" is not available)`}.`);
     return column;
+  }
+
+  // fratio (Gating-ML 2.0 §5.3.1): A·(x − B) / (y − C) of the (compensated) inputs, in IEEE
+  // arithmetic: ±Infinity where y = C (in no gate's upper half-open interval), NaN for 0/0.
+  // Unmixing: Σᵢ detectorᵢ · W[i][j].
+  computedColumn(name, ref) {
+    const entry = this.computed.get(name);
+    if (!entry) return undefined;
+    const cacheKey = `${name}|${ref ?? ''}`;
+    let column = this.computedColumns.get(cacheKey);
+    if (column) return column;
+    column = float32(this.eventCount);
+    const inputs = entry.inputs.map((input) => this.column(input, ref));
+    if (entry.kind === 'ratio') {
+      const [x, y] = inputs;
+      const { A = 1, B = 0, C = 0 } = entry.params;
+      for (let i = 0; i < column.length; i += 1) column[i] = (A * (x[i] - B)) / (y[i] - C);
+    } else {
+      const { matrix, j, f } = entry.params;
+      const weights = inputs.map((_, i) => matrix[i * f + j]);
+      for (let e = 0; e < column.length; e += 1) {
+        let sum = 0;
+        for (let i = 0; i < inputs.length; i += 1) sum += inputs[i][e] * weights[i];
+        column[e] = sum;
+      }
+    }
+    this.computedColumns.set(cacheKey, column);
+    return column;
+  }
+
+  // A channel's value for one event in double precision: the stored columns are float32, so
+  // compensated values and computed channels are recomputed from the raw data, as reference
+  // tools do.
+  exactValue(name, e, ref) {
+    const context = this.context(ref);
+    const exact = context?.exact;
+    const j = exact?.index.get(name);
+    if (j !== undefined) {
+      const n = exact.channels.length;
+      let sum = 0;
+      for (let i = 0; i < n; i += 1) {
+        const w = exact.inverse[i * n + j];
+        if (w !== 0) sum += this.raw.get(exact.channels[i])[e] * w;
+      }
+      return sum;
+    }
+    const entry = !this.raw.has(name) && !this.derived.has(name) ? this.computed.get(name) : null;
+    if (entry?.kind === 'ratio') {
+      const { A = 1, B = 0, C = 0 } = entry.params;
+      return (A * (this.exactValue(entry.inputs[0], e, ref) - B)) / (this.exactValue(entry.inputs[1], e, ref) - C);
+    }
+    if (entry?.kind === 'unmix') {
+      const { matrix, j: k, f } = entry.params;
+      let sum = 0;
+      entry.inputs.forEach((input, i) => { sum += this.exactValue(input, e, ref) * matrix[i * f + k]; });
+      return sum;
+    }
+    return this.column(name, ref)[e];
   }
 
   isCompensated(name) {
@@ -122,25 +374,51 @@ export class SampleView {
   }
 
   // A channel's values in a transform's scale space, cached.
-  scaled(name, spec) {
+  scaled(name, spec, ref) {
     const transform = createTransform(spec);
-    const key = `${name}|${transform.key}`;
+    const key = `${name}|${transform.key}|${ref ?? ''}`;
     let column = this.scaledCache.get(key);
     if (!column) {
-      column = applyTransform(this.column(name), transform);
+      const source = this.column(name, ref);
+      column = applyTransform(source, transform, float32(source.length));
       this.scaledCache.set(key, column);
-      if (this.scaledCache.size > 96) {
-        const first = this.scaledCache.keys().next().value;
-        this.scaledCache.delete(first);
-      }
     }
     return column;
+  }
+
+  // Drops what is quick to recompute (scaled columns, populations expanded into indices) and
+  // returns the bytes freed.
+  trimCaches() {
+    const freed = this.scaledCache.bytes + this.indexCache.bytes;
+    this.scaledCache.clear();
+    this.indexCache.clear();
+    return freed;
+  }
+
+  // A cached population (an EventSet, or undefined when the gate does not apply), else MISSING.
+  cachedPopulation(key) {
+    return this.populationCache.has(key) ? this.populationCache.get(key) : MISSING;
+  }
+
+  cachePopulation(key, set) {
+    this.populationCache.set(key, set);
+  }
+
+  // A population's sorted indices; a bitset's are expanded once and kept while there is room.
+  indicesOf(set) {
+    if (set.indices) return set.indices;
+    let indices = this.indexCache.get(set);
+    if (!indices) {
+      indices = set.toIndices();
+      this.indexCache.set(set, indices);
+    }
+    return indices;
   }
 
   channelInfo(name) {
     const p = this.parameters.find((param) => param.name === name);
     if (p) return p;
-    if (this.derived.has(name)) return { name, type: 'derived', range: 1, label: '', marker: '' };
+    if (this.derived.has(name) || this.computed.has(name)) return { name, type: 'derived', range: 1, label: '', marker: '' };
     return null;
   }
 }
@@ -183,66 +461,112 @@ export function gateSignature(ws, gate, sampleId, depth = 0) {
 
 export class GateError extends Error {}
 
-// Events of a gate's population on a sample: a sorted Uint32Array, or null for every event.
-// Returns undefined when the gate does not apply to the sample or a channel is missing.
-export function population(view, ws, gateId) {
+// Events of a gate's population on a sample, as an EventSet (eventset.js: a bitset when large,
+// indices when small), or null for every event. Returns undefined when the gate does not apply to
+// the sample or a channel is missing.
+export function populationSet(view, ws, gateId) {
   if (!gateId || gateId === ROOT) return null;
   const gate = gateById(ws, gateId);
   if (!gate) throw new GateError(`No gate ${gateId}.`);
+  view.syncWorkspace?.(ws);
   if (!gateApplies(ws, gate, view.id)) return undefined;
   const key = `${view.version}|${gateSignature(ws, gate, view.id)}`;
-  if (view.populationCache.has(key)) return view.populationCache.get(key);
-  const parent = gate.parentId ? population(view, ws, gate.parentId) : null;
+  const cached = view.cachedPopulation(key);
+  if (cached !== MISSING) return cached;
+  const parent = gate.parentId ? populationSet(view, ws, gate.parentId) : null;
   if (parent === undefined) return undefined;
   const result = evaluateGate(view, ws, gate, effectiveGeometry(gate, view.id), parent);
-  view.populationCache.set(key, result);
-  if (view.populationCache.size > 2048) view.populationCache.delete(view.populationCache.keys().next().value);
+  view.cachePopulation(key, result);
   return result;
 }
 
+// The same population as sorted event indices (a Uint32Array), or null for every event; undefined
+// as above. Code that only counts, plots or summarizes a population should use populationSet,
+// which does not expand a bitset into indices.
+export function population(view, ws, gateId) {
+  const set = populationSet(view, ws, gateId);
+  return set ? view.indicesOf(set) : set;
+}
+
+// A population's size; NaN when the gate does not apply.
+export function populationSize(view, ws, gateId) {
+  return countOf(populationSet(view, ws, gateId), view);
+}
+
+// The members of a gate's geometry among `parent` (an EventSet, indices or null), as an EventSet.
 export function evaluateGate(view, ws, gate, geometry, parent) {
+  const size = view.eventCount;
   if (gate.type === 'boolean') {
-    const operands = (geometry.operands ?? []).map((id) => population(view, ws, id));
+    const operands = (geometry.operands ?? []).map((id) => populationSet(view, ws, id));
     if (operands.some((op) => op === undefined)) return undefined;
-    if (!operands.length) return geometry.op === 'not' ? parent : new Uint32Array(0);
+    if (!operands.length) return geometry.op === 'not' ? asEventSet(parent, size) : EventSet.empty(size);
     let result;
     switch (geometry.op) {
-      case 'and': result = operands.reduce((acc, op) => intersect(acc, op)); break;
-      case 'or': result = operands.reduce((acc, op) => union(acc, op, view.eventCount)); break;
+      case 'and': result = operands.reduce((acc, op) => intersectSets(acc, op, size)); break;
+      case 'or': result = operands.reduce((acc, op) => unionSets(acc, op, size)); break;
       case 'not': {
-        const combined = operands.reduce((acc, op) => union(acc, op, view.eventCount));
-        result = difference(parent, combined, view.eventCount);
+        const combined = operands.reduce((acc, op) => unionSets(acc, op, size));
+        result = differenceSets(parent, combined, size);
         break;
       }
       default: throw new GateError(`Unknown boolean operator ${geometry.op}.`);
     }
-    return intersect(parent, result ?? null);
+    return asEventSet(intersectSets(parent, result ?? null, size), size);
   }
-  for (const dim of gate.dims) if (!view.hasChannel(dim.channel)) return undefined;
+  for (const dim of gate.dims) if (!view.hasChannel(dim.channel, dim.compensation)) return undefined;
   if (gate.type === 'category') {
-    const column = view.column(gate.dims[0].channel);
-    return membership('category', geometry, column, null, parent, view.eventCount);
+    const column = view.column(gate.dims[0].channel, gate.dims[0].compensation);
+    return membershipSet('category', geometry, column, null, parent, size);
   }
-  const xs = view.scaled(gate.dims[0].channel, gate.dims[0].transform);
-  const ys = gate.dims[1] ? view.scaled(gate.dims[1].channel, gate.dims[1].transform) : null;
-  return membership(gate.type, geometry, xs, ys, parent, view.eventCount);
+  const columns = gate.dims.map((d) => view.scaled(d.channel, d.transform, d.compensation));
+  if (isMultidimensional(gate)) return membershipNSet(gate.type, geometry, columns, parent, size, exactRefinement(view, gate, geometry));
+  return membershipSet(gate.type, geometry, columns[0], columns[1] ?? null, parent, size, exactRefinement(view, gate, geometry));
 }
 
-export function countOf(indices, view) {
-  return indices === null ? view.eventCount : indices === undefined ? Number.NaN : indices.length;
+// A gate's population is always a set, even when it holds every event (null is the root's).
+function asEventSet(set, size) {
+  if (set === null) return EventSet.fromIndices(Uint32Array.from({ length: size }, (_, i) => i), size);
+  return set instanceof EventSet ? set : EventSet.fromIndices(set, size);
+}
+
+// Gates evaluated point by point in any number of dimensions (see gates.js membershipN).
+export function isMultidimensional(gate) {
+  return gate.type === 'ellipsoid' || (gate.type === 'rectangle' && gate.dims.length !== 2);
+}
+
+// Decides events at a gate's boundary from double-precision values (see membership).
+function exactRefinement(view, gate, geometry) {
+  const multi = isMultidimensional(gate);
+  const near = multi ? boundaryTestN(gate.type, geometry) : boundaryTest(gate.type, geometry);
+  if (!near) return null;
+  const forward = gate.dims.map((d) => createTransform(d.transform).forward);
+  const exactPoint = (e) => gate.dims.map((d, i) => forward[i](view.exactValue(d.channel, e, d.compensation)));
+  if (multi) {
+    const test = pointTestN(gate.type, geometry);
+    return { near, exact: (e) => test(exactPoint(e)) };
+  }
+  const test = pointTest(gate.type, geometry);
+  return { near, exact: (e) => { const [x, y = 0] = exactPoint(e); return test(x, y); } };
+}
+
+// The size of a population: an EventSet, indices, null (every event) or undefined (NaN).
+export function countOf(members, view) {
+  if (members === null) return view.eventCount;
+  if (members === undefined) return Number.NaN;
+  return members instanceof EventSet ? members.count : members.length;
 }
 
 // Counts and frequencies of every gate on a sample: { [gateId]: { count, freqParent, freqTotal } }.
 export function populationSummary(view, ws) {
   const out = {};
   for (const gate of ws.gates) {
-    const indices = population(view, ws, gate.id);
+    const indices = populationSet(view, ws, gate.id);
     if (indices === undefined) {
       out[gate.id] = { count: Number.NaN, applies: false };
       continue;
     }
     const count = countOf(indices, view);
-    const parent = gate.parentId ? population(view, ws, gate.parentId) : null;
+    const parent = gate.parentId ? populationSet(view, ws, gate.parentId) : null;
     const parentCount = countOf(parent, view);
     out[gate.id] = {
       count,
@@ -267,12 +591,12 @@ export function computeStatistic(view, ws, spec) {
 }
 
 function computeStatisticUncached(view, ws, spec) {
-  const indices = population(view, ws, spec.gateId ?? ROOT);
+  const indices = populationSet(view, ws, spec.gateId ?? ROOT);
   if (indices === undefined) return Number.NaN;
   const count = countOf(indices, view);
   const gate = spec.gateId && spec.gateId !== ROOT ? gateById(ws, spec.gateId) : null;
   const freqOf = (ancestorId) => {
-    const base = population(view, ws, ancestorId ?? ROOT);
+    const base = populationSet(view, ws, ancestorId ?? ROOT);
     const total = countOf(base, view);
     return total ? (100 * count) / total : Number.NaN;
   };
@@ -301,14 +625,15 @@ function computeStatisticUncached(view, ws, spec) {
   }
 }
 
-// Every channel's description for a population (the inspector's statistics table).
-export function describePopulation(view, ws, gateId, channels) {
-  const indices = population(view, ws, gateId);
+// Every channel's description for a population. With { basic: true }, only n, median, mean and
+// robust SD (stats.js summarize), as the inspector's table shows.
+export function describePopulation(view, ws, gateId, channels, options = {}) {
+  const indices = populationSet(view, ws, gateId);
   if (indices === undefined) return null;
   const out = {};
   for (const channel of channels) {
     if (!view.hasChannel(channel)) continue;
-    out[channel] = describe(view.column(channel), indices);
+    out[channel] = options.basic ? summarize(view.column(channel), indices) : describe(view.column(channel), indices);
   }
   return out;
 }
@@ -323,8 +648,8 @@ export function describePopulation(view, ws, gateId, channels) {
 
 export function gateRobustness(view, ws, gateId, options = {}) {
   const gate = gateById(ws, gateId);
-  if (!gate || gate.type === 'boolean' || gate.type === 'category') return null;
-  const parent = gate.parentId ? population(view, ws, gate.parentId) : null;
+  if (!gate || gate.type === 'boolean' || gate.type === 'category' || isMultidimensional(gate)) return null;
+  const parent = gate.parentId ? populationSet(view, ws, gate.parentId) : null;
   if (parent === undefined) return null;
   const parentCount = countOf(parent, view);
   if (!parentCount) return null;

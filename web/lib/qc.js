@@ -273,7 +273,7 @@ function whittakerSmooth(factor, y, out, work) {
 // stats::density(x) with the defaults (Gaussian kernel, bw.nrd0, n = 512, cut = 3): linear
 // binning on [lo, up] = [min − 7bw, max + 7bw], convolution with the kernel, interpolation onto
 // [min − 3bw, max + 3bw]. Then smoothing (in place of smooth.spline) and clipping at zero.
-function smoothedDensity(sorted, ws) {
+function smoothedDensity(sorted, ws, exact = false) {
   const n = sorted.length;
   const N = DENSITY_POINTS;
   const bw = bandwidthNrd0(sorted);
@@ -295,10 +295,13 @@ function smoothedDensity(sorted, ws) {
     } else if (ix === -1) binned[0] += weight * fx;
     else if (ix === N - 1) binned[ix] += weight * (1 - fx);
   }
-  const reach = Math.min(N - 1, Math.ceil((8 * bw) / delta));
+  // R evaluates the kernel at kords = seq(0, 2(up − lo), length = 2N): a spacing of
+  // 2(up − lo)/(2N − 1), slightly unlike the bins' (up − lo)/(N − 1); `exact` follows it.
+  const kdelta = exact ? (2 * (up - lo)) / (2 * N - 1) : delta;
+  const reach = exact ? N - 1 : Math.min(N - 1, Math.ceil((8 * bw) / delta));
   const norm = 1 / (bw * Math.sqrt(2 * Math.PI));
   for (let d = 0; d <= reach; d += 1) {
-    const z = (d * delta) / bw;
+    const z = (d * kdelta) / bw;
     kernel[d] = norm * Math.exp(-0.5 * z * z);
   }
   conv.fill(0);
@@ -310,6 +313,7 @@ function smoothedDensity(sorted, ws) {
     for (let i = i0; i <= i1; i += 1) conv[i] += mass * kernel[i > j ? i - j : j - i];
   }
   const step = (to - from) / (N - 1);
+  if (exact) for (let i = 0; i < N; i += 1) if (conv[i] < 0) conv[i] = 0;
   for (let i = 0; i < N; i += 1) {
     const xi = from + i * step;
     const pos = (xi - lo) / delta;
@@ -318,6 +322,7 @@ function smoothedDensity(sorted, ws) {
     x[i] = xi;
     y[i] = conv[k] * (1 - t) + conv[k + 1] * t;
   }
+  if (exact) return { x, y, bw };
   whittakerSmooth(ws.smoother, y, conv, ws.forward);
   for (let i = 0; i < N; i += 1) y[i] = conv[i] > 0 ? conv[i] : 0;
   return { x, y, bw };
@@ -325,17 +330,21 @@ function smoothedDensity(sorted, ws) {
 
 // PeacoQC's FindThemPeaks: local maxima of the smoothed density that are higher than
 // `peakRemoval` × the highest density value. `sorted` is a sorted Float64Array.
+// With `exact`, the density is R's own (no added smoothing) and a density without a qualifying
+// local maximum gives the position of its maximum, as PeacoQC 1.22 does.
 export function findPeaks(sorted, options = {}, workspace = null) {
   if (sorted.length < 3) return [];
   const ws = workspace ?? createDensityWorkspace(options.densitySmoothing);
-  const { x, y } = smoothedDensity(sorted, ws);
+  const { x, y } = smoothedDensity(sorted, ws, options.exact);
   let top = 0;
-  for (let i = 0; i < y.length; i += 1) if (y[i] > top) top = y[i];
+  let topAt = 0;
+  for (let i = 0; i < y.length; i += 1) if (y[i] > top) { top = y[i]; topAt = i; }
   const limit = (options.peakRemoval ?? 1 / 3) * top;
   const peaks = [];
   for (let i = 1; i < y.length - 1; i += 1) {
-    if (y[i] - y[i - 1] > 0 && y[i + 1] - y[i] < 0 && y[i] > limit) peaks.push(x[i]);
+    if (y[i] > y[i - 1] && y[i] > y[i + 1] && y[i] > limit) peaks.push(x[i]);
   }
+  if (!peaks.length && options.exact) peaks.push(x[topAt]);
   return peaks;
 }
 
@@ -358,6 +367,90 @@ export function averagePathLength(n) {
 // coherent in time: at least that fraction of its rows (bins, in acquisition order) have a
 // neighbouring row on the same side. Clogs and bursts span consecutive, half-overlapping bins;
 // a split on a peak that flickers between bins scatters its smaller side through the whole run.
+// PeacoQC 1.22's isolationTreeSD as written (classic mode), including its particulars: after each
+// split the gain limit rises to that split's gain, so every later split must gain more; within a
+// column the last of equal gains wins and between columns the first; split points between equal
+// values are considered, and a split leaving one side empty makes a leaf.
+export function isolationTreeSDClassic(columns, options = {}) {
+  const nRows = columns.length ? columns[0].length : 0;
+  let gainLimit = options.gainLimit ?? 0.6;
+  const maxDepth = options.maxDepth ?? Math.ceil(Math.log2(Math.max(nRows, 2)));
+  const nodes = [];
+  const leafOf = new Int32Array(nRows);
+  const sd = (values, from, to) => {
+    const n = to - from;
+    if (n < 2) return Number.NaN;
+    let mean = 0;
+    for (let i = from; i < to; i += 1) mean += values[i];
+    mean /= n;
+    let ss = 0;
+    for (let i = from; i < to; i += 1) ss += (values[i] - mean) ** 2;
+    return Math.sqrt(ss / (n - 1));
+  };
+  const queue = [{ rows: Uint32Array.from({ length: nRows }, (_, i) => i), depth: 0, parent: -1, side: '' }];
+  while (queue.length) {
+    const { rows, depth, parent, side } = queue.shift();
+    const id = nodes.length;
+    const node = { id, parent, depth, size: rows.length, left: -1, right: -1, column: -1, value: Number.NaN, gain: Number.NaN, pathLength: Number.NaN };
+    nodes.push(node);
+    if (parent >= 0) nodes[parent][side] = id;
+    let split = null;
+    if (rows.length > 3 && depth < maxDepth) {
+      let best = gainLimit;
+      const n = rows.length;
+      for (let c = 0; c < columns.length; c += 1) {
+        const vals = Float64Array.from(rows, (r) => columns[c][r]).sort();
+        const base = sd(vals, 0, n);
+        let bestColumn = 0;
+        let value = Number.NaN;
+        // Prefix sums give each side's SD in one pass (R recomputes sd() at every position).
+        let sum = 0;
+        let sumSq = 0;
+        let total = 0;
+        let totalSq = 0;
+        const shift = vals[0];
+        for (let i = 0; i < n; i += 1) { total += vals[i] - shift; totalSq += (vals[i] - shift) ** 2; }
+        for (let i = 1; i < n; i += 1) {
+          sum += vals[i - 1] - shift;
+          sumSq += (vals[i - 1] - shift) ** 2;
+          const nr = n - i;
+          const sd1 = i === 1 ? 0 : Math.sqrt(Math.max(0, (sumSq - (sum * sum) / i) / (i - 1)));
+          const sd2 = i === n - 1 ? 0 : Math.sqrt(Math.max(0, ((totalSq - sumSq) - ((total - sum) ** 2) / nr) / (nr - 1)));
+          const gain = (base - (sd1 + sd2) / 2) / base;
+          if (Number.isNaN(gain)) continue;
+          if (gain >= bestColumn) {
+            bestColumn = gain;
+            value = vals[i - 1];
+          }
+        }
+        if (bestColumn > best) {
+          best = bestColumn;
+          split = { column: c, value, gain: bestColumn };
+        }
+      }
+    }
+    if (split) {
+      const column = columns[split.column];
+      const leftRows = rows.filter((r) => column[r] <= split.value);
+      const rightRows = rows.filter((r) => column[r] > split.value);
+      if (leftRows.length && rightRows.length) {
+        Object.assign(node, { column: split.column, value: split.value, gain: split.gain });
+        gainLimit = split.gain;
+        queue.push({ rows: leftRows, depth: depth + 1, parent: id, side: 'left' });
+        queue.push({ rows: rightRows, depth: depth + 1, parent: id, side: 'right' });
+        continue;
+      }
+    }
+    node.pathLength = depth + averagePathLength(rows.length);
+    for (let i = 0; i < rows.length; i += 1) leafOf[rows[i]] = id;
+  }
+  let largest = -1;
+  for (const node of nodes) if (node.column < 0 && (largest < 0 || node.size > nodes[largest].size)) largest = node.id;
+  const good = new Uint8Array(nRows);
+  for (let i = 0; i < nRows; i += 1) good[i] = leafOf[i] === largest ? 1 : 0;
+  return { nodes, leafOf, good, largestLeaf: largest };
+}
+
 export function isolationTreeSD(columns, options = {}) {
   const nRows = columns.length ? columns[0].length : 0;
   const gainLimit = options.gainLimit ?? 0.6;
@@ -660,6 +753,232 @@ function trackPeaks(binPeaks, minPercent, options = {}) {
   return { trajectories, medians, present };
 }
 
+// --- Smoothing spline ------------------------------------------------------------------------
+
+// R's .nknots.smspl: the number of knots smooth.spline places among n unique x values.
+function splineKnotCount(n) {
+  if (n < 50) return n;
+  const [a1, a2, a3, a4] = [Math.log2(50), Math.log2(100), Math.log2(140), Math.log2(200)];
+  if (n < 200) return Math.trunc(2 ** (a1 + ((a2 - a1) * (n - 50)) / 150));
+  if (n < 800) return Math.trunc(2 ** (a2 + ((a3 - a2) * (n - 200)) / 600));
+  if (n < 3200) return Math.trunc(2 ** (a3 + ((a4 - a3) * (n - 800)) / 2400));
+  return Math.trunc(200 + (n - 3200) ** 0.2);
+}
+
+// Values and second derivatives of the 4 cubic B-splines nonzero on knot interval `l` (0-based:
+// t[l] ≤ x ≤ t[l+1]), i.e. B[l−3] … B[l], by the Cox–de Boor recursion on that interval.
+function cubicBasis(t, l, x) {
+  // b[k][j]: B-spline of order k+1 with index l − k + j, j = 0…k.
+  const b = [[1]];
+  for (let k = 1; k <= 3; k += 1) {
+    const row = new Array(k + 1).fill(0);
+    for (let j = 0; j <= k; j += 1) {
+      const i = l - k + j;
+      const left = j > 0 ? b[k - 1][j - 1] : 0;
+      const right = j < k ? b[k - 1][j] : 0;
+      const d1 = t[i + k] - t[i];
+      const d2 = t[i + k + 1] - t[i + 1];
+      row[j] = (d1 > 0 ? ((x - t[i]) / d1) * left : 0) + (d2 > 0 ? ((t[i + k + 1] - x) / d2) * right : 0);
+    }
+    b.push(row);
+  }
+  // Second derivatives from the order-2 values: B'' = (k−1)(k−2)-weighted differences.
+  const first = new Array(3).fill(0); // derivatives of the order-3 splines, index l − 2 + j
+  for (let j = 0; j < 3; j += 1) {
+    const i = l - 2 + j;
+    const left = j > 0 ? b[1][j - 1] : 0;
+    const right = j < 2 ? b[1][j] : 0;
+    const d1 = t[i + 2] - t[i];
+    const d2 = t[i + 3] - t[i + 1];
+    first[j] = 2 * ((d1 > 0 ? left / d1 : 0) - (d2 > 0 ? right / d2 : 0));
+  }
+  const second = new Array(4).fill(0);
+  for (let j = 0; j < 4; j += 1) {
+    const i = l - 3 + j;
+    const left = j > 0 ? first[j - 1] : 0;
+    const right = j < 3 ? first[j] : 0;
+    const d1 = t[i + 3] - t[i];
+    const d2 = t[i + 4] - t[i + 1];
+    second[j] = 3 * ((d1 > 0 ? left / d1 : 0) - (d2 > 0 ? right / d2 : 0));
+  }
+  return { values: b[3], second };
+}
+
+// R's smooth.spline(1:n, y, spar)$y: the penalized cubic regression spline of stats::smooth.spline
+// (sbart.c, sgram.f, stxwx.f, sslvrg.f) for equally spaced x and unit weights, with its knot
+// placement (.nknots.smspl) and its spar → λ rule, λ = r·16^(6·spar − 2) with r the ratio of the
+// traces of XᵀWX and of the penalty matrix (over their interior entries). Its penalty integral
+// keeps R's constant 0.3330 for 1/3, so the results agree with R's to rounding.
+export function smoothSpline(y, spar = 0.5) {
+  const n = y.length;
+  if (n < 4) return Float64Array.from(y);
+  const x = Float64Array.from({ length: n }, (_, i) => i / (n - 1));
+  const nknots = splineKnotCount(n);
+  // xbar[seq.int(1, n, length.out = nknots)], indexed as R does (truncating).
+  const inner = [];
+  const by = (n - 1) / (nknots - 1);
+  // (seq.int ends exactly at n; the other positions are 1 + i·by, truncated.)
+  for (let i = 0; i < nknots; i += 1) inner.push(x[i === nknots - 1 ? n - 1 : Math.trunc(1 + i * by) - 1]);
+  const t = Float64Array.from([x[0], x[0], x[0], ...inner, x[n - 1], x[n - 1], x[n - 1]]);
+  const nk = nknots + 2;
+  // The knot interval holding v (0-based l with t[l] ≤ v < t[l+1]; the last one at the right end).
+  const intervalOf = (v) => {
+    let lo = 3;
+    let hi = nk; // t[nk] is the right end
+    if (v >= t[nk]) return nk - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (t[mid] <= v) lo = mid;
+      else hi = mid;
+    }
+    return lo;
+  };
+  // X'WX (bands hs0…hs3) and X'Wy.
+  const hs = [new Float64Array(nk), new Float64Array(nk), new Float64Array(nk), new Float64Array(nk)];
+  const xwy = new Float64Array(nk);
+  for (let i = 0; i < n; i += 1) {
+    const l = intervalOf(x[i]);
+    const { values } = cubicBasis(t, l, x[i]);
+    for (let a = 0; a < 4; a += 1) {
+      const j = l - 3 + a;
+      xwy[j] += y[i] * values[a];
+      for (let d = 0; a + d < 4; d += 1) hs[d][j] += values[a] * values[a + d];
+    }
+  }
+  // The penalty Σ = ∫ B''ᵢ B''ⱼ (bands sg0…sg3), as sgram.f integrates it.
+  const sg = [new Float64Array(nk), new Float64Array(nk), new Float64Array(nk), new Float64Array(nk)];
+  for (let l = 3; l < nk; l += 1) {
+    const width = t[l + 1] - t[l];
+    if (!(width > 0)) continue;
+    const y1 = cubicBasis(t, l, t[l]).second;
+    const end = cubicBasis(t, l, t[l + 1]).second;
+    const y2 = end.map((v, k) => v - y1[k]);
+    for (let a = 0; a < 4; a += 1) {
+      for (let d = 0; a + d < 4; d += 1) {
+        const b = a + d;
+        sg[d][l - 3 + a] += width * (y1[a] * y1[b] + (y2[a] * y1[b] + y2[b] * y1[a]) * 0.5 + y2[a] * y2[b] * 0.333);
+      }
+    }
+  }
+  let t1 = 0;
+  let t2 = 0;
+  for (let i = 2; i < nk - 3; i += 1) {
+    t1 += hs[0][i];
+    t2 += sg[0][i];
+  }
+  const lambda = (t1 / t2) * 16 ** (6 * spar - 2);
+  // Banded Cholesky (bandwidth 3) of X'WX + λΣ, and the solve for the coefficients.
+  const L = [new Float64Array(nk), new Float64Array(nk), new Float64Array(nk), new Float64Array(nk)];
+  for (let j = 0; j < nk; j += 1) {
+    for (let d = 3; d >= 0; d -= 1) {
+      const i = j - d; // L[d][j] = L(j, i)
+      if (i < 0) continue;
+      let s = hs[d][i] + lambda * sg[d][i];
+      for (let k = Math.max(0, j - 3); k < i; k += 1) s -= L[j - k][j] * L[i - k][i];
+      if (d === 0) L[0][j] = Math.sqrt(s);
+      else L[d][j] = s / L[0][i];
+    }
+  }
+  const coef = Float64Array.from(xwy);
+  for (let j = 0; j < nk; j += 1) {
+    for (let d = 1; d <= 3 && j - d >= 0; d += 1) coef[j] -= L[d][j] * coef[j - d];
+    coef[j] /= L[0][j];
+  }
+  for (let j = nk - 1; j >= 0; j -= 1) {
+    for (let d = 1; d <= 3 && j + d < nk; d += 1) coef[j] -= L[d][j + d] * coef[j + d];
+    coef[j] /= L[0][j];
+  }
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const l = intervalOf(x[i]);
+    const { values } = cubicBasis(t, l, x[i]);
+    let s = 0;
+    for (let a = 0; a < 4; a += 1) s += coef[l - 3 + a] * values[a];
+    out[i] = s;
+  }
+  return out;
+}
+
+// PeacoQC 1.22's DetermineAllPeaks, DuplicatePeaks, TooSmallClusters and ExtractPeakValues, step
+// for step (classic mode). binPeaks[b] is a bin's peaks, or null for a bin of fewer than 3 events.
+// The number of peaks is the largest count seen in more than `minPercent` % of the bins; each peak
+// joins the cluster whose seed (the median of that peak in those bins) is nearest; a bin keeps one
+// peak per cluster (the one nearest the seed); clusters found in fewer than half of the bins are
+// dropped; a bin without a peak in a cluster gets the cluster's median. Clusters come in R's order
+// (of first appearance), which the isolation tree's ties depend on.
+function trackPeaksClassic(binPeaks, minPercent) {
+  const withPeaks = [];
+  binPeaks.forEach((peaks, b) => { if (peaks && peaks.length) withPeaks.push(b); });
+  if (!withPeaks.length) return null;
+  const counts = new Map();
+  for (const b of withPeaks) counts.set(binPeaks[b].length, (counts.get(binPeaks[b].length) ?? 0) + 1);
+  let k = -Infinity;
+  for (const [count, f] of counts) if (f > (minPercent / 100) * withPeaks.length && count > k) k = count;
+  if (!(k > 0)) return null;
+  let seeds;
+  const rows = []; // { bin, peak, cluster }
+  if (k > 1) {
+    seeds = Array.from({ length: k }, (_, j) => median(withPeaks.filter((b) => binPeaks[b].length === k).map((b) => binPeaks[b][j])));
+    for (const b of withPeaks) {
+      for (const p of binPeaks[b]) {
+        let best = 0;
+        for (let j = 1; j < k; j += 1) if (Math.abs(p - seeds[j]) < Math.abs(p - seeds[best])) best = j;
+        rows.push({ bin: b, peak: p, cluster: best });
+      }
+    }
+  } else {
+    for (const b of withPeaks) for (const p of binPeaks[b]) rows.push({ bin: b, peak: p, cluster: 0 });
+    seeds = [median(rows.map((r) => r.peak))];
+  }
+  // DuplicatePeaks: per bin, for every repeated cluster drop the peak farthest from its seed.
+  const kept = [];
+  for (const b of withPeaks) {
+    let use = rows.filter((r) => r.bin === b);
+    const seen = new Set();
+    const duplicates = [];
+    for (const r of use) {
+      if (seen.has(r.cluster)) duplicates.push(r.cluster);
+      seen.add(r.cluster);
+    }
+    if (duplicates.length) {
+      for (const c of duplicates) {
+        const members = use.filter((r) => r.cluster === c);
+        let worst = members[0];
+        for (const r of members) if (Math.abs(r.peak - seeds[c]) > Math.abs(worst.peak - seeds[c])) worst = r;
+        use = use.filter((r) => r !== worst);
+      }
+      use = [...use].sort((a, c) => a.cluster - c.cluster);
+    }
+    kept.push(...use);
+  }
+  // TooSmallClusters: clusters with fewer rows than half the last bin's number.
+  const lastBin = withPeaks[withPeaks.length - 1] + 1;
+  const size = new Map();
+  for (const r of kept) size.set(r.cluster, (size.get(r.cluster) ?? 0) + 1);
+  const final = kept.filter((r) => size.get(r.cluster) >= lastBin / 2);
+  if (!final.length) return null;
+  const order = [];
+  for (const r of final) if (!order.includes(r.cluster)) order.push(r.cluster);
+  const nBins = binPeaks.length;
+  const trajectories = [];
+  const medians = [];
+  const present = [];
+  for (const c of order) {
+    const members = final.filter((r) => r.cluster === c);
+    const m = median(members.map((r) => r.peak));
+    const track = new Float64Array(nBins).fill(m);
+    const has = new Uint8Array(nBins);
+    for (const r of members) {
+      track[r.bin] = r.peak;
+      has[r.bin] = 1;
+    }
+    trajectories.push(track);
+    medians.push(m);
+    present.push(has);
+  }
+  return { trajectories, medians, present };
+}
+
 // R's ksmooth(kernel = 'box') at the data points 1…n: the mean of the points within ±bandwidth/2.
 export function boxSmooth(values, bandwidth = 50) {
   const n = values.length;
@@ -687,6 +1006,19 @@ function theilSenTrend(track) {
   const x = Float64Array.from(track, (_, i) => i);
   const { slope, intercept } = theilSen(x, track);
   return Float64Array.from(x, (i) => intercept + slope * i);
+}
+
+// PeacoQC 1.22's MADOutliers: the trajectory smoothed by smooth.spline(spar = 0.5); bins whose
+// smoothed value lies beyond median ± MAD × mad (R's mad, of the smoothed values) are flagged.
+function madOutliersClassic(track, madLimit) {
+  const smooth = smoothSpline(track, 0.5);
+  const center = median(smooth);
+  const spread = mad(smooth, center);
+  const lower = center - madLimit * spread;
+  const upper = center + madLimit * spread;
+  const flagged = new Uint8Array(track.length);
+  for (let i = 0; i < track.length; i += 1) if (smooth[i] > upper || smooth[i] < lower) flagged[i] = 1;
+  return { flagged, smooth, lower, upper, skipped: false };
 }
 
 function madOutliers(track, madLimit, bandwidth, options = {}) {
@@ -796,7 +1128,7 @@ export function peacoQC(sample, options = {}) {
 
   // Peak trajectories per channel.
   const ws = createDensityWorkspace(options.densitySmoothing);
-  const peakOptions = { peakRemoval: options.peakRemoval ?? 1 / 3 };
+  const peakOptions = { peakRemoval: options.peakRemoval ?? 1 / 3, exact: classic };
   const channelTracks = {};
   const features = [];
   const featureColumns = [];
@@ -819,9 +1151,13 @@ export function peacoQC(sample, options = {}) {
     const binPeaks = bins.map((bin) => {
       let m = 0;
       for (let i = bin.start; i < bin.end; i += 1) if (keep(raw[i]) && Number.isFinite(values[i])) binBuffer[m++] = values[i];
+      // Fewer than 3 events: no density (PeacoQC's NA).
+      if (classic && m < 3) return null;
       return findPeaks(binBuffer.subarray(0, m).sort(), peakOptions, ws);
     });
-    const tracked = trackPeaks(binPeaks, options.minPeakBinsPercent ?? 10, { tolerance: !classic, maxJump: options.maxJump });
+    const tracked = classic
+      ? trackPeaksClassic(binPeaks, options.minPeakBinsPercent ?? 10)
+      : trackPeaks(binPeaks, options.minPeakBinsPercent ?? 10, { tolerance: true, maxJump: options.maxJump });
     if (!tracked) {
       warnings.push(`No stable peaks were found in ${name}; it was left out.`);
       return;
@@ -854,7 +1190,9 @@ export function peacoQC(sample, options = {}) {
       for (let b = 0; b < nBins; b += 1) goodIT[b] = scores[b] > itLimit ? 0 : 1;
       isolation = { method: 'forest', scores };
     } else {
-      const tree = isolationTreeSD(featureColumns, { gainLimit: itLimit, maxDepth: options.maxDepth, coherence: classic ? 0 : options.coherence ?? 0.8 });
+      const tree = classic
+        ? isolationTreeSDClassic(featureColumns, { gainLimit: itLimit, maxDepth: options.maxDepth })
+        : isolationTreeSD(featureColumns, { gainLimit: itLimit, maxDepth: options.maxDepth, coherence: options.coherence ?? 0.8 });
       goodIT.set(tree.good);
       isolation = { method: 'sd-tree', nodes: tree.nodes, largestLeaf: tree.largestLeaf };
     }
@@ -872,7 +1210,7 @@ export function peacoQC(sample, options = {}) {
     featureColumns.forEach((track, f) => {
       const sub = new Float64Array(kept.length);
       for (let i = 0; i < kept.length; i += 1) sub[i] = track[kept[i]];
-      const result = madOutliers(sub, madLimit, options.madBandwidth ?? 50, { localize: !classic, rawLimit: options.rawLimit });
+      const result = classic ? madOutliersClassic(sub, madLimit) : madOutliers(sub, madLimit, options.madBandwidth ?? 50, { localize: true, rawLimit: options.rawLimit });
       let count = 0;
       for (let i = 0; i < kept.length; i += 1) {
         if (result.flagged[i]) {

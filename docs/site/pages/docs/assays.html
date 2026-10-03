@@ -1,0 +1,60 @@
+---
+title: Cell cycle, proliferation and index sorting
+description: Fit the cell cycle (Dean–Jett–Fox or Watson) and dye-dilution proliferation models in CytoWeave, with division, proliferation, expansion and replication indices, and read an index-sorted plate well by well.
+lede: Models for DNA content and dye dilution, and the plate view for index sorts. All three work on a population you have gated.
+---
+      <h2 id="cell-cycle">Cell cycle</h2>
+      <shot name="cellcycle" alt="The cell-cycle model of a nocodazole-arrested culture: the fitted DNA histogram with G0/G1 25.0%, S 28.5% and G2/M 46.6%, the residuals below, and the G1 and G2 means, CVs, G2/G1 ratio and reduced chi-square">A nocodazole-arrested culture fitted with Dean–Jett–Fox: 46.6% of cycling cells in G2/M.</shot>
+      <ol>
+        <li>Gate single nuclei. Doublets of two G1 nuclei have the DNA area of one G2 nucleus but a longer pulse, so gate on the DNA dye's area against its width (for example PI-A against PI-W). The dialog's <strong>Suggest a singlet gate</strong> proposes one.</li>
+        <li>Right-click the singlet population and choose <strong>Cell cycle (DNA content)…</strong>.</li>
+        <li>Choose the <strong>DNA channel</strong> (the linear area parameter of the dye) and the model:
+          <ul>
+            <li><strong>Dean–Jett–Fox</strong> (Fox 1980) fits the whole histogram: two Gaussians and a broadened quadratic S phase. The usual choice for clean, well-resolved histograms.</li>
+            <li><strong>Watson pragmatic</strong> (Watson et al. 1987) fits Gaussians to the outer flanks of G1 and G2 only; S phase is what remains between them. Robust when S phase has an unusual shape.</li>
+          </ul>
+        </li>
+        <li>Optionally model debris (exponential) and aggregates (G1+G2, G2+G2), constrain the G2/G1 ratio, or tie the G2 CV to the G1 CV.</li>
+      </ol>
+      <p>The result gives the G0/G1, S and G2/M percentages of the cycling cells (debris and aggregates excluded) with standard errors, the G1 and G2 means and CVs, the G2/G1 ratio and the goodness of fit. A reduced χ² near 1 means the model explains the histogram within counting noise; above about 3, or runs of residual bars beyond the dashed ±2 lines, the model misses something (debris, doublets, apoptotic sub-G1 cells or a second population). G1 CVs below about 5% give reliable S-phase estimates; above 8% they do not.</p>
+      <p>The fitted histogram exports as SVG or PNG. <strong>Save this sample</strong> stores the fit with the workspace, and <strong>Run on all samples</strong> fits every sample with the same settings. On the simulated cultures, Dean–Jett–Fox recovers the true phase fractions within 1.6 points and Watson within 2.</p>
+
+      <h2 id="proliferation">Proliferation</h2>
+      <shot name="proliferation" alt="The proliferation model of stimulated CD4 T cells: the CellTrace Violet histogram with the fitted generations, and the division, proliferation, expansion and replication indices">CD4 T cells after four days of stimulation: generations of CellTrace Violet dilution.</shot>
+      <p>Each division halves a cell's dye, so the dye histogram of a proliferating population is a series of peaks, one per generation. CytoWeave fits a generation mixture model to it.</p>
+      <ol>
+        <li>Gate the responding population (for example live CD4 T cells), right-click it and choose <strong>Proliferation (dye dilution)…</strong>.</li>
+        <li>Choose the <strong>Dye channel</strong>: CellTrace Violet, CFSE or a similar dye (compensated, linear values).</li>
+        <li>Set the <strong>Undivided peak</strong> (generation 0). An unstimulated control marks it exactly (<strong>Take from a control…</strong>); otherwise the brightest substantial peak is used and refined.</li>
+        <li>Choose the number of <strong>Generations</strong> (automatic, up to 10) and whether to fit the spacing (the dye lost per division). Off, generations are exactly 2-fold apart.</li>
+      </ol>
+      <p>The result lists the cells in each generation and the indices, as defined by Roederer (2011):</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Index</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Division index</strong></td><td>The average number of divisions of all the original cells, including those that never divided</td></tr>
+            <tr><td><strong>Proliferation index</strong></td><td>The average number of divisions of the cells that divided at least once</td></tr>
+            <tr><td><strong>Expansion index</strong></td><td>The fold expansion of the whole culture</td></tr>
+            <tr><td><strong>Replication index</strong></td><td>The fold expansion of the cells that responded</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>On the simulated cultures, the division index is within 3% of the truth. <strong>Run on all samples</strong> fits every sample with the same settings, sharing a fixed undivided peak.</p>
+
+      <h2 id="index-sorting">Index sorting</h2>
+      <shot name="indexsort" alt="An index-sorted 96-well plate below two plots: wells coloured by the deepest population (CD27+ IgD−, CD27− IgD+, CD19−), well C3 marked, its cell circled on the FSC/SSC and CD27/IgD plots, and its values listed">A 96-well index sort coloured by population, with well C3's cell marked on every plot.</shot>
+      <p>An index sort records the well each sorted cell went to, so every well's cell can be traced back to its phenotype. When a sample carries index-sort data, the Gate view shows its plate below the plots. Wells are read from BD FACSDiva's <code>INDEX SORTING LOCATIONS</code> keyword, or from event parameters such as "Index X" and "Index Y" or "Well Row" and "Well Column"; the plate size comes from the sorter's device type or from the positions.</p>
+      <ul>
+        <li><strong>Colour wells by</strong> the deepest population each cell falls in, by one population, or by a channel's value. Selecting a population in the tree colours its wells and counts them.</li>
+        <li><strong>Point at a well</strong> to see its cell: the event, its population and its marker values.</li>
+        <li><strong>Click a well</strong> to mark its cell on every plot of the sample, circled and labelled; click again or <strong>Unmark</strong> to clear it.</li>
+        <li><strong>Export wells (CSV)</strong> writes one row per sorted cell: its well, row, column, event, population and every channel's value.</li>
+      </ul>
+      <p>Gate the presort sample first: the gates apply to the sorted events too. Wells that received more than one event are marked and listed.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Gate the populations these models use.</p></a>
+        <a class="card" href="statistics.html"><h3>Tables and comparisons</h3><p>Compare the fits across samples.</p></a>
+      </div>

@@ -5,7 +5,7 @@
 
 import { h, icon, clear, downloadBlob, formatCount } from './dom.js';
 import { showDialog, toast, progressToast } from './overlays.js';
-import { countOf, population } from '../lib/engine.js';
+import { countOf, population, populationSet } from '../lib/engine.js';
 import { gateById, gatePath } from '../lib/workspace.js';
 import { writeCLR } from '../lib/clr.js';
 import {
@@ -228,7 +228,7 @@ export async function runMigrationComparison(app, migrationId) {
       for (const [path, gateId] of Object.entries(migration.gates)) {
         if (!gateById(ws, gateId)) continue;
         try {
-          const indices = population(view, ws, gateId);
+          const indices = populationSet(view, ws, gateId);
           out[path] = indices === undefined ? null : countOf(indices, view);
         } catch {
           out[path] = null;
@@ -337,7 +337,7 @@ export async function showMigrationReport(app, migrationId) {
       statTile('Within 1%', formatCount(summary.close), summary.close ? 'accent' : null),
       statTile('Differs', formatCount(summary.differs), summary.differs ? 'danger' : null),
       statTile('Not compared', formatCount(summary.missing), summary.missing ? 'warn' : null)),
-    h('p.muted', { style: { fontSize: '12px' } }, 'CytoWeave recomputed each imported population from the FCS data. Small differences are expected where a gate was approximated: FlowJo\'s logicle departs from the reference logicle at widths above 0.5, so polygon edges between vertices run slightly differently; ellipses are refitted on the transformed axes; and FlowJo evaluates gates at its display resolution, which moves a few boundary events. FlowJo\'s biexponential scale is reproduced exactly. Larger differences usually mean different compensation, a different FCS file, or a population whose parent already differs.'),
+    h('p.muted', { style: { fontSize: '12px' } }, 'CytoWeave recomputed each imported population from the FCS data. Small differences are expected: FlowJo evaluates gates at its display resolution, which moves events near gate boundaries (typically well under 1% of a large population, more for populations of a few dozen events), and gates marked approximated were converted to the closest CytoWeave gate. FlowJo\'s biexponential scale is reproduced exactly. Larger differences usually mean different compensation, a different FCS file, or a population whose parent already differs.'),
     migration.comparison?.partial || errorCount ? h('div.callout.warn', `Not every matched sample was compared${errorCount ? ` (${errorCount} could not be loaded: ${Object.values(migration.comparison.errors)[0]})` : ''}.`) : null,
     h('div.row', { style: { margin: '10px 0' } }, filters, h('span.grow')),
     tableHost,

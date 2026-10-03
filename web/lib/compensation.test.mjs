@@ -125,6 +125,27 @@ test('spillover spreading grows with spillover', () => {
   assert.equal(matrix[0], 0);
 });
 
+test('off-scale events are left out of spillover from controls', () => {
+  // A control whose brightest fifth is clipped at the top of the scale in both detectors: with
+  // them, spillover A → B would read ~1; without, 0.2.
+  const n = 5000;
+  const a = new Float32Array(n);
+  const b = new Float32Array(n);
+  for (let e = 0; e < n; e += 1) {
+    const bright = e % 2 === 0;
+    const value = bright ? 50000 + (e % 97) * 100 : 50 + (e % 13);
+    a[e] = e % 10 === 0 ? 262143 : value;
+    b[e] = e % 10 === 0 ? 262143 : 0.2 * value + (e % 7);
+  }
+  const controls = [{ channel: 'A', columns: { A: a, B: b } }];
+  const clipped = computeSpillover(controls, ['A', 'B']);
+  const kept = computeSpillover(controls, ['A', 'B'], { range: 262144 });
+  assert.ok(clipped.matrix[1] > 0.9);
+  assert.ok(Math.abs(kept.matrix[1] - 0.2) < 0.01, `${kept.matrix[1]}`);
+  assert.equal(kept.report[0].saturated, 500);
+  assert.match(kept.report[0].warnings.join(' '), /500 events \(10\.0%\) are off scale in A/);
+});
+
 test('robust slope ignores outliers', () => {
   const x = Float64Array.from({ length: 200 }, (_, i) => i * 10);
   const y = Float64Array.from(x, (v, i) => 0.2 * v + (i % 17 === 0 ? 5000 : 0));

@@ -95,39 +95,57 @@ export function identityMatrix(n) {
 // Compensates the named channels. columns: { [channel]: Float32Array }. Returns new columns for
 // the matrix channels (others are untouched and not returned).
 export function compensate(columns, spill) {
+  const compensated = compensator(columns, spill);
+  return Object.fromEntries(spill.channels.map((name) => [name, compensated.column(name)]));
+}
+
+// Compensation one channel at a time, for samples too large to compensate every channel up front:
+// { channels, inverse, column(name) } computes a channel's compensated values when first asked.
+// Channel j is Σᵢ rawᵢ · S⁻¹[i][j] over the nonzero entries, summed in the order of i, in double
+// precision and stored as float32 (as compensate always has).
+export function compensator(columns, spill, allocate = (n) => new Float32Array(n)) {
   const { channels, matrix } = spill;
   const n = channels.length;
-  const inv = invertMatrix(matrix, n);
+  const inverse = invertMatrix(matrix, n);
   const inputs = channels.map((name) => {
     const column = columns[name];
     if (!column) throw new CompensationError(`The data have no channel "${name}" named by the compensation matrix.`);
     return column;
   });
   const count = inputs[0].length;
-  const outputs = channels.map(() => new Float32Array(count));
-  const row = new Float64Array(n);
-  // Sparse inverse columns speed up the common case of mostly-zero spillover.
-  const nonzero = [];
-  for (let j = 0; j < n; j += 1) {
-    const list = [];
-    for (let i = 0; i < n; i += 1) if (inv[i * n + j] !== 0) list.push(i);
-    nonzero.push(list);
-  }
-  for (let e = 0; e < count; e += 1) {
-    for (let i = 0; i < n; i += 1) row[i] = inputs[i][e];
-    for (let j = 0; j < n; j += 1) {
-      let sum = 0;
-      const list = nonzero[j];
-      for (let k = 0; k < list.length; k += 1) {
-        const i = list[k];
-        sum += row[i] * inv[i * n + j];
+  const index = new Map(channels.map((c, j) => [c, j]));
+  const cache = new Map();
+  const column = (name) => {
+    const j = index.get(name);
+    if (j === undefined) return undefined;
+    let out = cache.get(j);
+    if (out) return out;
+    // Sparse inverse columns speed up the common case of mostly-zero spillover.
+    const sources = [];
+    const weights = [];
+    for (let i = 0; i < n; i += 1) {
+      if (inverse[i * n + j] !== 0) {
+        sources.push(inputs[i]);
+        weights.push(inverse[i * n + j]);
       }
-      outputs[j][e] = sum;
     }
-  }
-  const result = {};
-  channels.forEach((name, j) => { result[name] = outputs[j]; });
-  return result;
+    out = allocate(count);
+    // In blocks, one input at a time: each event's sum still adds the inputs in the same order.
+    const block = new Float64Array(4096);
+    for (let start = 0; start < count; start += block.length) {
+      const n = Math.min(block.length, count - start);
+      block.fill(0, 0, n);
+      for (let k = 0; k < sources.length; k += 1) {
+        const source = sources[k];
+        const w = weights[k];
+        for (let i = 0; i < n; i += 1) block[i] += source[start + i] * w;
+      }
+      for (let i = 0; i < n; i += 1) out[start + i] = block[i];
+    }
+    cache.set(j, out);
+    return out;
+  };
+  return { channels, inverse, column, computed: () => [...cache.values()] };
 }
 
 // --- Statistics used by the control-based methods ---------------------------------------------
@@ -164,14 +182,16 @@ export function robustSD(values) {
 
 // Picks the positive and negative events of a single-stain control from its primary detector:
 // positives are the brightest `positiveFraction` of events; negatives the dimmest, unless an
-// unstained control is given.
+// unstained control is given. Events at or above `saturation` (off scale) are left out, as BD
+// FACSDiva and FlowJo do: their clipped values would bias every ratio.
 export function splitControl(primary, options = {}) {
   const n = primary.length;
+  const saturation = options.saturation ?? Infinity;
   // Thresholds from one typed-array sort (fast at millions of events; NaNs sort last and are
   // excluded by the comparisons below).
   const sorted = Float64Array.from(primary).sort();
   let finite = n;
-  while (finite > 0 && Number.isNaN(sorted[finite - 1])) finite -= 1;
+  while (finite > 0 && (Number.isNaN(sorted[finite - 1]) || sorted[finite - 1] >= saturation)) finite -= 1;
   const posCount = Math.max(5, Math.floor(finite * (options.positiveFraction ?? 0.1)));
   const negCount = Math.max(5, Math.floor(finite * (options.negativeFraction ?? 0.3)));
   const hi = sorted[Math.max(0, finite - posCount)];
@@ -180,12 +200,31 @@ export function splitControl(primary, options = {}) {
   const negative = new Uint32Array(n);
   let p = 0;
   let q = 0;
+  let saturated = 0;
   for (let e = 0; e < n; e += 1) {
     const v = primary[e];
+    if (v >= saturation) {
+      saturated += 1;
+      continue;
+    }
     if (v >= hi) positive[p++] = e;
     else if (v <= lo) negative[q++] = e;
   }
-  return { positive: positive.slice(0, p), negative: negative.slice(0, q) };
+  return { positive: positive.slice(0, p), negative: negative.slice(0, q), saturated };
+}
+
+// The value at which a detector is off scale: just under its range ($PnR) when known.
+function saturationOf(options, channel) {
+  const range = options.ranges?.[channel] ?? options.range;
+  return range > 0 ? range * 0.999 : Infinity;
+}
+
+// Events of `indices` whose value in `column` is on scale.
+function onScale(column, indices, saturation) {
+  if (!(saturation < Infinity)) return indices;
+  const out = [];
+  for (const e of indices) if (column[e] < saturation) out.push(e);
+  return out;
 }
 
 // Spillover from single-stain controls.
@@ -204,16 +243,19 @@ export function computeSpillover(controls, detectors, options = {}) {
     if (i < 0) throw new CompensationError(`Control channel "${control.channel}" is not among the detectors.`);
     const primary = control.columns[control.channel];
     let { positive, negative } = control;
+    let saturated = 0;
     if (!positive || !negative) {
-      const split = splitControl(primary, options);
+      const split = splitControl(primary, { ...options, saturation: saturationOf(options, control.channel) });
       positive = positive ?? split.positive;
       negative = negative ?? split.negative;
+      saturated = split.saturated;
     }
     const useUnstained = options.unstained && !control.negative;
     const negPrimary = useUnstained ? median(options.unstained.columns[control.channel]) : median(select(primary, negative));
     const posPrimary = median(select(primary, positive));
     const delta = posPrimary - negPrimary;
-    const quality = { channel: control.channel, positiveEvents: positive.length, negativeEvents: useUnstained ? options.unstained.columns[control.channel].length : negative.length, separation: delta, warnings: [] };
+    const quality = { channel: control.channel, positiveEvents: positive.length, negativeEvents: useUnstained ? options.unstained.columns[control.channel].length : negative.length, separation: delta, saturated, warnings: [] };
+    if (saturated > 0.01 * primary.length) quality.warnings.push(`${saturated} events (${((100 * saturated) / primary.length).toFixed(1)}%) are off scale in ${control.channel} and were left out; a lower voltage or a dimmer control would keep them.`);
     if (!(delta > 0)) {
       quality.warnings.push('The positive population is not brighter than the negative.');
       report.push(quality);
@@ -223,16 +265,19 @@ export function computeSpillover(controls, detectors, options = {}) {
     for (let j = 0; j < n; j += 1) {
       if (j === i) continue;
       const detector = control.columns[detectors[j]];
+      // Positives off scale in this detector would understate its spillover.
+      const pos = onScale(detector, positive, saturationOf(options, detectors[j]));
+      if (!pos.length) continue;
       let value;
       if (method === 'regression') {
         // With an unstained control, its events anchor the fit's low end instead of the control's
         // own dim events.
         const negX = useUnstained ? options.unstained.columns[control.channel] : select(primary, negative);
         const negY = useUnstained ? options.unstained.columns[detectors[j]] : select(detector, negative);
-        value = robustSlope(select(primary, positive), select(detector, positive), negX, negY);
+        value = robustSlope(select(primary, pos), select(detector, pos), negX, negY);
       } else {
         const negDetector = useUnstained ? median(options.unstained.columns[detectors[j]]) : median(select(detector, negative));
-        value = (median(select(detector, positive)) - negDetector) / delta;
+        value = (median(select(detector, pos)) - negDetector) / (median(select(primary, pos)) - negPrimary);
       }
       matrix[i * n + j] = value;
     }

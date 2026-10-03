@@ -1,6 +1,9 @@
 # CytoWeave
 
-![CytoWeave's Gate view: the gating path of T cells in a 14-colour PBMC experiment](docs/images/gate.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/gate-dark.webp">
+  <img alt="CytoWeave's Gate view: the gating path of T cells in a 14-colour PBMC experiment" src="docs/images/gate-light.webp">
+</picture>
 
 CytoWeave is a flow cytometry analysis workbench for conventional, spectral
 and mass cytometry. It runs on your own computer as one self-contained
@@ -27,6 +30,9 @@ It reads FlowJo workspaces and Gating-ML, and reproduces FlowJo's scales
 exactly.
 
 CytoWeave is free and open source (Apache 2.0).
+
+**[Website and user guide](https://robert-mcdermott.github.io/cytoweave/)**: step-by-step
+guides to every view, with screenshots.
 
 - [Highlights](#highlights)
 - [Install](#install)
@@ -88,8 +94,9 @@ CytoWeave is free and open source (Apache 2.0).
     check and before/after distances.
   - Bead normalization for mass cytometry, and debarcoding.
 - **Clustering and maps.**
-  - FlowSOM and Leiden (PhenoGraph) clustering, and UMAP, t-SNE and PCA
-    across samples.
+  - FlowSOM, Leiden (PhenoGraph), Louvain and k-means clustering, and UMAP,
+    t-SNE and PCA across samples; samples left out of a UMAP can be placed on
+    it afterwards.
   - Clusters are named from their marker enrichment and can become gateable
     populations.
   - Every map reports **how faithful it is**: trustworthiness, continuity,
@@ -130,7 +137,12 @@ CytoWeave is free and open source (Apache 2.0).
   barcoded plate, an index sort and a QC plate.
 - **Scripting and agents.** An MCP server lets AI agents such as Claude Code
   open data, gate, compute statistics, review gates and write methods in the
-  window you are watching. Every change can be undone.
+  window you are watching. Their changes arrive as proposals that you accept
+  or reject, and every change can be undone.
+- **Large files.** Samples of ten million events open in seconds and stay
+  responsive: files are read in parts and never held whole, populations are
+  kept as bitsets, and analyses in the background share the events rather
+  than copy them.
 - **Validated.** A validation suite checks the pipelines against known
   answers and published reference values on every change; see
   [validation/](validation/README.md).
@@ -297,7 +309,26 @@ Right-click a population for more:
   sample group;
 - export of the population's events as FCS (raw values and the original
   keywords) or CSV;
+- **New Boolean population**: the events in all of, any of or none of chosen
+  populations, with a live count;
 - the **cell cycle** and **proliferation** models.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/review-dark.webp">
+  <img alt="Review Lymphocytes across samples: every sample ranked by a robust z-score of its frequency, with a rating of its boundary" src="docs/images/review-light.webp">
+</picture>
+
+An **index-sorted** sample shows its plate below the plots. Wells come from
+BD FACSDiva's `INDEX SORTING LOCATIONS` keyword or from well parameters such
+as "Index X" and "Index Y". Each well is colored by the population its cell
+falls in, or by a channel's value; selecting a population colors its wells.
+Clicking a well marks its cell on the plots, and the wells export as CSV with
+their populations and values.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/indexsort-dark.webp">
+  <img alt="An index-sorted 96-well plate coloured by population, with well C3 marked and its cell circled on the plots" src="docs/images/indexsort-light.webp">
+</picture>
 
 The **cell cycle** model fits Dean–Jett–Fox or Watson to the DNA content and
 suggests a singlet gate. The **proliferation** model fits generations of dye
@@ -306,7 +337,10 @@ indices.
 
 ### QC
 
-![The QC view: a cohort of four wells with a clog, a drift and a bubble found](docs/images/qc.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/qc-dark.webp">
+  <img alt="The QC view: four wells with a clog, a drift and a burst found" src="docs/images/qc-light.webp">
+</picture>
 
 **Clean** runs acquisition QC on any set of samples:
 - PeacoQC on every scatter and fluorescence channel;
@@ -323,8 +357,9 @@ the signal's own trend by more than its noise and by at least 1.5% of the
 axis, and requires isolation-tree splits to be contiguous in time. As
 published, PeacoQC removes events from clean files and cuts the ends of
 drifting ones; the refined variant does neither, and still catches clogs and
-bubbles. The validation suite measures both. The classic algorithm is one
-click away under **Sensitivity**, where both results can be compared.
+bubbles. The validation suite measures both. The classic algorithm, a port
+of PeacoQC 1.22 that removes the same events as PeacoQC in R, is one click
+away under **Sensitivity**, where both results can be compared.
 
 **Normalize** trains CytoNorm on reference samples, one per batch, and
 applies it. It first checks that batch and condition are not confounded. It
@@ -341,7 +376,10 @@ codes after the samples they hold.
 
 ### Compensate
 
-![The Compensate view: the file's matrix checked against 14 single-stain controls](docs/images/compensate.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/compensate-dark.webp">
+  <img alt="The Compensate view: the file's matrix checked against 14 single-stain controls" src="docs/images/compensate-light.webp">
+</picture>
 
 - **Compute from controls.** Pick each control's stained channel, the events
   to use and the negative reference (each control's dim events, or an
@@ -365,7 +403,10 @@ codes after the samples they hold.
 
 ### Spectral
 
-![The Spectral view: 25 reference spectra with two autofluorescence signatures](docs/images/spectral.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/spectral-dark.webp">
+  <img alt="The Spectral view: 25 reference spectra with two autofluorescence signatures" src="docs/images/spectral-light.webp">
+</picture>
 
 For raw data from spectral cytometers (Cytek Aurora and Northern Lights, Sony
 ID7000, BD FACSDiscover and others), a five-step workflow:
@@ -393,13 +434,19 @@ degraded tandem.
 
 ### Explore
 
-![The Explore view: FlowSOM clusters on a UMAP of 60,000 events from 12 samples, with the map's faithfulness](docs/images/explore.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/explore-dark.webp">
+  <img alt="The Explore view: FlowSOM clusters on a UMAP of 60,000 events from 12 samples, with the map's faithfulness" src="docs/images/explore-light.webp">
+</picture>
 
 Pick a population, the samples (an equal number of events from each) and the
 markers. Then run:
-- **FlowSOM** or **Leiden** (PhenoGraph) clustering on every event of the
-  population;
+- **FlowSOM**, **Leiden** (PhenoGraph), **Louvain** or **k-means**
+  clustering on every event of the population;
 - **UMAP**, **t-SNE** or **PCA** on the sampled events.
+
+**Place samples on this map** positions other samples' events on a finished
+UMAP without changing it, so later samples can be compared on the same map.
 
 Clusters are named from their marker enrichment (MEM). The heatmap shows each
 cluster's median of every marker. **Make populations of the clusters** turns
@@ -455,10 +502,15 @@ nonparametric counterpart:
 
 Several groups are followed by Holm-adjusted comparisons with the reference.
 Results show:
-- effect sizes: differences and ratios of means, Hedges' g, the
-  Hodges–Lehmann shift;
-- 95% bootstrap confidence intervals;
+- effect sizes with 95% confidence intervals: differences and ratios of
+  means, Hedges' g, the Hodges–Lehmann shift;
+- each group's mean with a t interval, or median with a bootstrap interval;
 - a note on assumptions.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-dark.webp">
+  <img alt="The Compare view: median CD25 of T cells in stimulated and unstimulated samples, paired by donor, with the paired t-test and effect sizes" src="docs/images/compare-light.webp">
+</picture>
 
 **Screen populations** and **Screen clusters** test every population or
 cluster at once. Results are corrected for multiple testing
@@ -474,9 +526,17 @@ plots, text and arrows. Plots stay live, following gate and compensation
 changes, until you export the page as SVG, PNG or a 300 dpi PDF. Pages come
 in slide (16:9), Letter, A4, landscape and square sizes.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/figures-dark.webp">
+  <img alt="The Figures view: the gating strategy of T cells laid out on a page" src="docs/images/figures-light.webp">
+</picture>
+
 ### Report
 
-![The Report view: a methods paragraph written from the workspace](docs/images/report.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/report-dark.webp">
+  <img alt="The Report view: a methods paragraph written from the workspace" src="docs/images/report-light.webp">
+</picture>
 
 - **Methods.** A paragraph written from what the workspace contains, with
   numbered references and DOIs:
@@ -523,12 +583,17 @@ moved or renamed. Deleted workspaces go to the library's `trash` folder.
 
 ## Working with FlowJo and other tools
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/flowjo-dark.webp">
+  <img alt="The FlowJo migration report: 56 of 56 population counts agree exactly with FlowJo" src="docs/images/flowjo-light.webp">
+</picture>
+
 **FlowJo workspaces** (FlowJo 10 `.wsp`) import their samples, gates,
 compensation matrices and scales. The import dialog lists every population as
-exact, approximated or unsupported, and says why. For example:
-- an ellipse drawn on transformed axes;
-- a curly quadrant;
-- a gate on uncompensated data.
+exact, approximated or unsupported, and says why: a curly quadrant, for
+example, imports with straight dividers. Gates FlowJo drew on uncompensated
+data keep uncompensated values; time and linear axes with a gain are converted
+from FlowJo's units; ellipses are read from FlowJo's display space.
 
 Add the FCS files and CytoWeave matches them. With **Compare every population
 count with FlowJo's**, the **FlowJo migration report** shows FlowJo's count,
@@ -536,14 +601,22 @@ CytoWeave's count, the difference and the likely cause, population by
 population.
 
 FlowJo's biexponential scale is reproduced exactly, from FlowJo's own table
-algorithm. FlowJo's logicle departs from the reference logicle that
-CytoWeave and Gating-ML use at widths above 0.5, so polygon edges on such
-axes are reported as approximated.
+algorithm. On FlowJo's own test workspaces CytoWeave reproduces the counts
+FlowJo saved; on real workspaces it matches them exactly at least as often as
+FlowKit does, and within 0.1–0.3% for large populations (FlowJo evaluates
+gates at its display resolution, which moves events near gate boundaries).
 
 **Gating-ML 2.0** import and export covers:
-- rectangle, polygon, ellipsoid, quadrant and Boolean gates;
-- the flin, flog, fasinh, logicle, hyperlog and ratio transformations;
-- spectrum matrices.
+- rectangle, polygon, ellipsoid, quadrant and Boolean gates, including gates
+  of three or more dimensions (evaluated in all of them, though a plot shows
+  two);
+- the flin, flog, fasinh, logicle, hyperlog and ratio transformations, with
+  their bounds;
+- spectrum matrices, including spectral unmixing matrices, and the
+  compensation each gate dimension names.
+
+All 190 gates of ISAC's Gating-ML 2.0 compliance suite select exactly the
+expected events.
 
 Re-importing a CytoWeave export restores names, colours and scales exactly.
 Gating-ML has no biexponential, so biexponential axes are written as their
@@ -592,10 +665,19 @@ claude mcp add cytoweave -- ~/.local/bin/cytoweave mcp
 > then CD4 and CD8 T cells, and tell me how the CD4:CD8 ratio differs between
 > stimulated and unstimulated samples.
 
-The agent works through the same actions as you do. Its gates are marked as
-added by an agent, every change appears in the change log, and any of it can
-be undone. See [Using CytoWeave with AI agents](docs/MCP.md) for the 15 tools,
-other clients and how it works.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/agents-review-dark.webp">
+  <img alt="Reviewing an agent's proposal: three gates proposed by Claude Code with their frequencies, and a compensation matrix, to accept or reject" src="docs/images/agents-review-light.webp">
+</picture>
+
+The agent works through the same actions as you do, and its changes are
+proposals. Its gates appear at once, marked as proposed, with real counts;
+its renames, deletions and compensation matrices wait. A strip above the
+population tree lets you review the proposal, then accept or reject it as a
+whole. The change log records which agent proposed what and what you decided,
+and any change can be undone. See
+[Using CytoWeave with AI agents](docs/MCP.md) for the 17 tools, other clients
+and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
 scripts) with `--remote-control`; [docs/MCP.md](docs/MCP.md#scripts-without-an-agent)
@@ -618,11 +700,18 @@ pipelines, as the app does, against answers known in advance:
 | Proliferation | True precursor frequencies | Division index within 3% |
 | Debarcoding | True wells of a 20-sample barcoded plate | 100% of assigned cells in their true well; 98.7% of cells assigned |
 | Clustering | 23 true populations | FlowSOM adjusted Rand index 0.91 |
-| Normalization | Same-donor anchors in two batches | Batch distance reduced 27× |
+| Normalization | Same-donor anchors in two batches | Batch distance reduced 25× |
 | Scales | BD's FlowJo lookup tables | Biexponential within 5e-6 (the tables' precision) |
 | Statistics | R 4.x | t-tests, Wilcoxon, Benjamini–Hochberg and t quantiles agree |
+| Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
+| FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-colour workspaces at least as close to FlowJo as FlowKit |
+| Reference tools | FlowKit 1.3.2 and FlowIO | FCS decoding, compensation, spectral unmixing and transforms agree |
+| FCS files | 16 instrument and malformed test files | All readable files read and written back bit-exact; malformed ones refused with a clear message |
+| R packages | flowCore, PeacoQC 1.22, FlowSOM and CytoNorm in R, on their example data and other public files | Values read, compensated and logicle-scaled within 1e-7; PeacoQC (classic) removes the same events; FlowSOM maps every event alike and agrees with R as closely as R agrees with itself; CytoNorm within 1e-5 |
+| BD FACSDiva | Its spillover matrix from 15 real single-stain controls | Every entry within 0.015 (median method), with no manual gating |
 
-Details, tolerances and how to run it are in
+The last six rows use public test data that `node validation/fetch.mjs`
+downloads and checksums. Details, tolerances and how to run it are in
 [validation/README.md](validation/README.md).
 
 ## Privacy and security
@@ -646,13 +735,24 @@ used for diagnosis.
   `.wsp` from FlowJo 10 or 11.
 - Curly quadrants import with straight dividers. Template group gates import
   as per-sample copies, merged where samples agree.
+- FlowJo evaluates gates at its display resolution; CytoWeave evaluates them
+  exactly, so a few events near gate boundaries can differ from FlowJo's
+  counts (the migration report shows how many).
 - Event data in CSV are not imported, only annotations.
 - Imaging flow data (CellView, Amnis) are not supported.
 - Spectral unmixing needs the raw detector channels; files that hold only
   unmixed channels can be gated but not re-unmixed.
 - Very large experiments are limited by browser memory: plan on about 4 bytes
-  per event per parameter of every loaded sample (one million events × 30
-  parameters is 120 MB). Samples load on demand.
+  per event per parameter of every loaded sample, plus as much again for the
+  compensated channels in use (ten million events × 21 parameters is 0.8 GB,
+  about 1.5 GB in use). Samples load on demand, and the least recently used
+  are dropped beyond 1.6 GB (3 GB on machines with 8 GB or more).
+- Served as a plain web site rather than by the CytoWeave program, the page
+  is cross-origin isolated only if the site sends
+  `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp`. Without them, analyses in
+  workers get a copy of the events, and browsers refuse copies much over a
+  gigabyte (QC of ten million events).
 
 ## Development
 
@@ -685,7 +785,31 @@ Windows on x64 and ARM64.
 ```sh
 go test -race ./...
 node --test "web/lib/*.test.mjs"
+node validation/fetch.mjs
 node validation/run.mjs
+```
+
+`fetch.mjs` downloads the public test data the validation uses (about 150 MB,
+into the git-ignored `validation/cache/`); without it those suites are
+skipped.
+
+### Documentation
+
+The screenshots in `docs/images` are captured from the example experiments,
+in the light and dark themes, by a script that drives headless Chrome (or
+Chromium, Edge or Brave; set `CHROME` to choose):
+
+```sh
+node docs/capture/capture.mjs
+node docs/capture/capture.mjs gate compensate --theme dark
+```
+
+The [website](https://robert-mcdermott.github.io/cytoweave/) is built from
+`docs/site` into a checkout of the `gh-pages` branch. The build checks every
+link, anchor and screenshot:
+
+```sh
+node docs/site/build.mjs ../cytoweave-site
 ```
 
 ### Code layout
@@ -700,7 +824,7 @@ web/lib/                                       analysis modules, each with a *.t
 web/workers/                                   module workers for heavy work
 validation/                                    end-to-end checks against known answers
 cytoweave-spec/                                design, conventions, requirements, roadmap, research
-docs/                                          installing, AI agents, screenshots
+docs/                                          installing, AI agents, screenshots, website source
 ```
 
 The design is described in [cytoweave-spec/design.md](cytoweave-spec/design.md),
@@ -719,7 +843,8 @@ code and in the methods text it writes, among them:
 - PeacoQC (Emmaneel et al.);
 - FlowSOM (Van Gassen et al.);
 - UMAP (McInnes et al.) and t-SNE (van der Maaten & Hinton);
-- Leiden (Traag et al.);
+- Leiden (Traag et al.) and Louvain (Blondel et al.);
+- k-means++ (Arthur & Vassilvitskii) and Hamerly's k-means;
 - CytoNorm (Van Gassen et al.);
 - the spillover spreading matrix (Nguyen et al.);
 - MEM (Diggins et al.);

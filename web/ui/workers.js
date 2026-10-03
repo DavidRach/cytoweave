@@ -1,6 +1,8 @@
 // A promise-based client for module workers that speak the CytoWeave protocol:
 // { id, type, payload } → { id, progress: [fraction, message] }* then { id, result } | { id, error }.
 
+import { transferable } from '../lib/memory.js';
+
 export class WorkerClient {
   constructor(url, options = {}) {
     this.url = url;
@@ -53,7 +55,15 @@ export class WorkerClient {
       slot.busy = true;
       slot.jobId = job.id;
       job.slot = slot;
-      slot.worker.postMessage({ id: job.id, type: job.type, payload: job.payload }, job.transfer ?? []);
+      try {
+        slot.worker.postMessage({ id: job.id, type: job.type, payload: job.payload }, transferable(job.transfer));
+      } catch (error) {
+        // The browser could not hand the data over (too large to copy, or not transferable).
+        this.pending.delete(job.id);
+        slot.busy = false;
+        slot.jobId = null;
+        job.reject(new Error(error.name === 'DataCloneError' ? `The data could not be passed to the worker: ${error.message}` : error.message));
+      }
     }
   }
 

@@ -1,0 +1,59 @@
+---
+title: Spectral unmixing
+description: Unmix spectral cytometry data in CytoWeave: reference spectra from single-stain controls, autofluorescence signatures, panel complexity and similarity, ordinary, weighted and non-negative least squares, and a comparison of unmixing models on your own sample.
+lede: Turn raw detector data from a spectral cytometer into one channel per dye, and see which unmixing model resolves your dim populations best.
+---
+      <p>The Spectral view works on raw data from spectral cytometers (Cytek Aurora and Northern Lights, Sony ID7000, BD FACSDiscover and others) with the detector channels intact. Files that hold only unmixed channels can be gated, but not unmixed again. The <strong>Spectral 25-colour panel</strong> example has 64 detectors, 25 single-stain references, an unstained control and three stained samples, with the true abundances of every dye kept for every event.</p>
+
+      <h2 id="workflow">The workflow</h2>
+      <shot name="spectral" alt="The Spectral view: the five-step workflow with the first four done, the reference controls with their peak detectors, and 25 reference spectra across five lasers with two dashed autofluorescence signatures">Reference spectra of the 25-colour panel across five lasers, with two autofluorescence signatures (dashed).</shot>
+      <p>The <strong>Workflow</strong> list on the left tracks five steps and shows what each one found.</p>
+      <ol>
+        <li><strong>Mark controls.</strong> Click <strong>Assign</strong> under <strong>Reference controls</strong> to choose which files are single-stain references and the unstained control, and name each reference's fluorochrome and marker. The fluorochrome names the unmixed channel; the marker labels it.</li>
+        <li><strong>Reference spectra.</strong> Click <strong>Gate all controls</strong>. Each control's positive events (the brightest above the negative on its peak detector) and negative events are found without scatter gates, and its spectrum is the difference of their medians, normalized to a peak of 1. The negative is internal (unstained events in the same tube) or the unstained control. Each control's <strong>⋯</strong> menu sets its peak detector, gates it again or excludes it from the panel.</li>
+        <li><strong>Autofluorescence.</strong> Click <strong>Extract signatures</strong> to find one or more autofluorescence signatures in the unstained control, for example dim lymphoid and bright myeloid autofluorescence.</li>
+        <li><strong>Check the panel</strong> in the <strong>Panel quality</strong> tab (below).</li>
+        <li><strong>Unmix.</strong> Choose the samples, the method and how to treat autofluorescence, then click <strong>Unmix</strong>. Each dye becomes a "(unmixed)" channel you can gate like any other, and the residual of every event becomes a channel too.</li>
+      </ol>
+      <p>The <strong>Control quality</strong> table checks each reference: its peak detector, positive and negative signal, separation, and the similarity of the dimmest and brightest thirds of its positives. Below 0.98 suggests the control is a mixture, such as a degraded tandem.</p>
+
+      <h2 id="quality">Panel quality</h2>
+      <shot name="spectral-quality" alt="The Panel quality tab: complexity index 3.7, rated low, for 25 signatures, the most similar pair BV570 and BV605 at 0.73, and the similarity matrix of every pair of spectra">Complexity index 3.7: the spectra overlap little, so unmixing adds little spread.</shot>
+      <ul>
+        <li><strong>Complexity index:</strong> the condition number of the reference matrix (Cytek's definition), how much unmixing can amplify measurement noise. It grows as spectra overlap, and autofluorescence signatures added to the model raise it further.</li>
+        <li><strong>Similarity matrix:</strong> the cosine similarity of every pair of spectra. Pairs at 0.90 or above are hard to separate; avoid putting co-expressed markers on them.</li>
+        <li><strong>Spectral spreading matrix:</strong> computed by unmixing the controls; how much each dye widens the negatives of every other.</li>
+      </ul>
+
+      <h2 id="methods">Unmixing methods</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>OLS</strong></td><td>Ordinary least squares, the standard for spectral cytometry</td></tr>
+            <tr><td><strong>WLS (fixed)</strong></td><td>Weighted least squares with one weight per detector, from its background noise: noisy detectors count less. As fast as OLS.</td></tr>
+            <tr><td><strong>WLS (per event)</strong></td><td>Each event reweighted by its own fitted signal, so bright events rely less on the detectors where their photon noise is largest. This narrows the spread on co-expressed dim channels.</td></tr>
+            <tr><td><strong>NNLS</strong></td><td>Non-negative least squares: no dye below zero</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Autofluorescence can be left out, treated as one more signature (<strong>+ 1 AF</strong>), or assigned per event, where each event gets whichever of several autofluorescence signatures fits it best (<strong>per-event AF</strong>). Per-event autofluorescence needs two or more signatures.</p>
+
+      <h2 id="compare">Comparing models on your sample</h2>
+      <p>Which model is best depends on your panel and your cells, so measure it. Select a population (dim populations are the ones that suffer), open <strong>Compare models</strong>, and run it. CytoWeave unmixes the population with up to seven combinations of method and autofluorescence model: OLS, WLS (fixed), WLS (per event), NNLS, OLS + 1 AF, OLS + per-event AF and NNLS + per-event AF. For every dye it shows:</p>
+      <ul>
+        <li><strong>Spread:</strong> the robust SD of the dye's negative population, the dimmest half of the population at that dye. Smaller is better: dim positives separate from a tighter negative.</li>
+        <li><strong>Residual:</strong> the signal the model leaves unexplained, overall and for the brighter half of events, where misfit dominates noise.</li>
+      </ul>
+      <p>Pick the model with the tightest negatives and the smallest residual, then unmix with it.</p>
+
+      <h2 id="residuals">Residuals and signatures</h2>
+      <p><strong>Residuals</strong> shows where the reference set fails to explain the data: the median residual per detector and a heat strip of events binned from dim to bright. A missing dye, a degraded tandem or an unexpected autofluorescence shows as a systematic misfit in the detectors where it emits. When the residuals scatter around zero in every detector, the references explain the population well. <strong>Signature</strong> draws the raw spectral signature of the selected population: the density of its events' signal in every detector.</p>
+      <p>Against the true abundances of the 25-colour example, unmixed values correlate with a median r of 0.988, within 0.001 of unmixing with the true spectra.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Gate the unmixed channels.</p></a>
+        <a class="card" href="qc.html"><h3>Acquisition QC</h3><p>Clean the acquisition first.</p></a>
+        <a class="card" href="explore.html"><h3>Clustering and maps</h3><p>High-dimensional panels are what Explore is for.</p></a>
+      </div>

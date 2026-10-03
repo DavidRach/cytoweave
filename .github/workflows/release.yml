@@ -41,7 +41,8 @@ jobs:
           go vet ./...
           go test ./...
           node --test "web/lib/*.test.mjs"
-          node validation/run.mjs
+          node validation/fetch.mjs
+          node validation/run.mjs --require-data
       - name: Build
         env:
           CGO_ENABLED: '0'

@@ -31,7 +31,7 @@ const (
 	mcpReopenAfter  = 20 * time.Second
 	mcpProgressTick = 5 * time.Second
 	mcpEndGrace     = time.Second
-	mcpInstructions = "CytoWeave analyzes flow, spectral and mass cytometry data (FCS files) in a window on this computer, which the user watches. Start with workspace_summary. Open data with open_files (absolute paths of FCS files, folders or workspaces) or open_example. Gates are drawn on two channels (or one) and their coordinates are data values on the channels' scales (logicle/arcsinh for fluorescence, linear for scatter); create_gate and auto_gate add populations under a parent population, list_populations shows the tree with counts and frequencies, population_statistics and statistics_table give numbers, render_plot shows a plot as an image, review_gate checks a gate across samples, compare tests differences between groups of samples, and methods writes a methods paragraph. Every change is undoable by the user."
+	mcpInstructions = "CytoWeave analyzes flow, spectral and mass cytometry data (FCS files) in a window on this computer, which the user watches. Start with workspace_summary. Open data with open_files (absolute paths of FCS files, folders or workspaces) or open_example. Gates are drawn on two channels (or one) and their coordinates are data values on the channels' scales (logicle/arcsinh for fluorescence, linear for scatter); create_gate and auto_gate add populations under a parent population, list_populations shows the tree with counts and frequencies, population_statistics and statistics_table give numbers, render_plot shows a plot as an image, review_gate checks a gate across samples, compare tests differences between groups of samples, and methods writes a methods paragraph. Your changes are proposals for the user to review: new gates appear at once, marked as proposed, with real counts, and you can gate on them; renaming or deleting existing gates and new compensation matrices (propose_compensation) wait until the user accepts. The user accepts or rejects all your open changes together; proposals tells you what is still open and what was decided."
 )
 
 type mcpMessage struct {
@@ -58,6 +58,8 @@ type mcpServer struct {
 	openPage func()
 	cancelMu sync.Mutex
 	cancels  map[string]context.CancelFunc
+	clientMu sync.Mutex
+	client   string
 }
 
 func runMCP(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -239,8 +241,15 @@ func (s *mcpServer) handle(ctx context.Context, request mcpMessage) {
 	case "initialize":
 		var params struct {
 			ProtocolVersion string `json:"protocolVersion"`
+			ClientInfo      struct {
+				Name  string `json:"name"`
+				Title string `json:"title"`
+			} `json:"clientInfo"`
 		}
 		json.Unmarshal(request.Params, &params)
+		s.clientMu.Lock()
+		s.client = clientName(params.ClientInfo.Title, clientName(params.ClientInfo.Name, ""))
+		s.clientMu.Unlock()
 		result = map[string]any{
 			"protocolVersion": negotiateVersion(params.ProtocolVersion),
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
@@ -374,12 +383,16 @@ func (s *mcpServer) callTool(ctx context.Context, tool mcpTool, raw json.RawMess
 		return toolError(fmt.Sprintf("No CytoWeave page is connected. Open %s in a browser, then try again.", s.url))
 	}
 	encoded, _ := json.Marshal(args)
-	event := remoteEvent{Action: tool.Name, Args: encoded}
+	s.clientMu.Lock()
+	client := clientName(s.client, "an AI agent")
+	s.clientMu.Unlock()
+	event := remoteEvent{Action: tool.Name, Args: encoded, Client: client}
 	if tool.Name == "open_files" {
 		var err error
 		if event, err = s.hub.openEvent(encoded); err != nil {
 			return toolError(err.Error())
 		}
+		event.Client = client
 	}
 	outcome, err := s.hub.dispatch(ctx, event)
 	if err != nil {
@@ -584,13 +597,13 @@ var mcpTools = []mcpTool{
 		Description: "A PNG image of a plot: a population of a sample on one or two channels, with the child gates drawn and labeled. Types: pseudocolor, dot, density, contour, zebra, histogram.",
 		InputSchema: schema(map[string]any{"sample": str(sampleHelp), "population": str(populationHelp), "x": str("X channel or marker"), "y": str("Y channel or marker (omit for a histogram)"), "type": str("Plot type"), "width": num("Width in pixels (default 520)"), "height": num("Height in pixels (default 480)")}, "x")},
 	{Name: "create_gate", Title: "Create a gate", Annotations: edits,
-		Description: "Add a gate under a parent population. Coordinates are data values (as on the plot axes). Types and coordinates: rectangle {xMin, xMax, yMin, yMax} (omit a bound to leave it open), polygon {vertices: [[x, y], ...]}, ellipse {center: [x, y], semiAxes in fractions of the axes [rx, ry], angle in degrees}, range on one channel {min, max}, quadrant {at: [x, y]} (creates four populations), split on one channel {threshold} (two populations). Returns the new populations with their counts.",
+		Description: "Add a gate under a parent population. Coordinates are data values (as on the plot axes). Types and coordinates: rectangle {xMin, xMax, yMin, yMax} (omit a bound to leave it open), polygon {vertices: [[x, y], ...]}, ellipse {center: [x, y], semiAxes in fractions of the axes [rx, ry], angle in degrees}, range on one channel {min, max}, quadrant {at: [x, y]} (creates four populations), split on one channel {threshold} (two populations). The gate is proposed for the user's review (shown as proposed, usable as a parent at once). Returns the new populations with their counts.",
 		InputSchema: schema(map[string]any{"parent": str(populationHelp), "name": str("Name (default: from the markers)"), "type": map[string]any{"type": "string", "enum": []string{"rectangle", "polygon", "ellipse", "range", "quadrant", "split"}}, "x": str("X channel or marker"), "y": str("Y channel or marker (not for range or split)"), "coordinates": map[string]any{"type": "object", "description": "Type-specific coordinates in data values"}, "sample": str("Sample whose counts are reported (default: the current sample); the gate applies to every sample")}, "type", "x", "coordinates")},
 	{Name: "auto_gate", Title: "Propose a gate from the data", Annotations: edits,
-		Description: "Add a gate found from the data's density: method \"density\" gates the population around a point (at: [x, y] in data values) like a magic wand; \"singlets\" gates single cells on an area-versus-height plot (x = FSC-A, y = FSC-H); \"valley\" splits one channel at the density minimum between its two main modes. The explanation says what was found.",
+		Description: "Add a gate found from the data's density: method \"density\" gates the population around a point (at: [x, y] in data values) like a magic wand; \"singlets\" gates single cells on an area-versus-height plot (x = FSC-A, y = FSC-H); \"valley\" splits one channel at the density minimum between its two main modes. The explanation says what was found. The gate is proposed for the user's review.",
 		InputSchema: schema(map[string]any{"parent": str(populationHelp), "method": map[string]any{"type": "string", "enum": []string{"density", "singlets", "valley"}}, "x": str("X channel or marker"), "y": str("Y channel or marker"), "at": map[string]any{"type": "array", "items": map[string]any{"type": "number"}, "description": "[x, y] data values (density)"}, "name": str("Name"), "sample": str(sampleHelp)}, "method", "x")},
 	{Name: "edit_gate", Title: "Rename, recolor or delete a gate", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "openWorldHint": false},
-		Description: "Rename a population, change its color, or delete it (with its subpopulations). The user can undo any change.",
+		Description: "Rename a population, change its color, or delete it (with its subpopulations). Changes to gates the user has accepted wait for the user's review; changes to gates you proposed apply at once.",
 		InputSchema: schema(map[string]any{"population": str(populationHelp), "name": str("New name"), "color": str("New color (#rrggbb)"), "delete": map[string]any{"type": "boolean"}}, "population")},
 	{Name: "review_gate", Title: "Review a gate across samples", Annotations: readOnly,
 		Description: "A gate's frequency on every sample with a robust z-score against the cohort and the boundary robustness (how much the frequency depends on exactly where the boundary is), outliers first.",
@@ -598,6 +611,12 @@ var mcpTools = []mcpTool{
 	{Name: "compare", Title: "Compare groups of samples", Annotations: readOnly,
 		Description: "Test a population statistic between groups of samples defined by a metadata field (e.g. condition), optionally paired by another (e.g. subject): per-group values, effect size with confidence interval, and t-test and rank tests.",
 		InputSchema: schema(map[string]any{"population": str(populationHelp), "statistic": str("Statistic id (default freqParent)"), "channel": str("Channel or marker for channel statistics"), "groupBy": str("Metadata field that defines the groups"), "pairBy": str("Metadata field that pairs samples (optional)")}, "population", "groupBy")},
+	{Name: "propose_compensation", Title: "Propose a compensation matrix from the controls", Annotations: edits,
+		Description: "Compute a spillover matrix from the workspace's single-stain controls (samples with the role single-stain and a stained channel), optionally within a population of each control (e.g. its singlets) and with an unstained sample as the negative reference, and propose it for the samples. The user reviews it with your other changes; the result lists the largest spillover values and any warnings about the controls.",
+		InputSchema: schema(map[string]any{"population": str("Population of each control to use (default: all events)"), "unstained": str("Unstained sample used as the negative reference (default: the dim events of each control)"), "method": map[string]any{"type": "string", "enum": []string{"median", "regression"}}, "samples": strList("Samples to apply it to (default: every sample that is not a control)")})},
+	{Name: "proposals", Title: "Proposals and the user's decisions", Annotations: readOnly,
+		Description: "Your open proposal (what is waiting for the user's review) and the user's recent decisions on proposals (accepted or rejected, by whom).",
+		InputSchema: schema(map[string]any{})},
 	{Name: "methods", Title: "Write the methods", Annotations: readOnly,
 		Description: "A methods paragraph for the analysis in the workspace, with numbered references and DOIs.",
 		InputSchema: schema(map[string]any{})},

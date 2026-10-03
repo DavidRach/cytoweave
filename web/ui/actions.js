@@ -5,7 +5,7 @@ import { h, icon, clear, downloadBlob, formatCount, formatPercent } from './dom.
 import { showMenu, showDialog, promptDialog, confirmDialog, toast, progressToast } from './overlays.js';
 import { buildPlotScene, drawScene, sceneToSVG } from '../lib/plot.js';
 import { gateOutline, newId } from '../lib/gates.js';
-import { channelTransform, countOf, gateRobustness, population } from '../lib/engine.js';
+import { channelTransform, countOf, gateRobustness, population, populationSet } from '../lib/engine.js';
 import { createTransform, describeTransform, estimateLogicleW, applyTransform } from '../lib/transforms.js';
 import { writeFCS, readSpillover } from '../lib/fcs.js';
 import { histogram } from '../lib/density.js';
@@ -70,6 +70,21 @@ export function installActions(app) {
     const added = addDerived(next, { ...record, files });
     store.commit(added.ws, label ?? `${result.kind} result`, ['derived', 'data']);
     return added.derived;
+  };
+
+  // Adds more samples' columns to an existing derived record (more samples placed on a map).
+  // perSample: Map(sampleId → { channel: Float32Array }); params merge into the record's.
+  app.addDerivedSamples = async (recordId, perSample, params, label) => {
+    const { extendDerived } = await import('../lib/workspace.js');
+    const files = {};
+    for (const [sampleId, columns] of perSample) {
+      files[sampleId] = {};
+      for (const [name, column] of Object.entries(columns)) {
+        data.setDerived(sampleId, name, column);
+        files[sampleId][name] = await data.persistColumn(column);
+      }
+    }
+    store.commit(extendDerived(store.ws, recordId, files, params, label), label, ['derived', 'data']);
   };
 
   // --- Plot export ------------------------------------------------------------------------------
@@ -143,7 +158,7 @@ export function installActions(app) {
     const dims = [{ channel: spec.x, transform: channelTransform(ws, view, spec.x) }];
     const oneD = !spec.y || spec.type === 'histogram' || spec.type === 'cdf';
     dims.push(oneD ? null : { channel: spec.y, transform: channelTransform(ws, view, spec.y) });
-    const indices = population(view, ws, spec.populationId ?? ROOT);
+    const indices = populationSet(view, ws, spec.populationId ?? ROOT);
     const xs = view.scaled(spec.x, dims[0].transform);
     const ys = dims[1] ? view.scaled(spec.y, dims[1].transform) : null;
     const parentId = spec.populationId === ROOT ? null : spec.populationId;
@@ -153,7 +168,7 @@ export function installActions(app) {
       if (gate.type === 'boolean' || gate.type === 'category') continue;
       const outline = gateOutline(gate, effectiveGeometry(gate, view.id), dims);
       if (!outline) continue;
-      const members = population(view, ws, gate.id);
+      const members = populationSet(view, ws, gate.id);
       gates.push({ id: gate.id, outline, name: gate.name, label: members === undefined ? '' : formatPercent((100 * countOf(members, view)) / (parentCount || 1)), color: gate.color, level: 0.55 });
     }
     const popName = gateById(ws, spec.populationId)?.name ?? 'All events';
@@ -184,6 +199,7 @@ export function installActions(app) {
         { label: 'Color', icon: 'tag', onSelect: () => showMenu(anchor, CATEGORICAL.map((color) => ({ label: color, swatch: color, onSelect: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate') }))) },
         { label: store.ui.backgate ? 'Stop backgating' : 'Backgate on ancestors', icon: 'backgate', hint: 'B', onSelect: () => { app.selectGate(gate.id); store.setUI({ backgate: !store.ui.backgate }, ['backgate']); } },
         '-',
+        gate.type === 'boolean' ? { label: 'Edit Boolean population…', icon: 'edit', onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { gateId: gate.id })) } : null,
         { label: 'Review across samples…', icon: 'target', onSelect: () => app.reviewGate(gate.id) },
         { label: 'Copy to another population…', icon: 'copy', onSelect: () => copyGateMenu(anchor, gate) },
         { label: 'Applies to', icon: 'layers', onSelect: () => scopeMenu(anchor, gate) },
@@ -192,6 +208,7 @@ export function installActions(app) {
       );
     }
     items.push(
+      { label: 'New Boolean population…', icon: 'layers', disabled: !ws.gates.length, onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { operands: gate ? [gate.id] : [] })) },
       { label: 'Export events as FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs') },
       { label: 'Export events as CSV…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'csv') },
       { label: 'Add statistics to a table', icon: 'table', onSelect: () => { app.setMode('tables'); setTimeout(() => app.addPopulationToTable?.(gateId), 50); } },
@@ -299,9 +316,9 @@ export function installActions(app) {
       progress.update(i / samples.length, `Reviewing ${gate.name}: ${sample.name}`);
       try {
         const view = await data.ensure(sample.id);
-        const indices = population(view, store.ws, gate.id);
+        const indices = populationSet(view, store.ws, gate.id);
         if (indices === undefined) continue;
-        const parent = population(view, store.ws, gate.parentId ?? ROOT);
+        const parent = populationSet(view, store.ws, gate.parentId ?? ROOT);
         const parentCount = countOf(parent, view);
         const robustness = gateRobustness(view, store.ws, gate.id);
         rows.push({ sample, count: countOf(indices, view), freq: (100 * countOf(indices, view)) / (parentCount || 1), parentCount, robustness, adjusted: Boolean(gate.overrides?.[sample.id]) });
@@ -371,7 +388,7 @@ export function installActions(app) {
     const typeSelect = h('select.input.small', { style: { width: '150px' } },
       ...['linear', 'log', 'logicle', 'biex', 'arcsinh'].map((type) => h('option', { value: type, selected: current.type === type }, { linear: 'Linear', log: 'Logarithmic', logicle: 'Logicle', biex: 'Biexponential (FlowJo)', arcsinh: 'Arcsinh' }[type])));
     const describe = h('div.muted', { style: { fontSize: '11.5px', marginTop: '4px' } });
-    const indices = population(view, ws, spec.populationId ?? ROOT);
+    const indices = populationSet(view, ws, spec.populationId ?? ROOT);
 
     const defaultsFor = (type) => {
       const column = view.column(channel);

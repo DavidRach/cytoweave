@@ -13,6 +13,7 @@ import { difference, intersect, membership, union } from './gates.js';
 import { createTransform } from './transforms.js';
 import { createRandom } from './random.js';
 import { parseXML } from './xml.js';
+import { addCompensation, addDerived, addGates, createWorkspace } from './workspace.js';
 
 const NS = 'xmlns:gating="http://www.isac-net.org/std/Gating-ML/v2.0/gating" xmlns:transforms="http://www.isac-net.org/std/Gating-ML/v2.0/transformations" xmlns:data-type="http://www.isac-net.org/std/Gating-ML/v2.0/datatypes"';
 const doc = (body) => `<?xml version="1.0" encoding="UTF-8"?>\n<gating:Gating-ML ${NS}>\n${body}\n</gating:Gating-ML>`;
@@ -176,9 +177,10 @@ test('a compliance-style document imports into CytoWeave gates', () => {
   assert.equal(polygon.type, 'polygon');
   assert.equal(polygon.name, 'Polygon4');
   assert.equal(polygon.parentId, null);
+  // Dimensions keep the compensation the document names (here none).
   assert.deepEqual(polygon.dims, [
-    { channel: 'FL3-H', transform: { type: 'logicle', T: 10000, W: 0.5, M: 4.5, A: 0 } },
-    { channel: 'FL4-H', transform: { type: 'logicle', T: 10000, W: 0.5, M: 4.5, A: 0 } },
+    { channel: 'FL3-H', transform: { type: 'logicle', T: 10000, W: 0.5, M: 4.5, A: 0 }, compensation: 'uncompensated' },
+    { channel: 'FL4-H', transform: { type: 'logicle', T: 10000, W: 0.5, M: 4.5, A: 0 }, compensation: 'uncompensated' },
   ]);
   assert.deepEqual(polygon.geometry.vertices[0], [0.12, 0.27]);
   assert.equal(gates.Range1.type, 'range');
@@ -347,9 +349,10 @@ test('compensation matrices, references and ratio dimensions import', () => {
   const gates = byName(result.gates);
   assert.deepEqual(gates.Comp1.dims.map((d) => d.channel), ['FL1-H', 'FL3-H']);
   assert.deepEqual(gates.Comp1.meta.compensation, ['Spill1', 'FCS']);
+  assert.deepEqual(gates.Comp1.dims.map((d) => d.compensation), [spill.id, 'file']);
   assert.deepEqual(gates.Comp1.geometry, { min: [100, null], max: [null, 900] });
   assert.deepEqual(result.derived.map((d) => [d.kind, d.inputs, d.outputs, d.params]), [['ratio', ['FL1-H', 'FL2-H'], ['Ratio1'], { A: 1, B: 0, C: 0 }]]);
-  assert.deepEqual(gates.RatioGate.dims, [{ channel: 'Ratio1', transform: { type: 'linear', min: 0, max: 1 } }]);
+  assert.deepEqual(gates.RatioGate.dims, [{ channel: 'Ratio1', transform: { type: 'linear', min: 0, max: 1 }, compensation: 'uncompensated' }]);
   assert.equal(result.transforms.find((t) => t.id === 'Ratio1').type, 'ratio');
 });
 
@@ -392,16 +395,71 @@ test('one-divider quadrants become splits, multi-value dividers boxes, unsupport
   assert.equal(gates.MidAnyF.type, 'range');
   assert.deepEqual(gates.MidAnyF.geometry, { min: 50, max: 500 });
   assert.equal(gates.RightOnly.type, 'split');
+  assert.deepEqual(gates.Mid.dims.map((d) => d.compensation), ['uncompensated', 'uncompensated']);
   assert.deepEqual(gates.RightOnly.dims.map((d) => d.channel), ['FL1-H']);
   assert.deepEqual(gates.RightOnly.geometry, { threshold: 1, side: 'hi' });
-  for (const id of ['Cube', 'ChildOfCube', 'UsesChild', 'BadTransform']) assert.equal(gates[id], undefined, id);
+  // A three-dimensional rectangle imports whole, with its children.
+  assert.equal(gates.Cube.type, 'rectangle');
+  assert.deepEqual(gates.Cube.geometry, { min: [1, 1, 1], max: [null, null, null] });
+  assert.equal(gates.ChildOfCube.parentId, gates.Cube.id);
+  assert.equal(gates.UsesChild.type, 'boolean');
+  assert.equal(gates.BadTransform, undefined);
   assert.equal(gates.Orphan.parentId, null);
   const text = result.warnings.join('\n');
-  assert.match(text, /RectangleGate "Cube" has 3 dimensions/);
-  assert.match(text, /"ChildOfCube" depends on the skipped gate "Cube"/);
-  assert.match(text, /"UsesChild" depends on the skipped gate/);
+  assert.doesNotMatch(text, /Cube/);
   assert.match(text, /unknown transformation "Nope"/);
   assert.match(text, /unknown parent "Missing"/);
+});
+
+test('N-dimensional ellipsoids, multi-divider quadrants, bounds and non-square spectra import', () => {
+  const result = importGatingML(doc(`
+    <transforms:transformation transforms:id="Bounded" transforms:boundMin="0.4" transforms:boundMax="0.9">
+      <transforms:logicle transforms:T="10000" transforms:W="0.5" transforms:M="4.5" transforms:A="0"/>
+    </transforms:transformation>
+    <transforms:spectrumMatrix transforms:id="Unmix">
+      <transforms:fluorochromes><data-type:fcs-dimension data-type:name="P1"/><data-type:fcs-dimension data-type:name="P2"/></transforms:fluorochromes>
+      <transforms:detectors><data-type:fcs-dimension data-type:name="D1"/><data-type:fcs-dimension data-type:name="D2"/><data-type:fcs-dimension data-type:name="D3"/></transforms:detectors>
+      <transforms:spectrum><transforms:coefficient transforms:value="1"/><transforms:coefficient transforms:value="0.5"/><transforms:coefficient transforms:value="0"/></transforms:spectrum>
+      <transforms:spectrum><transforms:coefficient transforms:value="0"/><transforms:coefficient transforms:value="0.5"/><transforms:coefficient transforms:value="1"/></transforms:spectrum>
+    </transforms:spectrumMatrix>
+    <gating:EllipsoidGate gating:id="Ball">
+      ${dim('FL1-H')}${dim('FL2-H')}${dim('FL3-H', { t: 'Bounded' })}
+      <gating:mean><gating:coordinate data-type:value="1"/><gating:coordinate data-type:value="2"/><gating:coordinate data-type:value="0.5"/></gating:mean>
+      <gating:covarianceMatrix>
+        <gating:row><gating:entry data-type:value="4"/><gating:entry data-type:value="0"/><gating:entry data-type:value="0"/></gating:row>
+        <gating:row><gating:entry data-type:value="0"/><gating:entry data-type:value="1"/><gating:entry data-type:value="0"/></gating:row>
+        <gating:row><gating:entry data-type:value="0"/><gating:entry data-type:value="0"/><gating:entry data-type:value="0.01"/></gating:row>
+      </gating:covarianceMatrix>
+      <gating:distanceSquare data-type:value="1"/>
+    </gating:EllipsoidGate>
+    <gating:QuadrantGate gating:id="Q3D">
+      <gating:divider gating:id="A" gating:compensation-ref="FCS"><data-type:fcs-dimension data-type:name="FL1-H"/><gating:value>10</gating:value></gating:divider>
+      <gating:divider gating:id="B" gating:compensation-ref="FCS"><data-type:fcs-dimension data-type:name="FL2-H"/><gating:value>20</gating:value></gating:divider>
+      <gating:divider gating:id="C" gating:compensation-ref="FCS"><data-type:fcs-dimension data-type:name="FL3-H"/><gating:value>30</gating:value></gating:divider>
+      <gating:Quadrant gating:id="PPN"><gating:position gating:divider_ref="A" gating:location="11"/><gating:position gating:divider_ref="B" gating:location="21"/><gating:position gating:divider_ref="C" gating:location="0"/></gating:Quadrant>
+    </gating:QuadrantGate>
+    <gating:PolygonGate gating:id="OnUnmixed">
+      ${dim('P1', { comp: 'Unmix' })}${dim('P2', { comp: 'Unmix' })}${vertex(0, 0)}${vertex(1, 0)}${vertex(1, 1)}
+    </gating:PolygonGate>`));
+  assert.deepEqual(result.warnings, []);
+  const gates = byName(result.gates);
+  assert.equal(gates.Ball.type, 'ellipsoid');
+  assert.deepEqual(gates.Ball.geometry.mean, [1, 2, 0.5]);
+  assert.equal(gates.Ball.geometry.distanceSquare, 1);
+  assert.deepEqual(gates.Ball.dims[2].transform, { type: 'logicle', T: 10000, W: 0.5, M: 4.5, A: 0, boundMin: 0.4, boundMax: 0.9 });
+  assert.equal(gates.PPN.type, 'rectangle');
+  assert.deepEqual(gates.PPN.geometry, { min: [10, 20, null], max: [null, null, 30] });
+  assert.deepEqual(gates.PPN.dims.map((d) => d.compensation), ['file', 'file', 'file']);
+  // A non-square spectrum matrix becomes channels unmixed from the raw detectors by least squares.
+  const unmix = result.derived.find((d) => d.kind === 'unmix');
+  assert.deepEqual([unmix.inputs, unmix.outputs], [['D1', 'D2', 'D3'], ['P1', 'P2']]);
+  // S = [[1, .5, 0], [0, .5, 1]]: W = Sᵀ(SSᵀ)⁻¹ unmixes every combination of the two spectra.
+  const W = unmix.params.matrix;
+  for (const [a, b] of [[1, 0], [0, 1], [3, -2]]) {
+    const detectors = [a, 0.5 * a + 0.5 * b, b];
+    for (let j = 0; j < 2; j += 1) close(detectors.reduce((sum, v, i) => sum + v * W[i * 2 + j], 0), [a, b][j], 1e-12);
+  }
+  assert.deepEqual(gates.OnUnmixed.dims.map((d) => [d.channel, d.compensation]), [['P1', 'uncompensated'], ['P2', 'uncompensated']]);
 });
 
 test('tolerates default namespaces, missing compensation-ref and foreign custom_info names', () => {
@@ -539,6 +597,69 @@ test('export and import round-trip a workspace gate tree', () => {
   assert.deepEqual(either.geometry.operands.map((id) => result.gates.find((g) => g.id === id).name), ['Blob', 'Blob']);
   assert.deepEqual(result.compensations.map((c) => [c.name, c.channels, c.matrix]), [['c1', ['FITC-A', 'PE-A'], [1, 0.1, 0.02, 1]]]);
   assert.deepEqual(result.derived.map((d) => [d.inputs, d.outputs]), [[['FITC-A', 'PE-A'], ['FITC/PE']]]);
+  // Gates that follow each sample's compensation come back unpinned.
+  assert.ok(imported.every((g) => g.dims.every((d) => d.compensation === undefined)));
+});
+
+test('pinned compensations, N-dimensional gates, bounds and unmixing round-trip', () => {
+  const source = doc(`
+    <transforms:transformation transforms:id="Bounded" transforms:boundMin="0.4">
+      <transforms:logicle transforms:T="10000" transforms:W="0.5" transforms:M="4.5" transforms:A="0"/>
+    </transforms:transformation>
+    <transforms:spectrumMatrix transforms:id="Spill">
+      <transforms:fluorochromes><data-type:fcs-dimension data-type:name="FL1-H"/><data-type:fcs-dimension data-type:name="FL2-H"/></transforms:fluorochromes>
+      <transforms:detectors><data-type:fcs-dimension data-type:name="FL1-H"/><data-type:fcs-dimension data-type:name="FL2-H"/></transforms:detectors>
+      <transforms:spectrum><transforms:coefficient transforms:value="1"/><transforms:coefficient transforms:value="0.2"/></transforms:spectrum>
+      <transforms:spectrum><transforms:coefficient transforms:value="0.1"/><transforms:coefficient transforms:value="1"/></transforms:spectrum>
+    </transforms:spectrumMatrix>
+    <transforms:spectrumMatrix transforms:id="Unmix">
+      <transforms:fluorochromes><data-type:fcs-dimension data-type:name="P1"/><data-type:fcs-dimension data-type:name="P2"/></transforms:fluorochromes>
+      <transforms:detectors><data-type:fcs-dimension data-type:name="D1"/><data-type:fcs-dimension data-type:name="D2"/><data-type:fcs-dimension data-type:name="D3"/></transforms:detectors>
+      <transforms:spectrum><transforms:coefficient transforms:value="1"/><transforms:coefficient transforms:value="0.5"/><transforms:coefficient transforms:value="0"/></transforms:spectrum>
+      <transforms:spectrum><transforms:coefficient transforms:value="0"/><transforms:coefficient transforms:value="0.5"/><transforms:coefficient transforms:value="1"/></transforms:spectrum>
+    </transforms:spectrumMatrix>
+    <gating:RectangleGate gating:id="Box">
+      ${dim('FL1-H', { comp: 'Spill', min: 1, max: 9 })}${dim('FL2-H', { comp: 'FCS', min: 2 })}${dim('FL3-H', { t: 'Bounded', max: 0.7 })}
+    </gating:RectangleGate>
+    <gating:EllipsoidGate gating:id="Ball" gating:parent_id="Box">
+      ${dim('FL1-H', { comp: 'Spill' })}${dim('FL2-H', { comp: 'Spill' })}${dim('FL3-H')}
+      <gating:mean><gating:coordinate data-type:value="1"/><gating:coordinate data-type:value="2"/><gating:coordinate data-type:value="3"/></gating:mean>
+      <gating:covarianceMatrix>
+        <gating:row><gating:entry data-type:value="4"/><gating:entry data-type:value="1"/><gating:entry data-type:value="0"/></gating:row>
+        <gating:row><gating:entry data-type:value="1"/><gating:entry data-type:value="2"/><gating:entry data-type:value="0"/></gating:row>
+        <gating:row><gating:entry data-type:value="0"/><gating:entry data-type:value="0"/><gating:entry data-type:value="1"/></gating:row>
+      </gating:covarianceMatrix>
+      <gating:distanceSquare data-type:value="2.5"/>
+    </gating:EllipsoidGate>
+    <gating:PolygonGate gating:id="OnUnmixed">
+      ${dim('P1', { comp: 'Unmix' })}${dim('P2', { comp: 'Unmix' })}${vertex(0, 0)}${vertex(1, 0)}${vertex(1, 1)}
+    </gating:PolygonGate>`);
+  const first = importGatingML(source);
+  assert.deepEqual(first.warnings, []);
+  let ws = createWorkspace('Round trip');
+  for (const c of first.compensations) ws = addCompensation(ws, c).ws;
+  for (const d of first.derived) ws = addDerived(ws, d).ws;
+  ws = addGates(ws, first.gates).ws;
+  const { xml, warnings } = exportGatingML(ws);
+  assert.deepEqual(warnings, []);
+  assert.match(xml, /transforms:boundMin="0.4"/);
+  assert.match(xml, /transforms:matrix-inverted-already="true"/);
+  const second = importGatingML(xml);
+  assert.deepEqual(second.warnings, []);
+  const [a, b] = [first, second].map((r) => Object.fromEntries(r.gates.map((g) => [g.name, g])));
+  const spillOf = (r) => r.compensations.find((c) => c.name === 'Spill' || c.name === first.compensations[0].id)?.id;
+  for (const id of ['Box', 'Ball', 'OnUnmixed']) {
+    assert.equal(b[id].type, a[id].type, id);
+    assert.deepEqual(b[id].geometry, a[id].geometry, id);
+    assert.deepEqual(b[id].dims.map((d) => d.transform), a[id].dims.map((d) => d.transform), id);
+    // References keep their meaning: the matrix, the file's matrix, or none.
+    const meaning = (r, dims) => dims.map((d) => (d.compensation === spillOf(r) ? 'Spill' : d.compensation));
+    assert.deepEqual(meaning(second, b[id].dims), meaning(first, a[id].dims), id);
+  }
+  assert.equal(b.Ball.parentId, b.Box.id);
+  const unmix = second.derived.find((d) => d.kind === 'unmix');
+  assert.deepEqual(unmix.outputs, ['P1', 'P2']);
+  first.derived.find((d) => d.kind === 'unmix').params.matrix.forEach((v, i) => close(unmix.params.matrix[i], v, 1e-9));
 });
 
 test('export honours a sample, the file compensation and plain output', () => {

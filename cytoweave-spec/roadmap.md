@@ -29,29 +29,82 @@ The foundations and most of the workbench:
 
 ## Next (0.2): trust and scale
 
-1. **Reference-tool comparisons on public data (V3).**
-   - Run FlowKit 1.3, flowCore, PeacoQC 1.22, FlowSOM, CytoNorm and FlowJo on
-     a small set of redistributable public files, and keep their outputs as
-     golden numbers in `validation/reference/`.
-   - Add the ISAC Gating-ML 2.0 compliance suite (per-event truth, in
-     FlowKit's test data).
-   - Candidate data sets are listed in `research.md` §6.
-2. **FlowJo-compatible logicle (G4).** BD's published tables show FlowJo's
-   logicle departing from the reference at W > 0.5. Fit FlowJo's
-   construction, or ship the tables (MIT) for its parameter grid, so that
-   imported polygons on such axes match FlowJo's counts.
-3. **Large files (D6).**
-   - Stream FCS data from the host with HTTP range requests.
-   - Keep populations as bitsets once they are large.
-   - Optional WebGL rendering for plots of 10M+ events.
-   - Keep a CPU path for everything.
-4. **Agent proposals (M3).** Gates and matrices from an agent arrive as
-   proposals in a review queue, accepted or rejected as a group, and the
-   change log records who accepted them.
-5. **Drawing Boolean gates (G1)** in the population tree.
-6. **Index-sort plate view (A3):** a 96/384-well plate linked to the plots.
-7. **Explore:** offer k-means and Louvain (already in the library), and
-   place new samples on an existing UMAP (H1, H5).
+Four slices, in this order: the comparisons first, so that the later work on
+large files is checked against them.
+
+1. **Agreement with reference tools (V3, G4): done.** The public test data are
+   fetched and checksummed by `validation/fetch.mjs`, not stored in the
+   repository.
+   - ISAC's Gating-ML 2.0 compliance suite: all 190 gates match on every event.
+     This added transformation bounds, gates of three or more dimensions,
+     per-dimension compensation, spectral unmixing matrices and computed ratio
+     channels, and decides boundary events in double precision.
+   - FlowKit 1.3.2 and FlowIO on FlowKit's test data: FCS decoding,
+     compensation, OLS unmixing and transforms agree; on FlowJo workspaces
+     CytoWeave reproduces FlowJo's saved counts at least as often as FlowKit.
+     This fixed the import of FlowJo time gates, linear gains, ellipses and
+     biexponential ends.
+   - A corpus of instrument FCS files (fcsparser's tests), against FlowIO and
+     fcsparser's published values. This fixed floating-point log channels
+     (Guava) and files cut off before their data.
+   - FlowJo's logicle (G4): BD's tables are reproduced by formula, but FlowJo's
+     counts follow the reference logicle, which CytoWeave keeps.
+2. **R reference comparisons (V3): done.** `validation/reference/generate_r.R`
+   runs flowCore 2.24, PeacoQC 1.22, FlowSOM 2.20 and CytoNorm 2.0.12 on their
+   own example data, a FACSDiva file, a FlowKit file and the simulated QC
+   wells; the results are committed (`r.json`), so the checks need no R.
+   - flowCore: values read, compensation, estimated logicle widths and the
+     logicle transform agree to 1e-7 or better. This fixed `estimateLogicleW`,
+     which took the 5th percentile of all values instead of the negatives.
+   - PeacoQC: the classic mode is now an exact port of 1.22 (R's `density()`,
+     peak tracking, the isolation tree's rising gain limit and
+     `smooth.spline`), and removes the same events on all 7 files.
+   - FlowSOM: events map to the same nodes of R's map and R's metaclustering
+     is reproduced; whole runs agree with R as closely as R's own seeds do.
+   - CytoNorm: now 2.x's 99 quantiles, and a batch with 50 or fewer cells in a
+     cluster is left unchanged there, as in CytoNorm. Agrees to 1e-5.
+   - FACSDiva: spillover from 15 real single-stain controls within 0.015 of
+     Diva's own matrix, after leaving saturated events out of the positives.
+3. **Large files (D6): done.** Measured on a 10-million-event, 21-parameter
+   sample (`validation/bench.mjs`), the page stays responsive.
+   - Files are read in parts: from a dropped file by slices, from the program
+     by range requests. The page never holds a whole file. The program stores
+     and hashes files itself (in the browser, a streaming SHA-256).
+   - Populations are bitsets when large, indices when small: 7 MB instead of
+     148 MB for six populations. Caches are bounded by size.
+   - Compensation is computed per channel when needed. Statistics use exact
+     selection instead of sorting (11 s → 0.8 s for a 14-channel table).
+     Polygon gates use a cell grid (moving the top gate: 1.6 s → 0.4 s).
+   - Event columns are shared with workers. Before, QC on ten million events
+     failed: the browser would not copy 1.3 GB to the worker.
+   - WebGL was not needed: binning ten million events onto a plot takes about
+     30 ms, so drawing is not the bottleneck. Everything runs on the CPU.
+4. **Workbench gaps: done.**
+   - Agent proposals (M3): an agent's gates arrive as marked proposals
+     (usable at once, removed if rejected). Its renames, deletions and
+     compensation matrices (a new `propose_compensation` tool) wait for
+     review. A strip above the population tree reviews, accepts or rejects
+     each agent's proposal as a group. The change log records the agent's
+     name (from its MCP client) and the decision; a `proposals` tool tells the
+     agent the outcome.
+   - Boolean populations (G1) from the population menu: all of, any of or
+     none of chosen populations, with a live count, and editable later.
+   - Index-sort plate view (A3) in Gate mode. Wells come from BD's
+     `INDEX SORTING LOCATIONS` or well parameters, are colored by population
+     or channel, and mark their cells on the plots; they export as CSV.
+   - Explore offers k-means and Louvain, and places samples left out of a
+     UMAP on the finished map (H1, H5). The methods paragraph now describes a
+     result's clustering and embedding separately.
+
+Found by slice 1 and not yet solved: FlowJo evaluates gates at its display
+resolution, which moves events near boundaries (0.1–0.3% of large populations
+on real workspaces; FlowKit differs the same way). Reproducing it needs
+FlowJo's exact method, which is not documented.
+
+Found by slice 3: at ten million events, the analyses in workers work, but
+slowly. QC takes about 70 s, mostly PeacoQC's per-bin density estimates
+(about 5 s a channel). They could run in parallel across channels on the
+shared columns.
 
 ## Then (0.3): beyond a single tool
 
@@ -101,8 +154,8 @@ The foundations and most of the workbench:
 
 | Risk | Why it matters | What CytoWeave does |
 | --- | --- | --- |
-| FCS and vendor edge cases | A reader that fails on real instrument exports loses trust at once | Forgiving reader that reports every repair; next: a fuzzed corpus of vendor files |
-| Numerical disagreement with FlowJo, R or Python | Small transform, compensation or boundary differences move rare populations | Gating-ML boundary semantics, FlowJo's exact biexponential, golden validation; next: reference-tool comparisons on public data |
+| FCS and vendor edge cases | A reader that fails on real instrument exports loses trust at once | Forgiving reader that reports every repair, checked on files from several instruments against FlowIO; next: more vendors and a fuzzed corpus |
+| Numerical disagreement with FlowJo, R or Python | Small transform, compensation or boundary differences move rare populations | Gating-ML boundary semantics and ISAC's compliance suite, FlowJo's exact biexponential, double-precision boundary decisions, comparisons with FlowKit and FlowJo's saved counts; next: R reference tools |
 | FlowJo lock-in | Labs cannot leave years of analyses behind | Workspace import with a fidelity report and count-by-count migration report; Gating-ML export |
 | Algorithms that look more certain than they are | Automated gates and embeddings can seem authoritative | Boundary robustness, review across samples, embedding faithfulness, plain-language caveats |
 | Browser memory and speed | Many samples of millions of events | Lazy loading, caches, workers; next: streaming and bitset populations |

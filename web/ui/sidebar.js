@@ -1,8 +1,9 @@
 // The left sidebar: samples (with groups) and the population tree of the current sample.
 
 import { h, icon, clear, iconButton, formatCount, formatPercent } from './dom.js';
-import { showMenu, promptDialog, confirmDialog, toast } from './overlays.js';
-import { countOf, population } from '../lib/engine.js';
+import { showMenu, promptDialog, confirmDialog, showDialog, toast } from './overlays.js';
+import { acceptProposal, dependentsOfProposal, describeProposal, heldChanges, openProposals, proposalOfGate, rejectProposal } from '../lib/proposals.js';
+import { countOf, populationSet } from '../lib/engine.js';
 import {
   ROOT,
   SAMPLE_ROLES,
@@ -237,8 +238,8 @@ export function mountSidebar(app) {
         const view = data.view(sample.id);
         if (view) {
           try {
-            const indices = population(view, ws, gate.id);
-            const parent = population(view, ws, gate.parentId ?? ROOT);
+            const indices = populationSet(view, ws, gate.id);
+            const parent = populationSet(view, ws, gate.parentId ?? ROOT);
             if (indices !== undefined && parent !== undefined) freq = formatPercent((100 * countOf(indices, view)) / (countOf(parent, view) || 1));
           } catch { /* channel missing */ }
         }
@@ -308,6 +309,7 @@ export function mountSidebar(app) {
     clear(popBody);
     const sampleId = store.ui.sampleId;
     const view = sampleId ? data.view(sampleId) : null;
+    for (const proposal of openProposals(ws)) popBody.append(proposalStrip(ws, proposal, view));
     const tree = h('ul.tree', { role: 'tree' });
     const rootRow = row({ id: null, name: 'All events', color: '#94a3b8' }, view, 0, ws);
     tree.append(rootRow);
@@ -316,6 +318,70 @@ export function mountSidebar(app) {
       popBody.append(h('div.empty', { style: { padding: '16px 8px' } },
         h('p', 'No gates yet. Pick a drawing tool above a plot (R rectangle, P polygon, E ellipse, Q quadrant, W magic wand) and draw on the plot.')));
     }
+  }
+
+  // --- Proposals from agents ---------------------------------------------------------------------
+
+  function proposalStrip(ws, proposal, view) {
+    const items = describeProposal(ws, proposal);
+    const count = items.length;
+    return h('div.proposal-strip', { role: 'region', 'aria-label': `Proposal from ${proposal.author}` },
+      h('div.proposal-title', icon('sparkles'), h('span', h('strong', proposal.author), count ? ` proposes ${count} change${count === 1 ? '' : 's'}` : ' has nothing left to review')),
+      h('div.btn-row',
+        h('button.btn.small', { type: 'button', onclick: () => reviewProposal(proposal.id) }, 'Review'),
+        h('button.btn.small.primary', { type: 'button', onclick: () => accept(proposal.id) }, 'Accept all'),
+        h('button.btn.small.ghost', { type: 'button', onclick: () => reject(proposal.id) }, 'Reject all')));
+  }
+
+  function accept(id) {
+    const proposal = openProposals(store.ws).find((p) => p.id === id);
+    if (!proposal) return;
+    store.commit(acceptProposal(store.ws, id), `Accept the proposal from ${proposal.author}`);
+    toast(`Accepted the proposal from ${proposal.author}.`, { kind: 'ok' });
+  }
+
+  async function reject(id) {
+    const proposal = openProposals(store.ws).find((p) => p.id === id);
+    if (!proposal) return;
+    const drawn = dependentsOfProposal(store.ws, id);
+    if (drawn.length && !(await confirmDialog({ title: 'Reject the proposal?', message: `Rejecting removes the proposed gates, and with them ${drawn.length} population${drawn.length === 1 ? '' : 's'} drawn under them since: ${drawn.slice(0, 6).map((g) => g.name).join(', ')}${drawn.length > 6 ? '…' : ''}.`, confirm: 'Reject', danger: true }))) return;
+    store.commit(rejectProposal(store.ws, id), `Reject the proposal from ${proposal.author}`);
+    toast(`Rejected the proposal from ${proposal.author}.`);
+  }
+
+  function reviewProposal(id) {
+    const ws = store.ws;
+    const proposal = openProposals(ws).find((p) => p.id === id);
+    if (!proposal) return;
+    const view = store.ui.sampleId ? data.view(store.ui.sampleId) : null;
+    const sample = ws.samples.find((s) => s.id === store.ui.sampleId);
+    const frequency = (gateId) => {
+      if (!view) return '';
+      try {
+        const gate = gateById(ws, gateId);
+        const members = populationSet(view, ws, gateId);
+        if (!gate || members === undefined) return '';
+        return `${formatPercent((100 * countOf(members, view)) / (countOf(populationSet(view, ws, gate.parentId ?? ROOT), view) || 1))} of parent`;
+      } catch {
+        return '';
+      }
+    };
+    const list = h('ul.proposal-items', ...describeProposal(ws, proposal).map((item) => h(`li.${item.kind}`,
+      h('span', item.text),
+      item.kind === 'add' ? h('span.muted', frequency(item.gateId)) : null,
+      item.gateId && gateById(ws, item.gateId) ? h('button.btn.small.ghost', { type: 'button', onclick: () => { app.selectGate(item.gateId); dialog.close(); } }, 'Show') : null)));
+    const content = h('div',
+      h('p.muted', `Proposed by ${proposal.author}, ${new Date(proposal.opened).toLocaleString()}. New gates are already in the workspace, marked as proposed; the other changes apply only if you accept. The change log records your decision.${sample ? ` Frequencies are for ${sample.name}.` : ''}`),
+      list);
+    const dialog = showDialog({
+      title: 'Review the proposal',
+      content,
+      buttons: [
+        { label: 'Reject all', danger: true, onClick: () => { reject(id); } },
+        { label: 'Close', ghost: true },
+        { label: 'Accept all', primary: true, onClick: () => accept(id) },
+      ],
+    });
   }
 
   function row(gate, view, depth, ws) {
@@ -328,11 +394,11 @@ export function mountSidebar(app) {
     let applies = true;
     if (view) {
       try {
-        const indices = population(view, ws, id ?? ROOT);
+        const indices = populationSet(view, ws, id ?? ROOT);
         if (indices === undefined) applies = false;
         else {
           count = countOf(indices, view);
-          const parent = id ? population(view, ws, gate.parentId ?? ROOT) : null;
+          const parent = id ? populationSet(view, ws, gate.parentId ?? ROOT) : null;
           freq = id ? (100 * count) / (countOf(parent, view) || 1) : 100;
         }
       } catch {
@@ -355,11 +421,19 @@ export function mountSidebar(app) {
     }, icon('chevronRight'));
     // Markers sit outside the name so a long name truncates before they do.
     const label = h('span.label', { title: gate.name }, gate.name);
+    const proposed = id ? proposalOfGate(ws, gate) : null;
+    const held = id ? heldChanges(ws, id) : [];
+    const removal = held.find((x) => x.change.kind === 'remove-gate');
+    const rename = held.find((x) => x.change.kind === 'edit-gate' && x.change.patch.name && x.change.patch.name !== gate.name);
+    const origin = gate.meta?.proposedBy ? `Proposed by ${gate.meta.proposedBy}${gate.meta.acceptedBy ? `, accepted by ${gate.meta.acceptedBy}` : ''}` : 'Added by an AI agent';
     const marks = h('span.marks',
       overridden ? h('span.flag', { title: 'Adjusted for this sample' }) : null,
+      proposed ? h('span.badge.accent.proposal-mark', { title: `${origin}; waiting for your review` }, 'proposed') : null,
+      rename ? h('span.badge.proposal-mark', { title: `${rename.proposal.author} proposes renaming it to ${rename.change.patch.name}` }, `→ ${rename.change.patch.name}`) : null,
+      removal ? h('span.badge.danger.proposal-mark', { title: `${removal.proposal.author} proposes deleting it` }, 'delete?') : null,
       gate.meta?.origin === 'auto' ? h('span.auto-mark', { title: `Proposed automatically${gate.meta.note ? `: ${gate.meta.note}` : ''}` }, icon('sparkles')) : null,
-      gate.meta?.origin === 'agent' ? h('span.auto-mark', { title: 'Added by an AI agent' }, icon('sparkles')) : null);
-    const rowEl = h(`div.tree-row${selected ? '.selected' : ''}${applies ? '' : '.inapplicable'}`, {
+      gate.meta?.origin === 'agent' && !proposed ? h('span.auto-mark', { title: origin }, icon('sparkles')) : null);
+    const rowEl = h(`div.tree-row${selected ? '.selected' : ''}${applies ? '' : '.inapplicable'}${proposed ? '.proposed' : ''}${removal ? '.pending-removal' : ''}`, {
       role: 'treeitem',
       draggable: Boolean(id),
       title: applies ? '' : 'This gate does not apply to the current sample (its group scope excludes it).',

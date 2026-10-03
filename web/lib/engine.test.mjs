@@ -166,6 +166,102 @@ test('compensation feeds gating', () => {
   assert.equal(view.isCompensated('A'), false);
 });
 
+// Gate coordinates in data units (the identity scale).
+const identity = { type: 'linear', min: 0, max: 1 };
+
+test('gate dimensions may name their own compensation', () => {
+  const view = makeView();
+  let ws = createWorkspace('T');
+  ws = { ...ws, compensations: [{ id: 'c2', name: 'Other', channels: ['B', 'C'], matrix: [1, 0, 0.2, 1] }] };
+  view.setCompensation({ id: 'c1', channels: ['B', 'C'], matrix: [1, 0, 0.5, 1] });
+  const range = (name, compensation) => ({ name, parentId: null, type: 'range', dims: [{ channel: 'B', transform: identity, ...(compensation ? { compensation } : {}) }], geometry: { min: 400, max: null } });
+  ws = addGates(ws, [range('Sample'), range('None', 'uncompensated'), range('Other', 'c2'), range('Missing', 'c9')]).ws;
+  const count = (name) => population(view, ws, ws.gates.find((g) => g.name === name).id)?.length;
+  const expected = (k) => {
+    const b = view.raw.get('B');
+    const c = view.raw.get('C');
+    let n = 0;
+    for (let e = 0; e < view.eventCount; e += 1) if (b[e] - k * c[e] >= 400) n += 1;
+    return n;
+  };
+  assert.equal(count('Sample'), expected(0.5));
+  assert.equal(count('None'), expected(0));
+  assert.equal(count('Other'), expected(0.2));
+  assert.notEqual(expected(0.5), expected(0));
+  // A compensation the workspace lacks cannot be evaluated.
+  assert.equal(population(view, ws, ws.gates.find((g) => g.name === 'Missing').id), undefined);
+  // Changing the sample's compensation moves only the gates that follow it.
+  view.setCompensation(null);
+  assert.equal(count('Sample'), expected(0));
+  assert.equal(count('Other'), expected(0.2));
+});
+
+test('ratio and unmixed channels are computed from their inputs, exactly at gate boundaries', () => {
+  const view = makeView();
+  let ws = createWorkspace('T');
+  ws = {
+    ...ws,
+    derived: [
+      { id: 'd1', kind: 'ratio', inputs: ['A', 'B'], outputs: ['A/B'], params: { A: 2, B: 0, C: 0 } },
+      { id: 'd2', kind: 'unmix', inputs: ['A', 'B', 'C'], outputs: ['U1', 'U2'], params: { matrix: [1, 0, 0, 1, 0.5, 0.5] } },
+    ],
+  };
+  const ratioGate = { name: 'R', parentId: null, type: 'range', dims: [{ channel: 'A/B', transform: identity }], geometry: { min: 2, max: null } };
+  const unmixGate = { name: 'U', parentId: null, type: 'rectangle', dims: [{ channel: 'U1', transform: identity }, { channel: 'U2', transform: identity }], geometry: { min: [400, null], max: [null, null] } };
+  ws = addGates(ws, [ratioGate, unmixGate]).ws;
+  const a = view.raw.get('A');
+  const b = view.raw.get('B');
+  const c = view.raw.get('C');
+  const r = population(view, ws, ws.gates[0].id);
+  let n = 0;
+  for (let e = 0; e < view.eventCount; e += 1) if ((2 * a[e]) / b[e] >= 2) n += 1;
+  assert.equal(r.length, n);
+  assert.ok(view.hasChannel('U1') && view.channelInfo('U2').type === 'derived');
+  // U1 = A + 0.5·C; U2 = B + 0.5·C.
+  assert.ok(Math.abs(view.column('U1')[3] - (a[3] + 0.5 * c[3])) < 1e-3);
+  assert.ok(Math.abs(view.exactValue('U2', 3) - (b[3] + 0.5 * c[3])) < 1e-9);
+  const u = population(view, ws, ws.gates[1].id);
+  let m = 0;
+  for (let e = 0; e < view.eventCount; e += 1) if (a[e] + 0.5 * c[e] >= 400) m += 1;
+  assert.equal(u.length, m);
+  // Boundary decisions use double precision: compensated B = B − 0.5·C is 400 − 1e-6 for event 0
+  // (outside [400, ∞)) and 400 + 1e-6 for event 1, but both round to 400 in the float32 column.
+  b[0] = 400;
+  c[0] = Math.fround(2e-6);
+  b[1] = 400;
+  c[1] = -Math.fround(2e-6);
+  view.setCompensation({ id: 'c1', channels: ['B', 'C'], matrix: [1, 0, 0.5, 1] });
+  assert.equal(view.column('B')[0], 400);
+  assert.equal(view.column('B')[1], 400);
+  ws = addGates(ws, [{ name: 'B400', parentId: null, type: 'range', dims: [{ channel: 'B', transform: identity }], geometry: { min: 400, max: null } }]).ws;
+  const edge = population(view, ws, ws.gates[2].id);
+  assert.equal(edge.includes(0), false);
+  assert.ok(edge.includes(1));
+});
+
+test('three-dimensional rectangles and ellipsoids gate in every dimension', () => {
+  const view = makeView();
+  let ws = createWorkspace('T');
+  const dims = ['A', 'B', 'C'].map((channel) => ({ channel, transform: identity }));
+  ws = addGates(ws, [
+    { name: 'Box', parentId: null, type: 'rectangle', dims, geometry: { min: [500, 500, 300], max: [null, null, null] } },
+    { name: 'Ball', parentId: null, type: 'ellipsoid', dims, geometry: { mean: [700, 700, 500], covariance: [[900, 0, 0], [0, 900, 0], [0, 0, 400]], distanceSquare: 4 } },
+  ]).ws;
+  const a = view.raw.get('A');
+  const b = view.raw.get('B');
+  const c = view.raw.get('C');
+  let box = 0;
+  let ball = 0;
+  for (let e = 0; e < view.eventCount; e += 1) {
+    if (a[e] >= 500 && b[e] >= 500 && c[e] >= 300) box += 1;
+    if (((a[e] - 700) ** 2) / 900 + ((b[e] - 700) ** 2) / 900 + ((c[e] - 500) ** 2) / 400 <= 4) ball += 1;
+  }
+  assert.equal(population(view, ws, ws.gates[0].id).length, box);
+  assert.equal(population(view, ws, ws.gates[1].id).length, ball);
+  assert.ok(box > 800 && ball > 600);
+  assert.equal(gateRobustness(view, ws, ws.gates[0].id), null);
+});
+
 test('workspaces serialize and parse', () => {
   let ws = createWorkspace('Round trip');
   ({ ws } = addGates(ws, [rectGate('High', null, [0.5, 0.5], [1, 1])]));

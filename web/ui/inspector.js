@@ -2,11 +2,12 @@
 
 import { h, icon, clear, formatCount, formatPercent, iconButton } from './dom.js';
 import { showMenu, toast } from './overlays.js';
-import { channelTransform, countOf, describePopulation, gateRobustness, population } from '../lib/engine.js';
+import { channelTransform, countOf, describePopulation, gateRobustness, isMultidimensional, populationSet } from '../lib/engine.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { formatStatistic, wilsonInterval } from '../lib/stats.js';
-import { ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
+import { BOOLEAN_OPS, ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
 import { CATEGORICAL } from '../lib/colormaps.js';
+import { isInteracting } from './activity.js';
 
 export function mountInspector(app) {
   const { store, data } = app;
@@ -37,14 +38,14 @@ export function mountInspector(app) {
 
   function populationSection(ws, view, gate) {
     if (!view) return section('Population', h('p.muted', data.statusOf(store.ui.sampleId) === 'loading' ? 'Loading events…' : 'Events not loaded.'));
-    const indices = population(view, ws, gate?.id ?? ROOT);
+    const indices = populationSet(view, ws, gate?.id ?? ROOT);
     if (indices === undefined) return section('Population', h('p.muted', 'This population does not apply to this sample.'));
     const count = countOf(indices, view);
-    const parent = gate ? population(view, ws, gate.parentId ?? ROOT) : null;
+    const parent = gate ? populationSet(view, ws, gate.parentId ?? ROOT) : null;
     const parentCount = gate ? countOf(parent, view) : view.eventCount;
     const freqParent = gate ? (100 * count) / (parentCount || 1) : 100;
     const grand = gate?.parentId ? gateById(ws, gate.parentId) : null;
-    const grandCount = grand ? countOf(population(view, ws, grand.parentId ?? ROOT), view) : view.eventCount;
+    const grandCount = grand ? countOf(populationSet(view, ws, grand.parentId ?? ROOT), view) : view.eventCount;
     const [lo, hi] = wilsonInterval(count, parentCount || 1);
     return section(gate ? gate.name : 'All events',
       h('div.big-stat', h('span.value', gate ? formatPercent(freqParent) : formatCount(count)), h('span.unit', gate ? `of ${gate.parentId ? gateById(ws, gate.parentId)?.name : 'all events'}` : 'events')),
@@ -60,17 +61,31 @@ export function mountInspector(app) {
     const overridden = Boolean(gate.overrides?.[sampleId]);
     const overrideCount = Object.keys(gate.overrides ?? {}).length;
     const dims = gate.dims.map((d) => channelLabel(ws, d.channel)).join(' × ');
-    const typeName = { rectangle: 'Rectangle', range: 'Range', polygon: 'Polygon', ellipse: 'Ellipse', quadrant: 'Quadrant', split: 'Split', boolean: 'Boolean', category: 'Category' }[gate.type];
+    const typeName = { rectangle: 'Rectangle', range: 'Range', polygon: 'Polygon', ellipse: 'Ellipse', ellipsoid: 'Ellipsoid', quadrant: 'Quadrant', split: 'Split', boolean: 'Boolean', category: 'Category' }[gate.type];
+    // Dimensions that name their own compensation (imported Gating-ML) rather than the sample's.
+    const compensationName = (ref) => (ref === 'uncompensated' ? 'none' : ref === 'file' ? "the file's matrix" : ws.compensations.find((c) => c.id === ref)?.name ?? 'a missing matrix');
+    const pinned = gate.dims.filter((d) => d.compensation !== undefined && d.compensation !== null);
+    const pinnedText = pinned.length ? [...new Set(pinned.map((d) => compensationName(d.compensation)))].join(', ') : null;
     const content = [
       h('dl.kv',
         h('dt', 'Type'), h('dd', typeName),
         gate.dims.length ? [h('dt', 'Axes'), h('dd', { title: dims }, dims)] : null,
+        pinnedText ? [h('dt', 'Compensation'), h('dd', { title: 'This gate keeps the compensation its Gating-ML file names, whatever the sample uses.' }, pinnedText)] : null,
         h('dt', 'Path'), h('dd', { title: gatePath(ws, gate.id) }, gatePath(ws, gate.id)),
         h('dt', 'Applies to'), h('dd', gate.scope?.groupId ? ws.groups.find((g) => g.id === gate.scope.groupId)?.name ?? 'a group' : 'All samples'),
-        h('dt', 'Origin'), h('dd', gate.meta?.origin === 'auto' ? `Proposed from the data (${gate.meta.method ?? 'density'})` : gate.meta?.origin === 'imported' ? 'Imported' : gate.meta?.origin === 'agent' ? 'Added by an AI agent' : 'Drawn')),
+        h('dt', 'Origin'), h('dd', gate.meta?.proposedBy
+          ? `Proposed by ${gate.meta.proposedBy}${gate.meta.origin === 'auto' ? ` from the data (${gate.meta.method ?? 'density'})` : ''}${gate.meta.acceptedBy ? `; accepted by ${gate.meta.acceptedBy}` : '; waiting for your review'}`
+          : gate.meta?.origin === 'auto' ? `Proposed from the data (${gate.meta.method ?? 'density'})` : gate.meta?.origin === 'imported' ? 'Imported' : gate.meta?.origin === 'agent' ? 'Added by an AI agent' : 'Drawn')),
     ];
     if (gate.meta?.note) content.push(h('div.callout.accent', { style: { marginTop: '8px' } }, icon('sparkles'), h('span', gate.meta.note)));
-    content.push(geometryEditor(gate, geometry, sampleId));
+    if (gate.type === 'boolean') {
+      const operands = (geometry.operands ?? []).map((id) => gateById(ws, id)?.name ?? 'a missing population');
+      content.push(h('div', { style: { marginTop: '10px', fontSize: '12.5px' } },
+        h('div', `In ${BOOLEAN_OPS[geometry.op] ?? geometry.op}: ${operands.join(', ')}.`),
+        h('button.btn.small', { type: 'button', style: { marginTop: '8px' }, onclick: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { gateId: gate.id })) }, icon('edit'), 'Edit')));
+    } else {
+      content.push(geometryEditor(gate, geometry, sampleId));
+    }
     if (overridden || overrideCount) {
       content.push(h('div.callout.warn', { style: { marginTop: '8px' } }, icon('info'),
         h('div', overridden ? 'This gate is adjusted for this sample.' : `Adjusted for ${overrideCount} other sample(s).`,
@@ -84,7 +99,7 @@ export function mountInspector(app) {
         onclick: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate'),
       })));
     content.push(swatches);
-    if (gate.type !== 'boolean' && gate.type !== 'category' && view) content.push(robustnessBlock(ws, view, gate));
+    if (gate.type !== 'boolean' && gate.type !== 'category' && !isMultidimensional(gate) && view) content.push(robustnessBlock(ws, view, gate));
     return section('Gate', ...content);
   }
 
@@ -106,7 +121,9 @@ export function mountInspector(app) {
       const scope = store.ui.editScope === 'sample' ? { sampleId } : {};
       store.commit(setGateGeometry(store.ws, gate.id, next, scope), `Edit ${gate.name}`);
     };
-    if (gate.type === 'rectangle') {
+    if (gate.type === 'ellipsoid' || (gate.type === 'rectangle' && gate.dims.length !== 2)) {
+      wrap.append(h('div.muted', `An imported ${gate.dims.length}-dimensional ${gate.type === 'ellipsoid' ? 'ellipsoid' : 'rectangle'} on ${gate.dims.map((d) => d.channel).join(', ')}. It is evaluated in all its dimensions but cannot be drawn or edited on a 2-D plot.`));
+    } else if (gate.type === 'rectangle') {
       wrap.append(h('div.row',
         field('x min', geometry.min[0], tx, (v) => commit({ ...geometry, min: [v, geometry.min[1]] })),
         field('x max', geometry.max[0], tx, (v) => commit({ ...geometry, max: [v, geometry.max[1]] }))),
@@ -185,21 +202,54 @@ export function mountInspector(app) {
     return holder;
   }
 
+  // Each population's summaries (median, mean, rSD) by channel, kept while the population is the
+  // same (populations are cached sets, so the set itself is the key).
+  const summaries = new WeakMap();
+  let statisticsToken = 0;
+
   function statisticsSection(ws, view, gate) {
-    const indices = population(view, ws, gate?.id ?? ROOT);
+    const indices = populationSet(view, ws, gate?.id ?? ROOT);
     if (indices === undefined) return h('div');
     // Spectral data: the unmixed abundances, when present, rather than the raw detectors.
     const unmixed = [...view.derived.keys()].filter((name) => name.endsWith('(unmixed)') && !/^(AF signature|Residual) /.test(name));
-    const channels = unmixed.length ? unmixed : view.parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name);
+    const channels = (unmixed.length ? unmixed : view.parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name)).slice(0, 60);
     const count = countOf(indices, view);
     if (!channels.length || !count) return h('div');
+    const owner = indices ?? view;
+    if (!summaries.has(owner)) summaries.set(owner, new Map());
+    const known = summaries.get(owner);
+    const prefix = `${view.version}|${gate?.id ?? ROOT}|`;
     const body = h('tbody');
     const table = h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Median'), h('th.r', 'Mean'), h('th.r', 'rSD'))), body);
-    const stats = describePopulation(view, ws, gate?.id ?? ROOT, channels.slice(0, 60));
-    for (const channel of channels.slice(0, 60)) {
-      const d = stats?.[channel];
-      if (!d) continue;
-      body.append(h('tr', h('td', { title: channel }, channelLabel(ws, channel, { short: true })), h('td.r', formatStatistic('median', d.median)), h('td.r', formatStatistic('mean', d.mean)), h('td.r', formatStatistic('rsd', d.rsd))));
+    const cells = new Map();
+    for (const channel of channels) {
+      const d = known.get(prefix + channel);
+      const values = ['median', 'mean', 'rsd'].map((id) => h('td.r', d ? formatStatistic(id, d[id]) : '…'));
+      cells.set(channel, values);
+      body.append(h('tr', h('td', { title: channel }, channelLabel(ws, channel, { short: true })), ...values));
+    }
+    // A large population is summarized a channel at a time, so the inspector shows at once and the
+    // page stays responsive; a newer render abandons the work.
+    const token = ++statisticsToken;
+    const missing = channels.filter((c) => !known.has(prefix + c));
+    const fill = (channel) => {
+      const d = describePopulation(view, ws, gate?.id ?? ROOT, [channel], { basic: true })?.[channel];
+      known.set(prefix + channel, d ?? null);
+      cells.get(channel).forEach((cell, i) => { cell.textContent = d ? formatStatistic(['median', 'mean', 'rsd'][i], d[['median', 'mean', 'rsd'][i]]) : '—'; });
+    };
+    if (count * missing.length <= 2e6) missing.forEach(fill);
+    else {
+      const next = (k) => {
+        if (token !== statisticsToken || k >= missing.length) return;
+        // A channel of millions of events takes tens of milliseconds: not while a gate is dragged.
+        if (isInteracting()) {
+          setTimeout(() => next(k), 120);
+          return;
+        }
+        fill(missing[k]);
+        setTimeout(() => next(k + 1), 0);
+      };
+      setTimeout(() => next(0), 0);
     }
     return section('Statistics', h('div', { style: { maxHeight: '320px', overflow: 'auto' } }, table),
       h('div.muted', { style: { fontSize: '11px', marginTop: '6px' } }, unmixed.length ? 'Unmixed abundances.' : view.compensation ? 'Compensated values.' : 'Uncompensated values.'));

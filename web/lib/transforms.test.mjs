@@ -127,7 +127,13 @@ test('FlowJo biex: its table, zero channel, width clamp and inverse', () => {
   const biex = createTransform(spec);
   // Zero sits at channel trunc(4096 · 0.5 / 4.41854) = 463.
   close(biex.forward(0), 463 / 4096, 1e-12);
-  for (const x of [-5000, -100, 0, 37, 1e3, 1e5, 3e5]) close(biex.inverse(biex.forward(x)), x, 1e-9 * Math.max(1, Math.abs(x)));
+  for (const x of [-130, -100, 0, 37, 1e3, 1e5, 2.6e5]) close(biex.inverse(biex.forward(x)), x, 1e-9 * Math.max(1, Math.abs(x)));
+  // Beyond the table, values are clamped to its ends, as in FlowJo: the bottom edge, and the top
+  // edge for saturated events (the table stops at 261 622, short of maxValue).
+  assert.equal(biex.forward(-5000), 0);
+  assert.equal(biex.forward(262143), 1);
+  assert.equal(biex.inverse(-0.1), table[0]);
+  assert.equal(biex.inverse(1.1), table[4096]);
   // FlowJo treats width bases between −1 and −√10 as −√10.
   assert.deepEqual(Array.from(biexTable({ ...spec, widthBasis: -1 })), Array.from(biexTable({ ...spec, widthBasis: -Math.sqrt(10) })));
   // The event path (table interpolation) agrees with forward().
@@ -136,12 +142,33 @@ test('FlowJo biex: its table, zero channel, width clamp and inverse', () => {
   column.forEach((v, i) => close(out[i], biex.forward(v), 1e-6));
 });
 
+test('Gating-ML bounds clamp transformed values on every path', () => {
+  const spec = { type: 'logicle', T: 10000, W: 0.5, M: 4.5, A: 0, boundMin: 0.4, boundMax: 0.9 };
+  const t = createTransform(spec);
+  const free = createTransform({ type: 'logicle', T: 10000, W: 0.5, M: 4.5, A: 0 });
+  assert.notEqual(t.key, free.key);
+  const values = [-100, 0, 10, 1000, 9000, 1e6];
+  const lut = applyTransform(Float32Array.from(values), t);
+  values.forEach((v, i) => {
+    const expected = Math.min(0.9, Math.max(0.4, free.forward(v)));
+    close(t.forward(v), expected, 1e-12, `forward ${v}`);
+    close(lut[i], expected, 1e-6, `table ${v}`);
+  });
+  const linear = applyTransform(Float32Array.of(-5, 0.5, 5), { type: 'linear', min: 0, max: 1, boundMax: 1 });
+  assert.deepEqual(Array.from(linear), [-5, 0.5, 1]);
+  assert.match(t.label, /bounded ≥ 0\.4, ≤ 0\.9/);
+});
+
 test('W is estimated from the negative tail', () => {
   const values = new Float32Array(10000);
   for (let i = 0; i < values.length; i += 1) values[i] = i < 1000 ? -200 + (i % 100) : 100 + i * 10;
   const W = estimateLogicleW(values, 262144, 4.5);
-  // r ≈ −200 + something: W = (4.5 − log10(262144 / |r|)) / 2 ≈ 0.81.
-  assert.ok(W > 0.6 && W < 1.0, `W ${W}`);
+  // As flowCore: r is the 5th percentile (type 7) of the 1000 negatives, −200 … −101 ten times
+  // each: sorted[49] = −196, sorted[50] = −195, so r = −196 + 0.95 = −195.05.
+  close(W, (4.5 - Math.log10(262144 / 195.05)) / 2, 1e-9, 'W');
+  // Positive values do not move it.
+  const more = Float32Array.from({ length: 20000 }, (_, i) => (i < 10000 ? values[i] : 1e5));
+  close(estimateLogicleW(more, 262144, 4.5), W, 1e-12, 'W with more positives');
   const positive = Float32Array.from({ length: 1000 }, (_, i) => i + 1);
   assert.equal(estimateLogicleW(positive, 262144, 4.5), 0.25);
 });

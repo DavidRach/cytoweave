@@ -1,0 +1,49 @@
+---
+title: Compensation
+description: Compute a spillover matrix from single-stain controls in CytoWeave, edit it, apply it to samples, and check it against the controls to find and correct a wrong value.
+lede: Compute spillover from single-stain controls, apply it to your samples, and check the matrix against the controls before you trust a single gate.
+---
+      <h2 id="overview">The Compensate view</h2>
+      <shot name="compensate" alt="The Compensate view of the PBMC example: the controls section with negative reference and method, the matrix, and the check against 14 single-stain controls listing CD8 into CD4 with a 4.77% residual and three viability pairs flagged as autofluorescence">The file matrix of the PBMC example, checked against its 14 single-stain controls.</shot>
+      <p>The view has three parts: <strong>Compute from controls</strong> on the left; the workspace's <strong>Matrices</strong> and the selected one's editor; and <strong>Diagnostics</strong> for the selected matrix. Each sample uses one matrix at a time: the one from its file (<code>$SPILLOVER</code>, <code>SPILL</code>, <code>$SPILL</code> or <code>$COMP</code>), one of the workspace's, or none. The inspector shows a sample's matrix, and the sample list's <strong>Compensation</strong> menu changes it for a selection.</p>
+
+      <h2 id="compute">Computing spillover from controls</h2>
+      <ol>
+        <li>Add the single-stain controls (cells or beads) and an unstained control to the workspace, and <a href="opening-data.html#controls">set their roles</a>.</li>
+        <li>In <strong>Compute from controls</strong>, check each control's <strong>Stained channel</strong>. CytoWeave guesses it from the file name; <strong>Set stained channel</strong> corrects it.</li>
+        <li>Choose the <strong>Events used</strong>: a scatter gate excludes debris.</li>
+        <li>Choose the <strong>Negative reference</strong>: the dim events of each control, or the unstained sample. Use a negative of the same kind as the positives (beads with beads, cells with cells).</li>
+        <li>Choose the <strong>Method</strong>: <strong>Median difference (FACSDiva, FlowJo)</strong>, or <strong>Robust regression (AutoSpill-style)</strong>, the slope of a robust fit of each detector on the stained channel, as AutoSpill computes it.</li>
+        <li>Click <strong>Compute spillover</strong>. The new matrix appears under <strong>Matrices</strong>, with a warning for any control that needs attention: fewer than 200 positive events, positives that are dim or not brighter than the negatives, or many events off scale.</li>
+        <li>Click <strong>Apply to…</strong> and choose all samples, the current sample, the selected samples or a group.</li>
+      </ol>
+      <p>Against the true spillover of the PBMC example, computed matrices are within 0.02 of the truth; on 15 real single-stain controls from a BD LSRFortessa, every entry is within 0.015 of FACSDiva's.</p>
+
+      <h2 id="check">Checking a matrix against the controls</h2>
+      <p>A spillover matrix can look plausible and still be wrong, and a wrong value bends every population that expresses that marker. <strong>Check against the controls</strong> is the definitive test: it compensates each single-stain control with the selected matrix and measures how far its positive events still sit above (or below) its negatives in every other detector.</p>
+      <ul>
+        <li>A <strong>residual</strong> means the spillover value is off by about that much. The table lists each pair with its residual and the <strong>suggested value</strong>.</li>
+        <li>For a matrix you made, <strong>Apply</strong> corrects the value in place.</li>
+        <li>A matrix that came from a file does not change. <strong>Fix in a copy</strong> makes a corrected copy and moves every sample that used the file's matrix onto it, in one undoable step.</li>
+        <li>When a control's positives are brighter in several detectors at once, the check marks the pairs <strong>autofluorescence?</strong> instead of offering a correction. That is the signature of positive cells more autofluorescent than the negatives (dead cells in a viability control, beads against cells), not of a wrong value: compute that control against a negative of the same kind.</li>
+      </ul>
+      <p>When every control is clean, the check says so: no residual above 0.5% in any other detector.</p>
+      <div class="callout"><p><strong>Try it.</strong> The PBMC example's file matrix under-compensates APC into Alexa Fluor 700 (CD8 into CD4). The check finds that pair first and suggests about 15.8%; the true value is 15.7%.</p></div>
+      <p><strong>Hint from the current sample</strong> is a weaker check for when there are no controls: it compares bright and dim events of each channel in the current sample. Biology differs between those events too, so treat its suggestions as hints.</p>
+
+      <h2 id="diagnose">Spreading and pair plots</h2>
+      <ul>
+        <li><strong>Spillover spreading matrix</strong> (Nguyen et al. 2013), after computing from controls: how much each fluorochrome widens the negative population in every other detector, the price paid for compensation. Large values in a column mean that detector will have wide negatives when those fluorochromes are bright; pair dim markers with detectors that receive little spreading.</li>
+        <li><strong>Pairs:</strong> every pair of channels of the selected population, <strong>Uncompensated</strong> or <strong>Compensated</strong>. Populations should sit square to the axes after compensation; a diagonal lean means a spillover value is off.</li>
+        <li>The <strong>condition number</strong> of a matrix shows how much compensation can amplify noise.</li>
+      </ul>
+
+      <h2 id="edit">Editing a matrix</h2>
+      <p><strong>New matrix</strong> starts from the identity; <strong>Duplicate</strong> and <strong>Edit a copy</strong> start from an existing one. Values are percent spillover, row fluorochrome into column detector. Type a value, or focus a cell and use the mouse wheel (<kbd>⇧</kbd> for 1% steps); plots follow live, and every edit can be undone. Matrices also come from FlowJo workspaces and Gating-ML files, and travel with exported workspaces and Gating-ML.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="spectral.html"><h3>Spectral unmixing</h3><p>For raw data from spectral cytometers.</p></a>
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Gate on the compensated data.</p></a>
+        <a class="card" href="agents.html#proposals"><h3>Agent proposals</h3><p>An agent can propose a matrix for you to accept.</p></a>
+      </div>

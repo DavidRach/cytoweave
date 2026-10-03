@@ -65,3 +65,19 @@ test('analysis diffs describe gate, compensation and scale changes', () => {
   assert.equal(diffAnalyses(analysisSnapshot(before), analysisSnapshot(before)).changes.length, 0);
   assert.equal(geometryShift('split', { threshold: 0.2 }, { threshold: 0.25 }).toFixed(2), '0.05');
 });
+
+test('methods describe clustering and embedding of one result, samples placed on a map, and agent gates', async () => {
+  const { addDerived } = await import('./workspace.js');
+  let ws = workspace();
+  ws = addDerived(ws, { kind: 'umap', method: 'k-means and UMAP', seed: 7, params: { clustering: 'kmeans', embedding: 'umap', k: 9, markers: ['A', 'B'], events: 4000, nNeighbors: 15, minDist: 0.1, placed: ['C', 'D'] } }).ws;
+  ws = addDerived(ws, { kind: 'louvain', method: 'Louvain', seed: 7, params: { clustering: 'louvain', embedding: 'none', leidenK: 20, resolution: 0.8, markers: ['A'] } }).ws;
+  ws = { ...ws, gates: ws.gates.map((g) => (g.id === 'g2' ? { ...g, meta: { ...g.meta, proposedBy: 'Claude Code', acceptedBy: 'the user' } } : g)) };
+  const { paragraphs, references } = writeMethods(ws, { version: '0.2.0' });
+  const text = paragraphs.join(' ');
+  assert.match(text, /clustered by k-means \[\d+\] into 9 clusters/);
+  assert.match(text, /embedded with UMAP \[\d+\] \(15 neighbors/);
+  assert.match(text, /2 further sample\(s\) \(C, D\) were placed on the finished map/);
+  assert.match(text, /Louvain community detection \[\d+\] \(resolution 0.8\) on a 20-nearest-neighbor graph/);
+  assert.match(text, /1 gate\(s\) were proposed by an AI agent \(Claude Code\) and reviewed and accepted by the analyst/);
+  for (const key of ['kmeans', 'kmeansPlusPlus', 'hamerly', 'umap', 'louvain', 'phenograph']) assert.ok(references.some((r) => r.key === key), key);
+});

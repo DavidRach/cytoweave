@@ -50,8 +50,15 @@ jobs:
         run: for file in web/app.js web/ui/*.js web/lib/*.js web/workers/*.js; do node --check "$file"; done
       - name: node --test
         run: node --test "web/lib/*.test.mjs"
+      - name: Cache external validation data
+        uses: actions/cache@v4
+        with:
+          path: validation/cache
+          key: validation-data-${{ hashFiles('validation/sources.json') }}
+      - name: Fetch external validation data
+        run: node validation/fetch.mjs
       - name: Validation against reference values
-        run: node validation/run.mjs
+        run: node validation/run.mjs --require-data
 
   installers:
     name: Installer syntax

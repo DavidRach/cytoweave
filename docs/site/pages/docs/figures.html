@@ -1,0 +1,50 @@
+---
+title: Figures, methods and checkpoints
+description: Build publication figures from live plots in CytoWeave, export SVG, PNG or 300 dpi PDF, copy a methods paragraph with numbered references and BibTeX, check the MIFlowCyt checklist, and compare versions of an analysis with checkpoints.
+lede: Leave with what a paper needs: figures that stay true to the analysis until you export them, a methods paragraph written from what you actually did, and a record of every change.
+---
+      <h2 id="figures">Publication figures</h2>
+      <shot name="figures" alt="The Figures view: a page holding the gating strategy of T cells, five plots from all events to T cells joined by arrows, with the page properties and buttons to add text, plots and arrows">The gating strategy of T cells, built in one click.</shot>
+      <p>The <strong>Figures</strong> view lays out pages of plots. <strong>Build</strong> one of three ways:</p>
+      <ul>
+        <li><strong>Gating strategy of the selected population:</strong> one plot per step of its gating path, joined by arrows. Select the population in the Gate view first.</li>
+        <li><strong>The current plots across samples:</strong> the selected population's plots from the Gate view, one row per sample (the samples of the group shown in the sample list, up to 24).</li>
+        <li><strong>Blank page:</strong> add <strong>Text</strong>, a <strong>Plot of the current population</strong> and <strong>Arrows</strong> yourself.</li>
+      </ul>
+      <p>Any plot's <strong>⋯</strong> menu in the Gate view also has <strong>Add to figure</strong>. Click an item to edit it, drag it to move it (it snaps to 5 px), drag its corner to resize it, and press <kbd>Delete</kbd> to remove it. Pages come in slide (16:9), Letter and A4 portrait, Letter landscape and square sizes, or any width and height.</p>
+      <p>Plots in a figure stay <strong>live</strong>: they follow gate edits and compensation changes until you export. Export the page as <strong>SVG</strong> (to edit in Illustrator or Inkscape), <strong>PNG</strong> or <strong>PDF (300 dpi)</strong>.</p>
+
+      <h2 id="methods">The methods paragraph</h2>
+      <shot name="report" alt="The Report view: a methods paragraph written from the PBMC workspace, describing the instrument, compensation, scales, gating hierarchy and analyses, with numbered references">A methods paragraph written from the workspace, with numbered references.</shot>
+      <p>The <strong>Report</strong> view writes the methods from what the workspace contains, not from a template:</p>
+      <ul>
+        <li>the instrument and files, from the files' keywords;</li>
+        <li>the compensation, and where it came from;</li>
+        <li>the scales of the channels;</li>
+        <li>the gating hierarchy;</li>
+        <li>every recorded analysis with its parameters and seed: QC, unmixing, normalization, clustering, embeddings, model fits;</li>
+        <li>the statistical comparisons you saved for the report.</li>
+      </ul>
+      <p>References are numbered, with DOIs. <strong>Copy</strong> the paragraph, or download it as <strong>Markdown</strong> and the references as <strong>BibTeX</strong>. Edit it to taste before publishing. Gates proposed by an <a href="agents.html">AI agent</a> and accepted by you are described as such.</p>
+
+      <h3 id="miflowcyt">MIFlowCyt</h3>
+      <p>The <strong>MIFlowCyt checklist</strong> (Lee et al. 2008) shows which items of the minimum information for a flow experiment the workspace documents and which are missing. CytoWeave fills what the files and the analysis record. The rest (the purpose of the experiment, specimen details, reagent clones and lots, instrument settings not in the files) belongs in the <strong>Workspace notes</strong> below it, which are saved with the workspace.</p>
+
+      <h2 id="checkpoints">Checkpoints</h2>
+      <p>A checkpoint keeps the gates, compensation and scales as they are, to compare with or return to later. Create one before you change an analysis, for example before adjusting gates for a revision:</p>
+      <ol>
+        <li>In <strong>Report → Checkpoints</strong>, click <strong>Create checkpoint</strong> and name it.</li>
+        <li>Change the analysis.</li>
+        <li>Select the checkpoint. CytoWeave lists what changed in words, such as "the Live gate moved by 3% of the axis" or "the compensation of 12 samples changed", and the effect on every population's frequency in the loaded samples.</li>
+        <li><strong>Restore</strong> returns to the checkpoint; the current analysis stays available through undo.</li>
+      </ol>
+
+      <h2 id="change-log">The change log</h2>
+      <p>Every change to the analysis is recorded, newest first, and saved with the workspace: who made it (you, or which agent proposed it and what you decided), when, and what changed. Download it as <strong>JSON</strong> for an audit trail.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="workspaces.html"><h3>Workspaces</h3><p>Archive the analysis with its FCS files.</p></a>
+        <a class="card" href="../science.html#cite"><h3>Cite CytoWeave</h3><p>The citation, and the methods it builds on.</p></a>
+        <a class="card" href="statistics.html#compare"><h3>Comparisons</h3><p>Save a comparison for the report.</p></a>
+      </div>

@@ -136,14 +136,11 @@ export function evaluateSpline(spline, v) {
 
 // --- CytoNorm -------------------------------------------------------------------------------
 
-// CytoNorm's quantiles: 0.001, 1/(nQ−1), …, (nQ−2)/(nQ−1), 0.999 (the extremes are too noisy).
-export function cytoNormProbabilities(nQ = 101) {
+// CytoNorm 2.x's quantiles (QuantileNorm.train): 1/(nQ+1), 2/(nQ+1), …, nQ/(nQ+1); with the
+// default nQ = 99, 0.01 … 0.99 (the minimum and maximum are too noisy to anchor a spline).
+export function cytoNormProbabilities(nQ = 99) {
   if (!(nQ >= 3)) throw new Error('CytoNorm needs at least 3 quantiles.');
-  const p = new Array(nQ);
-  for (let i = 0; i < nQ; i += 1) p[i] = i / (nQ - 1);
-  p[0] = 0.001;
-  p[nQ - 1] = 0.999;
-  return p;
+  return Array.from({ length: nQ }, (_, i) => (i + 1) / (nQ + 1));
 }
 
 // Trains CytoNorm on reference (anchor) samples, one or more per batch:
@@ -152,14 +149,14 @@ export function cytoNormProbabilities(nQ = 101) {
 // and channel the quantiles of the transformed values are computed, the goal is their mean over
 // batches (goal: 'mean' | 'median' | a batch name) and a monotone spline maps each batch's
 // quantiles onto the goal. options: channels, transforms { [name]: spec } (default arcsinh),
-// cofactor, technology, nQ (101), goal ('mean'), limits ([lo, hi] in transformed units, added as
-// fixed knots as CytoNorm's `limit`), minCells (50, a warning), onProgress, signal.
+// cofactor, technology, nQ (99), goal ('mean'), limits ([lo, hi] in transformed units, added as
+// fixed knots as CytoNorm's `limit`), minCells (50: a batch with that few cells in a cluster is left out of its goal and left unchanged there, as in CytoNorm), onProgress, signal.
 // The model is plain JSON.
 export function trainCytoNorm(references, options = {}) {
   if (!Array.isArray(references) || !references.length) throw new Error('CytoNorm needs reference (anchor) samples, at least one per batch.');
   const channels = options.channels?.length ? options.channels : fluorescenceChannels(references[0].sample);
   if (!channels.length) throw new Error('Choose the channels to normalize.');
-  const nQ = options.nQ ?? 101;
+  const nQ = options.nQ ?? 99;
   const probabilities = cytoNormProbabilities(nQ);
   const goal = options.goal ?? 'mean';
   const minCells = options.minCells ?? 50;
@@ -222,7 +219,7 @@ export function trainCytoNorm(references, options = {}) {
       const count = counts[ci][bi];
       const where = clustered ? `Cluster ${clusters[ci]}` : 'The reference data';
       if (count === 0) warnings.push(`${where} has no cells in batch ${batches[bi]}; its events there are left unchanged.`);
-      else if (count < minCells) warnings.push(`${where} has only ${count} cells in batch ${batches[bi]}; its quantiles are uncertain.`);
+      else if (count <= minCells) warnings.push(`${where} has only ${count} cells in batch ${batches[bi]} (${minCells} or fewer); as in CytoNorm, that batch is left out of the goal and its events there are left unchanged.`);
     }
   }
 
@@ -244,8 +241,9 @@ export function trainCytoNorm(references, options = {}) {
       }
     });
     for (let ci = 0; ci < nC; ci += 1) {
+      // As CytoNorm's QuantileNorm.train: more than minCells cells, or no quantiles (identity).
       const perBatch = buckets[ci].map((values) => {
-        if (!values.length) return null;
+        if (values.length <= minCells) return null;
         const sorted = values.sort();
         return probabilities.map((p) => quantileSorted(sorted, p));
       });
@@ -269,7 +267,8 @@ export function trainCytoNorm(references, options = {}) {
       perBatch.forEach((row, bi) => {
         const b = batches[bi];
         quantiles[c][b][name] = row;
-        if (!row || !target) {
+        // Without quantiles, a goal, or two distinct quantiles (splinefun needs them): identity.
+        if (!row || !target || row.every((v) => v === row[0])) {
           splines[c][b][name] = null;
           return;
         }

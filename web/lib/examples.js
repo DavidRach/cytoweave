@@ -471,8 +471,22 @@ function* generatePBMC(ctx, samples, all) {
 // (polygon vertices in data units, a quadrant as four rectangles, an ellipse, a Boolean OR node,
 // sample groups). Every population count in the workspace is computed here, independently of
 // CytoWeave's FlowJo import: polygons on FlowJo's display scales, rectangles in data units and the
-// ellipse from its foci, the way FlowJo evaluates them. The migration report then compares those
-// counts with CytoWeave's.
+// ellipse from its foci in FlowJo's 256 × 256 display space, the way FlowJo evaluates them. The
+// migration report then compares those counts with CytoWeave's.
+
+// The ellipse as FlowJo stores it: foci and edge points in display bins (256 across the axis;
+// here linear 0–262144 axes), rounded as written to the workspace.
+function flowJoEllipse(gate) {
+  const c = Math.sqrt(gate.a ** 2 - gate.b ** 2);
+  const [cx, cy] = gate.center;
+  const cos = Math.cos(gate.theta);
+  const sin = Math.sin(gate.theta);
+  const bin = (v) => +(v / 1024).toFixed(6);
+  return {
+    foci: [[cx + c * cos, cy + c * sin], [cx - c * cos, cy - c * sin]].map((p) => p.map(bin)),
+    edges: [[cx + gate.a * cos, cy + gate.a * sin], [cx - gate.a * cos, cy - gate.a * sin], [cx - gate.b * sin, cy + gate.b * cos], [cx + gate.b * sin, cy - gate.b * cos]].map((p) => p.map(bin)),
+  };
+}
 
 const FLOWJO_SAMPLES = ['D01_Unstim.fcs', 'D01_Stim.fcs', 'D02_Unstim.fcs', 'D02_Stim.fcs'];
 const FLOWJO_BIEX = { maxValue: 262144, widthBasis: -100, positiveDecades: 4.42, extraNegativeDecades: 0 };
@@ -529,14 +543,18 @@ function flowJoCounts(dataset, spill) {
       const ys = value(gate.y);
       for (let e = 0; e < n; e += 1) out[e] = test(fx(xs[e]), fy(ys[e])) ? 1 : 0;
     } else {
-      // Ellipse on linear scatter axes: the points whose distances to the foci sum to at most 2a.
-      const c = Math.sqrt(gate.a ** 2 - gate.b ** 2);
-      const [cx, cy] = gate.center;
-      const f1 = [cx + c * Math.cos(gate.theta), cy + c * Math.sin(gate.theta)];
-      const f2 = [cx - c * Math.cos(gate.theta), cy - c * Math.sin(gate.theta)];
+      // Ellipse in display bins: the points whose distances to the foci sum to at most the major
+      // axis, 2a, with a the distance from the centre to the first edge point.
+      const { foci: [f1, f2], edges } = flowJoEllipse(gate);
+      const center = [(f1[0] + f2[0]) / 2, (f1[1] + f2[1]) / 2];
+      const major = 2 * Math.hypot(edges[0][0] - center[0], edges[0][1] - center[1]);
       const xs = value(gate.x);
       const ys = value(gate.y);
-      for (let e = 0; e < n; e += 1) out[e] = Math.hypot(xs[e] - f1[0], ys[e] - f1[1]) + Math.hypot(xs[e] - f2[0], ys[e] - f2[1]) <= 2 * gate.a ? 1 : 0;
+      for (let e = 0; e < n; e += 1) {
+        const x = xs[e] / 1024;
+        const y = ys[e] / 1024;
+        out[e] = Math.hypot(x - f1[0], y - f1[1]) + Math.hypot(x - f2[0], y - f2[1]) <= major ? 1 : 0;
+      }
     }
     return out;
   };
@@ -572,13 +590,7 @@ function flowJoWorkspaceXML(entries, spill) {
   const gateXML = (gate, gid) => {
     if (gate.type === 'rect') return `<gating:RectangleGate eventsInside="1" gating:id="${gid}">${gate.dims.map((d) => dim(d.channel, d)).join('')}</gating:RectangleGate>`;
     if (gate.type === 'polygon') return `<gating:PolygonGate eventsInside="1" userDefined="1" gating:id="${gid}">${dim(gate.x)}${dim(gate.y)}${gate.vertices.map(vertex).join('')}</gating:PolygonGate>`;
-    const c = Math.sqrt(gate.a ** 2 - gate.b ** 2);
-    const [cx, cy] = gate.center;
-    const cos = Math.cos(gate.theta);
-    const sin = Math.sin(gate.theta);
-    const r = (v) => +v.toFixed(3);
-    const foci = [[cx + c * cos, cy + c * sin], [cx - c * cos, cy - c * sin]].map((p) => p.map(r));
-    const edges = [[cx + gate.a * cos, cy + gate.a * sin], [cx - gate.a * cos, cy - gate.a * sin], [cx - gate.b * sin, cy + gate.b * cos], [cx + gate.b * sin, cy - gate.b * cos]].map((p) => p.map(r));
+    const { foci, edges } = flowJoEllipse(gate);
     return `<gating:EllipsoidGate eventsInside="1" gating:id="${gid}">${dim(gate.x)}${dim(gate.y)}<gating:foci>${foci.map(vertex).join('')}</gating:foci><gating:edge>${edges.map(vertex).join('')}</gating:edge></gating:EllipsoidGate>`;
   };
   const nodesXML = (nodes, path, counts, quadId) => nodes.map((node) => {

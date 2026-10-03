@@ -24,7 +24,7 @@ import (
 //go:embed web/index.html web/styles.css web/app.js web/favicon.svg web/lib/*.js web/ui/*.js web/workers/*.js
 var content embed.FS
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 type config struct {
 	remote      bool
@@ -338,6 +338,14 @@ func (a *app) registerAPI(mux *http.ServeMux) {
 	}
 	if a.store != nil {
 		a.store.register(mux)
+		mux.HandleFunc("POST /api/library/local/{index}", func(w http.ResponseWriter, r *http.Request) {
+			path, ok := a.files.path(r.PathValue("index"))
+			if !ok {
+				writeError(w, http.StatusNotFound, "No such local file.")
+				return
+			}
+			a.store.addLocalFile(w, path)
+		})
 	}
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Unknown API endpoint.")

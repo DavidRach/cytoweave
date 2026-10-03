@@ -1,0 +1,97 @@
+---
+title: Gating
+description: Gate flow cytometry data in CytoWeave: plots and scales, rectangle, polygon, ellipse, quadrant, range and split gates, the magic wand, per-sample adjustments, Boolean populations, backgating, review across samples and boundary robustness.
+lede: Draw gates once for the whole cohort, adjust them where a sample needs it, and check that every sample's result can be trusted.
+---
+      <h2 id="view">The Gate view</h2>
+      <shot name="gate" alt="The Gate view: the T-cell population selected, its gating path from all events through cells, single cells, live cells and lymphocytes, and two plots of T cells">The T cells of the PBMC example: the gating path above, plots of the selected population below, the gate and its statistics in the inspector.</shot>
+      <p>Select a population in the tree on the left. The middle of the window then shows:</p>
+      <ul>
+        <li><strong>Gating path:</strong> one plot per step from all events to the population, each showing the gate that leads to the next. Click a plot of the path to select that step.</li>
+        <li><strong>Plots of the population:</strong> the plots you have made of it. <strong>Add a plot</strong> adds one; then pick its axes.</li>
+      </ul>
+      <p>Above them are the sample selector (<kbd>↑</kbd> and <kbd>↓</kbd> step through samples, keeping the population and plots), the scope switch <strong>All samples</strong> / <strong>This sample</strong>, and the gate tools. The grid button sets the plot size, from small to extra large.</p>
+
+      <h2 id="plots">Plots</h2>
+      <p>Click an axis title to choose its channel, by marker or detector name. The buttons at the top of a plot change its type and swap its axes:</p>
+      <ul>
+        <li><strong>2-D:</strong> pseudocolor, dot, density, contour and zebra.</li>
+        <li><strong>1-D:</strong> histogram and cumulative. Choose <strong>Histogram (no y axis)</strong> from the y-axis menu to make one.</li>
+      </ul>
+      <p>The <strong>⋯</strong> menu of a plot exports it as SVG or PNG or copies it to the clipboard, overlays other samples, edits the axis scales, adds the plot to a figure, sets the colour map (classic, viridis, magma, turbo or blues) and dot size, and duplicates or removes the plot.</p>
+
+      <h3 id="scales">Axis scales</h3>
+      <p><strong>Edit axis scales…</strong> sets a channel's scale for every plot of the workspace, with a live histogram preview: logicle (the Moore and Parks reference implementation), arcsinh, log, linear, or FlowJo's biexponential, reproduced exactly from FlowJo's own algorithm. <strong>Estimate from data</strong> sets the parameters from the channel's values, such as the logicle width its negative events need. A gate stores the scale it was drawn on with its coordinates, as Gating-ML does, so it keeps its meaning when a plot's axes or scales change.</p>
+
+      <h2 id="draw">Drawing gates</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Key</th><th>Tool</th><th>How</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>V</kbd></td><td>Select and edit</td><td>Click a gate to select it; drag it or its vertices</td></tr>
+            <tr><td><kbd>R</kbd></td><td>Rectangle</td><td>Drag</td></tr>
+            <tr><td><kbd>P</kbd></td><td>Polygon</td><td>Click the vertices; double-click, press <kbd>Enter</kbd> or click the first vertex to close</td></tr>
+            <tr><td><kbd>E</kbd></td><td>Ellipse</td><td>Drag</td></tr>
+            <tr><td><kbd>L</kbd></td><td>Freehand</td><td>Draw around the population</td></tr>
+            <tr><td><kbd>Q</kbd></td><td>Quadrant</td><td>Click the centre: four gates at once</td></tr>
+            <tr><td><kbd>H</kbd></td><td>Range</td><td>Drag across a histogram</td></tr>
+            <tr><td><kbd>S</kbd></td><td>Split</td><td>Click a histogram: two gates, below and above</td></tr>
+            <tr><td><kbd>W</kbd></td><td>Magic wand</td><td>Click a population on a 2-D plot to gate its density basin; on a histogram, splits at the valley</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A tool draws one gate and returns to Select. Hold <kbd>⇧</kbd> with its key, or double-click it, to keep it for several gates. New gates get a suggested name from what they select ("Singlets", "Live", "CD4+ CD8−"), which you can accept or type over.</p>
+      <p>To edit a gate, select it: drag it or its vertices on the plot, nudge it with the arrow keys (<kbd>⇧</kbd> for larger steps), or type its exact coordinates in the inspector. <kbd>F2</kbd> renames the population and <kbd>⌫</kbd> deletes the gate. Every edit can be undone.</p>
+
+      <h2 id="one-sample">Adjusting a gate for one sample</h2>
+      <p>Gates are shared by every sample: draw them once and the whole cohort is gated alike. When one sample needs a different boundary:</p>
+      <ol>
+        <li>Show that sample, and switch the scope from <strong>All samples</strong> to <strong>This sample</strong>. The status bar says <strong>Editing this sample only</strong>.</li>
+        <li>Move or reshape the gate. The change is an <em>override</em> for this sample: the shared gate stays as it was for everyone else, and the population tree flags the population as adjusted for this sample.</li>
+        <li>Switch back to <strong>All samples</strong> before editing gates for the cohort again.</li>
+      </ol>
+      <p>To return a sample to the shared gate, right-click the population and choose <strong>Use the shared gate for this sample</strong>. <strong>Applies to</strong> limits a gate to one sample group, for example a gate drawn only for the stimulated samples.</p>
+
+      <h2 id="populations">The population menu</h2>
+      <p>Right-click a population in the tree (or use its <strong>⋯</strong> menu) for:</p>
+      <ul>
+        <li><strong>Rename</strong>, <strong>Color</strong>, and <strong>Backgate on ancestors</strong> (<kbd>B</kbd>): the population's events highlighted on every plot of its gating path.</li>
+        <li><strong>Review across samples…</strong> (below).</li>
+        <li><strong>Copy to another population…</strong>: the gate, and its children, under another parent.</li>
+        <li><strong>Applies to</strong>: all samples or one group.</li>
+        <li><strong>New Boolean population…</strong> (below).</li>
+        <li><strong>Export events as FCS…</strong> (raw values and the original keywords) or <strong>as CSV…</strong>.</li>
+        <li><strong>Add statistics to a table</strong>, and the <a href="assays.html">cell-cycle and proliferation models</a>.</li>
+      </ul>
+      <p><strong>Overlay other samples…</strong> in a plot's menu draws other samples, such as an FMO control, on top of the current one.</p>
+
+      <h2 id="boolean">Boolean populations</h2>
+      <shot name="boolean" alt="The New Boolean population dialog: Any of selected, Lymphocytes and Monocytes checked, within Cells / Single cells / Live, named Lymphocytes or Monocytes, with a live count of 80.7K events, 95.7% of Live">Lymphocytes or monocytes: the count updates as you choose.</shot>
+      <p>A Boolean population holds the events in <strong>all of</strong>, <strong>any of</strong> or <strong>none of</strong> the populations you choose, such as cytokine-positive cells that are positive for IFN-γ or TNF, or live cells that are none of the lineage populations.</p>
+      <ol>
+        <li>Right-click a population and choose <strong>New Boolean population…</strong>.</li>
+        <li>Choose how to combine, and tick the populations. <strong>Find a population</strong> filters the list.</li>
+        <li>Choose where it sits (<strong>Within</strong>) and its name, and watch the live count.</li>
+        <li>Click <strong>Create</strong>. <strong>Edit Boolean population…</strong> changes it later.</li>
+      </ol>
+      <p>Boolean populations behave like any other: they have plots, statistics and children, and they export to Gating-ML as Boolean gates.</p>
+
+      <h2 id="review">Review across samples</h2>
+      <shot name="review" alt="Review Lymphocytes across samples: twelve samples with percentage of parent, events, robust z-score, a typical frequency badge and a robust boundary badge">Every sample's lymphocyte frequency, ranked for review.</shot>
+      <p>A gate drawn on one sample can miss on another. <strong>Review across samples…</strong> computes the population on every sample and ranks them so the ones to look at come first:</p>
+      <ul>
+        <li><strong>Frequency:</strong> a robust z-score of each sample's frequency against the cohort. Outliers are flagged.</li>
+        <li><strong>Boundary:</strong> whether the gate's boundary cuts through dense events in that sample, which makes its frequency fragile.</li>
+        <li><strong>Low counts</strong>, where the frequency is imprecise.</li>
+      </ul>
+      <p>Click a sample to show it, then adjust the gate for it alone as above.</p>
+
+      <h3 id="robustness">Boundary robustness</h3>
+      <p>In the inspector, <strong>Check boundary robustness</strong> moves the selected gate's boundary in small steps and plots how the frequency follows, in points per 1% of the axis. A <em>robust</em> gate sits in a density valley; a <em>moderate</em> or <em>sensitive</em> one cuts through dense events, so where exactly it was drawn changes the answer. Move it into the valley, or report the uncertainty.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="statistics.html"><h3>Tables and comparisons</h3><p>Turn the gates into numbers and test them.</p></a>
+        <a class="card" href="figures.html"><h3>Figures</h3><p>The gating strategy of a population in one click.</p></a>
+        <a class="card" href="agents.html"><h3>AI agents</h3><p>Let an agent propose the gates while you review.</p></a>
+      </div>

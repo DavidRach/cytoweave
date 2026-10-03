@@ -3,9 +3,11 @@
 // no DOM, so the same code renders on screen, in workers and in exported figures.
 
 import { colormapLUT, hexToRgb } from './colormaps.js';
+import { EventSet, forEachChunk } from './eventset.js';
 
 // Counts events per cell of a width × height grid over [0,1]². With `pile`, events beyond the
 // axes are counted in the edge cells, as cytometry plots show off-scale events on the axes.
+// `indices`: sorted indices, an EventSet or null (every event).
 export function bin2d(xs, ys, indices, width, height, options = {}) {
   const grid = new Float32Array(width * height);
   const pile = options.pile ?? true;
@@ -15,20 +17,20 @@ export function bin2d(xs, ys, indices, width, height, options = {}) {
   const y1 = options.yRange?.[1] ?? 1;
   const sx = width / (x1 - x0);
   const sy = height / (y1 - y0);
-  const n = indices ? indices.length : xs.length;
   const wMax = width - 1;
   const hMax = height - 1;
-  for (let k = 0; k < n; k += 1) {
-    const e = indices ? indices[k] : k;
+  const add = (e) => {
     let cx = Math.floor((xs[e] - x0) * sx);
     let cy = Math.floor((ys[e] - y0) * sy);
     if (cx < 0 || cx > wMax || cy < 0 || cy > hMax) {
-      if (!pile || !(cx === cx) || !(cy === cy)) continue; // NaN check
+      if (!pile || !(cx === cx) || !(cy === cy)) return; // NaN check
       cx = cx < 0 ? 0 : cx > wMax ? wMax : cx;
       cy = cy < 0 ? 0 : cy > hMax ? hMax : cy;
     }
     grid[cy * width + cx] += 1;
-  }
+  };
+  if (indices === null) for (let e = 0; e < xs.length; e += 1) add(e);
+  else forEachChunk(indices, xs.length, (chunk, length) => { for (let k = 0; k < length; k += 1) add(chunk[k]); });
   return grid;
 }
 
@@ -38,16 +40,16 @@ export function bin1d(xs, indices, bins, options = {}) {
   const x1 = options.range?.[1] ?? 1;
   const s = bins / (x1 - x0);
   const pile = options.pile ?? true;
-  const n = indices ? indices.length : xs.length;
-  for (let k = 0; k < n; k += 1) {
-    const v = xs[indices ? indices[k] : k];
-    let b = Math.floor((v - x0) * s);
+  const add = (e) => {
+    let b = Math.floor((xs[e] - x0) * s);
     if (b < 0 || b >= bins) {
-      if (!pile || !(b === b)) continue;
+      if (!pile || !(b === b)) return;
       b = b < 0 ? 0 : bins - 1;
     }
     counts[b] += 1;
-  }
+  };
+  if (indices === null) for (let e = 0; e < xs.length; e += 1) add(e);
+  else forEachChunk(indices, xs.length, (chunk, length) => { for (let k = 0; k < length; k += 1) add(chunk[k]); });
   return counts;
 }
 
@@ -320,6 +322,7 @@ export function histogram(xs, indices, options = {}) {
 
 // Per-event density (normalized 0–1) for coloring dots in vector exports or 3-D views.
 export function eventDensities(xs, ys, indices, width, height, options = {}) {
+  if (indices instanceof EventSet) indices = indices.toIndices();
   const counts = bin2d(xs, ys, indices, width, height);
   const smooth = blur2d(counts, width, height, options.sigma ?? Math.max(1, width / 160));
   const max = maxOf(smooth);

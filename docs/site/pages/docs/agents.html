@@ -1,0 +1,83 @@
+---
+title: AI agents (MCP)
+description: Let Claude Code, Claude Desktop or another MCP client analyze flow cytometry data in the CytoWeave window you are watching. The agent's gates, renames, deletions and compensation matrices arrive as proposals you accept or reject.
+lede: Ask an AI agent to open data, gate, compute statistics and write the methods, in the window you are watching. Its changes are proposals: nothing becomes part of your analysis until you accept it.
+---
+      <h2 id="what">What an agent can do</h2>
+      <p><code>cytoweave mcp</code> is a <a href="https://modelcontextprotocol.io">Model Context Protocol</a> server. Through it, an agent such as Claude Code can:</p>
+      <ul>
+        <li>open FCS files, folders, workspaces and example experiments, and read the samples, channels, markers and gating tree;</li>
+        <li>propose gates from coordinates, or find them from the data's density (the magic wand, singlets on area against height, or the valley between two modes);</li>
+        <li>rename, recolour or delete populations, and propose a compensation matrix computed from the controls;</li>
+        <li>compute population statistics and tables across samples, and look at plots as images;</li>
+        <li>review a gate across the cohort, compare groups of samples, write a methods paragraph and export Gating-ML.</li>
+      </ul>
+      <p>The agent works through the same actions as you do, in the window you see. You can watch every step, take over at any time, and undo anything.</p>
+
+      <h2 id="setup">Setting it up</h2>
+      <h3 id="claude-code">Claude Code</h3>
+      <div class="code wrap"><pre><code><span class="prompt">$ </span>claude mcp add cytoweave -- ~/.local/bin/cytoweave mcp</code></pre></div>
+      <p>Use the full path to the program: agents often start programs without your shell's <code>PATH</code>. On Windows the installer puts it in <code>%LOCALAPPDATA%\Programs\CytoWeave\cytoweave.exe</code>. Then ask, for example:</p>
+      <div class="code" data-no-copy><span class="code-label">prompt</span><pre><code>Open the PBMC example, gate cells, singlets and live cells, then CD3+ T cells
+and their CD4 and CD8 subsets, and tell me how the CD4:CD8 ratio differs
+between stimulated and unstimulated samples.</code></pre></div>
+
+      <h3 id="other-clients">Claude Desktop and other clients</h3>
+      <p>Add the server to the client's configuration; for Claude Desktop, <code>claude_desktop_config.json</code>:</p>
+      <div class="code"><span class="code-label">json</span><pre><code>{
+  "mcpServers": {
+    "cytoweave": {
+      "command": "/Users/you/.local/bin/cytoweave",
+      "args": ["mcp"]
+    }
+  }
+}</code></pre></div>
+      <p>Options go after <code>mcp</code>: <code>--port</code> (default 8770; the next free one is used), <code>--data-dir</code> (the workspace library) and <code>--window app|browser|none</code> (how the window opens when a tool needs it). Proposals and the <code>propose_compensation</code> and <code>proposals</code> tools need CytoWeave 0.2.0 or later.</p>
+
+      <h2 id="proposals">Reviewing proposals</h2>
+      <shot name="agents" alt="The Gate view while Claude Code's proposal waits: a strip above the population tree says Claude Code proposes 4 changes, with Review, Accept all and Reject all; the proposed gates are in italics and dotted on the plots">An agent's proposal waiting: the strip above the tree, proposed gates dotted and in italics.</shot>
+      <ul>
+        <li><strong>New gates</strong> appear at once, marked <em>proposed</em>: dotted on the plots and in italics in the population tree. Their counts are real, so you can judge them, and the agent can gate on them.</li>
+        <li><strong>Renaming or deleting</strong> gates you have accepted, and <strong>compensation matrices</strong>, are held. The tree shows a held rename next to the name (→ new name) and strikes through a population the agent proposes to delete.</li>
+      </ul>
+      <shot name="agents-review" alt="The Review the proposal dialog: Claude Code proposes Single cells (89.7% of parent), Live (92.9%), Viability+ (7.07%) and a compensation matrix for 12 samples, with Reject all, Close and Accept all">Review lists every change, with each new population's frequency.</shot>
+      <p>A strip above the population tree says who proposes how many changes. Click <strong>Review</strong> for the list, with each new population's frequency and a <strong>Show</strong> button, then <strong>Accept all</strong> or <strong>Reject all</strong>. Rejecting removes the proposed gates together with anything drawn under them since; CytoWeave asks first in that case.</p>
+      <p>The change log records each decision: what was proposed, by which agent (the name its MCP client gives, such as Claude Code), and whether you accepted or rejected it. Accepted gates keep that origin, and the inspector and the methods paragraph show it. The agent can ask for the outcome with the <code>proposals</code> tool.</p>
+
+      <h2 id="tools">Tools</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>workspace_summary</code></td><td>Samples (events, role, metadata, channels and markers), groups, the gating tree of the current sample with counts, compensation, derived results, and what the window shows</td></tr>
+            <tr><td><code>open_files</code></td><td>Opens FCS files, folders, CytoWeave or FlowJo workspaces, or Gating-ML, by absolute path</td></tr>
+            <tr><td><code>open_example</code></td><td>Generates and opens a simulated example experiment</td></tr>
+            <tr><td><code>select</code></td><td>Shows a sample, population or view in the window</td></tr>
+            <tr><td><code>list_populations</code></td><td>Every population's path, gate, count, % of parent and % of total for a sample</td></tr>
+            <tr><td><code>population_statistics</code></td><td>Count, frequencies and per-channel statistics of a population</td></tr>
+            <tr><td><code>statistics_table</code></td><td>A statistic of populations across samples or a group</td></tr>
+            <tr><td><code>render_plot</code></td><td>A PNG of a plot with its gates</td></tr>
+            <tr><td><code>create_gate</code></td><td>Proposes a rectangle, polygon, ellipse, range, quadrant or split gate from data coordinates</td></tr>
+            <tr><td><code>auto_gate</code></td><td>Proposes a gate found from the data: a density basin around a point, singlets, or the valley between two modes</td></tr>
+            <tr><td><code>edit_gate</code></td><td>Renames, recolours or deletes a population (held for review unless the agent proposed it)</td></tr>
+            <tr><td><code>propose_compensation</code></td><td>Computes a spillover matrix from the single-stain controls and proposes it for the samples</td></tr>
+            <tr><td><code>proposals</code></td><td>The agent's open proposal and your recent decisions</td></tr>
+            <tr><td><code>review_gate</code></td><td>A gate's frequency on every sample with a robust z-score and boundary robustness, outliers first</td></tr>
+            <tr><td><code>compare</code></td><td>Tests a statistic between groups of samples defined by annotations, optionally paired</td></tr>
+            <tr><td><code>methods</code></td><td>A methods paragraph with numbered references</td></tr>
+            <tr><td><code>export_gating_ml</code></td><td>The gating strategy as Gating-ML 2.0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Populations are named by name (when unique), by path (<code>Cells/Single cells/CD3+</code>) or by id; channels by detector (<code>FITC-A</code>) or marker (<code>CD3</code>). Gate coordinates are data values, as on the plot axes, on each channel's scale: a range gate on CD3 above 1,000 is <code>{"min": 1000}</code>.</p>
+
+      <h2 id="privacy">Privacy and how it works</h2>
+      <p><code>cytoweave mcp</code> starts CytoWeave with remote control on and speaks JSON-RPC on standard input and output. A tool call becomes an action that the server forwards to the open window, which performs it with the same code as the user interface and posts the result back, one action at a time. Everything stays on your computer: the server accepts requests only from this computer, and opening files by path is limited to the agent connected over MCP or to scripts holding the token CytoWeave prints at startup. What the agent's model sees of your data is what the tools return: counts, statistics, gating trees and plot images.</p>
+      <p>The full reference, including coordinates for every gate type, is <a href="{{github}}/blob/main/docs/MCP.md">docs/MCP.md</a> in the repository.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="scripting.html"><h3>Scripting</h3><p>The same actions from Python, without an agent.</p></a>
+        <a class="card" href="gating.html#review"><h3>Review across samples</h3><p>Check what the agent gated on every sample.</p></a>
+        <a class="card" href="figures.html#change-log"><h3>The change log</h3><p>Who proposed what, and what you decided.</p></a>
+      </div>

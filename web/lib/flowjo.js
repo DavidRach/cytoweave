@@ -50,14 +50,13 @@ export function flowJoTransform(el, fallbackMax = 262144) {
   let spec;
   let status = 'imported';
   let detail = '';
+  let unit = 1;
   switch (el.local) {
     case 'linear': {
+      // FlowJo shows (and gates) gain × the stored value; importSample converts the coordinates.
       spec = { type: 'linear', min: n('minRange', 0), max: maxRange };
       const gain = n('gain', 1);
-      if (gain !== 1) {
-        status = 'approximated';
-        detail = `FlowJo's linear gain ${gain} is not applied`;
-      }
+      if (gain > 0 && gain !== 1) unit = 1 / gain;
       break;
     }
     case 'log': {
@@ -71,13 +70,11 @@ export function flowJoTransform(el, fallbackMax = 262144) {
       spec = { type: 'biex', maxValue: maxRange, widthBasis: n('width', n('widthBasis', -10)), positiveDecades: n('pos', 4.42), extraNegativeDecades: n('neg', 0) };
       break;
     case 'logicle':
+      // BD's published FlowJo logicle tables depart from the Moore–Parks reference at W > 0.4, but
+      // FlowJo's own counts on real workspaces follow the reference more closely (an ellipse,
+      // drawn in display space, is within 2% with the reference and 14% off with the tables'
+      // curve; cytoweave-spec/research.md §3A.2), so the reference logicle is used.
       spec = { type: 'logicle', T: n('T', maxRange), W: n('W', 0.5), M: n('M', 4.5), A: n('A', 0) };
-      // BD's published tables show FlowJo's logicle departing from the Moore–Parks reference that
-      // CytoWeave (and Gating-ML) use: under 2 of 4096 channels up to W = 0.5, ~100 at W = 1.
-      if (spec.W > 0.5) {
-        status = 'approximated';
-        detail = `FlowJo's logicle with W ${spec.W} differs from the reference logicle CytoWeave uses (by up to ${spec.W >= 1 ? 'several' : 'about 1'}% of the axis), so straight polygon edges between vertices may run slightly differently than in FlowJo`;
-      }
       break;
     case 'fasinh':
     case 'arcsinh':
@@ -106,8 +103,12 @@ export function flowJoTransform(el, fallbackMax = 262144) {
       detail: `the FlowJo transform "${el.local}" ${detail || 'is not supported'}; a linear scale was used`,
     };
   }
-  return { parameter, spec, status, detail };
+  const out = { parameter, spec, status, detail };
+  // Stored values per FlowJo unit (a linear axis with a gain); importSample converts to them.
+  if (unit !== 1) out.unit = unit;
+  return out;
 }
+
 
 // --- Compensation -------------------------------------------------------------------------------
 
@@ -199,6 +200,26 @@ export function ellipseFromConjugateDiameters(points) {
 }
 
 // The ends of an ellipse's axes, for remapping it into another scale.
+// A FlowJo ellipse from its foci and edge points (in scale space): the centre between the foci,
+// the major radius from the edge point farthest along the major axis, the minor radius from
+// a² = b² + c² with c the focal distance.
+export function ellipseFromFlowJo(foci, edges) {
+  const center = [(foci[0][0] + foci[1][0]) / 2, (foci[0][1] + foci[1][1]) / 2];
+  // The major axis' direction, in (−π/2, π/2] (the ellipse is the same turned by π).
+  let angle = Math.atan2(foci[1][1] - foci[0][1], foci[1][0] - foci[0][0]);
+  if (angle > Math.PI / 2) angle -= Math.PI;
+  else if (angle <= -Math.PI / 2) angle += Math.PI;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const along = ([x, y]) => Math.abs((x - center[0]) * cos + (y - center[1]) * sin);
+  const across = ([x, y]) => Math.abs(-(x - center[0]) * sin + (y - center[1]) * cos);
+  const c = Math.hypot(foci[1][0] - foci[0][0], foci[1][1] - foci[0][1]) / 2;
+  const a = Math.max(...edges.map((p) => Math.max(along(p), across(p))));
+  const b = Math.sqrt(Math.abs(a * a - c * c));
+  if (!(a > 0) || !(b > 0)) return null;
+  return { center, radii: [a, b], angle };
+}
+
 function ellipseAxisEnds({ center, radii, angle = 0 }) {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
@@ -284,11 +305,28 @@ function importSample(el, index, { warnings, fidelity }) {
     }
     return 262144;
   };
+  // FlowJo shows and gates a linear axis in gain × the stored value (the transform's gain), and
+  // the time parameter in seconds: gain or, without one, $TIMESTEP × the stored value. CytoWeave
+  // keeps stored values, so these scales and gate coordinates are converted by `unit` (stored
+  // values per FlowJo unit). FlowJo's own counts confirm this on BD and FlowKit workspaces.
+  const timestep = Number.parseFloat(keywords.$TIMESTEP);
+  const timeChannels = new Set(Object.entries(keywords)
+    .filter(([key, value]) => /^\$P\d+N$/.test(key) && (/^time$/i.test(value) || /^time$/i.test(keywords[key.replace(/N$/, 'TYPE')] ?? '')))
+    .map(([, value]) => value));
+  const unitOf = (channel, converted) => converted?.unit ?? (timestep > 0 && timestep !== 1 && timeChannels.has(channel) ? 1 / timestep : 1);
+  const inStoredUnits = (channel, converted) => {
+    const unit = unitOf(channel, converted);
+    if (unit === 1) return converted;
+    const { spec } = converted;
+    if (spec.type === 'linear') return { ...converted, spec: { ...spec, min: (spec.min ?? 0) * unit, max: (spec.max ?? 262144) * unit }, unit };
+    return { ...converted, unit, status: converted.status === 'unsupported' ? 'unsupported' : 'approximated', detail: [converted.detail, `the ${spec.type} time scale is drawn on stored time values rather than FlowJo's seconds`].filter(Boolean).join('; ') };
+  };
   const byParameter = new Map();
   for (const t of child(el, 'Transformations')?.children ?? []) {
     const parameter = attr(child(t, 'parameter'), 'name') ?? attr(child(t, 'fcs-dimension'), 'name');
     if (!parameter) continue;
-    const converted = flowJoTransform(t, rangeOf(flowJoChannel(parameter, compensation).channel));
+    const channelName = flowJoChannel(parameter, compensation).channel;
+    const converted = inStoredUnits(channelName, flowJoTransform(t, rangeOf(channelName)));
     byParameter.set(parameter, converted);
     if (converted.status === 'unsupported') record(`transform:${parameter}`, 'unsupported', converted.detail);
   }
@@ -303,7 +341,7 @@ function importSample(el, index, { warnings, fidelity }) {
       ?? (compensated ? byParameter.get(`${compensation?.prefix ?? 'Comp-'}${channel}${compensation?.suffix ?? ''}`) : null)
       ?? byParameter.get(channel)
       ?? byParameter.get(`Comp-${channel}`);
-    return found ?? { spec: { type: 'linear', min: 0, max: rangeOf(channel) }, status: 'imported', detail: '' };
+    return found ?? { spec: { type: 'linear', min: 0, max: rangeOf(channel) }, status: 'imported', detail: '', unit: unitOf(channel) };
   };
 
   const gates = [];
@@ -337,7 +375,9 @@ function importSample(el, index, { warnings, fidelity }) {
       const { channel, compensated } = flowJoChannel(parameter, compensation);
       const t = transformFor(parameter);
       const transform = createTransform(t.spec);
-      return { parameter, channel, compensated, spec: { ...t.spec }, forward: transform.forward, t, bounds: [numberAttr(d, 'min', null, null), numberAttr(d, 'max', null, null)] };
+      const unit = t.unit ?? 1;
+      const forward = unit === 1 ? transform.forward : (v) => transform.forward(v * unit);
+      return { parameter, channel, compensated, spec: { ...t.spec }, forward, t, bounds: [numberAttr(d, 'min', null, null), numberAttr(d, 'max', null, null)] };
     });
     if (!dims.length) throw new Error(`the ${gateEl.local} has no dimensions`);
     const axisAligned = gateEl.local === 'RectangleGate';
@@ -349,7 +389,11 @@ function importSample(el, index, { warnings, fidelity }) {
         approximate(`${d.parameter}: ${d.t.detail}`);
       }
       if (d.compensated && !compensation) approximate(`"${d.parameter}" is compensated in FlowJo but the workspace holds no compensation matrix for this sample; assign the file's spillover matrix in CytoWeave`);
-      if (!d.compensated && compensation?.channels.includes(d.channel)) approximate(`the gate is drawn on uncompensated ${d.channel}; CytoWeave evaluates it on compensated values`);
+      // A gate FlowJo drew on uncompensated values keeps them (an uncompensated dimension).
+      if (!d.compensated && compensation?.channels.includes(d.channel)) {
+        d.uncompensated = true;
+        details.push(`drawn on uncompensated ${d.channel}, which the gate keeps`);
+      }
     }
     const toScale = (k, value, kind) => {
       const y = dims[k].forward(value);
@@ -358,7 +402,7 @@ function importSample(el, index, { warnings, fidelity }) {
       return kind === 'max' ? -1 : y > 0 ? 2 : -1;
     };
     const coordinates = (vertex) => children(vertex, 'coordinate').map((c) => numberAttr(c, 'value', null, Number.NaN));
-    const out = { dims: dims.map((d) => ({ channel: d.channel, transform: d.spec })), compensated: dims.map((d) => d.compensated) };
+    const out = { dims: dims.map((d) => (d.uncompensated ? { channel: d.channel, transform: d.spec, compensation: 'uncompensated' } : { channel: d.channel, transform: d.spec })), compensated: dims.map((d) => d.compensated) };
     switch (gateEl.local) {
       case 'PolygonGate': {
         if (dims.length !== 2) throw new Error(`a polygon needs 2 dimensions, not ${dims.length}`);
@@ -389,16 +433,16 @@ function importSample(el, index, { warnings, fidelity }) {
       case 'EllipsoidGate': {
         if (dims.length !== 2) throw new Error(`an ellipse needs 2 dimensions, not ${dims.length}`);
         const edges = children(child(gateEl, 'edge'), 'vertex').map(coordinates);
+        const foci = children(child(gateEl, 'foci'), 'vertex').map(coordinates);
         const mean = children(child(gateEl, 'mean'), 'coordinate').map((c) => numberAttr(c, 'value', null, Number.NaN));
-        if (edges.length === 4 && edges.every((v) => v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]))) {
-          const points = edges.map(([x, y]) => [toScale(0, x), toScale(1, y)]);
-          const result = ellipseFromConjugateDiameters(points);
-          if (!result) throw new Error('the ellipse edge points do not define an ellipse');
+        const valid = (points, n) => points.length === n && points.every((v) => v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]));
+        if (valid(edges, 4) && valid(foci, 2)) {
+          // FlowJo keeps ellipses in its 256 × 256 display space, which is CytoWeave's scale space
+          // times 256. The edge points' first pair ends the major axis; the minor radius follows
+          // from the foci (as in FlowKit, which reproduces FlowJo's counts on its test ellipses).
           out.type = 'ellipse';
-          out.geometry = result.ellipse;
-          if (result.mismatch > 1e-3) {
-            approximate(`the axis transforms bend FlowJo's ellipse (its axes miss each other by ${(100 * result.mismatch).toFixed(1)}% of the major radius); the closest ellipse in scale space was used`);
-          }
+          out.geometry = ellipseFromFlowJo(foci.map(([x, y]) => [x / 256, y / 256]), edges.map(([x, y]) => [x / 256, y / 256]));
+          if (!out.geometry) throw new Error('the ellipse foci and edge points do not define an ellipse');
         } else if (mean.length === 2) {
           // A Gating-ML style ellipsoid in data units: map its axis ends into scale space.
           const covariance = children(child(gateEl, 'covarianceMatrix'), 'row').map((row) => children(row, 'entry').map((c) => numberAttr(c, 'value', null, Number.NaN)));
@@ -770,7 +814,10 @@ function roundedJSON(value) {
 // map exactly (their edges are level sets of one coordinate); polygon edges and ellipses are
 // straight or elliptic in only one of the two spaces, so those are approximations.
 export function remapGeometry(type, geometry, fromDims, toDims) {
-  const map = (k, v) => (v === null || v === undefined ? v : remapScale(v, fromDims[k].transform, toDims[k].transform));
+  // A biex scale clamps the data beyond its ends to them, so an end stands for everything beyond
+  // it and maps to the same end of another biex scale.
+  const atEnd = (k, v) => fromDims[k].transform.type === 'biex' && toDims[k].transform.type === 'biex' && (v <= 0 || v >= 1);
+  const map = (k, v) => (v === null || v === undefined ? v : atEnd(k, v) ? v : remapScale(v, fromDims[k].transform, toDims[k].transform));
   switch (type) {
     case 'polygon': return { geometry: { vertices: geometry.vertices.map(([x, y]) => [map(0, x), map(1, y)]) }, exact: false };
     case 'rectangle': return { geometry: { min: [map(0, geometry.min[0]), map(1, geometry.min[1])], max: [map(0, geometry.max[0]), map(1, geometry.max[1])] }, exact: true };
