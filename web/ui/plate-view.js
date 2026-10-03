@@ -6,7 +6,7 @@
 import { h, icon, downloadBlob } from './dom.js';
 import { channelTransform, populationSet } from '../lib/engine.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
-import { colormapColor } from '../lib/colormaps.js';
+import { colormapColor, shownColor } from '../lib/colormaps.js';
 import { eventsByWell, readIndexSort, wellName } from '../lib/indexsort.js';
 import { ROOT, channelLabel, gateAncestors, gateById, gatePath } from '../lib/workspace.js';
 
@@ -79,17 +79,17 @@ export function createPlateView(app) {
       legend = [h('span.plate-scale', { style: { background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => colormapColor('viridis', t)).join(', ')})` } }), h('span.muted', `${channelLabel(ws, channel, { short: true })}: ${formatNumber(transform.inverse(lo))} → ${formatNumber(transform.inverse(hi))}`)];
     } else if (selectedGate || colorBy.startsWith('gate:')) {
       const gate = selectedGate ?? gateById(ws, colorBy.slice(5));
-      colorOf = (e) => (memberships.get(e).some((g) => g.id === gate?.id) ? gate.color : null);
+      colorOf = (e) => (memberships.get(e).some((g) => g.id === gate?.id) ? shownColor(ws, gate) : null);
       const inside = sorted.filter((e) => memberships.get(e).some((g) => g.id === gate?.id)).length;
-      legend = gate ? [h('span.swatch', { style: { background: gate.color } }), h('span', `${gate.name}: ${inside} of ${sorted.length} wells${selectedGate ? ' (the selected population)' : ''}`)] : [];
+      legend = gate ? [h('span.swatch', { style: { background: shownColor(ws, gate) } }), h('span', `${gate.name}: ${inside} of ${sorted.length} wells${selectedGate ? ' (the selected population)' : ''}`)] : [];
     } else {
-      colorOf = (e) => memberships.get(e)[0]?.color ?? null;
+      colorOf = (e) => shownColor(ws, memberships.get(e)[0]) ?? null;
       const shown = new Map();
       for (const e of sorted) {
         const gate = memberships.get(e)[0];
         if (gate) shown.set(gate.id, { gate, n: (shown.get(gate.id)?.n ?? 0) + 1 });
       }
-      legend = [...shown.values()].map(({ gate, n }) => h('span.plate-legend-item', h('span.swatch', { style: { background: gate.color } }), `${gate.name} ${n}`));
+      legend = [...shown.values()].map(({ gate, n }) => h('span.plate-legend-item', h('span.swatch', { style: { background: shownColor(ws, gate) } }), `${gate.name} ${n}`));
     }
 
     const select = h('select.input.small', { 'aria-label': 'Color wells by' },
@@ -102,7 +102,7 @@ export function createPlateView(app) {
       render(true);
     });
 
-    const grid = h('div.plate-grid', { style: { gridTemplateColumns: `20px repeat(${sort.columns}, minmax(0, 1fr))` }, role: 'grid', 'aria-label': `${sort.plate}, ${sorted.length} sorted cells` });
+    const grid = h('div.plate-grid', { style: { gridTemplateColumns: `20px repeat(${sort.columns}, minmax(0, 1fr))` }, role: 'group', 'aria-label': `${sort.plate}, ${sorted.length} sorted cells` });
     grid.append(h('span'), ...Array.from({ length: sort.columns }, (_, c) => h('span.plate-head', String(c + 1))));
     for (let r = 0; r < sort.rows; r += 1) {
       grid.append(h('span.plate-head', wellName(r, 0).replace(/\d+$/, '')));

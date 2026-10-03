@@ -1,6 +1,6 @@
 // Nonlinear least-squares fitting for CytoWeave's models (cell cycle, proliferation, …).
 //
-// levenbergMarquardt() minimises χ² = Σ wᵢ (yᵢ − fᵢ(p))² by the Levenberg–Marquardt method
+// levenbergMarquardt() minimizes χ² = Σ wᵢ (yᵢ − fᵢ(p))² by the Levenberg–Marquardt method
 // (Levenberg 1944; Marquardt 1963, doi:10.1137/0111030) with Marquardt's diagonal scaling of the
 // normal equations and Nielsen's (1999, IMM-REP-1999-05) damping update. Box bounds are enforced
 // by projecting every trial point onto the box (a projected LM); parameters that finish on a
@@ -41,7 +41,7 @@ function weightedCost(y, f, w) {
   return sum;
 }
 
-// In-place Cholesky factorisation of a symmetric k×k matrix (row-major). Returns false when the
+// In-place Cholesky factorization of a symmetric k×k matrix (row-major). Returns false when the
 // matrix is not numerically positive definite.
 export function cholesky(a, k) {
   for (let j = 0; j < k; j += 1) {
@@ -105,7 +105,7 @@ export function invertSymmetric(a, k) {
 //   jacobian(params, J)      analytic Jacobian, J row-major n×m (∂fᵢ/∂pⱼ at J[i*m+j])
 //   typical                  typical magnitudes for finite-difference steps (default |p0| or 1)
 //   centralDifferences       two-sided numerical derivatives (twice the cost, more accurate)
-//   maxIterations (200), ftol (1e-14: stop when the linearised model can lower χ² by less than
+//   maxIterations (200), ftol (1e-14: stop when the linearized model can lower χ² by less than
 //   ftol·χ²), xtol (1e-10, relative step), gtol (1e-10), lambda (1e-3)
 //   absoluteSigma            if true, covariance = (JᵀWJ)⁻¹ (weights are true 1/σ²); otherwise it
 //                            is scaled by the reduced χ², as scipy's curve_fit does by default
@@ -224,7 +224,7 @@ export function levenbergMarquardt(model, p0, y, options = {}) {
   }
 
   while (!converged && iterations < maxIterations) {
-    if (options.signal?.aborted) throw new Error('The fit was cancelled.');
+    if (options.signal?.aborted) throw new Error('The fit was canceled.');
     iterations += 1;
     // Active set: free parameters sitting on a bound whose descent direction (+g, since
     // ∂χ²/∂p = −2g) points out of the box are held for this iteration, so the others can still
@@ -253,7 +253,7 @@ export function levenbergMarquardt(model, p0, y, options = {}) {
       reason = 'gradient below tolerance';
       break;
     }
-    // χ² test: the largest decrease the linearised model still allows, gᵀA⁻¹g, is computed from
+    // χ² test: the largest decrease the linearized model still allows, gᵀA⁻¹g, is computed from
     // the gradient (no cancellation), so it resolves changes far below the rounding of χ² itself.
     for (let s = 0; s < movable; s += 1) {
       gSub[s] = g[movableIndex[s]];
@@ -409,7 +409,7 @@ export function curveFit(fn, x, y, p0, options = {}) {
   return levenbergMarquardt(model, p0, y, { ...options, jacobian });
 }
 
-// Nelder–Mead minimisation of objective(params) → number. Bounds by projection of vertices.
+// Nelder–Mead minimization of objective(params) → number. Bounds by projection of vertices.
 // Options: lower, upper, step (per-parameter initial simplex size; default 5% of |p0| or
 // 0.00025), maxIterations (200·m), maxEvaluations (400·m), xtol (1e-8, relative), ftol (1e-10,
 // relative), adaptive (default true for m > 2), signal.
@@ -459,7 +459,7 @@ export function nelderMead(objective, p0, options = {}) {
   let iterations = 0;
   let converged = false;
   while (iterations < maxIterations && evaluations < maxEvaluations) {
-    if (options.signal?.aborted) throw new Error('The fit was cancelled.');
+    if (options.signal?.aborted) throw new Error('The fit was canceled.');
     order.sort((a, b) => values[a] - values[b]);
     const best = order[0];
     const worst = order[m];
@@ -540,7 +540,7 @@ export function nelderMead(objective, p0, options = {}) {
 }
 
 // Levenberg–Marquardt with a Nelder–Mead fallback: if LM fails to converge or throws on a
-// non-finite step, the simplex method minimises χ² from the best point so far and LM restarts
+// non-finite step, the simplex method minimizes χ² from the best point so far and LM restarts
 // from there (to polish and to obtain the covariance). Returns the LM result plus `method`.
 export function fitLeastSquares(model, p0, y, options = {}) {
   let first = null;

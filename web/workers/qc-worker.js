@@ -169,7 +169,7 @@ const TASKS = {
   debarcode: (p, o) => debarcode(p.sample, p.key, o),
 };
 
-const cancelled = new Set();
+const canceled = new Set();
 
 // The distinct ArrayBuffers behind typed arrays in a result, for transfer.
 function transferables(value, found = new Set(), seen = new Set(), depth = 0) {
@@ -186,7 +186,7 @@ function transferables(value, found = new Set(), seen = new Set(), depth = 0) {
 self.onmessage = (event) => {
   const { id, type, payload = {} } = event.data ?? {};
   if (type === 'cancel') {
-    cancelled.add(payload.id ?? id);
+    canceled.add(payload.id ?? id);
     return;
   }
   const task = TASKS[type];
@@ -194,8 +194,8 @@ self.onmessage = (event) => {
     self.postMessage({ id, error: `Unknown QC worker task "${type}".` });
     return;
   }
-  if (cancelled.delete(id)) {
-    self.postMessage({ id, error: 'The task was cancelled.' });
+  if (canceled.delete(id)) {
+    self.postMessage({ id, error: 'The task was canceled.' });
     return;
   }
   const signal = { aborted: false };

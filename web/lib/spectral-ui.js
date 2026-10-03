@@ -110,7 +110,7 @@ export function residualTransform(values) {
 }
 
 // Plain-language reading of the complexity index (condition number of the reference matrix).
-// The bands are rules of thumb from published high-parameter panels (40-colour Aurora panels
+// The bands are rules of thumb from published high-parameter panels (40-color Aurora panels
 // sit around 40–60), not hard limits.
 export function complexityInterpretation(ci, count) {
   if (!Number.isFinite(ci)) {
@@ -119,7 +119,7 @@ export function complexityInterpretation(ci, count) {
   const per = count ? ` for ${count} signatures` : '';
   if (ci < 5) return { level: 'ok', label: 'Low', text: `The spectra overlap little${per}; unmixing adds little spread.` };
   if (ci < 20) return { level: 'ok', label: 'Moderate', text: `Typical of a mid-size panel${per}. Expect some spreading between the most similar pairs.` };
-  if (ci < 60) return { level: 'warn', label: 'High', text: `Typical of 30–40-colour panels${per}. Spreading between similar dyes will limit resolution of dim markers on them; check the similar pairs below.` };
+  if (ci < 60) return { level: 'warn', label: 'High', text: `Typical of 30–40-color panels${per}. Spreading between similar dyes will limit resolution of dim markers on them; check the similar pairs below.` };
   return { level: 'danger', label: 'Very high', text: `Unmixing will amplify noise strongly${per}. Consider replacing one dye of the most similar pairs, or moving dim markers to bright, distinct dyes.` };
 }
 
@@ -162,7 +162,7 @@ export function recommendFromComparison(report) {
     if (!model.autofluorescence) continue;
     const plain = report.models.find((m) => !m.autofluorescence && m.method === model.method);
     if (plain && plain.brightResidual > 0 && model.brightResidual < 0.8 * plain.brightResidual) {
-      caveats.push(`Modelling autofluorescence (${model.name}) explains more of the signal: bright-event residual ${formatFraction(model.brightResidual)} vs ${formatFraction(plain.brightResidual)} without it.`);
+      caveats.push(`Modeling autofluorescence (${model.name}) explains more of the signal: bright-event residual ${formatFraction(model.brightResidual)} vs ${formatFraction(plain.brightResidual)} without it.`);
     }
   }
   for (const r of ranking) {

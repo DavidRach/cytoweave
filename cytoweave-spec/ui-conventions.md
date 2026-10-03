@@ -81,7 +81,7 @@ Panes are `h('div.pane', h('h3', 'Title'), content)`. Use `.btn`, `.btn.primary`
 
 ## Principles
 
-- The analysis runs in workers; the page stays responsive. Show progress and allow cancelling.
+- The analysis runs in workers; the page stays responsive. Show progress and allow canceling.
 - Nothing is destructive or silent: algorithms propose, the user accepts. Explain each result in
   plain language next to it (what was done, with which parameters, what it means, caveats).
 - Every computed result records method, parameters, seed and software version (via

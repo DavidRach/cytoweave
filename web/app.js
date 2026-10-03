@@ -12,6 +12,7 @@ import { installExportDialogs } from './ui/export-dialogs.js';
 import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
 import { installAutogating } from './ui/autogate-dialog.js';
 import { installLiveQC } from './ui/live-qc.js';
+import { colorVisionFriendly, setColorVisionFriendly } from './lib/colormaps.js';
 import { openPalette } from './ui/palette.js';
 import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
 import { WorkerClient } from './ui/workers.js';
@@ -56,9 +57,17 @@ function applyTheme(preference) {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
 }
 
+// Color-vision-friendly colors (a setting): the palettes (colormaps.js) and status colors.
+function applyColorVision(on) {
+  setColorVisionFriendly(on);
+  if (on) document.documentElement.dataset.cvd = '';
+  else delete document.documentElement.dataset.cvd;
+}
+
 async function start() {
   const themePref = prefs.get('theme', 'system');
   applyTheme(themePref);
+  applyColorVision(prefs.get('colorVision', false));
   const info = await detectBackend();
   const library = createLibrary(info);
 
@@ -523,15 +532,18 @@ async function start() {
     if (!ws.samples.length && !ws.gates.length) return;
     saving = true;
     saveState.className = 'save-state saving';
+    saveState.setAttribute('aria-label', 'Saving');
     try {
       await library.saveWorkspace(ws.id, serializeWorkspace(ws));
       prefs.set('lastWorkspace', ws.id);
       store.markSaved(ws);
       saveState.className = 'save-state';
       saveState.title = `Saved to ${library.kind === 'desktop' ? library.location : 'this browser'}`;
+      saveState.setAttribute('aria-label', 'Saved');
     } catch (error) {
       saveState.className = 'save-state error';
       saveState.title = `Not saved: ${error.message}`;
+      saveState.setAttribute('aria-label', 'Not saved');
     } finally {
       saving = false;
       if (store.isDirty()) autosave();
@@ -660,12 +672,13 @@ async function start() {
     { label: 'Export workspace file', icon: 'download', run: exportWorkspaceFile },
     { label: 'Export gates as Gating-ML', icon: 'download', run: exportGatingML },
     { label: 'Export as a FlowJo workspace', icon: 'download', run: () => app.exportFlowJo(), keywords: 'wsp flowjo' },
-    { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymise privacy keywords' },
+    { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymize privacy keywords' },
     { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
     { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },
     { label: 'Toggle dark theme', icon: 'moon', run: () => toggleTheme() },
+    { label: 'Color-vision-friendly colors (on or off)', icon: 'eye', run: () => toggleColorVision(), keywords: 'color color blind accessibility deuteranopia protanopia palette' },
     { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: showHelp },
     { label: 'Load every sample', icon: 'download', run: () => app.loadAll() },
   ];
@@ -682,7 +695,12 @@ async function start() {
   document.getElementById('command-button').addEventListener('click', () => openPalette(app));
   undoButton.addEventListener('click', () => doUndo());
   redoButton.addEventListener('click', () => doRedo());
-  themeButton.addEventListener('click', () => toggleTheme());
+  themeButton.addEventListener('click', () => showMenu(themeButton, [
+    { section: 'Appearance' },
+    ...[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'Match the system', 'settings']].map(([id, label, glyph]) => ({ label, icon: glyph, checked: prefs.get('theme', 'system') === id, onSelect: () => setTheme(id) })),
+    '-',
+    { label: 'Color-vision-friendly colors', icon: 'eye', checked: colorVisionFriendly(), onSelect: () => toggleColorVision() },
+  ]));
 
   function doUndo() {
     const label = store.undo();
@@ -694,8 +712,16 @@ async function start() {
   }
 
   function toggleTheme() {
-    const dark = document.documentElement.dataset.theme === 'dark';
-    const next = dark ? 'light' : 'dark';
+    setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  }
+  function toggleColorVision() {
+    const next = !colorVisionFriendly();
+    prefs.set('colorVision', next);
+    applyColorVision(next);
+    store.notify(['theme', 'colors']);
+    toast(next ? 'Color-vision-friendly colors: populations, clusters, heat maps and status colors stay distinguishable with red–green and blue–yellow color blindness.' : 'Default colors.', { timeout: 3500 });
+  }
+  function setTheme(next) {
     prefs.set('theme', next);
     store.state.ui.theme = next;
     applyTheme(next);
@@ -721,7 +747,10 @@ async function start() {
     redoButton.disabled = !store.canRedo();
     undoButton.title = store.canUndo() ? `Undo ${store.undoLabel()} (${modKey}Z)` : 'Nothing to undo';
     redoButton.title = store.canRedo() ? `Redo ${store.redoLabel()} (⇧${modKey}Z)` : 'Nothing to redo';
-    saveState.className = `save-state${store.isDirty() ? ' dirty' : ''}`;
+    if (!saveState.classList.contains('error') && !saveState.classList.contains('saving')) {
+      saveState.className = `save-state${store.isDirty() ? ' dirty' : ''}`;
+      saveState.setAttribute('aria-label', store.isDirty() ? 'Unsaved changes' : 'Saved');
+    }
   }
 
   // --- Status bar -------------------------------------------------------------------------------

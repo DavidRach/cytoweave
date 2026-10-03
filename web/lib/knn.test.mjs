@@ -8,14 +8,14 @@ import {
 // Clustered data resembling transformed cytometry: Gaussian blobs with unequal spreads.
 function blobs(n, dim, clusters, seed, separation = 6) {
   const random = createRandom(seed);
-  const centres = Array.from({ length: clusters }, () => Float64Array.from({ length: dim }, () => random.gaussian() * separation));
+  const centers = Array.from({ length: clusters }, () => Float64Array.from({ length: dim }, () => random.gaussian() * separation));
   const spreads = Array.from({ length: clusters }, () => Float64Array.from({ length: dim }, () => 0.3 + random()));
   const data = new Float32Array(n * dim);
   const labels = new Int32Array(n);
   for (let i = 0; i < n; i += 1) {
     const c = random.int(clusters);
     labels[i] = c;
-    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centres[c][t] + spreads[c][t] * random.gaussian();
+    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centers[c][t] + spreads[c][t] * random.gaussian();
   }
   return { data, labels };
 }
@@ -103,7 +103,7 @@ test('k-d tree search is exact in 2-D, including duplicate points', () => {
   const tree = kdTreeKnn(data, n, 2, k);
   const brute = exactKnn(data, n, 2, k);
   for (let e = 0; e < n * k; e += 1) assert.ok(Math.abs(tree.distances[e] - brute.distances[e]) < 1e-6, `row ${Math.floor(e / k)}`);
-  // Equal distances may be listed in either order, so check each reported neighbour's distance.
+  // Equal distances may be listed in either order, so check each reported neighbor's distance.
   for (let i = 0; i < n; i += 1) {
     for (let t = 0; t < k; t += 1) {
       const j = tree.indices[i * k + t];
@@ -123,7 +123,7 @@ test('NN-Descent reaches recall ≥ 0.9 on 5000 clustered points in 25 dimension
   const approx = approximateKnn(data, n, dim, k, { seed: 1 });
   const recall = knnRecall(approx.indices, truth.indices, n, k);
   assert.ok(recall >= 0.9, `recall ${recall}`);
-  // Reported distances are true distances of the reported neighbours, sorted.
+  // Reported distances are true distances of the reported neighbors, sorted.
   for (let i = 0; i < n; i += 97) {
     for (let t = 0; t < k; t += 1) {
       const j = approx.indices[i * k + t];
@@ -162,7 +162,7 @@ test('knn chooses a method by size and dimension', () => {
   const auto = knn(data, 300, 2, 5);
   const exact = exactKnn(data, 300, 2, 5);
   for (let e = 0; e < 300 * 5; e += 1) assert.ok(Math.abs(auto.distances[e] - exact.distances[e]) < 1e-6);
-  assert.throws(() => knn(data, 300, 2, 300), /neighbours/);
+  assert.throws(() => knn(data, 300, 2, 300), /neighbors/);
 });
 
 test('queryKnn places new points against the reference with recall ≥ 0.9', () => {

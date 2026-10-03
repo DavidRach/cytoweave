@@ -121,17 +121,38 @@ export function showDialog({ title, content, buttons = [{ label: 'Close' }], wid
   const body = h('div.dialog-body', content);
   const foot = buttons.length ? h('div.dialog-foot') : null;
   const dialog = h(`div.dialog${width ? `.${width}` : ''}`, { role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-    h('div.dialog-head', h('h2', title), dismissable ? h('button.icon-button', { type: 'button', title: 'Close', onclick: () => close() }, icon('close')) : null),
+    h('div.dialog-head', h('h2', title), dismissable ? h('button.icon-button', { type: 'button', title: 'Close', 'aria-label': 'Close', onclick: () => close() }, icon('close')) : null),
     body, foot);
   let closed = false;
+  // Focus goes back where it was when the dialog closes.
+  const opener = document.activeElement;
   const close = (result) => {
     if (closed) return;
     closed = true;
     scrim.remove();
     document.removeEventListener('keydown', keys, true);
+    if (opener?.isConnected && typeof opener.focus === 'function') opener.focus();
     onClose?.(result);
   };
   const keys = (event) => {
+    // Tab stays in the dialog (aria-modal): from the last control to the first and back.
+    if (event.key === 'Tab') {
+      const focusable = [...dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (event.key === 'Escape' && dismissable) {
       event.preventDefault();
       event.stopPropagation();

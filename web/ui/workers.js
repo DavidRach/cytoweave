@@ -51,7 +51,7 @@ export class WorkerClient {
       if (!slot && this.workers.length < this.max) slot = this.spawn();
       if (!slot) return;
       const job = this.queue.shift();
-      if (job.cancelled) continue;
+      if (job.canceled) continue;
       slot.busy = true;
       slot.jobId = job.id;
       job.slot = slot;
@@ -67,7 +67,7 @@ export class WorkerClient {
     }
   }
 
-  // Runs a request; returns { promise, cancel }. Cancelling a running job terminates its worker.
+  // Runs a request; returns { promise, cancel }. Canceling a running job terminates its worker.
   run(type, payload, options = {}) {
     const id = this.nextId++;
     let resolve;
@@ -76,19 +76,19 @@ export class WorkerClient {
       resolve = res;
       reject = rej;
     });
-    const job = { id, type, payload, transfer: options.transfer, onProgress: options.onProgress, resolve, reject, cancelled: false, slot: null };
+    const job = { id, type, payload, transfer: options.transfer, onProgress: options.onProgress, resolve, reject, canceled: false, slot: null };
     this.pending.set(id, job);
     this.queue.push(job);
     this.drain();
     const cancel = () => {
       if (!this.pending.has(id)) return;
-      job.cancelled = true;
+      job.canceled = true;
       this.pending.delete(id);
       if (job.slot) {
         job.slot.worker.terminate();
         this.workers = this.workers.filter((w) => w !== job.slot);
       }
-      reject(Object.assign(new Error('Cancelled'), { cancelled: true }));
+      reject(Object.assign(new Error('Canceled'), { canceled: true }));
       this.drain();
     };
     return { promise, cancel };

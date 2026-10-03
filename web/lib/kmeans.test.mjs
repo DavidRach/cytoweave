@@ -21,15 +21,15 @@ function blobs({ k, dim, perCluster, sd = 0.5, seed = 1 }) {
   return { data, truth, n, dim };
 }
 
-test('k-means on tiny sets matches hand-computed centres and inertia', () => {
-  // 1, 2, 3 | 10, 11, 12: centres 2 and 11, inertia 2 + 2.
+test('k-means on tiny sets matches hand-computed centers and inertia', () => {
+  // 1, 2, 3 | 10, 11, 12: centers 2 and 11, inertia 2 + 2.
   const line = kmeans(Float32Array.of(1, 2, 3, 10, 11, 12), 6, 1, 2);
   assert.equal(line.inertia, 4);
   assert.deepEqual(Array.from(line.centers).sort((a, b) => a - b), [2, 11]);
   assert.equal(line.labels[0], line.labels[2]);
   assert.notEqual(line.labels[0], line.labels[3]);
   assert.deepEqual(Array.from(line.counts), [3, 3]);
-  // A 10 × 1 rectangle's corners: centres (0, 0.5) and (10, 0.5), inertia 4 × 0.25.
+  // A 10 × 1 rectangle's corners: centers (0, 0.5) and (10, 0.5), inertia 4 × 0.25.
   const square = kmeans(Float32Array.of(0, 0, 0, 1, 10, 0, 10, 1), 4, 2, 2);
   assert.equal(square.inertia, 1);
   assert.ok(square.converged);
@@ -39,7 +39,7 @@ test('k-means recovers blobs', () => {
   const { data, truth, n, dim } = blobs({ k: 6, dim: 8, perCluster: 400, seed: 2 });
   const result = kmeans(data, n, dim, 6, { seed: 5 });
   assert.equal(adjustedRandIndex(result.labels, truth), 1);
-  // Inertia is the sum of squared distances to the reported centres.
+  // Inertia is the sum of squared distances to the reported centers.
   let inertia = 0;
   for (let i = 0; i < n; i += 1) {
     for (let j = 0; j < dim; j += 1) inertia += (data[i * dim + j] - result.centers[result.labels[i] * dim + j]) ** 2;

@@ -10,15 +10,15 @@ function gaussianMatrix(n, dim, seed, scale = 1) {
   return Float32Array.from({ length: n * dim }, () => random.gaussian() * scale);
 }
 
-// Blobs in `dim` dimensions with labels; centres far apart.
+// Blobs in `dim` dimensions with labels; centers far apart.
 function blobs(n, dim, count, seed, separation = 8) {
   const random = createRandom(seed);
-  const centres = Array.from({ length: count }, () => Float64Array.from({ length: dim }, () => random.gaussian() * separation));
+  const centers = Array.from({ length: count }, () => Float64Array.from({ length: dim }, () => random.gaussian() * separation));
   const data = new Float32Array(n * dim);
   const labels = new Int32Array(n);
   for (let i = 0; i < n; i += 1) {
     labels[i] = i % count;
-    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centres[labels[i]][t] + random.gaussian();
+    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centers[labels[i]][t] + random.gaussian();
   }
   return { data, labels };
 }
@@ -40,8 +40,8 @@ function referenceTrustworthiness(high, low, n, dh, dl, k) {
   for (let i = 0; i < n; i += 1) {
     const orderHigh = ranksOf(high, dh, i);
     const rank = new Map(orderHigh.map((j, r) => [j, r + 1]));
-    const lowNeighbours = ranksOf(low, dl, i).slice(0, k);
-    for (const j of lowNeighbours) if (rank.get(j) > k) sum += rank.get(j) - k;
+    const lowNeighbors = ranksOf(low, dl, i).slice(0, k);
+    for (const j of lowNeighbors) if (rank.get(j) > k) sum += rank.get(j) - k;
   }
   return 1 - (2 / (n * k * (2 * n - 3 * k - 1))) * sum;
 }
@@ -74,7 +74,7 @@ test('an identity embedding is perfectly trustworthy; a random one is not', () =
   assert.equal(same.knnPreservation, 1);
   const random = gaussianMatrix(n, 2, 6);
   const shuffled = trustworthiness(high, random, n, 3, 2, 10, { sampleSize: 200 });
-  // Random neighbours have expected rank ≈ n/2, so T ≈ 1 − (n − 2k)/(2n − 3k) ≈ 0.5.
+  // Random neighbors have expected rank ≈ n/2, so T ≈ 1 − (n − 2k)/(2n − 3k) ≈ 0.5.
   assert.ok(shuffled.value < 0.6 && shuffled.value > 0.4, `T = ${shuffled.value}`);
   const preserved = knnPreservation(high, random, n, 3, 2, 10);
   assert.ok(preserved.value < 0.1);
@@ -113,12 +113,12 @@ test('Procrustes and seed stability ignore rotation, reflection, scale and shift
   assert.ok(fit.disparity < 1e-10);
   assert.ok(Math.abs(fit.scale - 1 / 3) < 1e-5);
   const stable = seedStability(A, B, n, 10);
-  assert.ok(stable.neighbourOverlap > 0.999);
+  assert.ok(stable.neighborOverlap > 0.999);
   assert.ok(stable.disparity < 1e-10);
   for (let i = 0; i < n; i += 1) assert.ok(stable.displacement[i] < 1e-4);
   const unrelated = seedStability(A, gaussianMatrix(n, 2, 12), n, 10);
   assert.ok(unrelated.disparity > 0.9);
-  assert.ok(unrelated.neighbourOverlap < 0.15);
+  assert.ok(unrelated.neighborOverlap < 0.15);
 });
 
 test('mixing entropy and LISI: segregated labels score 1 category, interleaved ones mix', () => {
@@ -149,8 +149,8 @@ test('mixing entropy and LISI: segregated labels score 1 category, interleaved o
   assert.equal(mixingEntropy(low, n, new Int32Array(n), 30).mean, 1);
 });
 
-test('LISI reaches the perplexity calibration: equal weights over a uniform neighbourhood', () => {
-  // 3 categories cycled along a line: every neighbourhood holds them in equal shares, so the
+test('LISI reaches the perplexity calibration: equal weights over a uniform neighborhood', () => {
+  // 3 categories cycled along a line: every neighborhood holds them in equal shares, so the
   // inverse Simpson index is 3 up to edge effects.
   const n = 900;
   const low = new Float32Array(2 * n);
@@ -202,7 +202,7 @@ test('region reliability marks torn-apart populations', () => {
   assert.ok(goodS / (2 * n / 3) > 3 * (badS / (n / 3)), `${goodS} ${badS}`);
 });
 
-test('assessEmbedding summarises and warns in plain language', () => {
+test('assessEmbedding summarizes and warns in plain language', () => {
   const n = 800;
   const { data, labels } = blobs(n, 6, 4, 13);
   // A faithful map: the blobs are far apart, so two coordinates keep most structure.
@@ -219,11 +219,11 @@ test('assessEmbedding summarises and warns in plain language', () => {
   const noise = gaussianMatrix(n, 2, 99);
   const bad = assessEmbedding(data, noise, n, 6, 2, { sampleSize: 300, other: good, labels, reliability: false });
   const codes = bad.warnings.map((w) => w.code);
-  assert.ok(codes.includes('neighbourhoods'));
+  assert.ok(codes.includes('neighborhoods'));
   assert.ok(codes.includes('trustworthiness'));
   assert.ok(codes.includes('seed-global'));
-  assert.equal(bad.warnings.find((w) => w.code === 'neighbourhoods').level, 'warning');
-  assert.match(bad.warnings.find((w) => w.code === 'neighbourhoods').message, /Neighbourhoods are lost \(\d+%/);
+  assert.equal(bad.warnings.find((w) => w.code === 'neighborhoods').level, 'warning');
+  assert.match(bad.warnings.find((w) => w.code === 'neighborhoods').message, /Neighborhoods are lost \(\d+%/);
   // The labels are the blobs: segregated in both spaces in the good map → a batch warning that
   // says the separation is in the data.
   const batch = assessEmbedding(data, good, n, 6, 2, { sampleSize: 300, labels, reliability: false });

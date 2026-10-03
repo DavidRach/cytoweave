@@ -2,6 +2,7 @@
 // number, spreading); checks for leaning populations; and an N×N view of compensated pairs.
 
 import { h, icon, clear, formatCount } from './dom.js';
+import { shownColor } from '../lib/colormaps.js';
 import { showMenu, toast, progressToast, promptDialog, confirmDialog } from './overlays.js';
 import { conditionNumber, compensate, controlResiduals, leanCheck, identityMatrix } from '../lib/compensation.js';
 import { spilloverFromControls } from './controls.js';
@@ -108,7 +109,7 @@ export function mountCompensateMode(app, container) {
     const channels = [...new Set(ws.samples.flatMap((s) => s.channels.filter((c) => c.type === 'fluorescence').map((c) => c.name)))];
     const rows = h('tbody');
     for (const control of controls) {
-      const select = h('select.input.small', { onchange: (event) => store.commit({ ...ws, samples: ws.samples.map((s) => (s.id === control.id ? { ...s, stain: event.target.value || null } : s)) }, 'Set stained channel') },
+      const select = h('select.input.small', { 'aria-label': `Stained channel of ${control.name}`, onchange: (event) => store.commit({ ...ws, samples: ws.samples.map((s) => (s.id === control.id ? { ...s, stain: event.target.value || null } : s)) }, 'Set stained channel') },
         h('option', { value: '' }, '— channel —'), ...channels.map((c) => h('option', { value: c, selected: c === control.stain }, channelLabel(ws, c))));
       rows.append(h('tr', h('td', { style: { maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: control.name }, control.name), h('td', select)));
     }
@@ -196,7 +197,7 @@ export function mountCompensateMode(app, container) {
         h('button.btn.small', { type: 'button', onclick: () => duplicate(item) }, icon('copy'), editable ? 'Duplicate' : 'Edit a copy'),
         h('button.btn.small.primary', { type: 'button', onclick: (event) => applyMenu(event.currentTarget, item) }, icon('check'), 'Apply to…')),
       h('p.muted', { style: { margin: '0 0 8px' } }, `Values are percent spillover (row fluorochrome into column detector). ${editable ? 'Edit a cell, or focus it and use the mouse wheel (⇧ for 1% steps); every edit can be undone.' : 'This matrix comes from a file; edit a copy to change it.'} Used by ${users.length} sample(s).`),
-      h('div.matrix-wrap', table));
+      h('div.matrix-wrap', { tabIndex: 0, role: 'region', 'aria-label': 'Spillover matrix' }, table));
     if (item.record?.report?.length) {
       const warnings = item.record.report.filter((r) => r.warnings?.length);
       editorHost.append(h('div', { style: { marginTop: '10px' } }, ...warnings.map((r) => h('div.callout.warn', { style: { marginTop: '6px' } }, icon('warning'), h('span', `${r.control ?? r.channel}: ${r.warnings.join(' ')}`)))));
@@ -251,7 +252,7 @@ export function mountCompensateMode(app, container) {
       { label: 'All samples', onSelect: () => apply(ws.samples.map((s) => s.id), 'all samples') },
       { label: 'The current sample', disabled: !store.ui.sampleId, onSelect: () => apply([store.ui.sampleId], 'the current sample') },
       { label: 'Selected samples', disabled: !store.ui.selectedSamples.size, onSelect: () => apply([...store.ui.selectedSamples], 'the selection') },
-      ...ws.groups.map((g) => ({ label: `Group: ${g.name}`, swatch: g.color, onSelect: () => apply(g.sampleIds, g.name) })),
+      ...ws.groups.map((g) => ({ label: `Group: ${g.name}`, swatch: shownColor(ws, g, 'groups'), onSelect: () => apply(g.sampleIds, g.name) })),
     ]);
   }
 
@@ -287,7 +288,7 @@ export function mountCompensateMode(app, container) {
       body.append(tr);
     });
     table.append(body);
-    return h('div', h('div.section-title', 'Spillover spreading matrix'), h('div.matrix-wrap', table), h('p.muted', { style: { marginTop: '6px' } }, 'Large values in a column mean that detector will have wide negative populations when those fluorochromes are bright: pair dim markers with detectors that receive little spreading.'));
+    return h('div', h('div.section-title', 'Spillover spreading matrix'), h('div.matrix-wrap', { tabIndex: 0, role: 'region', 'aria-label': 'Spillover spreading matrix' }, table), h('p.muted', { style: { marginTop: '6px' } }, 'Large values in a column mean that detector will have wide negative populations when those fluorochromes are bright: pair dim markers with detectors that receive little spreading.'));
   }
 
   let leanResult = null;
@@ -389,7 +390,7 @@ export function mountCompensateMode(app, container) {
     const item = selected();
     const ws = store.ws;
     const sampleId = pairSample ?? store.ui.sampleId;
-    const sampleSelect = h('select.input.small', { style: { width: '220px' }, onchange: (event) => { pairSample = event.target.value; renderPairs(); } },
+    const sampleSelect = h('select.input.small', { 'aria-label': 'Sample shown in the pair plots', style: { width: '220px' }, onchange: (event) => { pairSample = event.target.value; renderPairs(); } },
       ...ws.samples.map((s) => h('option', { value: s.id, selected: s.id === sampleId }, s.name)));
     const toggle = h('div.segmented',
       ...['uncompensated', 'compensated'].map((mode) => h(`button${pairView === mode ? '.active' : ''}`, { type: 'button', onclick: () => { pairView = mode; renderPairs(); } }, mode === 'compensated' ? 'Compensated' : 'Uncompensated')));

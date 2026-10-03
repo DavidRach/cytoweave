@@ -292,7 +292,7 @@ func (h *remoteHub) respond(w http.ResponseWriter, r *http.Request, event remote
 }
 
 // dispatch sends an event to the most recently opened page and waits for its result, one at a
-// time; a request waiting its turn can still be cancelled.
+// time; a request waiting its turn can still be canceled.
 func (h *remoteHub) dispatch(ctx context.Context, event remoteEvent) (remoteResult, error) {
 	select {
 	case h.turn <- struct{}{}:

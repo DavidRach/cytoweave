@@ -222,7 +222,7 @@ export function parseXMLDocument(input, options = {}) {
     return gt + 1;
   };
 
-  // <!DOCTYPE …> with an optional internal subset; simple internal entities are honoured.
+  // <!DOCTYPE …> with an optional internal subset; simple internal entities are honored.
   const skipDeclaration = (lt) => {
     let p = lt + 2;
     let depth = 0;

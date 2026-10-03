@@ -1,5 +1,5 @@
 // Cohorts for validating counterfactual preprocessing (web/lib/multiverse.js): the PBMC example
-// (six donors, unstimulated and stimulated) with added gates and with artefacts whose effect on a
+// (six donors, unstimulated and stimulated) with added gates and with artifacts whose effect on a
 // comparison is known — a detector gain in one batch, clogs in one group, one batch compensated
 // with the wrong matrix — and helpers to run a comparison under every specification.
 

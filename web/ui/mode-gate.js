@@ -3,6 +3,7 @@
 
 import { createPlateView } from './plate-view.js';
 import { h, icon, clear, iconButton, formatCount } from './dom.js';
+import { shownColor } from '../lib/colormaps.js';
 import { showMenu } from './overlays.js';
 import { createPlotView } from './plot-view.js';
 import { ROOT, addPlot, gateAncestors, gateById, gateChildren, plotsOf, removePlot, updatePlot, channelLabel } from '../lib/workspace.js';
@@ -174,7 +175,7 @@ export function mountGateMode(app, container) {
     const gate = store.ui.gateId ? gateById(ws, store.ui.gateId) : null;
     const crumbs = gate ? gateAncestors(ws, gate.id).map((g) => g.name).join(' / ') : '';
     clear(titleEl);
-    titleEl.append(...[h('span.swatch', { style: { background: gate?.color ?? '#94a3b8', width: '12px', height: '12px' } }), h('span', gate ? gate.name : 'All events'), crumbs ? h('span.crumbs', `in ${crumbs}`) : null].filter(Boolean));
+    titleEl.append(...[h('span.swatch', { style: { background: shownColor(ws, gate) ?? '#94a3b8', width: '12px', height: '12px' } }), h('span', gate ? gate.name : 'All events'), crumbs ? h('span.crumbs', `in ${crumbs}`) : null].filter(Boolean));
     clear(sampleSelect);
     for (const sample of app.sidebar.visibleSamples()) sampleSelect.append(h('option', { value: sample.id, selected: sample.id === store.ui.sampleId }, sample.name));
     if (!sampleSelect.value && store.ui.sampleId) {
@@ -303,7 +304,7 @@ export function mountGateMode(app, container) {
     update(topics) {
       const key = `${store.ui.sampleId}|${store.ui.gateId}`;
       const structural = key !== renderedFor;
-      if (structural || topics.has('ws') || topics.has('selection') || topics.has('scope') || topics.has('tool') || topics.has('tiles')) renderHead();
+      if (structural || topics.has('ws') || topics.has('selection') || topics.has('scope') || topics.has('tool') || topics.has('tiles') || topics.has('colors')) renderHead();
       if (structural || topics.has('plots') || (topics.has('ws') && !plotsOf(store.ws, populationId()).every((p) => views.has(p.id)))) {
         renderPlots();
       }

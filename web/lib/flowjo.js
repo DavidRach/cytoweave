@@ -200,7 +200,7 @@ export function ellipseFromConjugateDiameters(points) {
 }
 
 // The ends of an ellipse's axes, for remapping it into another scale.
-// A FlowJo ellipse from its foci and edge points (in scale space): the centre between the foci,
+// A FlowJo ellipse from its foci and edge points (in scale space): the center between the foci,
 // the major radius from the edge point farthest along the major axis, the minor radius from
 // a² = b² + c² with c the focal distance.
 export function ellipseFromFlowJo(foci, edges) {

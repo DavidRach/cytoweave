@@ -19,7 +19,7 @@ const MAD_SCALE = 1.4826;
 // --- Shared helpers -------------------------------------------------------------------------
 
 function checkAbort(options) {
-  if (options.signal?.aborted) throw new Error('The quality-control analysis was cancelled.');
+  if (options.signal?.aborted) throw new Error('The quality-control analysis was canceled.');
 }
 
 function report(options, fraction, message) {
@@ -121,7 +121,7 @@ function sortedRemove(window, size, value) {
 }
 
 // Running median of odd width k (as R's runmed). Ends: 'median' (default) uses the largest
-// centred window that fits, with Tukey's end-point rule at the first and last point (as R's
+// centered window that fits, with Tukey's end-point rule at the first and last point (as R's
 // smoothEnds, which keeps a linear trend unbiased at the ends); 'constant' repeats the first and
 // last full-window medians.
 export function runningMedian(values, k, options = {}) {
@@ -149,7 +149,7 @@ export function runningMedian(values, k, options = {}) {
     }
     return out;
   }
-  // Shrinking centred windows 2j + 1 for j = 1 … half − 1, built incrementally.
+  // Shrinking centered windows 2j + 1 for j = 1 … half − 1, built incrementally.
   for (const side of [0, 1]) {
     const at = (i) => (side === 0 ? i : n - 1 - i);
     const grow = new Float64Array(width);
@@ -365,7 +365,7 @@ export function averagePathLength(n) {
 //
 // With `coherence` (CytoWeave's refinement), a split is accepted only if the smaller side is
 // coherent in time: at least that fraction of its rows (bins, in acquisition order) have a
-// neighbouring row on the same side. Clogs and bursts span consecutive, half-overlapping bins;
+// neighboring row on the same side. Clogs and bursts span consecutive, half-overlapping bins;
 // a split on a peak that flickers between bins scatters its smaller side through the whole run.
 // PeacoQC 1.22's isolationTreeSD as written (classic mode), including its particulars: after each
 // split the gain limit rises to that split's gain, so every later split must gain more; within a
@@ -549,7 +549,7 @@ export function isolationTreeSD(columns, options = {}) {
   return { nodes, leafOf, good, largestLeaf: largest };
 }
 
-// The fraction of the smaller side of a split whose rows have a neighbouring row (in row order)
+// The fraction of the smaller side of a split whose rows have a neighboring row (in row order)
 // on the same side.
 function timeCoherence(rows, column, value, nRows) {
   let nLeft = 0;
@@ -679,7 +679,7 @@ export function makeBins(nEvents, eventsPerBin) {
 // bin's peaks; per cluster and bin the peak nearest the cluster median is kept, and bins without
 // a peak in a cluster get the cluster median.
 // With `tolerance` (CytoWeave's refinement, on by default), a bin's peak joins a trajectory only
-// when it lies closer to that trajectory's median than half the distance to the neighbouring
+// when it lies closer to that trajectory's median than half the distance to the neighboring
 // trajectory (and within `maxJump` of the axis); otherwise the bin counts as having no such peak.
 // Without it, a peak of another population in a bin where the minor peak was not found is
 // assigned to the minor peak's trajectory as its nearest cluster, and the jump looks like an
@@ -1433,7 +1433,7 @@ export function studentTQuantile(p, df) {
 }
 
 // Generalized ESD test for up to `maxOutliers` outliers (Rosner 1983, Technometrics,
-// doi:10.1080/00401706.1983.10487848). With robust = true (default) the centre and spread are
+// doi:10.1080/00401706.1983.10487848). With robust = true (default) the center and spread are
 // the median and MAD, as in flowAI's anomaly_detection (after Twitter's S-H-ESD).
 export function generalizedESD(values, options = {}) {
   const n = values.length;

@@ -5,7 +5,7 @@
 //   node validation/fetch.mjs [dataset …] [--list]
 //
 // The data are not part of the repository or of the CytoWeave program; sources.json records where
-// each data set comes from and its licence.
+// each data set comes from and its license.
 
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -20,7 +20,7 @@ const names = args.filter((a) => !a.startsWith('--'));
 if (args.includes('--list')) {
   for (const [name, set] of Object.entries(manifest.datasets)) {
     const bytes = set.files.reduce((sum, f) => sum + f.size, 0);
-    console.log(`${name}: ${set.title}, ${set.files.length} files, ${(bytes / 1e6).toFixed(1)} MB\n  ${set.source}\n  ${set.licence}`);
+    console.log(`${name}: ${set.title}, ${set.files.length} files, ${(bytes / 1e6).toFixed(1)} MB\n  ${set.source}\n  ${set.license}`);
   }
   process.exit(0);
 }

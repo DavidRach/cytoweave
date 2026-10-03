@@ -16,7 +16,7 @@ export async function checkRobustness(app, input) {
   const { statistic, samples, design } = input;
   const signal = input.signal ?? { aborted: false };
   const step = (message, fraction) => input.onProgress?.(message, fraction);
-  const cancelled = () => Object.assign(new Error('Cancelled.'), { name: 'AbortError' });
+  const canceled = () => Object.assign(new Error('Canceled.'), { name: 'AbortError' });
   const views = new Map(samples.map((s) => [s.id, data.view(s.id)]));
   if ([...views.values()].some((v) => !v)) throw new Error('Load every sample first.');
   const ancestorId = denominatorOf(ws, statistic);
@@ -40,7 +40,7 @@ export async function checkRobustness(app, input) {
       for (const variant of variants) {
         const channel = `${QC_CHANNEL} · MAD ${variant.mad}`;
         for (const s of samples) {
-          if (signal.aborted) throw cancelled();
+          if (signal.aborted) throw canceled();
           step(`Re-running QC with MAD ${variant.mad}`, 0.1 + (0.3 * done) / (variants.length * samples.length));
           const result = await runQC(app, ws.samples.find((x) => x.id === s.id), { ...base, mad: variant.mad });
           views.get(s.id).setDerived(channel, Float32Array.from(result.mask));
@@ -65,7 +65,7 @@ export async function checkRobustness(app, input) {
     const counts = design === 'paired-two' ? [new Set(samples.filter((s) => s.pair !== null && s.pair !== undefined).map((s) => s.pair)).size] : [samples.filter((s) => s.group === 0).length, samples.filter((s) => s.group === 1).length];
     const choices = choicesFor({ ws, gateId: statistic.gateId, ancestorId, design, counts, adapted, compensations, qcVariants, qcChannel: QC_CHANNEL });
     const specs = specifications(choices, { max: input.max ?? 64 });
-    const results = await runMultiverseAsync({ ws, views, samples, design, statistic, choices, specs, gateId: statistic.gateId, ancestorId, adapted, setCompensation, signal, onProgress: (f) => step(`Analysing ${specs.length} specifications`, 0.4 + 0.6 * f) });
+    const results = await runMultiverseAsync({ ws, views, samples, design, statistic, choices, specs, gateId: statistic.gateId, ancestorId, adapted, setCompensation, signal, onProgress: (f) => step(`Analyzing ${specs.length} specifications`, 0.4 + 0.6 * f) });
     return { summary: summarize(results, choices, { labels: input.labels }), results, choices, adapted };
   } finally {
     for (const [id, channel] of temporary) views.get(id)?.removeDerived(channel);

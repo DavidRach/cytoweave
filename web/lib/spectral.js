@@ -92,7 +92,7 @@ function columnsFor(columns, detectors, D = detectors?.length) {
 }
 
 function abortError() {
-  const error = new Error('The analysis was cancelled.');
+  const error = new Error('The analysis was canceled.');
   error.name = 'AbortError';
   return error;
 }
@@ -655,7 +655,7 @@ function nnlsSolver(options) {
 // 'lawson-hanson' (default, 1974) adds one variable per step; 'block-pivot' (Kim & Park 2011)
 // exchanges all infeasible variables per step. Both are exact active-set methods: the result
 // satisfies the KKT conditions to options.tolerance (relative, default 1e-10). On a realistic
-// 40-colour, 64-detector panel (complexity index ≈ 70) both take ≈ 7 s for 200 000 events
+// 40-color, 64-detector panel (complexity index ≈ 70) both take ≈ 7 s for 200 000 events
 // (Node 22, Apple silicon; ≈ 2 Lawson–Hanson iterations per event); on a badly conditioned
 // panel (index ≈ 10⁵) Lawson–Hanson took 17 s and block pivoting 47 s, hence the default.
 // meanIterations reports outer iterations (Lawson–Hanson) or solves (block pivoting).
@@ -1134,7 +1134,7 @@ export function unmixWithAutofluorescence(columns, spectra, afSignatures, option
 // --- Diagnostics --------------------------------------------------------------------------------
 
 // Spillover spreading matrix of unmixed data (Nguyen, Perfetto, Mahnke, Chattopadhyay & Roederer
-// 2013, Cytometry A 83:306, doi:10.1002/cyto.a.22251), the spectral analogue of the
+// 2013, Cytometry A 83:306, doi:10.1002/cyto.a.22251), the spectral analog of the
 // compensation SSM: SS_ij = sqrt(σ²_pos,j − σ²_neg,j) / sqrt(ΔF_i), σ the robust SD
 // (84.13th − 50th percentile, as in compensation.js). Rows: the stained fluorochrome of each
 // unmixed single-stain control; columns: the unmixed channel receiving the spread.
@@ -1471,7 +1471,7 @@ function laserFromWavelength(nm) {
 // Parses a raw spectral detector name into { laser, index, measurement, wavelength? }, or null for
 // scatter, time and conventional channels. Recognized forms:
 // - Cytek Aurora / Northern Lights: 'UV1-A', 'V7-A', 'B14-H', 'YG3-W', 'R8-A' (suffix optional);
-// - BD FACSDiscover and FACSymphony spectral: 'UV1 (375)-A', 'B12 (725)-A' (the detector's centre
+// - BD FACSDiscover and FACSymphony spectral: 'UV1 (375)-A', 'B12 (725)-A' (the detector's center
 //   wavelength in parentheses, kept as `emission`);
 // - a detector code in parentheses after a dye or filter label: 'BV421 (V1)', 'PE (YG1)-A';
 // - laser wavelength and channel number: '405-3-A', '488nm-12', '561_4' (laser from wavelength).

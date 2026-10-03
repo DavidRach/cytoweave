@@ -257,7 +257,7 @@ export function mountSpectralMode(app, container) {
     return { view, indices, label, note, count: indices ? indices.length : view.eventCount };
   }
 
-  // Runs a worker job with a progress toast; resolves to the result or null when cancelled.
+  // Runs a worker job with a progress toast; resolves to the result or null when canceled.
   async function runJob(type, payload, { message, transfer, quiet = false } = {}) {
     let job = null;
     const progress = quiet ? null : progressToast(message, () => job?.cancel());
@@ -268,8 +268,8 @@ export function mountSpectralMode(app, container) {
       progress?.done();
       return result;
     } catch (error) {
-      if (error.cancelled) {
-        progress?.done('Cancelled.', 'info');
+      if (error.canceled) {
+        progress?.done('Canceled.', 'info');
         return null;
       }
       progress?.fail(error.message);
@@ -291,15 +291,15 @@ export function mountSpectralMode(app, container) {
     if (!list.length) return;
     ui.busy = 'controls';
     renderLeft();
-    let cancelled = false;
+    let canceled = false;
     let current = null;
-    const progress = progressToast(`Gating ${list.length} control${list.length > 1 ? 's' : ''}…`, () => { cancelled = true; current?.cancel(); });
+    const progress = progressToast(`Gating ${list.length} control${list.length > 1 ? 's' : ''}…`, () => { canceled = true; current?.cancel(); });
     const refs = [...(setup()?.references ?? [])];
     const range = detectorRange(detectors);
     try {
       const needUnstained = list.some((s) => controlSettings(s.id).negative === 'unstained');
       const unstained = needUnstained ? await unstainedColumns(detectors) : null;
-      for (let i = 0; i < list.length && !cancelled; i += 1) {
+      for (let i = 0; i < list.length && !canceled; i += 1) {
         const sample = list[i];
         const name = guessFluorochrome(sample, detectors);
         progress.update(i / list.length, `Gating ${name} (${i + 1}/${list.length})`);
@@ -328,7 +328,7 @@ export function mountSpectralMode(app, container) {
             error: ref ? null : (result.error ?? 'No spectrum could be computed.'),
           });
         } catch (error) {
-          if (error.cancelled) break;
+          if (error.canceled) break;
           entry.error = error.message;
           entry.warnings = [];
           entry.spectrum = null;
@@ -337,8 +337,8 @@ export function mountSpectralMode(app, container) {
         if (at >= 0) refs[at] = entry;
         else refs.push(entry);
       }
-      if (cancelled) {
-        progress.done('Gating cancelled; no spectra were changed.', 'info');
+      if (canceled) {
+        progress.done('Gating canceled; no spectra were changed.', 'info');
         return;
       }
       const params = { ...(setup()?.params ?? {}), detectors, seed: SEED, unstainedId: unstainedSample()?.id ?? null, maxEventsPerControl: LIMITS.control };
@@ -464,15 +464,15 @@ export function mountSpectralMode(app, container) {
     const afInfo = AF_MODES.find((m) => m.id === afMode);
     ui.busy = 'unmix';
     renderLeft();
-    let cancelled = false;
+    let canceled = false;
     let current = null;
-    const progress = progressToast(`Unmixing ${samples.length} sample${samples.length > 1 ? 's' : ''}…`, () => { cancelled = true; current?.cancel(); });
+    const progress = progressToast(`Unmixing ${samples.length} sample${samples.length > 1 ? 's' : ''}…`, () => { canceled = true; current?.cancel(); });
     try {
       const model = await buildModel(method, afMode, methodInfo.label);
       const perSample = new Map();
       const summaries = [];
       const skipped = [];
-      for (let i = 0; i < samples.length && !cancelled; i += 1) {
+      for (let i = 0; i < samples.length && !canceled; i += 1) {
         const sample = samples[i];
         progress.update(i / samples.length, `Unmixing ${sample.name} (${i + 1}/${samples.length})`);
         let view;
@@ -493,7 +493,7 @@ export function mountSpectralMode(app, container) {
         try {
           result = await current.promise;
         } catch (error) {
-          if (error.cancelled) break;
+          if (error.canceled) break;
           skipped.push(`${sample.name}: ${error.message}`);
           continue;
         } finally {
@@ -507,8 +507,8 @@ export function mountSpectralMode(app, container) {
         const sorted = Float32Array.from(result.residuals ?? []).sort();
         summaries.push({ sampleId: sample.id, sample: sample.name, events: view.eventCount, medianResidual: sorted.length ? +sorted[Math.floor(sorted.length / 2)].toFixed(5) : null });
       }
-      if (cancelled) {
-        progress.done('Unmixing cancelled; nothing was saved.', 'info');
+      if (canceled) {
+        progress.done('Unmixing canceled; nothing was saved.', 'info');
         return;
       }
       if (!perSample.size) {
@@ -574,9 +574,9 @@ export function mountSpectralMode(app, container) {
     if (refs.length < 2 || unmixProblems().length) return;
     ui.busy = 'spreading';
     renderTab();
-    let cancelled = false;
+    let canceled = false;
     let current = null;
-    const progress = progressToast('Unmixing the controls for the spreading matrix…', () => { cancelled = true; current?.cancel(); });
+    const progress = progressToast('Unmixing the controls for the spreading matrix…', () => { canceled = true; current?.cancel(); });
     try {
       const needUnstained = refs.some((r) => !r.sample.library && controlSettings(r.sample.id).negative === 'unstained');
       const unstained = needUnstained ? await unstainedColumns(detectors) : null;
@@ -585,7 +585,7 @@ export function mountSpectralMode(app, container) {
       const spectra = panelSpectra();
       const matrix = new Array(F * F).fill(null);
       const observations = [];
-      for (let i = 0; i < F && !cancelled; i += 1) {
+      for (let i = 0; i < F && !canceled; i += 1) {
         const r = refs[i];
         // A library spectrum has no control events to unmix: its row stays empty.
         if (r.sample.library) continue;
@@ -605,7 +605,7 @@ export function mountSpectralMode(app, container) {
         try {
           result = await current.promise;
         } catch (error) {
-          if (error.cancelled) break;
+          if (error.canceled) break;
           throw error;
         } finally {
           jobs.delete(current);
@@ -619,8 +619,8 @@ export function mountSpectralMode(app, container) {
           observations.push({ i: o.i, deltaF: +o.deltaF.toPrecision(6), positiveEvents: o.positiveEvents, rows: o.rows.map((r) => ({ j: r.j, variance: +r.variance.toPrecision(5), se: +r.se.toPrecision(4) })) });
         }
       }
-      if (cancelled) {
-        progress.done('Cancelled; the spreading matrix was not changed.', 'info');
+      if (canceled) {
+        progress.done('Canceled; the spreading matrix was not changed.', 'info');
         return;
       }
       // The instrument's photon and laser noise, fitted to the controls' spread, and each
@@ -636,7 +636,7 @@ export function mountSpectralMode(app, container) {
           noise = fitted.noise;
           check = { measurable: fitted.check.measurable, medianRatio: fitted.check.medianRatio, within2x: fitted.check.within2x, correlation: fitted.check.correlation };
         } catch (error) {
-          if (!error.cancelled) toast(`The noise of the instrument could not be fitted: ${error.message}`, { kind: 'warn' });
+          if (!error.canceled) toast(`The noise of the instrument could not be fitted: ${error.message}`, { kind: 'warn' });
         } finally {
           jobs.delete(current);
         }
@@ -951,7 +951,7 @@ export function mountSpectralMode(app, container) {
     const list = unstainedList();
     const sample = unstainedSample();
     if (!sample) {
-      afHost.append(h('p.muted', { style: { margin: 0 } }, 'Mark an unstained control (same cells, no dyes) to extract autofluorescence signatures. Cells often carry several distinct ones (lymphoid, myeloid, dead cells); modelling them removes background from violet and UV dyes.'));
+      afHost.append(h('p.muted', { style: { margin: 0 } }, 'Mark an unstained control (same cells, no dyes) to extract autofluorescence signatures. Cells often carry several distinct ones (lymphoid, myeloid, dead cells); modeling them removes background from violet and UV dyes.'));
       return;
     }
     if (list.length > 1) {
@@ -1072,6 +1072,7 @@ export function mountSpectralMode(app, container) {
     const box = spectraBox(detectors, series);
     const legend = h('div.spectral-legend', series.map((s) => h(`button.chip${ui.hidden.has(s.name) ? '.off' : ''}${ui.hover === s.name ? '.active' : ''}`, {
       type: 'button',
+      'aria-pressed': String(!ui.hidden.has(s.name)),
       title: ui.hidden.has(s.name) ? 'Show' : 'Hide',
       onclick: () => { if (ui.hidden.has(s.name)) ui.hidden.delete(s.name); else ui.hidden.add(s.name); renderTab(); },
       onmouseenter: () => { ui.hover = s.name; box.redraw(); },
@@ -1293,7 +1294,7 @@ export function mountSpectralMode(app, container) {
       return;
     }
     if (!lib.records.length) {
-      host.append(emptyState('library', 'The spectral library is empty', 'Spectra are added to the library from an experiment\'s reference controls (Spectral → Library). Open one, or the 25-colour example, first.'));
+      host.append(emptyState('library', 'The spectral library is empty', 'Spectra are added to the library from an experiment\'s reference controls (Spectral → Library). Open one, or the 25-color example, first.'));
       return;
     }
     lib.id ??= lib.records[0].id;
@@ -1574,7 +1575,7 @@ export function mountSpectralMode(app, container) {
       h('div.stat-tile', h('div.k', 'Largest systematic misfit'), h('div.v', `${(100 * maxAbs).toFixed(1)}%`)),
       h('div.stat-tile', h('div.k', 'Worst detector'), h('div.v', report.worst[0]?.detector ?? '—'))));
     pane.append(systematic
-      ? h('div.callout.warn', { style: { marginTop: '10px' } }, icon('warning'), h('span', `Events in this population leave a systematic signal in ${report.worst.filter((w) => Math.abs(w.relativeResidual) > 0.01).map((w) => w.detector).slice(0, 4).join(', ')} that no reference explains. Typical causes: a dye missing from the reference set, a reference from a degraded tandem or mismatched control, or autofluorescence not modelled (try per-event AF).`))
+      ? h('div.callout.warn', { style: { marginTop: '10px' } }, icon('warning'), h('span', `Events in this population leave a systematic signal in ${report.worst.filter((w) => Math.abs(w.relativeResidual) > 0.01).map((w) => w.detector).slice(0, 4).join(', ')} that no reference explains. Typical causes: a dye missing from the reference set, a reference from a degraded tandem or mismatched control, or autofluorescence not modeled (try per-event AF).`))
       : h('div.callout.ok', { style: { marginTop: '10px' } }, icon('check'), h('span', 'The residuals scatter around zero in every detector: the references explain this population well.')));
     const bands = laserBands(detectors);
     pane.append(h('div.section-title', { style: { marginTop: '14px' } }, 'Median residual per detector (relative to the median signal)'),
@@ -1929,13 +1930,13 @@ export function mountSpectralMode(app, container) {
     }
     if (!samples.length) {
       body.append(emptyState('spectral', 'Spectral unmixing', 'Load raw spectral files (with detectors such as UV1-A … R8-A): a single-stain reference control for each fluorochrome, an unstained control and your samples. CytoWeave computes reference spectra with quality checks, finds autofluorescence signatures, checks the panel and unmixes into channels you can gate.',
-        h('button.btn.primary', { type: 'button', onclick: () => (app.openExample ? app.openExample('spectral-25color') : app.showExamples?.()) }, icon('sparkles'), 'Open the 25-colour spectral example'),
+        h('button.btn.primary', { type: 'button', onclick: () => (app.openExample ? app.openExample('spectral-25color') : app.showExamples?.()) }, icon('sparkles'), 'Open the 25-color spectral example'),
         app.showExamples ? h('button.btn', { type: 'button', onclick: () => app.showExamples() }, 'All examples') : null,
         app.library?.listRecords ? h('button.btn', { type: 'button', onclick: () => { ui.libraryDesign = {}; renderBody(); } }, icon('layers'), 'Design a panel from the spectral library') : null));
       return;
     }
     if (!panelDetectors().length) {
-      body.append(emptyState('spectral', 'No raw spectral detectors', 'None of these files has raw spectral detector channels (UV1-A … R8-A on a Cytek Aurora, or the detector arrays of Sony and BD spectral instruments). Files exported after unmixing contain fluorochrome channels only: analyse those in the Gate view, or load the raw files to unmix here.'));
+      body.append(emptyState('spectral', 'No raw spectral detectors', 'None of these files has raw spectral detector channels (UV1-A … R8-A on a Cytek Aurora, or the detector arrays of Sony and BD spectral instruments). Files exported after unmixing contain fluorochrome channels only: analyze those in the Gate view, or load the raw files to unmix here.'));
       return;
     }
     body.append(h('div.split.spectral-split', leftColumn, h('div', { style: { minWidth: 0 } }, h('div.spectral-tabbar', tabBar), tabHost)));

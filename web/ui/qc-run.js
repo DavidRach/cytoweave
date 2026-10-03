@@ -167,7 +167,7 @@ function peakPool(app) {
   return app.workers['qc-peaks'];
 }
 
-// PeacoQC's per-channel work on several workers: the channels are dealt out in turn (neighbouring
+// PeacoQC's per-channel work on several workers: the channels are dealt out in turn (neighboring
 // channels cost about the same), each worker gets only its channels' columns (shared, not copied,
 // when the page is cross-origin isolated), and the results come back in channel order.
 async function parallelChannels(app, payload, onProgress, jobs) {
@@ -204,12 +204,12 @@ export async function runQC(app, sample, settings, options = {}) {
   const peaco = payload.options.peacoQC;
   const parallel = options.parallel ?? (settings.methods?.peacoQC !== false && peaco.channels.length >= 4 && view.eventCount * peaco.channels.length >= PARALLEL_MIN_VALUES);
   const jobs = [];
-  let cancelled = false;
-  onJob?.({ cancel: () => { cancelled = true; jobs.forEach((job) => job.cancel()); } });
+  let canceled = false;
+  onJob?.({ cancel: () => { canceled = true; jobs.forEach((job) => job.cancel()); } });
   let scale = (fraction, message) => onProgress?.(fraction, message);
   if (parallel) {
     const { eventsPerBin, channelResults } = await parallelChannels(app, payload, onProgress, jobs);
-    if (cancelled) throw Object.assign(new Error('Cancelled.'), { cancelled: true });
+    if (canceled) throw Object.assign(new Error('Canceled.'), { canceled: true });
     payload.options.peacoQC = { ...peaco, eventsPerBin, channelResults };
     scale = (fraction, message) => onProgress?.(0.8 + 0.2 * fraction, message);
   }

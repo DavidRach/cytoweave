@@ -106,7 +106,7 @@ test('recommendation from a model comparison names the best unclipped model and 
   assert.equal(rec.model, 'OLS + AF');
   assert.match(rec.sentence, /20% narrower/);
   assert.ok(rec.caveats.some((c) => /clips values at zero \(up to 48%/.test(c)));
-  assert.ok(rec.caveats.some((c) => /Modelling autofluorescence/.test(c)));
+  assert.ok(rec.caveats.some((c) => /Modeling autofluorescence/.test(c)));
   assert.ok(rec.caveats.some((c) => /5,000 events/.test(c)));
   const tie = recommendFromComparison({ ...report, ranking: [{ name: 'OLS', relativeSpread: 1, clipped: false }, { name: 'OLS + AF', relativeSpread: 0.99, clipped: false }] });
   assert.match(tie.sentence, /about equally/);

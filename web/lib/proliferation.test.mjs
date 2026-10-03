@@ -9,7 +9,7 @@ function close(actual, expected, tolerance, message = '') {
 
 const PRECURSORS = [0.3, 0.15, 0.15, 0.15, 0.1, 0.1, 0.05];
 
-// Dye intensities: precursor fraction Pg gives Pg·2^g cells in generation g, centred at
+// Dye intensities: precursor fraction Pg gives Pg·2^g cells in generation g, centered at
 // peak / dilution^g with log-normal spread sdLog (decades); optional additive noise (linear).
 function simulate({ precursors = PRECURSORS, n = 60000, peak = 50000, sdLog = 0.05, dilution = 2, noise = 0, seed = 1 } = {}) {
   const random = createRandom(seed);

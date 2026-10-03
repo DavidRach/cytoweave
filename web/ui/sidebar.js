@@ -17,8 +17,11 @@ import {
   updateGroup,
   updateSample,
 } from '../lib/workspace.js';
-import { categoricalColor } from '../lib/colormaps.js';
+import { categoricalColor, shownColor } from '../lib/colormaps.js';
 import { prefs } from './storage.js';
+
+// The sample list's status dots, in words (for screen readers and on hover).
+const SAMPLE_STATUS = { loaded: 'Loaded', loading: 'Loading', error: 'Could not be read', missing: 'File not in the library' };
 
 // Drag handles: the sidebar's width, and the split between samples and populations.
 function installSplitters(sidebar, samplesPanel) {
@@ -142,7 +145,7 @@ export function mountSidebar(app) {
   function addToGroupMenu(anchor, ids) {
     showMenu(anchor, store.ws.groups.map((group) => ({
       label: group.name,
-      swatch: group.color,
+      swatch: shownColor(store.ws, group, 'groups'),
       onSelect: () => store.commit(updateGroup(store.ws, group.id, { sampleIds: [...new Set([...group.sampleIds, ...ids])] }), `Add to ${group.name}`),
     })));
   }
@@ -199,7 +202,7 @@ export function mountSidebar(app) {
       },
     }, color ? h('span.swatch', { style: { background: color } }) : null, label, h('span.count', String(count)));
     chips.append(chip('All', ws.samples.length, null));
-    for (const group of ws.groups) chips.append(chip(group.name, group.sampleIds.length, group.id, group.color));
+    for (const group of ws.groups) chips.append(chip(group.name, group.sampleIds.length, group.id, shownColor(ws, group, 'groups')));
     const controls = ws.samples.filter((s) => s.role !== 'sample').length;
     if (controls) chips.append(chip('Controls', controls, 'role:single-stain'));
   }
@@ -223,12 +226,15 @@ export function mountSidebar(app) {
     const ws = store.ws;
     sampleCount.textContent = String(ws.samples.length);
     renderChips();
+    const hadFocus = sampleBody.contains(document.activeElement);
     clear(sampleBody);
     if (!ws.samples.length) {
       sampleBody.append(h('div.drop-hint', { onclick: () => app.pickFiles() }, icon('upload'), h('div', 'Drop FCS files here or click to add them'), h('div.muted', 'or open an example from the welcome page')));
       return;
     }
-    const list = h('ul.sample-list', { role: 'listbox', 'aria-label': 'Samples' });
+    // One stop for the keyboard: ↑ ↓ move between samples (the app's shortcut), the selected one
+    // announced as the active option.
+    const list = h('ul.sample-list', { role: 'listbox', 'aria-label': 'Samples', tabIndex: 0 });
     const gateId = store.ui.gateId;
     const gate = gateId ? gateById(ws, gateId) : null;
     for (const sample of visibleSamples()) {
@@ -247,6 +253,8 @@ export function mountSidebar(app) {
       const groups = ws.groups.filter((g) => g.sampleIds.includes(sample.id));
       const meta = [sample.meta?.condition, sample.meta?.subject, sample.meta?.batch && `batch ${sample.meta.batch}`].filter(Boolean).join(' · ');
       const item = h(`li.sample-item${sample.id === store.ui.sampleId ? '.selected' : ''}${store.ui.selectedSamples.has(sample.id) ? '.multi' : ''}`, {
+        id: `sample-option-${sample.id}`,
+        'aria-selected': String(sample.id === store.ui.sampleId),
         role: 'option',
         title: `${sample.fileName}\n${formatCount(sample.eventCount)} events · ${sample.fcsVersion}${data.errors.get(sample.id) ? `\n${data.errors.get(sample.id)}` : ''}`,
         dataset: { id: sample.id },
@@ -257,19 +265,21 @@ export function mountSidebar(app) {
           sampleActions({ getBoundingClientRect: () => ({ left: event.clientX, bottom: event.clientY, top: event.clientY, right: event.clientX }) });
         },
       },
-      h(`span.status.${status}`),
+      h(`span.status.${status}`, { role: 'img', 'aria-label': SAMPLE_STATUS[status] ?? 'Not loaded', title: SAMPLE_STATUS[status] ?? 'Not loaded' }),
       h('div', { style: { minWidth: 0 } },
         h('div.name', sample.name),
         h('div.sub',
           h('span', formatCount(sample.eventCount)),
           sample.role !== 'sample' ? h('span.badge', ROLE_LABELS[sample.role] ?? sample.role) : null,
           meta ? h('span', meta) : null,
-          ...groups.slice(0, 2).map((g) => h('span.swatch', { style: { background: g.color }, title: g.name })))),
+          ...groups.slice(0, 2).map((g) => h('span.swatch', { style: { background: shownColor(store.ws, g, 'groups') }, title: g.name })))),
       h('div.right.num', freq));
       list.append(item);
     }
     sampleBody.append(list);
     sampleBody.querySelector('.sample-item.selected')?.scrollIntoView({ block: 'nearest' });
+    if (store.ui.sampleId) list.setAttribute('aria-activedescendant', `sample-option-${store.ui.sampleId}`);
+    if (hadFocus) list.focus({ preventScroll: true });
   }
 
   function clickSample(event, id) {
@@ -306,18 +316,59 @@ export function mountSidebar(app) {
   function renderPopulations() {
     const ws = store.ws;
     popHead.querySelector('[title^="Backgate"]').classList.toggle('active', store.ui.backgate);
+    const hadFocus = popBody.contains(document.activeElement);
     clear(popBody);
     const sampleId = store.ui.sampleId;
     const view = sampleId ? data.view(sampleId) : null;
     for (const proposal of openProposals(ws)) popBody.append(proposalStrip(ws, proposal, view));
-    const tree = h('ul.tree', { role: 'tree' });
+    // A tree with one focusable row (the selected one): ↑ ↓ move, → expands or goes to the first
+    // child, ← collapses or goes to the parent, Home and End go to the ends (WAI-ARIA tree pattern).
+    const tree = h('ul.tree', { role: 'tree', 'aria-label': 'Populations', onkeydown: (event) => treeKeys(event, tree) });
     const rootRow = row({ id: null, name: 'All events', color: '#94a3b8' }, view, 0, ws);
     tree.append(rootRow);
     popBody.append(tree);
+    if (hadFocus) tree.querySelector('[role="treeitem"][tabindex="0"]')?.focus();
     if (!ws.gates.length) {
       popBody.append(h('div.empty', { style: { padding: '16px 8px' } },
         h('p', 'No gates yet. Pick a drawing tool above a plot (R rectangle, P polygon, E ellipse, Q quadrant, W magic wand) and draw on the plot.')));
     }
+  }
+
+  function treeKeys(event, tree) {
+    const rows = [...tree.querySelectorAll('[role="treeitem"]')];
+    const current = event.target.closest?.('[role="treeitem"]');
+    const at = rows.indexOf(current);
+    if (at < 0) return;
+    const select = (el) => {
+      if (!el) return;
+      const id = el.dataset.gate || null;
+      app.selectGate(id);
+    };
+    const id = current.dataset.gate || null;
+    const expanded = current.getAttribute('aria-expanded');
+    const toggle = (open) => {
+      const collapsed = new Set(store.ui.collapsed ?? []);
+      if (open) collapsed.delete(id);
+      else collapsed.add(id);
+      store.setUI({ collapsed }, ['tree']);
+    };
+    switch (event.key) {
+      case 'ArrowDown': select(rows[at + 1]); break;
+      case 'ArrowUp': select(rows[at - 1]); break;
+      case 'Home': select(rows[0]); break;
+      case 'End': select(rows[rows.length - 1]); break;
+      case 'ArrowRight':
+        if (expanded === 'false') toggle(true);
+        else if (expanded === 'true') select(rows[at + 1]);
+        break;
+      case 'ArrowLeft':
+        if (expanded === 'true') toggle(false);
+        else select(current.parentElement?.parentElement?.closest('li')?.querySelector(':scope > [role="treeitem"]'));
+        break;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   // --- Proposals from agents ---------------------------------------------------------------------
@@ -410,6 +461,7 @@ export function mountSidebar(app) {
     const twisty = h(`button.twisty${expanded ? '.open' : ''}`, {
       type: 'button',
       tabIndex: -1,
+      'aria-label': expanded ? `Collapse ${gate.name}` : `Expand ${gate.name}`,
       style: { visibility: children.length ? 'visible' : 'hidden' },
       onclick: (event) => {
         event.stopPropagation();
@@ -435,6 +487,12 @@ export function mountSidebar(app) {
       gate.meta?.origin === 'agent' && !proposed ? h('span.auto-mark', { title: origin }, icon('sparkles')) : null);
     const rowEl = h(`div.tree-row${selected ? '.selected' : ''}${applies ? '' : '.inapplicable'}${proposed ? '.proposed' : ''}${removal ? '.pending-removal' : ''}`, {
       role: 'treeitem',
+      tabIndex: selected ? 0 : -1,
+      'aria-selected': String(selected),
+      'aria-level': String(depth + 1),
+      ...(children.length ? { 'aria-expanded': String(Boolean(expanded)) } : {}),
+      'aria-label': `${gate.name}${Number.isFinite(freq) && id ? `, ${formatPercent(freq)} of parent` : ''}${Number.isFinite(count) ? `, ${formatCount(count)} events` : ''}${proposed ? ', proposed' : ''}`,
+      dataset: { gate: id ?? '' },
       draggable: Boolean(id),
       title: applies ? '' : 'This gate does not apply to the current sample (its group scope excludes it).',
       onclick: () => app.selectGate(id),
@@ -466,14 +524,14 @@ export function mountSidebar(app) {
       },
     },
     twisty,
-    h('span.swatch', { style: { background: gate.color ?? '#94a3b8' } }),
+    h('span.swatch', { style: { background: shownColor(store.ws, gate) ?? '#94a3b8' } }),
     label,
     marks,
     h('span.freq', Number.isFinite(freq) && id ? formatPercent(freq) : ''),
     h('span.count', Number.isFinite(count) ? formatCount(count) : ''));
-    const li = h('li', rowEl);
+    const li = h('li', { role: 'none' }, rowEl);
     if (children.length && expanded) {
-      const sub = h('ul.tree');
+      const sub = h('ul.tree', { role: 'group' });
       for (const child of children) sub.append(row(child, view, depth + 1, ws));
       li.append(sub);
     }
@@ -482,8 +540,8 @@ export function mountSidebar(app) {
 
   return {
     update(topics) {
-      if (topics.has('ws') || topics.has('data') || topics.has('selection') || topics.has('sample') || topics.has('gate')) renderSamples();
-      if (topics.has('ws') || topics.has('data') || topics.has('sample') || topics.has('gate') || topics.has('tree') || topics.has('backgate')) renderPopulations();
+      if (topics.has('ws') || topics.has('data') || topics.has('selection') || topics.has('sample') || topics.has('gate') || topics.has('colors')) renderSamples();
+      if (topics.has('ws') || topics.has('data') || topics.has('sample') || topics.has('gate') || topics.has('tree') || topics.has('backgate') || topics.has('colors')) renderPopulations();
     },
     visibleSamples,
     render() {

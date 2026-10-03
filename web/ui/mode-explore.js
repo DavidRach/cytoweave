@@ -1,7 +1,7 @@
 // Explore: high-dimensional analysis. Cells of a population, across samples, are clustered
 // (FlowSOM or Leiden/PhenoGraph, on every event of the population) and embedded (UMAP, t-SNE or
 // PCA, on an equal subsample per sample). Every embedding comes with an honesty report: how well
-// it keeps neighbourhoods, how it mixes samples, where it is unreliable. Clusters get a marker
+// it keeps neighborhoods, how it mixes samples, where it is unreliable. Clusters get a marker
 // heatmap, enrichment labels and abundances, and become populations with one click.
 
 import { h, icon, clear, formatCount, formatPercent, downloadBlob } from './dom.js';
@@ -109,12 +109,12 @@ export function mountExploreMode(app, container) {
     const embeddingSeg = h('div.segmented', ...EMBEDDINGS.map((m) => h(`button${settings.embedding === m.id ? '.active' : ''}`, { type: 'button', onclick: () => { settings.embedding = m.id; renderSetup(); } }, m.label)));
     const clusterSeg = h('div.segmented', ...CLUSTERINGS.map((m) => h(`button${settings.clustering === m.id ? '.active' : ''}`, { type: 'button', title: m.label, onclick: () => { settings.clustering = m.id; renderSetup(); } }, m.short ?? m.label)));
     const embeddingParams = settings.embedding === 'umap'
-      ? h('div.row', field('Neighbours', number('nNeighbors', 1, 2, 200), 'UMAP n_neighbors (default 15): larger values favor global structure.'), field('Minimum distance', number('minDist', 0.05, 0, 1), 'UMAP min_dist (default 0.1): how tightly points pack.'))
-      : settings.embedding === 'tsne' ? h('div.row', field('Perplexity', number('perplexity', 5, 5, 200), 'Effective number of neighbours (default 30). The learning rate follows opt-SNE (n/12).')) : null;
+      ? h('div.row', field('Neighbors', number('nNeighbors', 1, 2, 200), 'UMAP n_neighbors (default 15): larger values favor global structure.'), field('Minimum distance', number('minDist', 0.05, 0, 1), 'UMAP min_dist (default 0.1): how tightly points pack.'))
+      : settings.embedding === 'tsne' ? h('div.row', field('Perplexity', number('perplexity', 5, 5, 200), 'Effective number of neighbors (default 30). The learning rate follows opt-SNE (n/12).')) : null;
     const clusterParams = settings.clustering === 'flowsom'
       ? h('div.row', field('Metaclusters', number('k', 1, 2, 60), 'Number of metaclusters by consensus clustering of the SOM nodes.'), field('Grid', number('xdim', 1, 3, 30), 'Self-organizing map of grid × grid nodes (default 10 × 10).'))
-      : settings.clustering === 'phenograph' || settings.clustering === 'louvain' ? h('div.row', field('Neighbours', number('leidenK', 1, 5, 200), 'k of the nearest-neighbour graph (PhenoGraph default 30).'), field('Resolution', number('resolution', 0.1, 0.05, 5), `${settings.clustering === 'louvain' ? 'Louvain' : 'Leiden'} resolution: higher gives more, smaller clusters.`))
-        : settings.clustering === 'kmeans' ? h('div.row', field('Clusters', number('k', 1, 2, 100), 'k-means makes exactly this many clusters (k-means++ seeding). Clusters are trained on the embedded subsample; every other event goes to the nearest centre.')) : null;
+      : settings.clustering === 'phenograph' || settings.clustering === 'louvain' ? h('div.row', field('Neighbors', number('leidenK', 1, 5, 200), 'k of the nearest-neighbor graph (PhenoGraph default 30).'), field('Resolution', number('resolution', 0.1, 0.05, 5), `${settings.clustering === 'louvain' ? 'Louvain' : 'Leiden'} resolution: higher gives more, smaller clusters.`))
+        : settings.clustering === 'kmeans' ? h('div.row', field('Clusters', number('k', 1, 2, 100), 'k-means makes exactly this many clusters (k-means++ seeding). Clusters are trained on the embedded subsample; every other event goes to the nearest center.')) : null;
     const total = samplingPlan(samples.map((s) => s.eventCount), settings.perSample, settings.maxTotal).reduce((a, b) => a + b, 0);
     setupHost.append(
       h('div.pane',
@@ -318,7 +318,7 @@ export function mountExploreMode(app, container) {
       S.hidden = new Set();
       progress.done(`Done: ${k ? `${k} clusters` : ''}${k && embedding ? ' and ' : ''}${embedding ? `a ${method.label} of ${formatCount(n)} events` : ''}.`);
     } catch (error) {
-      if (!error.cancelled) progress.fail(error.message);
+      if (!error.canceled) progress.fail(error.message);
     } finally {
       running = null;
       if (!destroyed) renderAll();
@@ -376,9 +376,9 @@ export function mountExploreMode(app, container) {
         h('p', r ? 'Run again with UMAP, t-SNE or PCA to see the cells as a map.' : 'Choose a population, markers and methods, then Run. Clusters become populations you can gate, plot and compare; embeddings come with a report of how faithful they are.')));
       return;
     }
-    const select = h('select.input.small', { onchange: (e) => { S.colorBy = e.target.value; S.highlight = null; S.hidden = new Set(); renderPlot(); } },
+    const select = h('select.input.small', { 'aria-label': 'Color the map by', onchange: (e) => { S.colorBy = e.target.value; S.highlight = null; S.hidden = new Set(); renderPlot(); } },
       ...colorOptions(r).map(([value, label]) => h('option', { value, selected: S.colorBy === value }, label)));
-    const shade = h('label.check', { title: 'Dim events whose map neighbours mostly come from elsewhere in the data (fewer than two in five among their wider neighbourhood)' }, h('input', { type: 'checkbox', checked: S.shade, onchange: (e) => { S.shade = e.target.checked; renderPlot(); } }), 'Shade unreliable regions');
+    const shade = h('label.check', { title: 'Dim events whose map neighbors mostly come from elsewhere in the data (fewer than two in five among their wider neighborhood)' }, h('input', { type: 'checkbox', checked: S.shade, onchange: (e) => { S.shade = e.target.checked; renderPlot(); } }), 'Shade unreliable regions');
     const lassoButton = h('button.btn.small', { type: 'button', title: 'Draw around cells on the map to make a population of them' }, icon('lasso'), 'Lasso a population');
     const canvas = h('canvas.explore-canvas');
     const wrap = h('div.explore-canvas-wrap', canvas);
@@ -521,9 +521,9 @@ export function mountExploreMode(app, container) {
     return { ...r, n, embedding, matrix, sampleOf, labels, loaded, reliability: null };
   }
 
-  // Places other samples' events on the UMAP: each event goes among its nearest neighbours of the
+  // Places other samples' events on the UMAP: each event goes among its nearest neighbors of the
   // map's own events (UMAP's transform), the map itself unchanged; clusters come as for the
-  // events outside the subsample (FlowSOM's map, or the nearest cluster centre).
+  // events outside the subsample (FlowSOM's map, or the nearest cluster center).
   async function placeSamples() {
     const r = S.run;
     if (!r?.embedding || r.method.id !== 'umap') return;
@@ -539,7 +539,7 @@ export function mountExploreMode(app, container) {
     }));
     const ok = await new Promise((resolve) => showDialog({
       title: 'Place samples on this map',
-      content: h('div', h('p.muted', `Up to ${formatCount(r.settings.perSample)} events of ${r.popId === ROOT ? 'all events' : gatePath(ws, r.popId)} per sample are positioned among their nearest neighbours on the map, which does not change. Their quality is not measured: a sample unlike any on the map lands on its nearest look-alikes.`), list),
+      content: h('div', h('p.muted', `Up to ${formatCount(r.settings.perSample)} events of ${r.popId === ROOT ? 'all events' : gatePath(ws, r.popId)} per sample are positioned among their nearest neighbors on the map, which does not change. Their quality is not measured: a sample unlike any on the map lands on its nearest look-alikes.`), list),
       buttons: [{ label: 'Cancel', ghost: true, value: false }, { label: 'Place', primary: true, value: true, onClick: () => true }],
       onClose: (result) => resolve(Boolean(result)),
     }));
@@ -643,27 +643,27 @@ export function mountExploreMode(app, container) {
     const r = S.run;
     qualityHost.append(h('h3', icon('qc'), 'How faithful is the map?'));
     if (!r?.quality) {
-      qualityHost.append(h('p.muted', 'Embeddings are summaries, not proof of populations: islands can split one population or merge several, and distances between islands mean little. CytoWeave measures, for every map, how well it keeps each cell\'s neighbours and whether samples or batches drive the layout.'));
+      qualityHost.append(h('p.muted', 'Embeddings are summaries, not proof of populations: islands can split one population or merge several, and distances between islands mean little. CytoWeave measures, for every map, how well it keeps each cell\'s neighbors and whether samples or batches drive the layout.'));
       return;
     }
     const q = r.quality;
-    // good: true (green), false (amber) or null (no judgement).
-    const tile = (label, value, good, hint) => h('div.stat-tile', { title: hint }, h('div.k', label), h('div.v', { style: { color: good === null ? 'var(--text)' : good ? 'var(--ok)' : 'var(--warn)' } }, value));
+    // good: true (green), false (amber) or null (no judgment).
+    const tile = (label, value, good, hint) => h('div.stat-tile', { title: hint }, h('div.k', label), h('div.v', { style: { color: good === null ? 'var(--text)' : good ? 'var(--ok-text)' : 'var(--warn-text)' } }, value));
     const knnLost = q.knnPreservation < Math.max(0.05, 10 * q.chance);
     qualityHost.append(h('div.stat-grid',
-      tile('Trustworthiness', q.trustworthiness.toFixed(2), q.trustworthiness >= 0.92, 'Are map neighbours true neighbours? (Venna & Kaski 2001; 1 is perfect)'),
-      tile('Continuity', q.continuity.toFixed(2), q.continuity >= 0.92, 'Do true neighbours stay together on the map?'),
-      tile(`kNN kept (k=${q.k})`, formatPercent(100 * q.knnPreservation), knnLost ? false : q.knnPreservation >= 0.35 ? true : null, `Share of each event's ${q.k} nearest neighbours (in marker space) that stay among its nearest on the map; chance is ${formatPercent(100 * q.chance)}. A strict test: among similar cells the very nearest are largely noise, so t-SNE and UMAP usually keep a minority of them.`)));
+      tile('Trustworthiness', q.trustworthiness.toFixed(2), q.trustworthiness >= 0.92, 'Are map neighbors true neighbors? (Venna & Kaski 2001; 1 is perfect)'),
+      tile('Continuity', q.continuity.toFixed(2), q.continuity >= 0.92, 'Do true neighbors stay together on the map?'),
+      tile(`kNN kept (k=${q.k})`, formatPercent(100 * q.knnPreservation), knnLost ? false : q.knnPreservation >= 0.35 ? true : null, `Share of each event's ${q.k} nearest neighbors (in marker space) that stay among its nearest on the map; chance is ${formatPercent(100 * q.chance)}. A strict test: among similar cells the very nearest are largely noise, so t-SNE and UMAP usually keep a minority of them.`)));
     if (q.batch && q.batch.categories > 1) {
-      qualityHost.append(h('div.kv', { style: { marginTop: '10px' } },
+      qualityHost.append(h('dl.kv', { style: { marginTop: '10px' } },
         h('dt', 'Sample mixing on the map'), h('dd', formatPercent(100 * q.batch.mixingEmbedding)),
         h('dt', 'Sample mixing in the data'), h('dd', formatPercent(100 * q.batch.mixingOriginal))));
     }
     for (const w of q.warnings ?? []) qualityHost.append(h(`div.callout.${w.level === 'warning' ? 'warn' : 'accent'}`, { style: { marginTop: '8px' } }, icon(w.level === 'warning' ? 'warning' : 'info'), h('span', w.message)));
-    if (!(q.warnings ?? []).length) qualityHost.append(h('div.callout.ok', { style: { marginTop: '8px' } }, icon('check'), h('span', 'The map keeps neighbourhoods well and samples mix as they do in the data.')));
+    if (!(q.warnings ?? []).length) qualityHost.append(h('div.callout.ok', { style: { marginTop: '8px' } }, icon('check'), h('span', 'The map keeps neighborhoods well and samples mix as they do in the data.')));
     qualityHost.append(
       h('button.btn.small', { type: 'button', style: { marginTop: '10px' }, disabled: Boolean(running), onclick: () => seedCheck() }, icon('history'), 'Compare with another seed'),
-      r.stability ? h('div.kv', { style: { marginTop: '8px' } }, h('dt', 'Neighbours shared between seeds'), h('dd', formatPercent(100 * r.stability.neighbourOverlap)), h('dt', 'Arrangement change (Procrustes)'), h('dd', r.stability.disparity.toFixed(2))) : null,
+      r.stability ? h('dl.kv', { style: { marginTop: '8px' } }, h('dt', 'Neighbors shared between seeds'), h('dd', formatPercent(100 * r.stability.neighborOverlap)), h('dt', 'Arrangement change (Procrustes)'), h('dd', r.stability.disparity.toFixed(2))) : null,
       h('p.muted', { style: { fontSize: '11px', margin: '8px 0 0' } }, 'Trustworthiness and continuity: Venna & Kaski 2001. Sample mixing: LISI, Korsunsky et al. 2019 (Harmony), as a fraction of perfect mixing.'));
   }
 
@@ -677,7 +677,7 @@ export function mountExploreMode(app, container) {
       const second = await app.worker('dimred').call(type, { data: r.matrix.slice(), n: r.n, dim: r.dim, options, keepModel: false }, { onProgress: (f, m) => progress.update(f * 0.8, m) });
       const quality = await app.worker('dimred').call('seedStability', { a: r.embedding.slice(), b: second.embedding, n: r.n, k: 15, options: { dim: 2 } }, { onProgress: (f) => progress.update(0.8 + 0.2 * f) });
       r.stability = quality;
-      progress.done(`Seeds share ${formatPercent(100 * quality.neighbourOverlap)} of map neighbours.`);
+      progress.done(`Seeds share ${formatPercent(100 * quality.neighborOverlap)} of map neighbors.`);
       renderQuality();
     } catch (error) {
       progress.fail(error.message);

@@ -1,0 +1,72 @@
+---
+title: Accessibility
+description: Using CytoWeave with color blindness, from the keyboard and with a screen reader: color-vision-friendly colors, keyboard operation, text descriptions of plots, contrast, how they are checked, and what is not yet covered.
+lede: Colors that stay distinguishable with color blindness, keyboard operation, and plots described in words.
+---
+      <h2 id="color-vision">Color-vision-friendly colors</h2>
+      <shot name="color-vision" alt="The Gate view with color-vision-friendly colors: populations in blue, orange, green, vermillion, sky blue and pink, density plots in viridis, and the Appearance menu with the setting ticked">The PBMC example with color-vision-friendly colors on.</shot>
+      <p>About one man in twelve and one woman in two hundred see colors differently. The default palette was chosen to look good and to be distinct with typical vision; for someone with deuteranopia, its orange and gold populations look the same. Turn on <strong>Color-vision-friendly colors</strong> in the <strong>Appearance</strong> menu (the sun or moon button at the top right, or search for it with <kbd>⌘K</kbd> or <kbd>Ctrl+K</kbd>):</p>
+      <ul>
+        <li><strong>Populations, groups and clusters</strong> take a palette that stays distinct with protanopia, deuteranopia and tritanopia: Okabe and Ito's colors first, then colors chosen one by one to be as far as possible from the others in every kind of vision. Populations are colored in the order of the gating tree, whatever colors they were given; their own colors come back when the setting is off, and the workspace is not changed.</li>
+        <li><strong>Heat maps</strong> drawn with the rainbow maps (Classic, Turbo) are drawn with viridis, which gets lighter steadily from low to high in every kind of vision. The plot's color-map menu says so.</li>
+        <li><strong>Status colors</strong> (passed, warning, failed) become blue, orange and magenta instead of green, amber and red.</li>
+      </ul>
+      <p>The setting is kept for this computer. Figures and plots exported while it is on use its colors.</p>
+      <p>How far apart the colors look, as the smallest color difference (CIEDE2000) between any two of the first eight colors, with each vision simulated as Machado et al. (2009) describe:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Palette</th><th>Typical</th><th>Protanopia</th><th>Deuteranopia</th><th>Tritanopia</th></tr></thead>
+          <tbody>
+            <tr><td>Default</td><td>16.4</td><td>1.2</td><td>0.8</td><td>4.4</td></tr>
+            <tr><td>Color-vision-friendly</td><td>19.2</td><td>12.3</td><td>12.5</td><td>11.1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Below about 2 two colors look the same; above 10 they are clearly different. Across all twenty colors of the friendly palette the smallest difference is 7.2.</p>
+      <p>Whatever the setting, nothing is shown by color alone: status badges carry words or numbers ("QC 79", "same", "out of control"), and status dots have a text equivalent for screen readers and on hover.</p>
+
+      <h2 id="keyboard">Keyboard</h2>
+      <p>Every view and action can be reached without a mouse:</p>
+      <ul>
+        <li><kbd>⌘K</kbd> (<kbd>Ctrl+K</kbd>) searches commands, views, samples and populations; <kbd>⌘1</kbd>…<kbd>⌘9</kbd> go to a view; <kbd>?</kbd> lists the shortcuts.</li>
+        <li><kbd>Tab</kbd> moves between controls, and a focus ring shows where you are (it appears only when you use the keyboard).</li>
+        <li>In the <strong>sample list</strong>, <kbd>↑</kbd> and <kbd>↓</kbd> move between samples.</li>
+        <li>In the <strong>population tree</strong>, <kbd>↑</kbd> and <kbd>↓</kbd> move between populations, <kbd>→</kbd> opens a branch or goes to its first child, <kbd>←</kbd> closes it or goes to the parent, and <kbd>Home</kbd> and <kbd>End</kbd> go to the ends. <kbd>F2</kbd> renames, <kbd>Delete</kbd> deletes.</li>
+        <li>The selected gate moves with the arrow keys (<kbd>⇧</kbd> for larger steps), and the limits of ranges and rectangles can be typed in the inspector.</li>
+        <li>Dialogs keep the focus inside until they close, close with <kbd>Esc</kbd>, confirm with <kbd>⌘↵</kbd>, and give the focus back to where it was.</li>
+        <li>Tables and other scrolling regions can be focused and scrolled with the arrow keys.</li>
+      </ul>
+
+      <h2 id="screen-readers">Screen readers</h2>
+      <ul>
+        <li>Each plot has a text description: its type, axes, population and event count, and the gates drawn on it with their frequencies ("Pseudocolor plot FSC-A against SSC-A: Live, 84.3K events. Gates: Lymphocytes 79.4%; Monocytes 17.8%").</li>
+        <li>The population tree is announced as a tree, each population with its frequency and count.</li>
+        <li>Tables of statistics, comparisons and QC results are ordinary tables.</li>
+        <li>Buttons that show only an icon have names, and menus and selects have labels.</li>
+      </ul>
+
+      <h2 id="checks">How it is checked</h2>
+      <ul>
+        <li>The axe-core rules for WCAG 2.1 levels A and AA run in every documentation scene, in both themes (<code>node docs/capture/capture.mjs --audit</code>).</li>
+        <li>The validation suite's <code>accessibility</code> checks compute the contrast of every text color on every surface it is used on, in both themes with the setting off and on (at least 4.5:1 everywhere), and the distances between the palettes' colors in every kind of vision.</li>
+      </ul>
+
+      <h2 id="limits">What is not covered yet</h2>
+      <ul>
+        <li>Drawing a new gate needs a pointer (or an <a href="agents.html">AI agent</a>, which creates gates from coordinates). From the keyboard you can select, move, rename and delete gates and type their limits.</li>
+        <li>A plot's events cannot be explored point by point without a pointer; its description and the statistics table give the numbers.</li>
+        <li>Testing with screen readers by people who use them every day has not been done. The walkthrough below is the test we would like reports from.</li>
+      </ul>
+
+      <h2 id="walkthrough">A screen-reader walkthrough</h2>
+      <p>With VoiceOver (macOS) or NVDA (Windows), from a fresh window:</p>
+      <ol>
+        <li>Open the start page and choose the <strong>PBMC immunophenotyping</strong> example. The samples load and the Gate view opens.</li>
+        <li>Choose <strong>Add suggested gates</strong> (offered with the examples). Move to the population tree and go down to <strong>Lymphocytes</strong>: the frequency and count are read.</li>
+        <li>Move to the plots: each is read as a description with its gates.</li>
+        <li>Move to the sample list and step to <strong>D01_Stim</strong>: the plots and the tree follow.</li>
+        <li>Open <strong>QC</strong> with <kbd>⌘K</kbd>, run QC, and find the sample with a clog in the results.</li>
+        <li>Open <strong>Compare</strong>, choose T cells, and read the result table.</li>
+        <li>Open the Appearance menu and turn on color-vision-friendly colors, then off again.</li>
+      </ol>
+      <p>Please report anything that is not read, is read wrongly, or cannot be reached, on <a href="{{github}}/issues">GitHub</a>.</p>

@@ -8,7 +8,7 @@
 //
 // Suites: fcs, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
-// multiverse, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, diva, fortessa,
+// multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, diva, fortessa,
 // bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
@@ -27,6 +27,9 @@ import { writePDF } from '../web/lib/pdf.js';
 import { characterize, findBeadPeaks, REJECT_RULES } from '../web/lib/qb.js';
 import { beadRun, runFlags, seriesRun } from '../web/lib/instrument-record.js';
 import { compareWithLibrary, latestEntries, libraryEntry, spectrumOn, withEntries as withSpectra } from '../web/lib/spectral-library.js';
+import { textPairs, themeTokens } from './accessibility-cases.mjs';
+import { VISIONS, lab as labOf, paletteReport, simulate } from '../web/lib/colorvision.js';
+import { CATEGORICAL, CATEGORICAL_CVD, colormapColor } from '../web/lib/colormaps.js';
 import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositive, withQCGate } from './multiverse-cases.mjs';
 import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
 import { EXPERT_GATES, ORDER, TRUTH, adaptTopDown, againstExperts, buildCohort, expertCorrection, expertWorkspace, f1 as truthF1, randomGains } from './autogating-cases.mjs';
@@ -901,11 +904,11 @@ const suites = {
   },
 
   // Instrument characterization: 30 daily runs of 8-peak beads whose detectors' true Q, B and
-  // CV0 are known, with three planted problems (a PMT ageing from run 21, a dirty flow cell on
+  // CV0 are known, with three planted problems (a PMT aging from run 21, a dirty flow cell on
   // run 25, a weaker violet laser from run 27) against a baseline of the first 20 runs.
   // Counterfactual preprocessing (web/lib/multiverse.js) on the PBMC example, six donors
   // unstimulated and stimulated, with known answers: a real effect that must hold, a null, and
-  // artefacts that one choice removes (a detector gain in one batch, clogs in one group, one batch
+  // artifacts that one choice removes (a detector gain in one batch, clogs in one group, one batch
   // compensated with the wrong matrix), which must be named; then how often a chance difference
   // passes as robust.
   multiverse() {
@@ -1048,7 +1051,7 @@ const suites = {
     const pmt = firstFlag((f) => f.channel === 'BV421-A' && f.metric === 'Q');
     const flowCell = firstFlag((f) => f.channel === 'FITC-A' && f.metric === 'B');
     const laser = flags.findIndex((list) => ['BV421-A', 'BV510-A', 'BV605-A', 'BV650-A', 'BV711-A', 'BV786-A'].every((ch) => list.some((f) => f.channel === ch && f.metric === 'level'))) + 1;
-    check('instrument', 'Levey–Jennings: first run flagged for each planted problem (PMT ageing from run 21, dirty flow cell from 25, weaker violet laser from 27, all six violet detectors)', `PMT run ${pmt}; flow cell run ${flowCell}; laser run ${laser}`, pmt >= 21 && pmt <= 23 && flowCell === 25 && laser === 27, 'within 2 runs, at once, at once');
+    check('instrument', 'Levey–Jennings: first run flagged for each planted problem (PMT aging from run 21, dirty flow cell from 25, weaker violet laser from 27, all six violet detectors)', `PMT run ${pmt}; flow cell run ${flowCell}; laser run ${laser}`, pmt >= 21 && pmt <= 23 && flowCell === 25 && laser === 27, 'within 2 runs, at once, at once');
     let falseFlags = 0;
     let series = 0;
     for (let i = 20; i < runs.length; i += 1) {
@@ -1466,12 +1469,12 @@ const suites = {
       const [wavelength, , width] = filter.split(',');
       const columns = columnsOf(d);
       // Bead singlets: within 4 robust SDs of the median FSC-A and SSC-A.
-      const centre = (values) => {
+      const center = (values) => {
         const sorted = Float64Array.from(values).sort();
         return [sorted[Math.floor(sorted.length / 2)], (sorted[Math.floor(sorted.length * 0.75)] - sorted[Math.floor(sorted.length * 0.25)]) / 1.349];
       };
-      const [fm, fs] = centre(columns['FSC-A']);
-      const [sm, ss] = centre(columns['SSC-A']);
+      const [fm, fs] = center(columns['FSC-A']);
+      const [sm, ss] = center(columns['SSC-A']);
       const keep = [];
       for (let e = 0; e < d.eventCount; e += 1) if (Math.abs(columns['FSC-A'][e] - fm) < 4 * fs && Math.abs(columns['SSC-A'][e] - sm) < 4 * ss) keep.push(e);
       const use = keep.length >= 500 ? keep : null;
@@ -1654,6 +1657,45 @@ const suites = {
       const clusters = run.files[0].clusters ? `, given R's metacluster of each event` : '';
       check('bioconductor', `${run.method} of CytoNorm ${versions.CytoNorm}: normalized values agree (${run.files.length} files, ${cn.channels.length} channels, ${run.nQ} quantiles${clusters})`, `within ${worst.worst.toExponential(1)} (worst ${worst.where})`, worst.worst < tolerance, required);
     }
+  },
+  // Colors anyone can read and tell apart: every text color on every surface it is used on
+  // (WCAG AA, 4.5:1), in both themes with color-vision-friendly colors off and on; and how far
+  // apart the palettes' colors look with protanopia, deuteranopia and tritanopia (Machado et al.
+  // 2009; CIEDE2000). The interface itself is audited in the browser (docs/capture/capture.mjs
+  // --audit, axe-core).
+  accessibility() {
+    const css = readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8');
+    for (const [name, tokens] of Object.entries(themeTokens(css))) {
+      const pairs = textPairs(tokens);
+      const failing = pairs.filter((p) => p.ratio < 4.5);
+      const worst = pairs.reduce((a, b) => (b.ratio < a.ratio ? b : a));
+      check('accessibility', `text contrast, ${name} theme${name.includes('cvd') ? ' (color-vision-friendly colors)' : ''}: ${pairs.length} text-on-surface pairs`, failing.length ? failing.map((p) => `${p.use} ${fmt(p.ratio, 3)}`).join('; ') : `lowest ${fmt(worst.ratio, 3)} (${worst.use})`, !failing.length, '≥ 4.5:1');
+    }
+    const describe = (report) => VISIONS.map((v) => `${v} ${fmt(report[v].min, 3)}`).join(', ');
+    const friendly8 = paletteReport(CATEGORICAL_CVD, 8);
+    const friendly20 = paletteReport(CATEGORICAL_CVD);
+    check('accessibility', 'color-vision-friendly palette: smallest CIEDE2000 between any two of the first 8 colors', describe(friendly8), VISIONS.every((v) => friendly8[v].min >= 10), '≥ 10 in every vision');
+    check('accessibility', 'color-vision-friendly palette: the same for all 20 colors', describe(friendly20), VISIONS.every((v) => friendly20[v].min >= 7), '≥ 7 in every vision');
+    const default8 = paletteReport(CATEGORICAL, 8);
+    check('accessibility', 'default palette, first 8 colors (why the setting exists)', describe(default8), true, 'reported');
+    // Status colors: ok, warning and danger apart from each other.
+    for (const name of ['light', 'dark', 'light+cvd', 'dark+cvd']) {
+      const t = themeTokens(css)[name];
+      const report = paletteReport([t.ok, t.warn, t.danger]);
+      const required = name.includes('cvd');
+      check('accessibility', `status colors (ok, warning, danger), ${name}: smallest CIEDE2000`, describe(report), !required || VISIONS.every((v) => report[v].min >= 9), required ? '≥ 9 in every vision' : 'reported');
+    }
+    // Heat maps: a map read as "more" must get lighter steadily in every vision. Viridis (drawn
+    // instead of the rainbow maps with the setting on) does; the classic rainbow does not.
+    const monotone = (name) => VISIONS.map((v) => {
+      const L = Array.from({ length: 33 }, (_, i) => labOf(simulate(colormapColor(name, i / 32), v))[0]);
+      let reversals = 0;
+      for (let i = 1; i < L.length; i += 1) if (L[i] < L[i - 1] - 0.5) reversals += 1;
+      return reversals;
+    });
+    const viridis = monotone('viridis');
+    const classic = monotone('classic');
+    check('accessibility', 'viridis: lightness never falls along the map, in every vision', `${viridis.reduce((a, b) => a + b, 0)} reversals (classic rainbow: ${classic.join(', ')} in ${VISIONS.join(', ')})`, viridis.every((r) => r === 0), '0');
   },
   reference() {
     // R: t.test / wilcox.test on the sleep data set (extra sleep, group 1 vs group 2).

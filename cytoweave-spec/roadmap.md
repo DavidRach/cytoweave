@@ -130,7 +130,7 @@ released as 0.3.0; wave 4 follows in 0.4.
      keywords). Only the TEXT segment is rewritten; the events are copied byte for byte, checked on
      every example and corpus file. It applies to population exports, the FlowJo export, a ZIP of
      the files and an ACS archive whose workspace keeps none of the removed keywords.
-   - **To do:** open an export in FlowJo itself (no FlowJo licence was available while building
+   - **To do:** open an export in FlowJo itself (no FlowJo license was available while building
      it): check that FlowJo 10 and 11 open it, find its FCS files, and show the same counts.
 2. **Provenance in figures (R5): done.** Exported figures and plots (SVG metadata, a PNG iTXt
    chunk, a PDF attachment) embed the samples with their files' checksums, every gate the plots
@@ -177,7 +177,7 @@ released as 0.3.0; wave 4 follows in 0.4.
      within 6e-9 in all 36 detectors. flowQB is deprecated in Bioconductor and needs a one-line
      fix to run on R 4 (in `generate_flowqb.R`).
    - The simulator now knows every detector's Q and B (its noise model is the same quadratic), and
-     a new example has 30 daily bead runs with a PMT ageing, a dirty flow cell and a weaker laser:
+     a new example has 30 daily bead runs with a PMT aging, a dirty flow cell and a weaker laser:
      Q within 2% and B within 6% (median), every problem flagged at once on the Levey–Jennings
      charts (Westgard rules against the first 20 runs), nothing in the baseline, 0.8% false flags
      after. The standard errors are somewhat optimistic (87% of the truths within 2 SE): the robust
@@ -202,7 +202,7 @@ released as 0.3.0; wave 4 follows in 0.4.
    independently of the others, so a dye excited by two lasers spreads by ΔF²·Σ_L cv_L²(Σ_{d∈L}
    U_dj s_id)², in proportion to its brightness (only the sum of the two lasers' variances is
    identifiable from such a dye, which is all a prediction needs). Both are fitted to the
-   controls' variance differences (weighted by their standard errors, shrunk towards a common
+   controls' variance differences (weighted by their standard errors, shrunk toward a common
    c1 where a detector gets too little light), kept per instrument in the library, or c1 comes
    from bead runs (Q5). Spectral → Panel design predicts the matrix, complexity and the spread
    each channel receives for an edited panel, or for one built from the library with no files.
@@ -247,16 +247,29 @@ released as 0.3.0; wave 4 follows in 0.4.
      a stale matrix's effect showed that agreement on the conclusion can hide a 75-fold change
      in the difference, hence the effect-size check; and an outward monocyte gate in stimulated
      samples takes in activated T-cell blasts, a real fragility the check reports.
-   - Validation: real effect holds 64/64; gain, clog and compensation artefacts each named; under
+   - Validation: real effect holds 64/64; gain, clog and compensation artifacts each named; under
      the null 6% significant by chance, half of them robust; on the cytokine study every PMA
      comparison holds and one IL-4 peptide response is fragile.
    - Not done: designs of more than two groups, and cluster abundances (re-clustering each
      variant).
-4. **Accessibility (V4).** Labels on every control, keyboard operation, focus kept in dialogs,
-   accessible names and text summaries for plots, status never shown by colour alone, and an
-   axe-core check of every screenshot scene in CI. Palettes and contrast are checked for
-   colour-vision deficiency (Machado et al. 2009) and WCAG AA, and changed only where they fail
-   (with before-and-after screenshots). A screen-reader walkthrough is left to a person.
+4. **Accessibility (V4): done.** Color-vision-friendly colors are a setting (Appearance menu),
+   not a change to the defaults: populations, groups and clusters take a palette chosen for
+   protanopia, deuteranopia and tritanopia (Okabe–Ito, then greedily the color farthest in
+   CIEDE2000 from those chosen, in all four visions simulated per Machado et al. 2009, chroma ≥ 30,
+   visible on light and dark plots), in the gating tree's order whatever colors they were given;
+   rainbow heat maps are drawn as viridis; status colors become blue, orange and magenta. The
+   workspace is not changed. The default palette fails (two of its first eight colors are 0.8
+   apart with deuteranopia); the friendly one keeps ≥ 11 (first eight) and ≥ 7 (twenty).
+   - Contrast fixes were shown before and after and approved: muted text, badge text and the
+     dark theme's primary buttons now reach 4.5:1 on every surface, in both themes, setting on
+     or off (validation `accessibility`, from the CSS tokens).
+   - Keyboard: the population tree (WAI-ARIA tree pattern), the sample list as one stop, focus
+     kept in dialogs and given back, focus rings for keyboard use only, scroll regions focusable.
+     Screen readers: plots described in text, statuses in words, labeled icon buttons and menus.
+   - axe-core 4.13 runs in every documentation scene (`capture.mjs --audit`; fetched, not
+     shipped).
+   - Not done: drawing a new gate without a pointer, exploring a plot's events without one, and
+     testing by people who use screen readers (a walkthrough is in the docs).
 
 ## Later
 - Branches of an analysis, three-way merge of non-conflicting edits, and

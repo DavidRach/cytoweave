@@ -23,7 +23,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| P1 | One self-contained program for macOS, Linux and Windows (x64 and ARM64); a one-line install; no licence server, account, Python, R or plugins | done |
+| P1 | One self-contained program for macOS, Linux and Windows (x64 and ARM64); a one-line install; no license server, account, Python, R or plugins | done |
 | P2 | The web application also runs from a static web server, without the Go host | done (library falls back to OPFS and IndexedDB) |
 | P3 | Files never leave the computer; no network requests of its own | done |
 | P4 | Apache-2.0; no third-party runtime dependencies | done |
@@ -106,7 +106,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | T1 | Group comparisons with tests chosen from the design, nonparametric counterparts, effect sizes and confidence intervals | done |
 | T2 | Screens of every population or cluster with multiple-testing correction | done |
 | T3 | Numbers agree with R | done (validation `reference`) |
-| T4 | Robustness of a comparison to preprocessing choices (counterfactual preprocessing, specification curve) | done: gate boundaries, adapted or shared per-sample gates, QC (removed, re-run), compensation and test, alone and combined; verdict, the choices it depends on, a methods sentence; agent tool `check_robustness`; validation `multiverse` (known artefacts) and `multiverse-ics` (real study) |
+| T4 | Robustness of a comparison to preprocessing choices (counterfactual preprocessing, specification curve) | done: gate boundaries, adapted or shared per-sample gates, QC (removed, re-run), compensation and test, alone and combined; verdict, the choices it depends on, a methods sentence; agent tool `check_robustness`; validation `multiverse` (known artifacts) and `multiverse-ics` (real study) |
 
 ## Output, provenance and reporting
 
@@ -143,4 +143,4 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | V1 | Unit tests of every analysis module against independently known values | done |
 | V2 | End-to-end validation against simulated truth and published references in CI | done |
 | V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | done: ISAC's Gating-ML suite, FlowKit, FlowIO, FlowJo's saved counts, FACSDiva's spillover, and flowCore, PeacoQC, FlowSOM and CytoNorm in R |
-| V4 | Accessible: keyboard operation, labelled controls, colour maps safe for colour-vision deficiency | partial |
+| V4 | Accessible: keyboard operation, labeled controls, color maps safe for color-vision deficiency | done: color-vision-friendly colors (a setting); WCAG AA contrast in both themes; keyboard tree, list, dialogs and scroll regions; plots described in text; axe-core audit of every documentation scene (`capture.mjs --audit`) and validation `accessibility`. Not done: drawing gates without a pointer; testing by screen-reader users |

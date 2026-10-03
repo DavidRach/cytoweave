@@ -6,7 +6,7 @@ import { channelTransform, countOf, describePopulation, gateRobustness, isMultid
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { formatStatistic, wilsonInterval } from '../lib/stats.js';
 import { BOOLEAN_OPS, ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
-import { CATEGORICAL } from '../lib/colormaps.js';
+import { CATEGORICAL, colorVisionFriendly } from '../lib/colormaps.js';
 import { isInteracting } from './activity.js';
 
 export function mountInspector(app) {
@@ -91,14 +91,20 @@ export function mountInspector(app) {
         h('div', overridden ? 'This gate is adjusted for this sample.' : `Adjusted for ${overrideCount} other sample(s).`,
           overridden ? h('div', { style: { marginTop: '6px' } }, h('button.btn.small', { type: 'button', onclick: () => store.commit(clearOverride(store.ws, gate.id, sampleId), 'Reset gate for sample') }, 'Use the shared gate')) : null)));
     }
-    const swatches = h('div.row', { style: { flexWrap: 'wrap', gap: '4px', marginTop: '10px' } },
-      ...CATEGORICAL.slice(0, 12).map((color) => h('button', {
-        type: 'button',
-        title: color,
-        style: { width: '18px', height: '18px', borderRadius: '5px', border: color === gate.color ? '2px solid var(--text)' : '1px solid var(--line)', background: color },
-        onclick: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate'),
-      })));
-    content.push(swatches);
+    // With color-vision-friendly colors on, populations take the friendly palette in order, so
+    // a color picked here would not show: say so instead.
+    if (colorVisionFriendly()) content.push(h('p.muted', { style: { fontSize: '11.5px', margin: '10px 0 0' } }, 'Colors follow the color-vision-friendly palette (Appearance menu); colors picked here show when it is off.'));
+    else {
+      const swatches = h('div.row', { style: { flexWrap: 'wrap', gap: '4px', marginTop: '10px' } },
+        ...CATEGORICAL.slice(0, 12).map((color) => h('button', {
+          type: 'button',
+          title: color,
+          'aria-label': `Color ${color}`,
+          style: { width: '18px', height: '18px', borderRadius: '5px', border: color === gate.color ? '2px solid var(--text)' : '1px solid var(--line)', background: color },
+          onclick: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate'),
+        })));
+      content.push(swatches);
+    }
     if (gate.type !== 'boolean' && gate.type !== 'category' && !isMultidimensional(gate) && view) content.push(robustnessBlock(ws, view, gate));
     return section('Gate', ...content);
   }
@@ -292,7 +298,7 @@ export function mountInspector(app) {
 
   return {
     update(topics) {
-      if (topics.has('ws') || topics.has('data') || topics.has('sample') || topics.has('gate') || topics.has('scope')) render();
+      if (topics.has('ws') || topics.has('data') || topics.has('sample') || topics.has('gate') || topics.has('scope') || topics.has('colors')) render();
     },
     render,
   };

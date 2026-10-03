@@ -6,6 +6,7 @@ import { createTransform } from './transforms.js';
 import { bin2d, contours, dotRaster, densityRaster, histogram, outlierRaster, overlayRaster, pseudocolorRaster } from './density.js';
 import { gateCenter } from './gates.js';
 import { sizeOf } from './eventset.js';
+import { displayColor } from './colormaps.js';
 
 export const PLOT_TYPES = [
   { id: 'pseudocolor', label: 'Pseudocolor', dims: 2 },
@@ -114,7 +115,7 @@ export function buildPlotScene(input) {
 function buildHistogram(scene, input, options, theme) {
   const bins = options.bins ?? Math.min(512, Math.max(64, Math.round(scene.plotRect.w / 2)));
   const series = [];
-  if (input.xs) series.push({ xs: input.xs, indices: input.indices, color: options.color ?? '#4c78e0', label: input.label ?? '' });
+  if (input.xs) series.push({ xs: input.xs, indices: input.indices, color: displayColor(options.color) ?? '#4c78e0', label: input.label ?? '' });
   for (const overlay of input.overlays ?? []) series.push(overlay);
   const mode = options.histogramMode ?? (series.length > 1 ? 'modal' : 'count');
   const offset = options.offset ?? 0;
@@ -285,7 +286,7 @@ export function drawGates(ctx, scene, options = {}) {
   for (const gate of scene.gates) {
     const outline = gate.outline;
     if (!outline) continue;
-    const color = gate.color ?? '#111827';
+    const color = displayColor(gate.color) ?? '#111827';
     ctx.strokeStyle = color;
     ctx.lineWidth = gate.selected ? 2.2 : 1.5;
     // Dotted: proposed by an agent, not yet accepted; dashed: adjusted for this sample.
@@ -390,13 +391,13 @@ function drawGateLabels(ctx, scene) {
     ctx.fillStyle = 'rgba(255,255,255,0.86)';
     roundRect(ctx, x, y, width, height, 3);
     ctx.fill();
-    ctx.strokeStyle = withAlpha(gate.color ?? '#111827', 0.6);
+    ctx.strokeStyle = withAlpha(displayColor(gate.color) ?? '#111827', 0.6);
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     lines.forEach((line, i) => {
-      ctx.fillStyle = i === 0 ? '#111827' : withAlpha(gate.color ?? '#111827', 1);
+      ctx.fillStyle = i === 0 ? '#111827' : withAlpha(displayColor(gate.color) ?? '#111827', 1);
       ctx.font = `${i === 0 ? 600 : 700} ${size}px ${font}`;
       ctx.fillText(line, x + 4, y + 2 + i * (size + 2));
     });
@@ -532,7 +533,7 @@ export function sceneToSVG(scene, options = {}) {
   for (const gate of scene.gates) {
     const o = gate.outline;
     if (!o) continue;
-    const color = gate.color ?? '#111827';
+    const color = displayColor(gate.color) ?? '#111827';
     if (o.kind === 'polygon') {
       const d = o.points.map(([u, v], i) => `${i ? 'L' : 'M'}${f(r.x + u * r.w)} ${f(r.y + (1 - v) * r.h)}`).join('') + 'Z';
       parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="1.5"/>`);
@@ -562,7 +563,7 @@ export function sceneToSVG(scene, options = {}) {
     const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
     const lines = [gate.name, gate.label].filter(Boolean);
     lines.forEach((line, i) => {
-      parts.push(`<text x="${f(x)}" y="${f(y + (i - (lines.length - 1) / 2) * (size + 2))}" font-size="${size}" font-weight="${i ? 700 : 600}" text-anchor="${anchor}" dominant-baseline="middle" fill="${i ? gate.color ?? '#111827' : '#111827'}" paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-linejoin="round">${esc(line)}</text>`);
+      parts.push(`<text x="${f(x)}" y="${f(y + (i - (lines.length - 1) / 2) * (size + 2))}" font-size="${size}" font-weight="${i ? 700 : 600}" text-anchor="${anchor}" dominant-baseline="middle" fill="${i ? displayColor(gate.color) ?? '#111827' : '#111827'}" paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-linejoin="round">${esc(line)}</text>`);
     });
   }
   parts.push('</g>');

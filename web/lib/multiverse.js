@@ -273,7 +273,7 @@ export async function runMultiverseAsync(input) {
   while (!step.done) {
     if (input.signal?.aborted) {
       steps.return();
-      throw Object.assign(new Error('Cancelled.'), { name: 'AbortError' });
+      throw Object.assign(new Error('Canceled.'), { name: 'AbortError' });
     }
     if (Date.now() - last > 30) {
       await new Promise((resolve) => setTimeout(resolve, 0));

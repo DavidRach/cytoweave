@@ -264,7 +264,7 @@ function createContext(entry, options) {
     },
     onProgress: options.onProgress,
     check() {
-      if (options.signal?.aborted) throw new Error('Simulation was cancelled.');
+      if (options.signal?.aborted) throw new Error('Simulation was canceled.');
     },
   };
 }
@@ -585,7 +585,7 @@ function flowJoCounts(dataset, spill) {
       for (let e = 0; e < n; e += 1) out[e] = test(fx(xs[e]), fy(ys[e])) ? 1 : 0;
     } else {
       // Ellipse in display bins: the points whose distances to the foci sum to at most the major
-      // axis, 2a, with a the distance from the centre to the first edge point.
+      // axis, 2a, with a the distance from the center to the first edge point.
       const { foci: [f1, f2], edges } = flowJoEllipse(gate);
       const center = [(f1[0] + f2[0]) / 2, (f1[1] + f2[1]) / 2];
       const major = 2 * Math.hypot(edges[0][0] - center[0], edges[0][1] - center[1]);
@@ -702,7 +702,7 @@ function* generateFlowJo(ctx, samples, all) {
   };
 }
 
-// --- 2. Spectral 25-colour (Cytek Aurora-like, 64 raw detectors) --------------------------------
+// --- 2. Spectral 25-color (Cytek Aurora-like, 64 raw detectors) --------------------------------
 
 const SPECTRAL_PANEL = [
   ['CD45RA', 'BUV395'], ['CD16', 'BUV496'], ['CD123', 'BUV563'], ['CD161', 'BUV615'], ['CD38', 'BUV661'],
@@ -1110,7 +1110,7 @@ function treeWeightsFor(weights, specs) {
 
 // --- 5b. Barcoded mass cytometry plate (palladium 6-choose-3) ----------------------------------
 //
-// Twenty samples (ten donors, unstimulated and anti-CD3/CD28-stimulated) are each labelled with
+// Twenty samples (ten donors, unstimulated and anti-CD3/CD28-stimulated) are each labeled with
 // three of six palladium isotopes (Zunder et al. 2015), pooled into one tube and acquired as one
 // file. Doublets of two cells from different wells carry four to six palladium channels, which is
 // what the debarcoder uses to remove them.
@@ -1258,7 +1258,7 @@ function* generateBarcoded(ctx, samples) {
 // Index-sorted events carry two event-level parameters, "Index X" (plate column 1–12) and
 // "Index Y" (plate row 1–8, A = 1), so every sorted cell's measured values link to its well.
 // The INDEX SORTING LOCATIONS keyword repeats the positions as "row,column;" pairs (0-based) in
-// event order, modelled on how BD FACSDiva records index sorts.
+// event order, modeled on how BD FACSDiva records index sorts.
 
 const SORT_PANEL = [
   { marker: 'CD19', fluor: 'BV421', detector: 'BV421-A' },
@@ -1444,7 +1444,7 @@ const BEAD_LEVELS = [0, 0.012, 0.035, 0.1, 0.3, 0.9, 2.6, 7.5];
 const BEAD_CV0 = 0.02;
 const BEAD_RUNS = 30;
 const BEAD_EVENTS = {
-  'BV421-A': { from: 21, what: 'PMT ageing: Q falls 7 % per run' },
+  'BV421-A': { from: 21, what: 'PMT aging: Q falls 7 % per run' },
   'FITC-A': { from: 25, what: 'dirty flow cell: optical background ×5' },
   violet: { from: 27, what: 'violet laser at 70 % power: bead signals of the BV detectors fall 30 % (Q and B unchanged)' },
 };
@@ -1527,7 +1527,7 @@ function beadQCAssignments() {
 const DEFINITIONS = [
   {
     id: 'pbmc-immunophenotyping',
-    title: 'PBMC immunophenotyping, 14 colours',
+    title: 'PBMC immunophenotyping, 14 colors',
     description: 'Six donors\' PBMC, unstimulated and stimulated, on a 5-laser BD LSRFortessa-like instrument with a 13-marker panel plus viability, and a full set of compensation controls (unstained cells, capture beads, heat-killed cells for the viability dye). Gate singlets, live cells, lymphocytes, T, B and NK cells, Tregs and naive/memory subsets, and compare conditions: stimulation raises CD25 and HLA-DR on T cells. The acquisition matrix in $SPILLOVER under-compensates one pair of channels, so check the compensation diagnostics against the controls; D05_Unstim has a clog worth finding in the time QC.',
     technology: 'conventional',
     instrument: 'BD LSRFortessa X-20-like (UV, violet, blue, yellow-green, red lasers), range 2^18',
@@ -1571,7 +1571,7 @@ const DEFINITIONS = [
   },
   {
     id: 'spectral-25color',
-    title: 'Spectral 25-colour panel (raw detectors)',
+    title: 'Spectral 25-color panel (raw detectors)',
     description: 'Raw data from a 5-laser Cytek Aurora-like spectral cytometer: 64 detectors (UV1–UV16, V1–V16, B1–B14, YG1–YG10, R1–R8) plus FSC, SSC and violet SSC-B. It includes an unstained control with lymphoid (dim) and myeloid (bright) autofluorescence, a single-stain reference for each of 25 fluorochromes, and three stained PBMC samples. Inspect the reference spectra and their similarity, unmix with and without autofluorescence extraction, and check the result against the true abundances kept for every event.',
     technology: 'spectral',
     instrument: 'Cytek Aurora-like, 5 lasers, 64 fluorescence detectors, range 2^22',
@@ -1606,7 +1606,7 @@ const DEFINITIONS = [
   {
     id: 'proliferation',
     title: 'T-cell proliferation by dye dilution',
-    description: 'PBMC labelled with CellTrace Violet and cultured four days without stimulation or with anti-CD3/CD28, plus a day-0 reference that marks the undivided peak. CD4 and CD8 T cells halve their dye with each division, giving up to six generations, while B and NK cells stay undivided. Gate live CD4 and CD8 T cells, fit the generations and compare the division, proliferation and expansion indices with the known precursor frequencies.',
+    description: 'PBMC labeled with CellTrace Violet and cultured four days without stimulation or with anti-CD3/CD28, plus a day-0 reference that marks the undivided peak. CD4 and CD8 T cells halve their dye with each division, giving up to six generations, while B and NK cells stay undivided. Gate live CD4 and CD8 T cells, fit the generations and compare the division, proliferation and expansion indices with the known precursor frequencies.',
     technology: 'conventional',
     instrument: 'BD LSRFortessa X-20-like, range 2^18',
     tags: ['proliferation', 'CellTrace Violet', 'dye dilution', 'T cells', 'intermediate'],
@@ -1642,7 +1642,7 @@ const DEFINITIONS = [
   {
     id: 'cytof-barcoded',
     title: 'Barcoded mass cytometry plate',
-    description: 'Twenty PBMC samples — ten donors, unstimulated and stimulated with anti-CD3/CD28 — each labelled with three of six palladium isotopes (Pd102–Pd110), pooled into one tube and acquired as a single Helios-like file. The file comes with its barcode key. Debarcode it (QC → Debarcode): doublets of cells from two wells carry four or more palladium channels and are left unassigned. Split the plate into one sample per well, annotate them from their names, and compare stimulated with unstimulated wells, paired by donor: CD25, CD38 and HLA-DR rise on T cells.',
+    description: 'Twenty PBMC samples — ten donors, unstimulated and stimulated with anti-CD3/CD28 — each labeled with three of six palladium isotopes (Pd102–Pd110), pooled into one tube and acquired as a single Helios-like file. The file comes with its barcode key. Debarcode it (QC → Debarcode): doublets of cells from two wells carry four or more palladium channels and are left unassigned. Split the plate into one sample per well, annotate them from their names, and compare stimulated with unstimulated wells, paired by donor: CD25, CD38 and HLA-DR rise on T cells.',
     technology: 'mass',
     instrument: 'Helios-like CyTOF with palladium barcoding, range ~10^4',
     tags: ['mass cytometry', 'barcoding', 'debarcoding', 'stimulation', 'paired design', 'intermediate'],
@@ -1693,7 +1693,7 @@ const DEFINITIONS = [
   {
     id: 'bead-qc',
     title: 'Daily bead QC: Q, B and Levey–Jennings',
-    description: 'Thirty daily runs of 8-peak rainbow beads on an 18-colour LSRFortessa-like instrument. Measure each detector\'s efficiency Q, optical background B and the beads\' intrinsic CV (QC → Instrument), save the runs to the instrument\'s record, and follow them on Levey–Jennings charts against the first 20 runs: one detector\'s PMT ages from run 21, the flow cell gets dirty on run 25, and the violet laser weakens on run 27. The true Q and B of every detector on every run are known.',
+    description: 'Thirty daily runs of 8-peak rainbow beads on an 18-color LSRFortessa-like instrument. Measure each detector\'s efficiency Q, optical background B and the beads\' intrinsic CV (QC → Instrument), save the runs to the instrument\'s record, and follow them on Levey–Jennings charts against the first 20 runs: one detector\'s PMT ages from run 21, the flow cell gets dirty on run 25, and the violet laser weakens on run 27. The true Q and B of every detector on every run are known.',
     technology: 'conventional',
     instrument: 'BD LSRFortessa X-20-like, 18 fluorescence detectors, range 2^18',
     tags: ['QC', 'Q and B', 'Levey–Jennings', 'beads', 'instrument', 'intermediate'],

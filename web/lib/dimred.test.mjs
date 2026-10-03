@@ -8,23 +8,23 @@ import {
   findAbParams, pca, pcaTransform, spectralEmbedding, transformUmap, tsne, tsneAffinities, umap,
 } from './dimred.js';
 
-// Well-separated Gaussian clusters in `dim` dimensions; centres are shared between calls with the
-// same centreSeed so new samples can be drawn from the same populations.
-function clusters(n, dim, count, seed, centreSeed = 100, spread = 1, separation = 5) {
-  const rc = createRandom(centreSeed);
-  const centres = Array.from({ length: count }, () => Float64Array.from({ length: dim }, () => rc.gaussian() * separation));
+// Well-separated Gaussian clusters in `dim` dimensions; centers are shared between calls with the
+// same centerSeed so new samples can be drawn from the same populations.
+function clusters(n, dim, count, seed, centerSeed = 100, spread = 1, separation = 5) {
+  const rc = createRandom(centerSeed);
+  const centers = Array.from({ length: count }, () => Float64Array.from({ length: dim }, () => rc.gaussian() * separation));
   const random = createRandom(seed);
   const data = new Float32Array(n * dim);
   const labels = new Int32Array(n);
   for (let i = 0; i < n; i += 1) {
     const c = i % count;
     labels[i] = c;
-    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centres[c][t] + spread * random.gaussian();
+    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centers[c][t] + spread * random.gaussian();
   }
   return { data, labels };
 }
 
-// Leave-one-out kNN classification accuracy in an embedding (majority of k neighbours).
+// Leave-one-out kNN classification accuracy in an embedding (majority of k neighbors).
 function knnAccuracy(embedding, n, labels, k = 10) {
   const { indices } = kdTreeKnn(embedding, n, 2, k);
   let correct = 0;
@@ -112,8 +112,8 @@ test('find_ab_params matches umap-learn (min_dist 0.1, spread 1 → a ≈ 1.577,
 test('t-SNE affinities are symmetric, sum to 1 and reach the perplexity', () => {
   const { data } = clusters(300, 5, 3, 1);
   const k = 30;
-  const neighbours = exactKnn(data, 300, 5, k);
-  const P = tsneAffinities(neighbours, 300, k, 10);
+  const neighbors = exactKnn(data, 300, 5, k);
+  const P = tsneAffinities(neighbors, 300, k, 10);
   let total = 0;
   const lookup = new Map();
   for (let i = 0; i < 300; i += 1) {
@@ -128,7 +128,7 @@ test('t-SNE affinities are symmetric, sum to 1 and reach the perplexity', () => 
     const j = key % 300;
     assert.ok(Math.abs(lookup.get(j * 300 + i) - value) < 1e-9);
   }
-  // Equidistant neighbours give uniform conditional probabilities: P_ij = 2/(k·2n) when mutual.
+  // Equidistant neighbors give uniform conditional probabilities: P_ij = 2/(k·2n) when mutual.
   const ring = { indices: new Int32Array(4 * 3), distances: new Float32Array(4 * 3).fill(1) };
   for (let i = 0; i < 4; i += 1) for (let t = 0; t < 3; t += 1) ring.indices[i * 3 + t] = (i + t + 1) % 4;
   const uniform = tsneAffinities(ring, 4, 3, 2);
@@ -140,11 +140,11 @@ test('the Barnes-Hut gradient equals the exact t-SNE gradient at θ = 0 and is c
   const dim = 4;
   const { data } = clusters(n, dim, 3, 8);
   const k = 30;
-  const neighbours = exactKnn(data, n, dim, k);
-  const P = tsneAffinities(neighbours, n, k, 10);
+  const neighbors = exactKnn(data, n, dim, k);
+  const P = tsneAffinities(neighbors, n, k, 10);
   const random = createRandom(1);
   const Y0 = Float64Array.from({ length: 2 * n }, () => random.gaussian());
-  // Centre the start: t-SNE re-centres after each step, and the exact gradient sums to zero.
+  // Center the start: t-SNE re-centers after each step, and the exact gradient sums to zero.
   for (let d = 0; d < 2; d += 1) {
     let mean = 0;
     for (let i = 0; i < n; i += 1) mean += Y0[2 * i + d] / n;
@@ -172,7 +172,7 @@ test('the Barnes-Hut gradient equals the exact t-SNE gradient at θ = 0 and is c
   // One iteration without exaggeration or momentum moves Y by −η·1.2·gradient (gains 1 → 1.2).
   const step = (theta) => {
     const result = tsne(data, n, dim, {
-      knn: neighbours, perplexity: 10, init: Float32Array.from(Y0), maxIterations: 1, earlyExaggerationIterations: 0,
+      knn: neighbors, perplexity: 10, init: Float32Array.from(Y0), maxIterations: 1, earlyExaggerationIterations: 0,
       learningRate: 1, finalMomentum: 0, theta,
     });
     return Float64Array.from({ length: 2 * n }, (_, c) => (Y0[c] - result.embedding[c]) / 1.2);
@@ -237,7 +237,7 @@ test('spectral embedding agrees with a dense eigen-decomposition', () => {
   const graph = graphFromEdges(edges, n);
   const result = spectralEmbedding(graph, 2, { seed: 1, maxIterations: 300, tolerance: 1e-7 });
   assert.ok(result);
-  // Dense normalised Laplacian.
+  // Dense normalized Laplacian.
   const deg = new Float64Array(n);
   for (let i = 0; i < n; i += 1) for (let e = graph.offsets[i]; e < graph.offsets[i + 1]; e += 1) deg[i] += graph.weights[e];
   const L = new Float64Array(n * n);
@@ -270,7 +270,7 @@ test('UMAP separates well-separated Gaussian clusters in 10-D and is determinist
 
 test('UMAP uses the spectral layout on a connected graph', () => {
   const n = 600;
-  // One elongated cloud: the neighbour graph is connected.
+  // One elongated cloud: the neighbor graph is connected.
   const random = createRandom(2);
   const data = new Float32Array(n * 5);
   for (let i = 0; i < n; i += 1) {
@@ -310,7 +310,7 @@ test('transformUmap places new events of known populations in their islands', ()
   assert.ok(correct / m >= 0.95, `placed correctly: ${correct / m}`);
 });
 
-test('long runs report progress and stop when cancelled', () => {
+test('long runs report progress and stop when canceled', () => {
   const { data } = clusters(400, 6, 2, 1);
   const seen = [];
   umap(data, 400, 6, { nEpochs: 20, onProgress: (f) => seen.push(f) });

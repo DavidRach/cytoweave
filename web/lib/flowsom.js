@@ -5,9 +5,9 @@
 // of cytometry data. Cytometry A 2015;87:636–645, doi:10.1002/cyto.a.22625. Defaults and the
 // training loop follow the R package (SOM() and its C_SOM routine): a 10 × 10 grid, rlen = 10
 // passes of rlen·n online steps on events drawn at random (with replacement), a learning rate
-// falling linearly from 0.05 to 0.01, and a neighbourhood radius falling linearly from the 0.67
+// falling linearly from 0.05 to 0.01, and a neighborhood radius falling linearly from the 0.67
 // quantile of the grid distances to 0 (floored at 0.5, so the winner alone is updated at the
-// end). The neighbourhood is every node within the radius in Chebyshev ("maximum") grid
+// end). The neighborhood is every node within the radius in Chebyshev ("maximum") grid
 // distance. Codes start as randomly chosen events. Metaclustering follows
 // metaClustering_consensus: ConsensusClusterPlus (Wilkerson & Hayes 2010,
 // doi:10.1093/bioinformatics/btq170) with average-linkage hierarchical clustering of Euclidean
@@ -24,8 +24,8 @@ export const LINKAGES = ['single', 'complete', 'average', 'mcquitty', 'ward.D', 
 
 const PROGRESS_STEPS = 1 << 16;
 
-function cancelled() {
-  const error = new Error('Clustering was cancelled.');
+function canceled() {
+  const error = new Error('Clustering was canceled.');
   error.name = 'AbortError';
   return error;
 }
@@ -124,7 +124,7 @@ export function trainSOM(data, n, dim, options = {}) {
   let threshold = radiusStart;
 
   for (let start = 0; start < niter; start += PROGRESS_STEPS) {
-    if (signal?.aborted) throw cancelled();
+    if (signal?.aborted) throw canceled();
     if (onProgress && start) onProgress(start / niter, `Training the SOM (pass ${Math.floor(start / n) + 1} of ${rlen})`);
     const stop = Math.min(niter, start + PROGRESS_STEPS);
     for (let k = start; k < stop; k += 1) {
@@ -196,7 +196,7 @@ export function mapToSOM(som, data, n, options = {}) {
   const x = new Float64Array(dim);
   let previous = 0;
   for (let start = 0; start < n; start += PROGRESS_STEPS) {
-    if (signal?.aborted) throw cancelled();
+    if (signal?.aborted) throw canceled();
     if (onProgress && start) onProgress(start / n, 'Mapping events to the SOM');
     const stop = Math.min(n, start + PROGRESS_STEPS);
     for (let i = start; i < stop; i += 1) {
@@ -482,7 +482,7 @@ function classicalMDS(d, n, random) {
 // (Lance & Williams 1967), as R's hclust: linkage 'single', 'complete', 'average' (UPGMA),
 // 'mcquitty' (WPGMA), 'ward.D' (Ward's update on the given dissimilarities) or 'ward.D2'
 // (Ward's criterion on squared dissimilarities, heights square-rooted; Murtagh & Legendre 2014,
-// doi:10.1007/s00357-014-9161-z). A nearest-neighbour cache keeps it O(n²) in practice.
+// doi:10.1007/s00357-014-9161-z). A nearest-neighbor cache keeps it O(n²) in practice.
 //
 // Returns { n, merges: Int32Array((n − 1) × 2), heights: Float64Array(n − 1), sizes:
 // Int32Array(n − 1), order: Int32Array(n) }. In merges, ids 0…n−1 are items and n + s is the
@@ -663,7 +663,7 @@ export function consensusClustering(codes, nodes, dim, maxK, options = {}) {
   const together = ks.map(() => new Float64Array(nodes * nodes));
   const sub = new Float64Array(m * m);
   for (let rep = 0; rep < reps; rep += 1) {
-    if (signal?.aborted) throw cancelled();
+    if (signal?.aborted) throw canceled();
     if (onProgress && rep % 10 === 0) onProgress((0.9 * rep) / reps, `Consensus metaclustering (${rep} of ${reps})`);
     const pick = sampleIndices(nodes, m, random);
     for (let a = 0; a < m; a += 1) {

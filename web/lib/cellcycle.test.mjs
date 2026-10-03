@@ -110,7 +110,7 @@ test('Watson pragmatic recovers 55/30/15 at 4% CV', () => {
   close(fit.g1.cv, 0.04, 0.002, 'G1 CV');
   close(fit.g2g1Ratio, 2, 0.02, 'ratio');
   assert.deepEqual(fit.warnings, []);
-  // Several noise realisations stay within 2 points.
+  // Several noise realizations stay within 2 points.
   for (const seed of [5, 6, 7]) checkPercents(fitWatsonPragmatic(dnaHistogram(simulate({ seed }))), [55, 30, 15], 2, `Watson seed ${seed}`);
 });
 

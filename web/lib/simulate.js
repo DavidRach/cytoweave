@@ -838,7 +838,7 @@ export function simulateEvents(config, random, options = {}) {
   const checkEvery = 16384;
   for (let e = 0; e < count; e += 1) {
     if ((e & (checkEvery - 1)) === 0 && e) {
-      if (signal?.aborted) throw new Error('Simulation was cancelled.');
+      if (signal?.aborted) throw new Error('Simulation was canceled.');
     }
     const t = times[e];
     while (w < windows.length && t >= windows[w].end) w += 1;
@@ -1024,7 +1024,7 @@ export function simulateCellCycle(config, random, options = {}) {
     return nucleus;
   };
   for (let e = 0; e < count; e += 1) {
-    if ((e & 16383) === 0 && e && options.signal?.aborted) throw new Error('Simulation was cancelled.');
+    if ((e & 16383) === 0 && e && options.signal?.aborted) throw new Error('Simulation was canceled.');
     const kind = kinds[e];
     let dna;
     let fsc;
@@ -1129,7 +1129,7 @@ export function simulateBeadRun(config, random, options = {}) {
   order.push('Time');
   const clip = (v) => (v > maxValue ? maxValue : v);
   for (let e = 0; e < count; e += 1) {
-    if ((e & 4095) === 0 && options.signal?.aborted) throw new Error('Simulation was cancelled.');
+    if ((e & 4095) === 0 && options.signal?.aborted) throw new Error('Simulation was canceled.');
     const kind = labels[e];
     const debris = kind === nLevels + 1;
     const beads = kind === nLevels ? 2 : 1;
@@ -1308,7 +1308,7 @@ export function simulateMassEvents(config, random, options = {}) {
   };
 
   for (let e = 0; e < count; e += 1) {
-    if ((e & 16383) === 0 && e && signal?.aborted) throw new Error('Simulation was cancelled.');
+    if ((e & 16383) === 0 && e && signal?.aborted) throw new Error('Simulation was canceled.');
     const t = times[e];
     const progress = Math.min(1.2, t / nominal);
     const kind = kinds[e];

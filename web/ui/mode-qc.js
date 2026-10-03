@@ -964,7 +964,7 @@ export function mountQCMode(app, container) {
         h(`td.r${counts.lower ? '' : '.muted'}`, counts.lower ? `${formatCount(counts.lower)} (${formatPercent(counts.percentLower)})` : '0'),
         h('td', flagged && counts.percentUpper + counts.percentLower >= 1 ? h('span.badge.warn', 'check') : null)));
     }
-    host.append(h('div.qc-table-scroll', h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Saturated'), h('th.r', 'Piled low'), h('th'))), body)),
+    host.append(h('div.qc-table-scroll', { tabIndex: 0 }, h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Saturated'), h('th.r', 'Piled low'), h('th'))), body)),
       h('p.muted.qc-small', 'Saturated: at or above $PnR − 1 on the uncompensated values. Piled low: at least two events share the channel minimum.'));
     return host;
   }
@@ -983,7 +983,7 @@ export function mountQCMode(app, container) {
         h('td.r', `${d.percentChange >= 0 ? '+' : '−'}${Math.abs(d.percentChange).toFixed(1)}%`),
         h('td', d.drifted ? h('span.badge.warn', 'drifts') : h('span.badge.ok', 'stable'))));
     }
-    host.append(h('div.qc-table-scroll', h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Start → end'), h('th'))), body)),
+    host.append(h('div.qc-table-scroll', { tabIndex: 0 }, h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Start → end'), h('th'))), body)),
       h('p.muted.qc-small', `Change of the median signal between the first and last tenth of the ${result.drift.timeUnit === 's' ? 'acquisition time' : 'events'}, from a robust (Theil–Sen) trend over 20 bins. Drift beyond ±20% is flagged; it is reported, not removed.`));
     return host;
   }
@@ -1003,7 +1003,7 @@ export function mountQCMode(app, container) {
       h('div.section-title', { style: { marginTop: '14px' } }, 'Sensitivity'),
       explain('How much does the result depend on PeacoQC\'s settings? Re-run this sample with other values and compare before keeping anything. Lower MAD or IT limit = stricter.'),
       h('div.qc-toolbar',
-        h('label.field', { title: 'Refined adds three safeguards to PeacoQC: a bin\'s peak joins a trajectory only when it is nearer to it than to the neighbouring one; MAD flags are narrowed to bins whose own value deviates (the smoother otherwise spreads a short clog over ±25 bins); and the isolation tree only isolates bins that are contiguous in time. Classic reproduces the published algorithm.' }, h('span', 'Variant'), variant),
+        h('label.field', { title: 'Refined adds three safeguards to PeacoQC: a bin\'s peak joins a trajectory only when it is nearer to it than to the neighboring one; MAD flags are narrowed to bins whose own value deviates (the smoother otherwise spreads a short clog over ±25 bins); and the isolation tree only isolates bins that are contiguous in time. Classic reproduces the published algorithm.' }, h('span', 'Variant'), variant),
         number('MAD threshold', 'mad', 0.5, 1, 20, 'Bins whose smoothed peak trajectory is more than this many MADs from the median are removed (PeacoQC default 6).'),
         number('IT limit', 'itLimit', 0.05, 0.1, 0.99, 'Minimum gain for the isolation tree to split (PeacoQC default 0.6).'),
         number('Consecutive bins', 'consecutiveBins', 1, 1, 50, 'Good stretches shorter than this are removed too (PeacoQC default 5).'),
@@ -1050,13 +1050,13 @@ export function mountQCMode(app, container) {
   async function runSamples(list) {
     if (running || !list.length) return;
     const settings = structuredClone(S.settings);
-    const token = { cancelled: false, job: null, sampleId: null };
+    const token = { canceled: false, job: null, sampleId: null };
     running = token;
     renderControls();
     const progress = progressToast(`Checking ${list.length} sample${list.length === 1 ? '' : 's'}…`, () => cancelRun());
     const done = [];
     const failures = [];
-    for (let i = 0; i < list.length && !token.cancelled; i += 1) {
+    for (let i = 0; i < list.length && !token.canceled; i += 1) {
       const sample = list[i];
       token.sampleId = sample.id;
       scheduleCards();
@@ -1066,7 +1066,7 @@ export function mountQCMode(app, container) {
         S.results.set(sample.id, result);
         done.push(sample.id);
       } catch (error) {
-        if (error.cancelled || token.cancelled) break;
+        if (error.canceled || token.canceled) break;
         failures.push(`${sample.name}: ${error.message}`);
       }
       token.job = null;
@@ -1080,7 +1080,7 @@ export function mountQCMode(app, container) {
       }
     }
     running = null;
-    const message = token.cancelled
+    const message = token.canceled
       ? `Stopped after ${done.length} of ${list.length} samples; their results were saved.`
       : `Checked ${done.length} sample${done.length === 1 ? '' : 's'}; “QC pass” saved.${failures.length ? ` ${failures.length} failed.` : ''}`;
     if (failures.length && !done.length) progress.fail(failures[0]);
@@ -1094,7 +1094,7 @@ export function mountQCMode(app, container) {
 
   function cancelRun() {
     if (!running) return;
-    running.cancelled = true;
+    running.canceled = true;
     running.job?.cancel();
   }
 
@@ -1110,7 +1110,7 @@ export function mountQCMode(app, container) {
   async function compare(sample, params) {
     if (running) return;
     const settings = { ...structuredClone(S.settings), ...params };
-    const token = { cancelled: false, job: null, sampleId: sample.id };
+    const token = { canceled: false, job: null, sampleId: sample.id };
     running = token;
     const progress = progressToast(`Re-running ${sample.name} (${params.variant === 'classic' ? 'classic' : 'refined'}) with MAD ${params.mad}, IT ${params.itLimit}, ${params.consecutiveBins} bins…`, () => cancelRun());
     try {
@@ -1118,7 +1118,7 @@ export function mountQCMode(app, container) {
       S.comparison = { sampleId: sample.id, params: { ...params }, settings, after };
       progress.done();
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress.done('Cancelled.', 'ok');
+      if (error.canceled || token.canceled) progress.done('Canceled.', 'ok');
       else progress.fail(error.message);
     }
     running = null;
@@ -1256,7 +1256,7 @@ export function mountQCMode(app, container) {
           ...conditions.map((c) => { const n = study.filter((s) => String(s.meta?.condition) === c).length; return h(`td.r${n ? '' : '.muted'}`, String(n)); }),
           conditions.length ? h('td.r.muted', String(study.filter((s) => s.meta?.condition === undefined || String(s.meta.condition).trim() === '').length)) : null));
       }
-      design.append(h('div.qc-table-scroll', h('table.data', h('thead', head), body)));
+      design.append(h('div.qc-table-scroll', { tabIndex: 0 }, h('table.data', h('thead', head), body)));
       if (without.length) {
         design.append(h('div.callout.warn', { style: { marginTop: '8px' } }, icon('warning'),
           h('span.grow', `${without.length} sample(s) have no batch and will not be normalized: ${without.slice(0, 5).map((s) => s.name).join(', ')}${without.length > 5 ? ', …' : ''}.`),
@@ -1301,7 +1301,7 @@ export function mountQCMode(app, container) {
     const blockers = [];
     if (anchored.length < 2) blockers.push('at least two batches with a reference sample');
     if (!chosen.length) blockers.push('at least one channel');
-    if (check.warnings.length && !N.acknowledged) blockers.push('the confounding acknowledgement');
+    if (check.warnings.length && !N.acknowledged) blockers.push('the confounding acknowledgment');
     const goalSelect = h('select.input.small', { onchange: (event) => { N.goal = event.target.value; } },
       h('option', { value: 'mean', selected: N.goal === 'mean' }, 'Mean of the batches (CytoNorm default)'),
       h('option', { value: 'median', selected: N.goal === 'median' }, 'Median of the batches'),
@@ -1349,7 +1349,7 @@ export function mountQCMode(app, container) {
   async function runNormalization({ channels, anchored, targets, references }) {
     if (running) return;
     const N = S.norm;
-    const token = { cancelled: false, job: null };
+    const token = { canceled: false, job: null };
     running = token;
     const transforms = Object.fromEntries(channels.map((name) => [name, normTransform(name)]));
     const clustering = N.clustering || null;
@@ -1372,7 +1372,7 @@ export function mountQCMode(app, container) {
     try {
       const refPayloads = [];
       for (const ref of references) {
-        if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+        if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
         advance(`Loading reference ${ref.name}`);
         const view = await data.ensure(ref.id);
         const missing = channels.filter((c) => !view.hasChannel(c));
@@ -1388,7 +1388,7 @@ export function mountQCMode(app, container) {
       const skipped = [];
       let unmatched = 0;
       for (const sample of targets) {
-        if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+        if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
         advance(`Normalizing ${sample.name}`);
         const view = await data.ensure(sample.id);
         const missing = channels.filter((c) => !view.hasChannel(c));
@@ -1442,7 +1442,7 @@ export function mountQCMode(app, container) {
       const s = diagnostics.summary;
       progress.done(`Normalized ${perSample.size} samples; mean batch distance ${s.meanEmdBefore.toFixed(3)} → ${s.meanEmdAfter.toFixed(3)}.`);
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress.done('Normalization stopped; nothing was saved.', 'ok');
+      if (error.canceled || token.canceled) progress.done('Normalization stopped; nothing was saved.', 'ok');
       else progress.fail(error.message);
     }
     running = null;
@@ -1466,7 +1466,7 @@ export function mountQCMode(app, container) {
     for (const entry of diagnostics.channels) for (const b of batches) top = Math.max(top, entry.before[b]?.emd ?? 0, entry.after?.[b]?.emd ?? 0);
     top = top || 1;
     pane.append(h('div.section-title', { style: { marginTop: '14px' } }, 'Distance of each batch to the pooled distribution'),
-      explain('Earth mover\'s distance between each batch and all batches pooled, in fractions of the transformed axis (0 = identical). Grey: before; colored: after. Bars share one scale across channels.'),
+      explain('Earth mover\'s distance between each batch and all batches pooled, in fractions of the transformed axis (0 = identical). Gray: before; colored: after. Bars share one scale across channels.'),
       h('div.qc-multiples', diagnostics.channels.map((entry) => {
         const delta = entry.meanEmdBefore > 0 ? (100 * (entry.meanEmdAfter - entry.meanEmdBefore)) / entry.meanEmdBefore : 0;
         return h('div.qc-multiple',
@@ -1483,7 +1483,7 @@ export function mountQCMode(app, container) {
       const values = Array.from(hist.smoothed, (v) => v / (hist.total || 1));
       return { values, color: categoricalColor(batches.indexOf(d.batch)) };
     });
-    const select = h('select.input.small', { style: { width: 'auto' }, onchange: (event) => { S.norm.histChannel = event.target.value; render(); } },
+    const select = h('select.input.small', { 'aria-label': 'Channel shown', style: { width: 'auto' }, onchange: (event) => { S.norm.histChannel = event.target.value; render(); } },
       channels.map((name) => h('option', { value: name, selected: name === channel }, channelLabel(store.ws, name))));
     pane.append(h('div.section-title', { style: { marginTop: '14px' } }, 'Reference samples before and after'),
       h('div.row', { style: { marginBottom: '8px', flexWrap: 'wrap' } }, select,
@@ -1555,7 +1555,7 @@ export function mountQCMode(app, container) {
     const B = S.beads;
     const list = B.scope === 'all' ? massSamples() : massSamples().filter((s) => s.id === B.sampleId);
     if (!list.length) return;
-    const token = { cancelled: false, job: null };
+    const token = { canceled: false, job: null };
     running = token;
     const progress = progressToast('Bead normalization…', () => cancelRun());
     const total = list.length * (B.baseline === 'mean' && list.length > 1 ? 2 : 1);
@@ -1573,7 +1573,7 @@ export function mountQCMode(app, container) {
       if (B.baseline === 'mean' && list.length > 1) {
         const sums = {};
         for (const sample of list) {
-          if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+          if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
           const view = await data.ensure(sample.id);
           const one = await run('beadBaseline', { samples: [beadPayload(view)] }, `Bead medians of ${sample.name}`);
           for (const [key, value] of Object.entries(one)) sums[key] = (sums[key] ?? 0) + value / list.length;
@@ -1584,7 +1584,7 @@ export function mountQCMode(app, container) {
       const outputs = new Set([BEAD_CHANNEL]);
       const summaries = {};
       for (const sample of list) {
-        if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+        if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
         const view = await data.ensure(sample.id);
         const result = await run('beadNormalize', { sample: beadPayload(view), options: baseline ? { baseline } : {} }, `Normalizing ${sample.name}`);
         const columns = { [BEAD_CHANNEL]: Float32Array.from(result.beadMask) };
@@ -1608,7 +1608,7 @@ export function mountQCMode(app, container) {
       B.shownId = list.find((s) => s.id === B.sampleId)?.id ?? list[0].id;
       progress.done(`Bead-normalized ${list.length} sample${list.length === 1 ? '' : 's'}; new channels end in “(beads)”.`);
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress.done('Bead normalization stopped; nothing was saved.', 'ok');
+      if (error.canceled || token.canceled) progress.done('Bead normalization stopped; nothing was saved.', 'ok');
       else progress.fail(error.message);
     }
     running = null;
@@ -1669,7 +1669,7 @@ export function mountQCMode(app, container) {
     const sample = debarcodeSample();
     const pane = h('div.pane');
     pane.append(h('h3', icon('tag'), 'Debarcoding'),
-      explain('Barcoding pools many samples into one tube: each sample is labelled with its own combination of k of n barcode channels (for mass cytometry, palladium isotopes Pd102–Pd110), stained and acquired together, then split again. ',
+      explain('Barcoding pools many samples into one tube: each sample is labeled with its own combination of k of n barcode channels (for mass cytometry, palladium isotopes Pd102–Pd110), stained and acquired together, then split again. ',
         'Each event is assigned to the code whose positive channels are its k brightest barcode channels. The ', h('b', 'separation'), ' — the gap between the weakest positive and the strongest negative channel after scaling each population to its 95th percentile — says how sure that call is: doublets of two codes and debris have small separations. Events below the cutoff, or far from their population (Mahalanobis distance), stay unassigned.'));
     if (!sample) {
       pane.append(h('div.empty', icon('tag'), h('h3', 'No sample'), h('p', 'Add the barcoded FCS file first.')));
@@ -1745,9 +1745,9 @@ export function mountQCMode(app, container) {
       toast(error.message, { kind: 'error' });
       return;
     }
-    const token = { cancelled: false, job: null };
+    const token = { canceled: false, job: null };
     if (!options.quiet) running = token;
-    const progress = options.quiet ? null : progressToast(`Debarcoding ${sample.name}…`, () => { token.cancelled = true; token.job?.cancel(); });
+    const progress = options.quiet ? null : progressToast(`Debarcoding ${sample.name}…`, () => { token.canceled = true; token.job?.cancel(); });
     try {
       const view = await data.ensure(sample.id);
       const params = { cofactor: D.cofactor, separationCutoff: D.cutoff, mahalanobisCutoff: D.mahalanobis };
@@ -1757,7 +1757,7 @@ export function mountQCMode(app, container) {
       D.run = { sampleId: sample.id, key, params, result, at: new Date().toISOString() };
       progress?.done(`${formatPercent(result.percentAssigned)} of events assigned to a code.`);
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress?.done('Cancelled.', 'ok');
+      if (error.canceled || token.canceled) progress?.done('Canceled.', 'ok');
       else if (progress) progress.fail(error.message);
       else toast(error.message, { kind: 'error' });
     }
@@ -1796,7 +1796,7 @@ export function mountQCMode(app, container) {
           h('td.r', formatPercent((100 * result.counts[p]) / (totalAssigned || 1))),
           h('td.r.muted', { title: 'Events above the cutoff on the yield curve (before the Mahalanobis filter)' }, formatCount(result.yields.counts[p][j]))));
       });
-      tableHost.append(h('div.qc-table-scroll.tall', h('table.data', h('thead', h('tr', h('th', 'Code'), h('th', 'Positive channels'), h('th.r', 'Events'), h('th.r', '% of assigned'), h('th.r', `At ${grid[j].toFixed(2)}`))), body)));
+      tableHost.append(h('div.qc-table-scroll.tall', { tabIndex: 0 }, h('table.data', h('thead', h('tr', h('th', 'Code'), h('th', 'Positive channels'), h('th.r', 'Events'), h('th.r', '% of assigned'), h('th.r', `At ${grid[j].toFixed(2)}`))), body)));
     };
     const plot = chart(230, (ctx, w, hgt, c) => drawYield(ctx, w, hgt, c, run, D.cutoff), 'qc-yield');
     let dragging = false;

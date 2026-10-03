@@ -299,7 +299,7 @@ test('ellipses on unequal and nonlinear axes', () => {
   for (const t of [0.3, 1.1, 2.5, 4]) close(onBoundary([(40 + 30 * Math.cos(t)) / 100, (40 + 10 * Math.sin(t)) / 1000]), 1, 1e-12);
 
   // FlowJo's ellipse lives in display space, so on a log axis it is still an ellipse in scale space,
-  // exactly: centre, radii and angle are its display coordinates over 256.
+  // exactly: center, radii and angle are its display coordinates over 256.
   const xml = `<Workspace version="20.0" ${NS}><SampleList><Sample>
     <DataSet uri="x.fcs" sampleID="7"/>
     <Transformations>

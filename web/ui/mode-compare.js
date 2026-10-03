@@ -13,7 +13,7 @@ import { computeStatistic, countOf, population } from '../lib/engine.js';
 import { STATISTICS } from '../lib/stats.js';
 import { ROOT, META_FIELDS, channelCatalog, channelLabel, gateById, gatePath, setCollection } from '../lib/workspace.js';
 import { newId } from '../lib/gates.js';
-import { categoricalColor } from '../lib/colormaps.js';
+import { categoricalColor, shownColor } from '../lib/colormaps.js';
 import { quantileSorted } from '../lib/stats.js';
 import { denominatorOf, methodsSentence, pathGates, qcGateOf } from '../lib/multiverse.js';
 import { QC_CHANNEL } from './qc-run.js';
@@ -264,11 +264,11 @@ export function mountCompareMode(app, container) {
   function allLevels(samples) {
     const ws = store.ws;
     const c = cfg();
-    if (c.groupBy === 'groups') return ws.groups.map((g, i) => ({ key: g.id, label: g.name, color: g.color ?? categoricalColor(i) }));
+    if (c.groupBy === 'groups') return ws.groups.map((g, i) => ({ key: g.id, label: g.name, color: shownColor(ws, g, 'groups') ?? categoricalColor(i) }));
     if (!c.groupBy) return [];
     const field = c.groupBy.slice(5);
     const values = [...new Set(samples.map((s) => s.meta?.[field]).filter((v) => v !== undefined && v !== null && String(v).trim() !== '').map(String))].sort(natural);
-    return values.map((v, i) => ({ key: v, label: v, color: ws.groups.find((g) => g.name === v)?.color ?? categoricalColor(i) }));
+    return values.map((v, i) => ({ key: v, label: v, color: shownColor(ws, ws.groups.find((g) => g.name === v), 'groups') ?? categoricalColor(i) }));
   }
 
   function selectedLevels(samples) {
@@ -538,18 +538,18 @@ export function mountCompareMode(app, container) {
 
   async function loadSamples(samples) {
     if (loading || !samples.length) return;
-    let cancelled = false;
-    loading = { cancel: () => { cancelled = true; } };
-    const progress = progressToast(`Loading ${samples.length} samples…`, () => { cancelled = true; });
+    let canceled = false;
+    loading = { cancel: () => { canceled = true; } };
+    const progress = progressToast(`Loading ${samples.length} samples…`, () => { canceled = true; });
     let done = 0;
     for (const sample of samples) {
-      if (cancelled) break;
+      if (canceled) break;
       await data.ensure(sample.id).catch(() => {});
       done += 1;
       progress.update(done / samples.length, `Loading ${sample.name} (${done}/${samples.length})`);
     }
     loading = null;
-    if (cancelled) progress.done('Loading cancelled; results use the samples loaded so far.', 'info');
+    if (canceled) progress.done('Loading canceled; results use the samples loaded so far.', 'info');
     else progress.done(`Loaded ${samples.length} samples.`);
     render();
   }
@@ -723,7 +723,7 @@ export function mountCompareMode(app, container) {
       const samples = candidateSamples();
       const levels = selectedLevels(samples);
       if (levels.length > 2) pane.append(h('label.field', h('span', 'Contrast'), select(levels.slice(1).map((l) => ({ value: l.key, label: `${l.label} vs ${levels[0].label}` })), c.contrast ?? levels[1].key, (v) => setCfg({ contrast: v }))));
-      pane.append(h('p.muted', { style: { fontSize: '11.5px' } }, 'Per cluster: cells of the cluster out of the parent population in each sample, modelled by a quasi-binomial generalized linear model (logit link) with the design above, and tested by a likelihood-ratio F test. This approximates diffcyt’s edgeR/GLMM approach.'));
+      pane.append(h('p.muted', { style: { fontSize: '11.5px' } }, 'Per cluster: cells of the cluster out of the parent population in each sample, modeled by a quasi-binomial generalized linear model (logit link) with the design above, and tested by a likelihood-ratio F test. This approximates diffcyt’s edgeR/GLMM approach.'));
     } else {
       const options = [{ value: 'auto', label: 'Automatic (from the design)' }, ...Object.entries(TESTS).map(([id, t]) => ({ value: id, label: t.label }))];
       pane.append(h('label.field', h('span', 'Test'), select(options, c.test, (v) => setCfg({ test: v }))));
@@ -917,7 +917,7 @@ export function mountCompareMode(app, container) {
           return h('tr', h('td', choices[c].label), h('td', choices[c].options[r.picks[c]].label), h('td.r', formatValue(r.result.estimate)), h('td.r.muted', `${formatValue(r.result.ci[0])} to ${formatValue(r.result.ci[1])}`), h('td.r', formatP(r.result.p)), h('td', badge(r)));
         })))));
     const omitted = choices.find((c) => c.omitted)?.omitted;
-    pane.append(h('p.muted.small-print', `${summary.total} analyses, sorted by the difference they find (95% CI): the declared one (purple), each alternative alone, and random combinations; red ones reach a different conclusion. The marks below show which choices each analysis changed, coloured by the alternative (point at an analysis for details). The declared analysis stays the result; this shows how much it depends on choices that could reasonably have been made otherwise (a specification-curve analysis, Simonsohn et al. 2020). Gates adapted to each sample include those the adaptation was unsure of.${omitted ? ` ${omitted}, so it is not among the alternatives.` : ''} Scales are not varied: a gate drawn by hand follows its population on any scale, and the boundary moves cover where it was drawn.`),
+    pane.append(h('p.muted.small-print', `${summary.total} analyses, sorted by the difference they find (95% CI): the declared one (purple), each alternative alone, and random combinations; red ones reach a different conclusion. The marks below show which choices each analysis changed, colored by the alternative (point at an analysis for details). The declared analysis stays the result; this shows how much it depends on choices that could reasonably have been made otherwise (a specification-curve analysis, Simonsohn et al. 2020). Gates adapted to each sample include those the adaptation was unsure of.${omitted ? ` ${omitted}, so it is not among the alternatives.` : ''} Scales are not varied: a gate drawn by hand follows its population on any scale, and the boundary moves cover where it was drawn.`),
       h('div.btn-row', h('button.btn.small', { type: 'button', onclick: () => copyMethods(methodsSentence(summary, choices)) }, icon('copy'), 'Copy the methods sentence')));
     return pane;
   }
@@ -1457,7 +1457,7 @@ export function mountCompareMode(app, container) {
     const up = '#e45563';
     const down = '#4c78e0';
     const ranked = rows.map((r, i) => ({ r, yv: ys[i] })).sort((a, b) => a.yv - b.yv);
-    const labelled = new Set([...ranked].reverse().filter(({ r }) => r.q < c.alpha).slice(0, 10).map(({ r }) => r));
+    const labeled = new Set([...ranked].reverse().filter(({ r }) => r.q < c.alpha).slice(0, 10).map(({ r }) => r));
     for (const { r, yv } of ranked) {
       const sig = r.q < c.alpha && (!(c.fcThreshold > 0) || Math.abs(r.log2fc) >= c.fcThreshold);
       const px = x.map(r.log2fc);
@@ -1465,7 +1465,7 @@ export function mountCompareMode(app, container) {
       const color = sig ? (r.log2fc >= 0 || !twoSided ? up : down) : colors.muted;
       items.push({ t: 'circle', x: px, y: py, r: sig ? 5 : 3.8, fill: withAlpha(color.startsWith('#') ? color : '#9aa3b4', sig ? 0.85 : 0.45), stroke: sig ? colors.bg : null, width: 1 });
       hits.push({ x: px, y: py, r: 6, data: r });
-      if (labelled.has(r)) items.push({ t: 'text', x: px + 7, y: py - 6, text: r.label.length > 22 ? `${r.label.slice(0, 21)}…` : r.label, fill: colors.text2, size: 10.5 });
+      if (labeled.has(r)) items.push({ t: 'text', x: px + 7, y: py - 6, text: r.label.length > 22 ? `${r.label.slice(0, 21)}…` : r.label, fill: colors.text2, size: 10.5 });
     }
     return { items, hits };
   }
@@ -1513,7 +1513,7 @@ export function mountCompareMode(app, container) {
         chart?.redraw();
         volcano?.redraw();
       }
-      if (topics.has('ws') || topics.has('data') || topics.has('derived') || topics.has('tables') || topics.has('mode')) {
+      if (topics.has('ws') || topics.has('data') || topics.has('derived') || topics.has('tables') || topics.has('mode') || topics.has('colors')) {
         if (screenResult && (topics.has('ws') || topics.has('derived')) && !topics.has('comparisons')) screenResult = { ...screenResult, stale: true };
         render();
       }

@@ -1,4 +1,4 @@
-// Graph-based clustering of events: kNN graphs and modularity optimisation.
+// Graph-based clustering of events: kNN graphs and modularity optimization.
 //
 //   knnGraph      undirected weighted graph from a kNN result, with Jaccard weights as PhenoGraph
 //                 (Levine et al. 2015, doi:10.1016/j.cell.2015.05.047) or UMAP fuzzy weights
@@ -30,7 +30,7 @@ function combineWeights(mode, mix) {
     case 'product': return (a, b) => a * b;
     // Fuzzy set union a + b − ab, blended with the intersection ab (umap-learn set_op_mix_ratio).
     case 'fuzzy': return (a, b) => mix * (a + b - a * b) + (1 - mix) * a * b;
-    default: throw new Error(`Unknown symmetrisation "${mode}".`);
+    default: throw new Error(`Unknown symmetrization "${mode}".`);
   }
 }
 
@@ -117,7 +117,7 @@ export function symmetrize(indices, values, n, k, mode = 'mean', mix = 1) {
 }
 
 // umap-learn's smooth_knn_dist: for each row of k ascending distances find ρ (the distance to the
-// local_connectivity-th nearest non-zero neighbour, interpolated) and σ by binary search so that
+// local_connectivity-th nearest non-zero neighbor, interpolated) and σ by binary search so that
 // Σ_{j≥1} exp(−max(0, d_j − ρ)/σ) = log2(k) · bandwidth. Column 0 is skipped in the sum, as in
 // umap-learn, where it holds the point itself.
 export function smoothKnnDist(distances, n, k, options = {}) {
@@ -203,7 +203,7 @@ export function membershipStrengths(indices, distances, n, k, sigmas, rhos, bipa
 }
 
 // UMAP's fuzzy simplicial set from a kNN result that excludes the points themselves (as knn.js
-// returns): the point is prepended as umap-learn's neighbour 0, so n_neighbors = k + 1.
+// returns): the point is prepended as umap-learn's neighbor 0, so n_neighbors = k + 1.
 export function fuzzySimplicialSet(knnResult, n, options = {}) {
   const { localConnectivity = 1, setOpMixRatio = 1, bandwidth = 1 } = options;
   const k = knnResult.indices.length / n;
@@ -225,7 +225,7 @@ export function fuzzySimplicialSet(knnResult, n, options = {}) {
 }
 
 // PhenoGraph's jaccard_kernel: w(i→j) = |N(i) ∩ N(j)| / |N(i) ∪ N(j)| for j ∈ N(i), with N the
-// k nearest neighbours (self excluded), then symmetrised by averaging with the transpose.
+// k nearest neighbors (self excluded), then symmetrized by averaging with the transpose.
 export function jaccardWeights(indices, n, k) {
   const values = new Float32Array(n * k);
   const mark = new Int32Array(n).fill(-1);
@@ -252,7 +252,7 @@ export function jaccardWeights(indices, n, k) {
 // options.weighting: 'jaccard' (PhenoGraph, default) | 'fuzzy' (UMAP) | 'binary' (1 per edge).
 export function knnGraph(knnResult, n, k, options = {}) {
   const { weighting = 'jaccard' } = options;
-  if (knnResult.indices.length !== n * k) throw new Error(`The neighbour table should hold ${n} × ${k} entries.`);
+  if (knnResult.indices.length !== n * k) throw new Error(`The neighbor table should hold ${n} × ${k} entries.`);
   if (weighting === 'jaccard') return symmetrize(knnResult.indices, jaccardWeights(knnResult.indices, n, k), n, k, 'mean');
   if (weighting === 'fuzzy') {
     const graph = fuzzySimplicialSet(knnResult, n, options);
@@ -341,7 +341,7 @@ export function modularity(graph, labels, resolution = 1) {
   return q;
 }
 
-// --- Optimisation internals --------------------------------------------------------------------
+// --- Optimization internals --------------------------------------------------------------------
 // A level graph is { n, offsets, targets, weights: Float64Array } without self-loops; node weights
 // (strengths, summed over aggregated nodes) are kept separately, as networkanalysis does, so the
 // quality of moving node v into cluster c is  w(v, c) − k_v · K_c · γ / 2m.
@@ -472,7 +472,7 @@ function moveNode(state, G, nodeWeight, comm, v, resolution, visit) {
   return best;
 }
 
-// Leiden's fast local moving: a queue of nodes, re-queueing neighbours of moved nodes.
+// Leiden's fast local moving: a queue of nodes, re-queueing neighbors of moved nodes.
 function moveNodesFast(G, nodeWeight, comm, resolution, random, state, counter) {
   const n = G.n;
   initClusters(state, G, nodeWeight, comm);
@@ -696,7 +696,7 @@ function finishClustering(graph, comm, resolution, extra) {
   return { labels, quality: modularity(graph, labels, resolution), communities: count, sizes, ...extra };
 }
 
-// Louvain modularity optimisation. Options: resolution γ (1), seed.
+// Louvain modularity optimization. Options: resolution γ (1), seed.
 export function louvain(graph, options = {}) {
   const { resolution = 1, seed = DEFAULT_SEED, onProgress, signal } = options;
   const n = checkGraph(graph);
@@ -772,7 +772,7 @@ function leidenIteration(level0, comm, res, randomness, random, counter, signal)
   return changed;
 }
 
-// Leiden modularity optimisation. Options: resolution γ (1), seed, randomness θ (0.01),
+// Leiden modularity optimization. Options: resolution γ (1), seed, randomness θ (0.01),
 // iterations (−1 = repeat until an iteration changes nothing, at most 50), initial (labels).
 export function leiden(graph, options = {}) {
   const { resolution = 1, seed = DEFAULT_SEED, randomness = 0.01, iterations = -1, initial = null, onProgress, signal } = options;
@@ -801,10 +801,10 @@ export function phenograph(data, n, dim, options = {}) {
   const { k = 30, algorithm = 'leiden', returnGraph = false, onProgress, signal } = options;
   const kk = Math.min(k, n - 1);
   if (kk < 1) throw new Error('PhenoGraph needs at least two events.');
-  const neighbours = knn(data, n, dim, kk, { ...options, onProgress: progressRange(onProgress, 0, 0.6), signal });
+  const neighbors = knn(data, n, dim, kk, { ...options, onProgress: progressRange(onProgress, 0, 0.6), signal });
   throwIfAborted(signal);
   if (onProgress) onProgress(0.6, 'Building the Jaccard graph');
-  const graph = knnGraph(neighbours, n, kk, { weighting: 'jaccard' });
+  const graph = knnGraph(neighbors, n, kk, { weighting: 'jaccard' });
   const cluster = algorithm === 'louvain' ? louvain : leiden;
   const result = cluster(graph, { ...options, onProgress: progressRange(onProgress, 0.65, 1) });
   if (onProgress) onProgress(1, `${result.communities} clusters`);

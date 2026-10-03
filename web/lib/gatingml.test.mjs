@@ -662,7 +662,7 @@ test('pinned compensations, N-dimensional gates, bounds and unmixing round-trip'
   first.derived.find((d) => d.kind === 'unmix').params.matrix.forEach((v, i) => close(unmix.params.matrix[i], v, 1e-9));
 });
 
-test('export honours a sample, the file compensation and plain output', () => {
+test('export honors a sample, the file compensation and plain output', () => {
   const ws = sampleWorkspace();
   ws.compensations[0].source = 'file';
   const { xml, warnings } = exportGatingML(ws, { sampleId: 's2', customInfo: false, gateIds: ['gSing'] });

@@ -156,7 +156,7 @@ test('the async runner gives the same results and puts the compensation back whe
   // Stopped part-way through, after the compensation was switched.
   let n = 0;
   const signal = { aborted: false };
-  await assert.rejects(runMultiverseAsync({ ...input, signal, onProgress: () => { n += 1; if (n === specs.length - 1) signal.aborted = true; } }), /Cancelled/);
+  await assert.rejects(runMultiverseAsync({ ...input, signal, onProgress: () => { n += 1; if (n === specs.length - 1) signal.aborted = true; } }), /Canceled/);
   for (const view of views.values()) assert.equal(view.compensation.id, 'file');
 });
 

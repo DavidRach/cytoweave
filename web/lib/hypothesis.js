@@ -99,7 +99,7 @@ function gammaContinuedFraction(a, x) {
   return Math.exp(-x + a * Math.log(x) - logGamma(a)) * h;
 }
 
-// Regularised lower incomplete gamma P(a, x) = γ(a, x)/Γ(a).
+// Regularized lower incomplete gamma P(a, x) = γ(a, x)/Γ(a).
 export function gammaP(a, x) {
   if (Number.isNaN(x) || !(a > 0)) return Number.NaN;
   if (x <= 0) return 0;
@@ -107,7 +107,7 @@ export function gammaP(a, x) {
   return x < a + 1 ? gammaSeries(a, x) : 1 - gammaContinuedFraction(a, x);
 }
 
-// Regularised upper incomplete gamma Q(a, x) = 1 − P(a, x), accurate in the upper tail.
+// Regularized upper incomplete gamma Q(a, x) = 1 − P(a, x), accurate in the upper tail.
 export function gammaQ(a, x) {
   if (Number.isNaN(x) || !(a > 0)) return Number.NaN;
   if (x <= 0) return 1;
@@ -164,7 +164,7 @@ function betaPair(x, a, b, y = 1 - x) {
   return [1 - upper, upper];
 }
 
-// Regularised incomplete beta function I_x(a, b).
+// Regularized incomplete beta function I_x(a, b).
 export function incompleteBeta(x, a, b) {
   return betaPair(x, a, b)[0];
 }
@@ -844,7 +844,7 @@ export function spearmanCorrelation(x, y, options = {}) {
 // --- Multiple testing --------------------------------------------------------------------------
 
 // Adjusted p-values as R's p.adjust: 'bonferroni', 'holm', 'BH' (alias 'fdr'), 'BY', 'none'.
-// Non-finite entries are left as NaN and do not count towards the number of tests.
+// Non-finite entries are left as NaN and do not count toward the number of tests.
 export function adjustPValues(pValues, method = 'BH') {
   const key = String(method).toLowerCase();
   const out = new Float64Array(pValues.length).fill(Number.NaN);
@@ -901,7 +901,7 @@ export function bootstrap(groups, statistic, options = {}) {
   const scratch = data.map((g) => new Float64Array(g.length));
   let valid = 0;
   for (let it = 0; it < iterations; it += 1) {
-    if (options.signal?.aborted) throw new Error('The bootstrap was cancelled.');
+    if (options.signal?.aborted) throw new Error('The bootstrap was canceled.');
     for (let g = 0; g < data.length; g += 1) {
       const src = data[g];
       const dst = scratch[g];
@@ -1213,7 +1213,7 @@ export function logit(p, epsilon = 0) {
   return Math.log(q / (1 - q));
 }
 
-// Variance-stabilising arcsine square-root transform of a proportion.
+// Variance-stabilizing arcsine square-root transform of a proportion.
 export function arcsineSqrt(p) {
   return Math.asin(Math.sqrt(Math.min(1, Math.max(0, p))));
 }

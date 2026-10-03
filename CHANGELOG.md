@@ -11,14 +11,23 @@
 
 - **Robustness to analysis choices.** Compare → Robustness to analysis choices checks whether a two-group comparison's conclusion would change had the data been processed differently in ways another analyst might reasonably have chosen. It moves each gate on the population's path 1% and 2% of the axis, adapts the gates to each sample (one per subject when paired) or removes per-sample adjustments, takes acquisition QC away (or re-runs it stricter and looser), tries the files' and the workspace's other compensation matrices and the rank test, each alone and in random combinations (64 analyses). It says whether the conclusion holds (≥ 90%), mostly holds (≥ 70%) or is fragile, names the choices that change it and those that move the size of a difference found beyond its confidence interval, and draws the specification curve. The methods text and saved comparisons include a sentence on it, and agents have `check_robustness`.
 
+- **Color-vision-friendly colors.** A setting in the new Appearance menu (the theme button) shows populations, groups and clusters in a palette that stays distinct with protanopia, deuteranopia and tritanopia, draws the rainbow heat maps (Classic, Turbo) as viridis, and turns the green, amber and red status colors into blue, orange and magenta. The workspace is not changed: its own colors return when the setting is off. In the default palette two of the first eight colors look the same with deuteranopia (CIEDE2000 0.8); in the friendly one any two differ by at least 11 in every kind of vision.
+- **Keyboard and screen readers.** The population tree works from the keyboard (arrows, Home, End) and is announced as a tree with each population's frequency and count; the sample list is one stop with the arrow keys; dialogs keep the focus inside and give it back when they close; a focus ring shows where the keyboard is; scrolling regions can be focused; and every plot has a text description (type, axes, population, events and the gates on it with their frequencies). Icon buttons, menus and status dots have names. Docs: a new Accessibility page.
+
+### Changed
+
+- **Contrast.** Muted text, status text and the dark theme's primary buttons are slightly darker or lighter so that every text color reaches 4.5:1 on every surface it is used on (WCAG AA): muted gray #7b8496 → #636c7e (light) and #808a9d → #8a94a7 (dark); primary buttons in the dark theme #8d7dff → #6b5ae8; status text a shade darker in the light theme and red status text a shade lighter in the dark theme; heat-map cells in Tables switch to dark or white text where the shading would leave too little contrast; hidden entries in plot legends are struck through in muted gray instead of faded. The theme button opens an Appearance menu (light, dark, match the system, color-vision-friendly colors) instead of switching the theme in one click.
+
 ### Fixed
 
+- **A failed save stayed hidden.** The red dot of a workspace that could not be saved turned back to "unsaved" at the next edit.
 - **Roles from file names with underscores.** "Beads_2026-03-31", "Comp_FITC" and "Unstained_01" were not recognized as bead, single-stain and unstained files, because the underscore joined the words.
 - **Off-scale events in the compensation spreading matrix.** Clipped events in a single-stain control looked like spread in every detector: on a real LSRFortessa control with a sixth of its positives off scale, one entry read 53 instead of 4. They are now left out, as they already were for the spillover values.
 - **BD FACSDiscover and FACSymphony spectral detectors.** Detector names such as `UV1 (375)-A` are recognized, so these instruments' raw files open in the Spectral view.
 
 ### Validation
 
+- **Accessibility** (new `accessibility` suite and `capture.mjs --audit`): every text color reaches 4.5:1 on every surface in both themes with color-vision-friendly colors off and on; the friendly palette's colors differ by at least 11 (first eight) and 7 (all twenty) in CIEDE2000 with simulated protanopia, deuteranopia and tritanopia (Machado et al. 2009); its status colors by at least 9; viridis gets lighter steadily in every kind of vision (the classic rainbow reverses 10–12 times). axe-core 4.13 (WCAG 2.1 A and AA rules) finds no violations in any of the 33 documentation scenes in either theme (66 pages).
 - **Robustness to analysis choices** (new `multiverse` and `multiverse-ics` suites), on comparisons with known answers in the PBMC example:
   - a real effect (CD25+ T cells after stimulation) holds in 64 of 64 analyses;
   - a detector gain in one batch, with a gate drawn close to the negative cells, makes a spurious difference: called fragile, with the adapted gates named as removing it;
@@ -90,7 +99,7 @@ CytoWeave 0.3 works with the rest of the lab: it writes FlowJo workspaces and de
   - Events on a polygon's edge are inside it.
 - **Gate boundaries** are decided in double precision, so an event within rounding distance of a boundary falls on the same side as in reference tools.
 - **FCS files:** Guava Muse log channels (log10 values stored as floating point) are read correctly, and a file cut off before its data now says so instead of failing.
-- **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-colour panel the matrix is now within 0.015 of FACSDiva's. Each detector's own range ($PnR) decides what is saturated, rather than 262,144 for every instrument.
+- **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-color panel the matrix is now within 0.015 of FACSDiva's. Each detector's own range ($PnR) decides what is saturated, rather than 262,144 for every instrument.
 - **Logicle width estimates** take the 5th percentile of the negative values, as flowCore's `estimateLogicle` does, rather than of all values, and are no longer held at 0.25 or more when the data have negative values.
 - **Workers on large samples.** Analyses in workers (QC, normalization, clustering) read the sample's events in shared memory instead of a copy. At ten million events the copy failed and the job waited forever; a job whose data cannot be handed over now fails with a message.
 - **Methods.** A result with both a clustering and an embedding (for example FlowSOM and UMAP) now describes both; before, only the clustering was described.
@@ -135,7 +144,7 @@ CytoWeave 0.3 works with the rest of the lab: it writes FlowJo workspaces and de
 
 ## 0.1.0 (2026-10-02)
 
-CytoWeave is a free, open-source (Apache 2.0) workbench for flow cytometry analysis: conventional, spectral and mass cytometry. It runs on your own computer as one self-contained program, with no licence server, account, Python or R. Files are analyzed in the browser and never leave your machine.
+CytoWeave is a free, open-source (Apache 2.0) workbench for flow cytometry analysis: conventional, spectral and mass cytometry. It runs on your own computer as one self-contained program, with no license server, account, Python or R. Files are analyzed in the browser and never leave your machine.
 
 This is the first release.
 
@@ -171,7 +180,7 @@ The binaries are not code-signed, so a file downloaded with a browser triggers a
 Open **Workspace → Example experiments** and pick one of nine simulated experiments. Each is generated in the app with the true identity of every event, so you can check your results against the truth:
 - PBMC immunophenotyping with a deliberate compensation error to find;
 - a FlowJo workspace to migrate;
-- a 25-colour spectral panel;
+- a 25-color spectral panel;
 - cell cycle and proliferation;
 - a two-batch mass cytometry cohort and a barcoded plate;
 - an index sort and a QC plate.

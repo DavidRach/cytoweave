@@ -1,6 +1,6 @@
 // Large-sample benchmark: times each stage of the pipeline on one sample of N events, the way the
 // app runs it, and reports the memory each stage holds. The sample is the PBMC example's D01_Unstim
-// (14 colours, with its suggested gates) repeated to N events with a little jitter: fine for
+// (14 colors, with its suggested gates) repeated to N events with a little jitter: fine for
 // timing, not for judging QC results.
 //
 //   node --expose-gc validation/bench.mjs [events, default 10000000] [--json]

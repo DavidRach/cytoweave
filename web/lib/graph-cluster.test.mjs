@@ -181,7 +181,7 @@ test('symmetrize combines both directions', () => {
   assert.deepEqual(Array.from(sum.offsets), [0, 1, 3, 4]);
 });
 
-test('smooth kNN distances reach log2(k) and fuzzy weights are 1 at the nearest neighbour', () => {
+test('smooth kNN distances reach log2(k) and fuzzy weights are 1 at the nearest neighbor', () => {
   const random = createRandom(4);
   const n = 50;
   const k = 15;
@@ -213,12 +213,12 @@ test('PhenoGraph recovers well-separated populations', () => {
   const random = createRandom(17);
   const n = 900;
   const dim = 10;
-  const centres = Array.from({ length: 3 }, () => Array.from({ length: dim }, () => random.gaussian() * 5));
+  const centers = Array.from({ length: 3 }, () => Array.from({ length: dim }, () => random.gaussian() * 5));
   const data = new Float32Array(n * dim);
   const truth = new Int32Array(n);
   for (let i = 0; i < n; i += 1) {
     truth[i] = i % 3;
-    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centres[truth[i]][t] + random.gaussian() * 0.6;
+    for (let t = 0; t < dim; t += 1) data[i * dim + t] = centers[truth[i]][t] + random.gaussian() * 0.6;
   }
   const result = phenograph(data, n, dim, { k: 30, seed: 2, resolution: 0.5 });
   assert.equal(result.k, 30);

@@ -12,7 +12,7 @@ function peaks(levels, [c0, c1, c2], n, seed) {
 test('a normal fitted to the central 80% recovers mean and SD, ignoring stray events', () => {
   const random = createRandom(3);
   const values = Array.from({ length: 20000 }, () => 100 + 10 * random.gaussian());
-  // 2% of events from a neighbouring peak.
+  // 2% of events from a neighboring peak.
   for (let i = 0; i < 400; i += 1) values.push(400 + 20 * random.gaussian());
   const r = robustNormal(values);
   assert.ok(Math.abs(r.mean - 100) < 0.6, `mean ${r.mean}`);

@@ -50,13 +50,13 @@ import {
 } from '../lib/spectral.js';
 import { crossValidate, fitNoise, noiseRecord, spreadModel } from '../lib/spread.js';
 
-const cancelledIds = new Set();
+const canceledIds = new Set();
 
 function signalFor(id, payload) {
   const flag = payload?.abort instanceof Int32Array ? payload.abort : null;
   return {
     get aborted() {
-      return cancelledIds.has(id) || (flag ? Atomics.load(flag, 0) !== 0 : false);
+      return canceledIds.has(id) || (flag ? Atomics.load(flag, 0) !== 0 : false);
     },
   };
 }
@@ -156,7 +156,7 @@ function spreadingFromControls({ controls, unstained = null, detectors, spectra,
   let unstainedUnmixed = null;
   const list = [];
   controls.forEach((control, i) => {
-    if (common.signal.aborted) throw Object.assign(new Error('The spectral analysis was cancelled.'), { name: 'AbortError' });
+    if (common.signal.aborted) throw Object.assign(new Error('The spectral analysis was canceled.'), { name: 'AbortError' });
     common.onProgress(i / controls.length, `Unmixing the ${control.fluorochrome} control`);
     const gate = autoGateControl(control.columns, detectors, gateOptions({ ...options, peakDetector: control.peakDetector, negative: control.negative }, unstained));
     if (!gate.positive.length) return;
@@ -182,13 +182,13 @@ function run({ id, type, payload }) {
     const handler = handlers[type];
     if (!handler) throw new Error(`The spectral worker does not know "${type}".`);
     const signal = signalFor(id, payload);
-    if (signal.aborted) throw Object.assign(new Error('The spectral analysis was cancelled.'), { name: 'AbortError' });
+    if (signal.aborted) throw Object.assign(new Error('The spectral analysis was canceled.'), { name: 'AbortError' });
     const result = handler(payload ?? {}, { onProgress: progressFor(id), signal });
     self.postMessage({ id, result }, [...transferables(result)]);
   } catch (error) {
-    self.postMessage({ id, error: error?.message ?? String(error), cancelled: error?.name === 'AbortError' });
+    self.postMessage({ id, error: error?.message ?? String(error), canceled: error?.name === 'AbortError' });
   } finally {
-    cancelledIds.delete(id);
+    canceledIds.delete(id);
   }
 }
 
@@ -205,7 +205,7 @@ function drain() {
 self.onmessage = (event) => {
   const message = event.data ?? {};
   if (message.type === 'cancel') {
-    cancelledIds.add(message.payload?.id ?? message.id);
+    canceledIds.add(message.payload?.id ?? message.id);
     return;
   }
   queue.push(message);

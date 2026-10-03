@@ -20,7 +20,7 @@
 //
 // c1 and the laser CVs are fitted to the variance differences of single-stain controls
 // (spectralSpreading and spilloverSpreading return them), weighted by their standard errors and
-// shrunk towards a common c1 where a detector receives too little light to be estimated; or c1
+// shrunk toward a common c1 where a detector receives too little light to be estimated; or c1
 // comes from bead runs of the instrument (qb.js). On the 15 bead controls of a BD LSRFortessa,
 // each control's spread predicted from the other 14 was within 2× of the observed for 79% of the
 // entries measured to 4 SE (67% with photon noise alone); on simulated controls, 98%
@@ -122,7 +122,7 @@ export function predictedSpreading(model, noise, brightness) {
 // Fits the noise of the instrument to controls' variance differences: observations
 // [{ i, deltaF, rows: [{ j, variance, se }] }] (from spectralSpreading or spilloverSpreading).
 // options: exclude (a dye index left out, for cross-validation), c1 (fixed per-detector values,
-// e.g. from beads: only the laser CVs are fitted), shrinkage (towards a common c1; default 0.02),
+// e.g. from beads: only the laser CVs are fitted), shrinkage (toward a common c1; default 0.02),
 // laser (fit laser CVs; default true).
 // Returns { c1, laserCV, common, identified (per detector; the others take the common value),
 // entries, outliers }.
@@ -158,7 +158,7 @@ export function fitNoise(model, observations, options = {}) {
   const scale = new Float64Array(P);
   for (const f of rows) for (let p = 0; p < P; p += 1) scale[p] = Math.max(scale[p], Math.abs(f[p]));
   // A detector that (almost) no dye reaches has (almost) no data: scale it like the others, so
-  // that its shrinkage towards the common value is not lost below the solver's tolerance.
+  // that its shrinkage toward the common value is not lost below the solver's tolerance.
   const photonScales = Array.from(scale.subarray(0, fixed ? 0 : D)).filter((v) => v > 0).sort((a, b) => a - b);
   const typical = photonScales.length ? photonScales[Math.floor(photonScales.length / 2)] : 1;
   for (let p = 0; p < P; p += 1) {
@@ -180,7 +180,7 @@ export function fitNoise(model, observations, options = {}) {
         for (let q = 0; q < P; q += 1) if (f[q]) G[p * P + q] += w * fp * (f[q] / scale[q]);
       }
     });
-    // Shrinkage of each c1 towards the common value (on the scaled coefficients).
+    // Shrinkage of each c1 toward the common value (on the scaled coefficients).
     if (!fixed && lambda > 0) {
       let diag = 0;
       for (let d = 0; d < D; d += 1) diag += G[d * P + d];
@@ -203,7 +203,7 @@ export function fitNoise(model, observations, options = {}) {
   };
 
   // A common c1 first (one shared coefficient, with the lasers), then per detector, shrunk
-  // towards it; two rounds of down-weighting entries far from the fit (Huber, at 3 SE), which
+  // toward it; two rounds of down-weighting entries far from the fit (Huber, at 3 SE), which
   // keeps a heterogeneous control (a degraded tandem) from bending every detector.
   let common = 0;
   if (!fixed) {
@@ -236,7 +236,7 @@ export function fitNoise(model, observations, options = {}) {
       for (let d = 0; d < D; d += 1) if (e.deltaF * e.photon[d] * (c1[d] || common) >= 0.1 * total) involved[d] += 1;
     });
     for (let d = 0; d < D; d += 1) identified[d] = involved[d] >= 2 ? 1 : 0;
-    // Detectors the controls cannot determine (traded off against their neighbours) take the
+    // Detectors the controls cannot determine (traded off against their neighbors) take the
     // common value, which matters when the model is kept and applied to another panel.
     for (let d = 0; d < D; d += 1) if (!identified[d]) c1[d] = common;
   } else identified.fill(1);

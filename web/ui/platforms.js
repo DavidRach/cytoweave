@@ -1,4 +1,4 @@
-// Modelling platforms: DNA-content (cell-cycle) and dye-dilution (proliferation) models of a
+// Modeling platforms: DNA-content (cell-cycle) and dye-dilution (proliferation) models of a
 // population, in large dialogs with the fitted histogram, component curves, residuals,
 // explained results, a per-sample batch run and saved results (ws.derived records).
 
@@ -43,8 +43,8 @@ function fieldRow(label, control, hint) {
   return h('label.field', h('span', label), control, hint ? h('span.muted.fine-print', { style: { fontWeight: 400 } }, hint) : null);
 }
 
-function selectEl(options, value, onChange) {
-  return h('select.input.small', { onchange: (event) => onChange(event.target.value) },
+function selectEl(options, value, onChange, label) {
+  return h('select.input.small', { 'aria-label': label, onchange: (event) => onChange(event.target.value) },
     ...options.map((o) => h('option', { value: o.value, selected: String(o.value) === String(value) }, o.label)));
 }
 
@@ -113,10 +113,10 @@ function legend(items, entries, rect, colors) {
 async function runAllSamples(app, gateId, compute, label) {
   const { store, data } = app;
   const samples = sampleOptions(store.ws, gateId).filter((s) => s.role === 'sample' || s.role === 'reference');
-  let cancelled = false;
-  const progress = progressToast(`${label}: ${samples.length} samples…`, () => { cancelled = true; });
+  let canceled = false;
+  const progress = progressToast(`${label}: ${samples.length} samples…`, () => { canceled = true; });
   const rows = [];
-  for (let i = 0; i < samples.length && !cancelled; i += 1) {
+  for (let i = 0; i < samples.length && !canceled; i += 1) {
     const sample = samples[i];
     progress.update(i / samples.length, `${label}: ${sample.name} (${i + 1}/${samples.length})`);
     try {
@@ -129,7 +129,7 @@ async function runAllSamples(app, gateId, compute, label) {
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
-  if (cancelled) progress.done(`Stopped after ${rows.length} samples.`, 'info');
+  if (canceled) progress.done(`Stopped after ${rows.length} samples.`, 'info');
   else progress.done(`${label}: ${rows.length} samples done.`);
   return rows;
 }
@@ -200,7 +200,7 @@ export async function openCellCycle(app, gateId, sampleId) {
         h('button.btn.small', { type: 'button', onclick: () => chart.exportPNG() }, icon('download'), 'PNG')), chartHost),
       results, doublets)),
     batchHost,
-    h('p.muted.fine-print', 'Dean–Jett–Fox: Fox 1980, Cytometry 1:71–77 (doi:10.1002/cyto.990010103); S phase as a broadened second-order polynomial (Dean & Jett 1974). Watson pragmatic: Watson, Chambers & Smith 1987, Cytometry 8:1–8 (doi:10.1002/cyto.990080101); here the S-phase edge inside each flank is modelled (toggle in the code: flankCorrection). Fits minimise Poisson-weighted χ² by Levenberg–Marquardt; uncertainties are delta-method standard errors from the fit covariance. Doublet gate: robust line of pulse width on DNA area ± 3 robust SD.'));
+    h('p.muted.fine-print', 'Dean–Jett–Fox: Fox 1980, Cytometry 1:71–77 (doi:10.1002/cyto.990010103); S phase as a broadened second-order polynomial (Dean & Jett 1974). Watson pragmatic: Watson, Chambers & Smith 1987, Cytometry 8:1–8 (doi:10.1002/cyto.990080101); here the S-phase edge inside each flank is modeled (toggle in the code: flankCorrection). Fits minimize Poisson-weighted χ² by Levenberg–Marquardt; uncertainties are delta-method standard errors from the fit covariance. Doublet gate: robust line of pulse width on DNA area ± 3 robust SD.'));
 
   const dialog = showDialog({
     title: `Cell cycle — ${gateId !== ROOT ? gateById(ws0, gateId)?.name ?? 'population' : 'all events'}`,
@@ -236,7 +236,7 @@ export async function openCellCycle(app, gateId, sampleId) {
         : 'Fits Gaussians to the outer flanks of G1 and G2 only; S phase is what remains between them. Robust when S phase has an unusual shape.'),
       h('label.check', h('input', { type: 'checkbox', checked: state.ratioFixed, onchange: (e) => { state.ratioFixed = e.target.checked; refit(); } }), 'Constrain G2/G1 ratio to'),
       (() => {
-        const input = h('input.input.small', { type: 'number', step: 0.01, min: 1.5, max: 2.5, value: state.ratio, disabled: !state.ratioFixed, style: { width: '90px', margin: '4px 0 8px 24px' } });
+        const input = h('input.input.small', { type: 'number', step: 0.01, min: 1.5, max: 2.5, value: state.ratio, disabled: !state.ratioFixed, 'aria-label': 'G2/G1 ratio', style: { width: '90px', margin: '4px 0 8px 24px' } });
         input.addEventListener('change', () => { state.ratio = Number.parseFloat(input.value) || 2; refit(); });
         return input;
       })(),
@@ -367,7 +367,7 @@ export async function openCellCycle(app, gateId, sampleId) {
     const pane = h('div.pane', h('h3', icon('polygon'), 'Doublet discrimination'));
     doublets.append(pane);
     if (!partner) {
-      pane.append(h('p.muted', { style: { margin: 0, fontSize: '12px' } }, 'No pulse width or height parameter of this DNA channel was found (e.g. PI-W). Gate singlets on a width or height vs area plot before modelling.'));
+      pane.append(h('p.muted', { style: { margin: 0, fontSize: '12px' } }, 'No pulse width or height parameter of this DNA channel was found (e.g. PI-W). Gate singlets on a width or height vs area plot before modeling.'));
       return;
     }
     pane.append(h('p.muted', { style: { margin: '0 0 8px', fontSize: '12px' } },
@@ -577,7 +577,7 @@ export async function openProliferation(app, gateId, sampleId) {
   });
 
   const content = h('div.platform',
-    h('p.platform-intro', 'Each division halves a cell’s dye. The dye histogram of ', h('b', populationName(ws0, gateId)), ' is modelled as equally spaced generation peaks (on a log scale) with a shared width; the cells in each generation give the number of original cells (precursors) that divided, and the proliferation indices below.'),
+    h('p.platform-intro', 'Each division halves a cell’s dye. The dye histogram of ', h('b', populationName(ws0, gateId)), ' is modeled as equally spaced generation peaks (on a log scale) with a shared width; the cells in each generation give the number of original cells (precursors) that divided, and the proliferation indices below.'),
     h('div.platform-grid', controls, h('div', { style: { minWidth: 0 } },
       h('div.pane', h('h3', icon('wave'), 'Fitted generations', h('span.spacer'),
         h('button.btn.small', { type: 'button', onclick: () => chart.exportSVG() }, icon('download'), 'SVG'),
@@ -636,7 +636,7 @@ export async function openProliferation(app, gateId, sampleId) {
         h(`button${state.peakMode === 'auto' ? '.active' : ''}`, { type: 'button', onclick: () => { state.peakMode = 'auto'; refit(); } }, 'Brightest peak'),
         h(`button${state.peakMode === 'fixed' ? '.active' : ''}`, { type: 'button', onclick: () => { state.peakMode = 'fixed'; state.peak ??= fit?.undividedPeak ?? null; refit(); } }, 'Fixed')),
       h('div.row', { style: { marginBottom: '8px' } }, peakInput,
-        selectEl([{ value: '', label: 'Take from a control…' }, ...store.ws.samples.filter((s) => s.id !== state.sampleId).map((s) => ({ value: s.id, label: s.name }))], '', (v) => { if (v) peakFromControl(v); })),
+        selectEl([{ value: '', label: 'Take from a control…' }, ...store.ws.samples.filter((s) => s.id !== state.sampleId).map((s) => ({ value: s.id, label: s.name }))], '', (v) => { if (v) peakFromControl(v); }, 'Take the undivided peak from a control')),
       h('p.muted.fine-print', 'An unstimulated control marks generation 0 exactly; otherwise the brightest substantial peak is used and refined.'),
       fieldRow('Generations', selectEl([{ value: 'auto', label: 'Automatic (up to 10)' }, ...Array.from({ length: 10 }, (_, i) => ({ value: i + 1, label: String(i + 1) }))], state.generations, (v) => { state.generations = v; refit(); })),
       h('label.check', h('input', { type: 'checkbox', checked: state.fitSpacing, onchange: (e) => { state.fitSpacing = e.target.checked; refit(); } }), 'Fit the spacing (dye loss per division)'),
@@ -761,7 +761,7 @@ export async function openProliferation(app, gateId, sampleId) {
         h('dt', 'Dilution per division'), h('dd', `${fit.dilutionPerGeneration.toFixed(3)}×${state.fitSpacing ? ' (fitted)' : ' (fixed)'}`),
         h('dt', 'Peak CV'), h('dd', `${(100 * fit.cv).toFixed(1)}%`),
         h('dt', 'Reduced χ²'), h('dd', formatValue(fit.reducedChiSquare)),
-        h('dt', 'Events modelled'), h('dd', `${formatCount(fit.eventCount)}${fit.excluded ? ` (${formatCount(fit.excluded)} left out)` : ''}`)));
+        h('dt', 'Events modeled'), h('dd', `${formatCount(fit.eventCount)}${fit.excluded ? ` (${formatCount(fit.excluded)} left out)` : ''}`)));
     for (const warning of fit.warnings) pane.append(h('div.callout.warn', { style: { marginTop: '8px', fontSize: '12px' } }, warning));
     pane.append(h('div.callout', { style: { marginTop: '10px', fontSize: '12px' } },
       h('b', 'What the indices mean. '),

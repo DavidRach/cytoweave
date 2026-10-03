@@ -108,7 +108,7 @@ test('cluster abundance per sample', () => {
   assert.deepEqual(Array.from(a.frequencies), [0.5, 0.5, 0, 1 / 3, 1 / 3, 1 / 3]);
 });
 
-test('adjusted Rand index: identical, relabelled, hand-computed and chance', () => {
+test('adjusted Rand index: identical, relabeled, hand-computed and chance', () => {
   const a = Int32Array.of(0, 0, 0, 1, 1, 1);
   assert.equal(adjustedRandIndex(a, a), 1);
   assert.equal(adjustedRandIndex(a, Int32Array.of(7, 7, 7, 3, 3, 3)), 1);
@@ -198,7 +198,7 @@ test('annotation picks the most specific matching rule and explains itself', () 
   assert.throws(() => annotateClusters(SUMMARY, MARKERS, [{ name: 'x', require: { CD3: 'dim' } }]), /should be \+ or −/);
 });
 
-test('annotation honours user thresholds', () => {
+test('annotation honors user thresholds', () => {
   const result = annotateClusters(SUMMARY, MARKERS, RULES, { thresholds: { CD8: 0.1 } });
   const cd8 = result.thresholds.find((t) => t.marker === 'CD8');
   assert.equal(cd8.source, 'user');
