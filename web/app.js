@@ -256,11 +256,9 @@ async function start() {
 
   async function importFCSItems(items, options = {}) {
     const progress = progressToast(`Reading ${items.length} FCS file${items.length > 1 ? 's' : ''}…`);
-    const files = [];
-    for (const item of items) {
-      files.push({ name: item.name, bytes: await readBytes(item), size: item.file?.size, order: item.order, folder: item.folder });
-    }
-    const { records, problems } = await data.importFCS(files, (done, total, name) => progress.update(done / total, `Reading ${name} (${done}/${total})`));
+    // Files are handed over as they are (a File is read in parts by the worker), not read here.
+    const files = items.map((item) => ({ name: item.name, file: item.bytes ? null : item.file instanceof Blob ? item.file : null, bytes: item.bytes ?? null, localUrl: item.localUrl ?? null, size: item.file?.size ?? item.size, order: item.order, folder: item.folder }));
+    const { records, problems } = await data.importFCS(files, (done, total, name) => progress.update(done / total, `Reading ${name} (${Math.min(total, Math.floor(done) + 1)}/${total})`));
     if (!records.length) {
       progress.fail(problems[0] ?? 'No FCS data could be read.');
       return [];
@@ -943,6 +941,12 @@ async function start() {
     if (!pending.length) return;
     const items = [];
     for (const file of pending) {
+      // FCS files stay where they are: the program copies them into the library and the worker
+      // reads them in parts. Other files are small and read here.
+      if (file.kind === 'fcs') {
+        items.push({ file: { size: file.size }, size: file.size, name: file.name, localUrl: file.url, folder: file.folder ?? null, order: items.length });
+        continue;
+      }
       const response = await fetch(file.url);
       if (!response.ok) continue;
       items.push({ file: { size: file.size }, name: file.name, bytes: new Uint8Array(await response.arrayBuffer()), folder: file.folder ?? null, order: items.length });

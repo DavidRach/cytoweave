@@ -20,10 +20,19 @@
 - **FCS files:** Guava Muse log channels (log10 values stored as floating point) are read correctly, and a file cut off before its data now says so instead of failing.
 - **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-colour panel the matrix is now within 0.015 of FACSDiva's.
 - **Logicle width estimates** take the 5th percentile of the negative values, as flowCore's `estimateLogicle` does, rather than of all values, and are no longer held at 0.25 or more when the data have negative values.
+- **Workers on large samples.** Analyses in workers (QC, normalization, clustering) read the sample's events in shared memory instead of a copy. At ten million events the copy failed and the job waited forever; a job whose data cannot be handed over now fails with a message.
+- **Memory.** A sample larger than most of the memory budget (1.6 GB) could be dropped from memory as soon as it had loaded. The sample in use is now never dropped, and on machines with 8 GB or more the budget is 3 GB.
 - **PeacoQC classic** is now an exact port of PeacoQC 1.22 (its density estimate, peak tracking, isolation tree and `smooth.spline` MAD test) and removes the same events as PeacoQC in R. The default refined mode is unchanged.
 
 ### Changed
 
+- **Large samples.** Samples of ten million events open and respond quickly:
+  - Files are read in parts, from a dropped file or from the program's library, without ever being held whole. The desktop program stores and hashes files itself.
+  - Populations are kept as bitsets when large (20× less memory), and caches are limited by size.
+  - Channels are compensated when first needed, so a large file shows its first plots sooner.
+  - Statistics are exact selections rather than sorts, and the inspector fills its table a channel at a time, pausing while a gate is dragged.
+  - Polygon gates are tested through a cell grid; at ten million events, moving the top gate re-evaluates everything in about 0.4 s instead of 1.6 s.
+  - While a gate on a large population is dragged, its label is an estimate (≈ …%) from a sample of the events; dropping it gives the exact value.
 - **CytoNorm** follows CytoNorm 2.x: 99 quantiles at 1/100 … 99/100 by default (was 101, including 0.001 and 0.999), and a batch with 50 or fewer cells in a cluster is left unchanged in that cluster and out of its goal, instead of being normalized from a handful of cells. Results of normalizations differ slightly from 0.1.
 
 ### Added

@@ -2,11 +2,12 @@
 
 import { h, icon, clear, formatCount, formatPercent, iconButton } from './dom.js';
 import { showMenu, toast } from './overlays.js';
-import { channelTransform, countOf, describePopulation, gateRobustness, isMultidimensional, population } from '../lib/engine.js';
+import { channelTransform, countOf, describePopulation, gateRobustness, isMultidimensional, populationSet } from '../lib/engine.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { formatStatistic, wilsonInterval } from '../lib/stats.js';
 import { ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
 import { CATEGORICAL } from '../lib/colormaps.js';
+import { isInteracting } from './activity.js';
 
 export function mountInspector(app) {
   const { store, data } = app;
@@ -37,14 +38,14 @@ export function mountInspector(app) {
 
   function populationSection(ws, view, gate) {
     if (!view) return section('Population', h('p.muted', data.statusOf(store.ui.sampleId) === 'loading' ? 'Loading events…' : 'Events not loaded.'));
-    const indices = population(view, ws, gate?.id ?? ROOT);
+    const indices = populationSet(view, ws, gate?.id ?? ROOT);
     if (indices === undefined) return section('Population', h('p.muted', 'This population does not apply to this sample.'));
     const count = countOf(indices, view);
-    const parent = gate ? population(view, ws, gate.parentId ?? ROOT) : null;
+    const parent = gate ? populationSet(view, ws, gate.parentId ?? ROOT) : null;
     const parentCount = gate ? countOf(parent, view) : view.eventCount;
     const freqParent = gate ? (100 * count) / (parentCount || 1) : 100;
     const grand = gate?.parentId ? gateById(ws, gate.parentId) : null;
-    const grandCount = grand ? countOf(population(view, ws, grand.parentId ?? ROOT), view) : view.eventCount;
+    const grandCount = grand ? countOf(populationSet(view, ws, grand.parentId ?? ROOT), view) : view.eventCount;
     const [lo, hi] = wilsonInterval(count, parentCount || 1);
     return section(gate ? gate.name : 'All events',
       h('div.big-stat', h('span.value', gate ? formatPercent(freqParent) : formatCount(count)), h('span.unit', gate ? `of ${gate.parentId ? gateById(ws, gate.parentId)?.name : 'all events'}` : 'events')),
@@ -192,21 +193,54 @@ export function mountInspector(app) {
     return holder;
   }
 
+  // Each population's summaries (median, mean, rSD) by channel, kept while the population is the
+  // same (populations are cached sets, so the set itself is the key).
+  const summaries = new WeakMap();
+  let statisticsToken = 0;
+
   function statisticsSection(ws, view, gate) {
-    const indices = population(view, ws, gate?.id ?? ROOT);
+    const indices = populationSet(view, ws, gate?.id ?? ROOT);
     if (indices === undefined) return h('div');
     // Spectral data: the unmixed abundances, when present, rather than the raw detectors.
     const unmixed = [...view.derived.keys()].filter((name) => name.endsWith('(unmixed)') && !/^(AF signature|Residual) /.test(name));
-    const channels = unmixed.length ? unmixed : view.parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name);
+    const channels = (unmixed.length ? unmixed : view.parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name)).slice(0, 60);
     const count = countOf(indices, view);
     if (!channels.length || !count) return h('div');
+    const owner = indices ?? view;
+    if (!summaries.has(owner)) summaries.set(owner, new Map());
+    const known = summaries.get(owner);
+    const prefix = `${view.version}|${gate?.id ?? ROOT}|`;
     const body = h('tbody');
     const table = h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Median'), h('th.r', 'Mean'), h('th.r', 'rSD'))), body);
-    const stats = describePopulation(view, ws, gate?.id ?? ROOT, channels.slice(0, 60));
-    for (const channel of channels.slice(0, 60)) {
-      const d = stats?.[channel];
-      if (!d) continue;
-      body.append(h('tr', h('td', { title: channel }, channelLabel(ws, channel, { short: true })), h('td.r', formatStatistic('median', d.median)), h('td.r', formatStatistic('mean', d.mean)), h('td.r', formatStatistic('rsd', d.rsd))));
+    const cells = new Map();
+    for (const channel of channels) {
+      const d = known.get(prefix + channel);
+      const values = ['median', 'mean', 'rsd'].map((id) => h('td.r', d ? formatStatistic(id, d[id]) : '…'));
+      cells.set(channel, values);
+      body.append(h('tr', h('td', { title: channel }, channelLabel(ws, channel, { short: true })), ...values));
+    }
+    // A large population is summarized a channel at a time, so the inspector shows at once and the
+    // page stays responsive; a newer render abandons the work.
+    const token = ++statisticsToken;
+    const missing = channels.filter((c) => !known.has(prefix + c));
+    const fill = (channel) => {
+      const d = describePopulation(view, ws, gate?.id ?? ROOT, [channel], { basic: true })?.[channel];
+      known.set(prefix + channel, d ?? null);
+      cells.get(channel).forEach((cell, i) => { cell.textContent = d ? formatStatistic(['median', 'mean', 'rsd'][i], d[['median', 'mean', 'rsd'][i]]) : '—'; });
+    };
+    if (count * missing.length <= 2e6) missing.forEach(fill);
+    else {
+      const next = (k) => {
+        if (token !== statisticsToken || k >= missing.length) return;
+        // A channel of millions of events takes tens of milliseconds: not while a gate is dragged.
+        if (isInteracting()) {
+          setTimeout(() => next(k), 120);
+          return;
+        }
+        fill(missing[k]);
+        setTimeout(() => next(k + 1), 0);
+      };
+      setTimeout(() => next(0), 0);
     }
     return section('Statistics', h('div', { style: { maxHeight: '320px', overflow: 'auto' } }, table),
       h('div.muted', { style: { fontSize: '11px', marginTop: '6px' } }, unmixed.length ? 'Unmixed abundances.' : view.compensation ? 'Compensated values.' : 'Uncompensated values.'));

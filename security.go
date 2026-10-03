@@ -45,6 +45,10 @@ func (g *guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("Cross-Origin-Opener-Policy", "same-origin")
 	header.Set("Cross-Origin-Resource-Policy", "same-origin")
+	// With COOP, makes the page cross-origin isolated, so event columns can live in shared memory
+	// that analysis workers read without a copy (web/lib/memory.js). Everything the page loads is
+	// from this origin.
+	header.Set("Cross-Origin-Embedder-Policy", "require-corp")
 	w = &cspWriter{ResponseWriter: w}
 	switch {
 	case !g.anyHost && !g.hosts[requestHostname(r.Host)]:

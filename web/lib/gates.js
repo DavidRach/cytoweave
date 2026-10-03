@@ -18,6 +18,7 @@
 //   boolean   { op: 'and'|'or'|'not', operands: [gateId, ...] }  evaluated by the engine
 
 import { createTransform } from './transforms.js';
+import { SetBuilder, forEachChunk, sizeOf } from './eventset.js';
 
 export const GATE_TYPES = ['rectangle', 'range', 'polygon', 'ellipse', 'ellipsoid', 'quadrant', 'split', 'category', 'boolean'];
 
@@ -29,39 +30,132 @@ export const QUADRANTS = ['UL', 'UR', 'LR', 'LL'];
 // exact(event) instead: the scaled columns are float32 (and logicle-type scales come from a lookup
 // table), so only an exact recomputation agrees with double-precision references at the boundary.
 export function membership(type, geometry, xs, ys, candidates, count = xs?.length ?? 0, refine = null) {
+  return membershipSet(type, geometry, xs, ys, candidates, count, refine).toIndices();
+}
+
+// As membership, as an EventSet (eventset.js); candidates may also be an EventSet.
+export function membershipSet(type, geometry, xs, ys, candidates, count = xs?.length ?? 0, refine = null) {
   const test = pointTest(type, geometry);
-  const out = new Uint32Array(candidates ? candidates.length : count);
-  const total = candidates ? candidates.length : count;
-  const near = refine?.near;
+  const near = refine?.near ?? null;
+  const exact = refine?.exact ?? null;
   const oneD = type === 'range' || type === 'split' || type === 'category';
-  let n = 0;
-  for (let k = 0; k < total; k += 1) {
-    const e = candidates ? candidates[k] : k;
-    const x = xs[e];
-    const y = oneD ? 0 : ys[e];
-    const inside = near && near(x, y) ? refine.exact(e) : test(x, y);
-    if (inside) out[n++] = e;
-  }
-  return out.slice(0, n);
+  const builder = new SetBuilder(count);
+  const grid = type === 'polygon' && sizeOf(candidates, count) >= GRID_MIN_EVENTS ? polygonGrid(geometry.vertices) : null;
+  forEachChunk(candidates, count, (chunk, length) => {
+    if (grid) {
+      const { cells, side, x0, y0, sx, sy } = grid;
+      for (let k = 0; k < length; k += 1) {
+        const e = chunk[k];
+        const x = xs[e];
+        const y = ys[e];
+        const cx = Math.floor((x - x0) * sx);
+        const cy = Math.floor((y - y0) * sy);
+        // Outside the grid (or NaN): outside the polygon and far from it.
+        if (!(cx >= 0 && cx < side && cy >= 0 && cy < side)) continue;
+        const state = cells[cy * side + cx];
+        if (state === CELL_IN) builder.add(e);
+        else if (state === CELL_EDGE && (near && near(x, y) ? exact(e) : test(x, y))) builder.add(e);
+      }
+      return;
+    }
+    for (let k = 0; k < length; k += 1) {
+      const e = chunk[k];
+      const x = xs[e];
+      const y = oneD ? 0 : ys[e];
+      if (near && near(x, y) ? exact(e) : test(x, y)) builder.add(e);
+    }
+  });
+  return builder.finish();
 }
 
 // Members for gates of any number of dimensions: rectangles with three or more dimensions and
 // ellipsoids. columns are the dimensions' scaled columns; refine as in membership.
 export function membershipN(type, geometry, columns, candidates, count = columns[0]?.length ?? 0, refine = null) {
+  return membershipNSet(type, geometry, columns, candidates, count, refine).toIndices();
+}
+
+export function membershipNSet(type, geometry, columns, candidates, count = columns[0]?.length ?? 0, refine = null) {
   const test = pointTestN(type, geometry);
   const near = refine?.near;
   const d = columns.length;
   const point = new Float64Array(d);
-  const total = candidates ? candidates.length : count;
-  const out = new Uint32Array(total);
-  let n = 0;
-  for (let k = 0; k < total; k += 1) {
-    const e = candidates ? candidates[k] : k;
-    for (let i = 0; i < d; i += 1) point[i] = columns[i][e];
-    const inside = near && near(point) ? refine.exact(e) : test(point);
-    if (inside) out[n++] = e;
+  const builder = new SetBuilder(count);
+  forEachChunk(candidates, count, (chunk, length) => {
+    for (let k = 0; k < length; k += 1) {
+      const e = chunk[k];
+      for (let i = 0; i < d; i += 1) point[i] = columns[i][e];
+      if (near && near(point) ? refine.exact(e) : test(point)) builder.add(e);
+    }
+  });
+  return builder.finish();
+}
+
+// --- Polygon cell grid ----------------------------------------------------------------------
+//
+// A polygon's point test costs one step per edge. For many events, a grid of cells over the
+// polygon's box says for most of them at once: each cell is inside, outside, or near an edge.
+// A cell is "near" when its center is within 2t + half its diagonal of an edge, t being the
+// boundary tolerance of boundaryTest: no point of any other cell is within t of an edge (so none
+// needs the exact test) or across one (so the cell's center decides for all of it). Only events
+// in cells near an edge take the full test, as without the grid, so the result is identical.
+
+const GRID_MIN_EVENTS = 20000;
+const GRID_SIDE = 256;
+const CELL_OUT = 0;
+const CELL_IN = 1;
+const CELL_EDGE = 2;
+
+function polygonGrid(vertices) {
+  const n = vertices.length;
+  if (n < 3) return null;
+  let scale = 1;
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const [vx, vy] of vertices) {
+    if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
+    scale = Math.max(scale, Math.abs(vx), Math.abs(vy));
+    minX = Math.min(minX, vx); maxX = Math.max(maxX, vx);
+    minY = Math.min(minY, vy); maxY = Math.max(maxY, vy);
   }
-  return out.slice(0, n);
+  const t = BOUNDARY_TOLERANCE * scale;
+  const pad = 4 * t;
+  const x0 = minX - pad;
+  const y0 = minY - pad;
+  const w = maxX - minX + 2 * pad;
+  const hgt = maxY - minY + 2 * pad;
+  const side = GRID_SIDE;
+  const cw = w / side;
+  const ch = hgt / side;
+  if (!(cw > 0 && ch > 0 && Number.isFinite(cw) && Number.isFinite(ch))) return null;
+  const reach = 2 * t + 0.5 * Math.hypot(cw, ch) * (1 + 1e-9) + 1e-12 * scale;
+  const cells = new Uint8Array(side * side);
+  for (let i = 0, j = n - 1; i < n; j = i, i += 1) {
+    const [ax, ay] = vertices[j];
+    const [bx, by] = vertices[i];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const length2 = dx * dx + dy * dy;
+    const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach - x0) / cw));
+    const c1 = Math.min(side - 1, Math.floor((Math.max(ax, bx) + reach - x0) / cw));
+    const r0 = Math.max(0, Math.floor((Math.min(ay, by) - reach - y0) / ch));
+    const r1 = Math.min(side - 1, Math.floor((Math.max(ay, by) + reach - y0) / ch));
+    for (let r = r0; r <= r1; r += 1) {
+      const py = y0 + (r + 0.5) * ch;
+      for (let c = c0; c <= c1; c += 1) {
+        const px = x0 + (c + 0.5) * cw;
+        const u = length2 > 0 ? Math.min(1, Math.max(0, ((px - ax) * dx + (py - ay) * dy) / length2)) : 0;
+        if (Math.hypot(px - ax - u * dx, py - ay - u * dy) <= reach) cells[r * side + c] = CELL_EDGE;
+      }
+    }
+  }
+  const test = polygonTest(vertices);
+  for (let r = 0; r < side; r += 1) {
+    const py = y0 + (r + 0.5) * ch;
+    for (let c = 0; c < side; c += 1) {
+      if (cells[r * side + c] === CELL_EDGE) continue;
+      cells[r * side + c] = test(x0 + (c + 0.5) * cw, py) ? CELL_IN : CELL_OUT;
+    }
+  }
+  return { cells, side, x0, y0, sx: 1 / cw, sy: 1 / ch };
 }
 
 // A predicate (point) → boolean for N-dimensional geometries:

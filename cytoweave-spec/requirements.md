@@ -38,7 +38,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | D3 | Read spillover from all common keywords | done |
 | D4 | Annotate samples (condition, subject, batch, …), from file names or a CSV table | done |
 | D5 | Content-addressed library: workspaces refer to files by SHA-256 and survive moves | done |
-| D6 | Large data: 10 million events per sample at interactive speed | partial: samples of a few million events work; streaming from disk and bitset populations are planned for larger ones |
+| D6 | Large data: 10 million events per sample at interactive speed | done: files read in parts (never whole), bitset populations, lazy compensation, statistics by selection, shared memory with workers; at 10M events a gate drag draws in about 8 ms and dropping it re-evaluates every population in about 0.4 s (`validation/bench.mjs`) |
 | D7 | FCS de-identification on export | planned |
 
 ## Gating and statistics

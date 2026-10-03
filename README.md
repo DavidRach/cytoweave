@@ -131,6 +131,10 @@ CytoWeave is free and open source (Apache 2.0).
 - **Scripting and agents.** An MCP server lets AI agents such as Claude Code
   open data, gate, compute statistics, review gates and write methods in the
   window you are watching. Every change can be undone.
+- **Large files.** Samples of ten million events open in seconds and stay
+  responsive: files are read in parts and never held whole, populations are
+  kept as bitsets, and analyses in the background share the events rather
+  than copy them.
 - **Validated.** A validation suite checks the pipelines against known
   answers and published reference values on every change; see
   [validation/](validation/README.md).
@@ -670,8 +674,16 @@ used for diagnosis.
 - Spectral unmixing needs the raw detector channels; files that hold only
   unmixed channels can be gated but not re-unmixed.
 - Very large experiments are limited by browser memory: plan on about 4 bytes
-  per event per parameter of every loaded sample (one million events × 30
-  parameters is 120 MB). Samples load on demand.
+  per event per parameter of every loaded sample, plus as much again for the
+  compensated channels in use (ten million events × 21 parameters is 0.8 GB,
+  about 1.5 GB in use). Samples load on demand, and the least recently used
+  are dropped beyond 1.6 GB (3 GB on machines with 8 GB or more).
+- Served as a plain web site rather than by the CytoWeave program, the page
+  is cross-origin isolated only if the site sends
+  `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp`. Without them, analyses in
+  workers get a copy of the events, and browsers refuse copies much over a
+  gigabyte (QC of ten million events).
 
 ## Development
 

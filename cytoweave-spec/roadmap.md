@@ -65,11 +65,20 @@ large files is checked against them.
      cluster is left unchanged there, as in CytoNorm. Agrees to 1e-5.
    - FACSDiva: spillover from 15 real single-stain controls within 0.015 of
      Diva's own matrix, after leaving saturated events out of the positives.
-3. **Large files (D6).**
-   - Stream FCS data from the host with HTTP range requests.
-   - Keep populations as bitsets once they are large.
-   - Optional WebGL rendering for plots of 10M+ events.
-   - Keep a CPU path for everything.
+3. **Large files (D6): done.** Measured on a 10-million-event, 21-parameter
+   sample (`validation/bench.mjs`), the page stays responsive.
+   - Files are read in parts: from a dropped file by slices, from the program
+     by range requests. The page never holds a whole file. The program stores
+     and hashes files itself (in the browser, a streaming SHA-256).
+   - Populations are bitsets when large, indices when small: 7 MB instead of
+     148 MB for six populations. Caches are bounded by size.
+   - Compensation is computed per channel when needed. Statistics use exact
+     selection instead of sorting (11 s → 0.8 s for a 14-channel table).
+     Polygon gates use a cell grid (moving the top gate: 1.6 s → 0.4 s).
+   - Event columns are shared with workers. Before, QC on ten million events
+     failed: the browser would not copy 1.3 GB to the worker.
+   - WebGL was not needed: binning ten million events onto a plot takes about
+     30 ms, so drawing is not the bottleneck. Everything runs on the CPU.
 4. **Workbench gaps.**
    - Agent proposals (M3): gates and matrices from an agent arrive as
      proposals in a review queue, accepted or rejected as a group, and the
@@ -83,6 +92,11 @@ Found by slice 1 and not yet solved: FlowJo evaluates gates at its display
 resolution, which moves events near boundaries (0.1–0.3% of large populations
 on real workspaces; FlowKit differs the same way). Reproducing it needs
 FlowJo's exact method, which is not documented.
+
+Found by slice 3: at ten million events, the analyses in workers work, but
+slowly. QC takes about 70 s, mostly PeacoQC's per-bin density estimates
+(about 5 s a channel). They could run in parallel across channels on the
+shared columns.
 
 ## Then (0.3): beyond a single tool
 

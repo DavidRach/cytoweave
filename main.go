@@ -338,6 +338,14 @@ func (a *app) registerAPI(mux *http.ServeMux) {
 	}
 	if a.store != nil {
 		a.store.register(mux)
+		mux.HandleFunc("POST /api/library/local/{index}", func(w http.ResponseWriter, r *http.Request) {
+			path, ok := a.files.path(r.PathValue("index"))
+			if !ok {
+				writeError(w, http.StatusNotFound, "No such local file.")
+				return
+			}
+			a.store.addLocalFile(w, path)
+		})
 	}
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Unknown API endpoint.")

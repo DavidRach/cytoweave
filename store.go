@@ -68,6 +68,7 @@ func (s *store) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/library/files/{sha}", s.getFile)
 	mux.HandleFunc("HEAD /api/library/files/{sha}", s.getFile)
 	mux.HandleFunc("PUT /api/library/files/{sha}", s.putFile)
+	mux.HandleFunc("POST /api/library/files", s.addFile)
 	mux.HandleFunc("GET /api/library/has/{sha}", s.hasFile)
 }
 
@@ -251,36 +252,92 @@ func (s *store) putFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "existing": true})
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	got, written, _, err := s.storeStream(r.Body, sha)
+	if err != nil {
+		writeStoreError(w, err)
 		return
 	}
-	temp, err := os.CreateTemp(filepath.Dir(path), ".upload-*")
+	writeJSON(w, map[string]any{"ok": true, "sha256": got, "size": written})
+}
+
+// addFile stores an FCS file and answers with the SHA-256 it computed while writing it, so the
+// browser need not hash (or hold) the file to add it.
+func (s *store) addFile(w http.ResponseWriter, r *http.Request) {
+	sha, written, existing, err := s.storeStream(r.Body, "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "sha256": sha, "size": written, "existing": existing})
+}
+
+// addLocalFile copies a file named on the command line into the library, on this computer.
+func (s *store) addLocalFile(w http.ResponseWriter, path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "The file can no longer be read.")
+		return
+	}
+	defer file.Close()
+	sha, written, existing, err := s.storeStream(file, "")
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "sha256": sha, "size": written, "existing": existing})
+}
+
+type storeError struct {
+	status  int
+	message string
+}
+
+func (e storeError) Error() string { return e.message }
+
+func writeStoreError(w http.ResponseWriter, err error) {
+	if se, ok := err.(storeError); ok {
+		writeError(w, se.status, se.message)
+		return
+	}
+	writeError(w, http.StatusInternalServerError, err.Error())
+}
+
+// storeStream writes content to the library under its SHA-256, computed while writing; with
+// `want`, the content must have that hash. A file already present is kept (existing = true).
+func (s *store) storeStream(content io.Reader, want string) (sha string, written int64, existing bool, err error) {
+	root := filepath.Join(s.dir, "files")
+	if err = os.MkdirAll(root, 0o755); err != nil {
+		return "", 0, false, err
+	}
+	temp, err := os.CreateTemp(root, ".upload-*")
+	if err != nil {
+		return "", 0, false, err
 	}
 	defer os.Remove(temp.Name())
 	hash := sha256.New()
-	written, err := io.Copy(io.MultiWriter(temp, hash), io.LimitReader(r.Body, maxFileBytes+1))
+	written, err = io.Copy(io.MultiWriter(temp, hash), io.LimitReader(content, maxFileBytes+1))
 	closeErr := temp.Close()
 	if err != nil || closeErr != nil {
-		writeError(w, http.StatusBadRequest, "The upload was interrupted.")
-		return
+		return "", 0, false, storeError{http.StatusBadRequest, "The upload was interrupted."}
 	}
 	if written > maxFileBytes {
-		writeError(w, http.StatusRequestEntityTooLarge, "The file is too large.")
-		return
+		return "", 0, false, storeError{http.StatusRequestEntityTooLarge, "The file is too large."}
 	}
-	if got := hex.EncodeToString(hash.Sum(nil)); got != sha {
-		writeError(w, http.StatusBadRequest, "The content does not match its hash.")
-		return
+	sha = hex.EncodeToString(hash.Sum(nil))
+	if want != "" && sha != want {
+		return "", 0, false, storeError{http.StatusBadRequest, "The content does not match its hash."}
 	}
-	if err := os.Rename(temp.Name(), path); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	path, _ := s.filePath(sha)
+	if _, statErr := os.Stat(path); statErr == nil {
+		return sha, written, true, nil
 	}
-	writeJSON(w, map[string]any{"ok": true, "size": written})
+	if err = os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", 0, false, err
+	}
+	if err = os.Rename(temp.Name(), path); err != nil {
+		return "", 0, false, err
+	}
+	return sha, written, false, nil
 }
 
 // writeAtomic replaces path with data so a reader never sees a half-written file.

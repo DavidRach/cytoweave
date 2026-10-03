@@ -2,7 +2,7 @@
 // or scripts through /api/remote/action) are performed here, in the open window, where the user
 // sees them and can undo them. Each action returns { ok, message, data }.
 
-import { channelTransform, computeStatistic, countOf, describePopulation, gateRobustness, population } from '../lib/engine.js';
+import { channelTransform, computeStatistic, countOf, describePopulation, gateRobustness, population, populationSet } from '../lib/engine.js';
 import { createTransform } from '../lib/transforms.js';
 import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
@@ -90,8 +90,8 @@ export function installRemote(app) {
     const rows = [];
     const walk = (parentId, depth) => {
       for (const gate of ws().gates.filter((g) => (g.parentId ?? null) === parentId)) {
-        const indices = population(view, ws(), gate.id);
-        const parent = population(view, ws(), gate.parentId ?? ROOT);
+        const indices = populationSet(view, ws(), gate.id);
+        const parent = populationSet(view, ws(), gate.parentId ?? ROOT);
         const count = indices === undefined ? null : countOf(indices, view);
         rows.push({
           path: gatePath(ws(), gate.id),
@@ -173,12 +173,12 @@ export function installRemote(app) {
       const sample = resolveSample(args.sample);
       const view = await loadedView(sample);
       const gateId = resolvePopulation(args.population);
-      const indices = population(view, ws(), gateId);
+      const indices = populationSet(view, ws(), gateId);
       if (indices === undefined) throw new ActionError('That population does not apply to this sample.');
       const channels = args.channels?.length ? args.channels.map((c) => resolveChannel(view, c)) : view.parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name);
       const stats = describePopulation(view, ws(), gateId, channels);
       const gate = gateById(ws(), gateId);
-      const parent = population(view, ws(), gate?.parentId ?? ROOT);
+      const parent = populationSet(view, ws(), gate?.parentId ?? ROOT);
       const count = countOf(indices, view);
       return {
         message: `${gate ? gatePath(ws(), gateId) : 'All events'} in ${sample.name}: ${count} events.`,
@@ -338,9 +338,9 @@ export function installRemote(app) {
       const rows = [];
       for (const sample of ws().samples.filter((s) => s.role === 'sample' || s.role === 'reference')) {
         const view = await loadedView(sample);
-        const indices = population(view, ws(), id);
+        const indices = populationSet(view, ws(), id);
         if (indices === undefined) continue;
-        const parent = population(view, ws(), gate.parentId ?? ROOT);
+        const parent = populationSet(view, ws(), gate.parentId ?? ROOT);
         const robustness = gateRobustness(view, ws(), id);
         rows.push({ sample: sample.name, count: countOf(indices, view), percentOfParent: (100 * countOf(indices, view)) / (countOf(parent, view) || 1), boundary: robustness?.rating, sensitivity: round(robustness?.sensitivity), adjusted: Boolean(gate.overrides?.[sample.id]) });
       }
@@ -435,9 +435,9 @@ export function installRemote(app) {
     store.commit(result.ws, `Add ${records.map((r) => r.name).join(', ')} (${origin === 'auto' ? 'proposed' : 'agent'})`);
     app.selectGate(records[records.length > 1 ? 1 : 0].id, { keepMode: true });
     toast(`${origin === 'auto' ? 'Proposed' : 'An agent added'} ${records.map((r) => r.name).join(', ')}. Undo with ${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}Z.`);
-    const parent = population(view, store.ws, parentId ?? ROOT);
+    const parent = populationSet(view, store.ws, parentId ?? ROOT);
     const created = records.map((r) => {
-      const indices = population(view, store.ws, r.id);
+      const indices = populationSet(view, store.ws, r.id);
       return { population: gatePath(store.ws, r.id), count: indices === undefined ? null : countOf(indices, view), percentOfParent: indices === undefined ? null : round((100 * countOf(indices, view)) / (countOf(parent, view) || 1)) };
     });
     return { message: `${created.map((c) => `${c.population}: ${c.percentOfParent}% of parent (${c.count} events)`).join('; ')} in ${view.record.name}.${explanation ? ` ${explanation}` : ''}`, data: { created } };

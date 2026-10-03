@@ -5,7 +5,9 @@ import { h, icon, formatPercent, formatCount } from './dom.js';
 import { showMenu, toast } from './overlays.js';
 import { buildPlotScene, drawScene, drawGates, fromPixel, toPixel, withAlpha, PLOT_TYPES } from '../lib/plot.js';
 import { gateOutline, plotPointToGate, simplifyPolyline, pointTest, translateGeometry, quadrantGates, quadrantNames, splitGates, newId } from '../lib/gates.js';
-import { channelTransform, countOf, evaluateGate, population } from '../lib/engine.js';
+import { channelTransform, countOf, evaluateGate, populationSet } from '../lib/engine.js';
+import { EventSet } from '../lib/eventset.js';
+import { interactionEnded, interactionStarted } from './activity.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { ROOT, addGates, channelLabel, effectiveGeometry, gateAncestors, gateById, gateChildren, setGateGeometry, uniqueGateName } from '../lib/workspace.js';
 import { densityGateAt, valleyThreshold } from '../lib/autogate.js';
@@ -130,15 +132,38 @@ export function createPlotView(app, initial) {
   }
 
   function gateLabel(view, gate, geometry, parentIndices) {
-    let indices;
-    if (drag && (drag.gateId === gate.id || (drag.linkId && gate.linkId === drag.linkId))) {
-      indices = evaluateGate(view, ws(), gate, geometry, parentIndices);
-    } else {
-      indices = population(view, ws(), gate.id);
-    }
-    if (indices === undefined) return '';
     const parentCount = countOf(parentIndices, view);
+    if (drag && (drag.gateId === gate.id || (drag.linkId && gate.linkId === drag.linkId))) {
+      // While a gate moves, a large parent is sampled (evenly, so the same events each time):
+      // the label is an estimate until the gate is dropped.
+      const sample = dragSample(view, parentIndices, parentCount);
+      const members = evaluateGate(view, ws(), gate, geometry, sample ?? parentIndices);
+      if (members === undefined || !parentCount) return '';
+      const fraction = countOf(members, view) / (sample ? sample.count : parentCount);
+      return `${sample ? '≈ ' : ''}${formatPercent(100 * fraction)}`;
+    }
+    const indices = populationSet(view, ws(), gate.id);
+    if (indices === undefined) return '';
     return parentCount ? formatPercent((100 * countOf(indices, view)) / parentCount) : '';
+  }
+
+  // Every k-th event of a parent of more than DRAG_SAMPLE events, kept while it is the same parent.
+  const DRAG_SAMPLE = 200000;
+  let dragSampleCache = null;
+  function dragSample(view, parent, parentCount) {
+    if (parentCount <= 2 * DRAG_SAMPLE) return null;
+    if (dragSampleCache?.parent === parent && dragSampleCache.view === view) return dragSampleCache.sample;
+    const step = parentCount / DRAG_SAMPLE;
+    const indices = new Uint32Array(DRAG_SAMPLE);
+    if (parent === null) {
+      for (let k = 0; k < DRAG_SAMPLE; k += 1) indices[k] = Math.floor(k * step);
+    } else {
+      const all = view.indicesOf(parent);
+      for (let k = 0; k < DRAG_SAMPLE; k += 1) indices[k] = all[Math.floor(k * step)];
+    }
+    const sample = EventSet.fromIndices(indices, view.eventCount);
+    dragSampleCache = { view, parent, sample };
+    return sample;
   }
 
   function sizeCanvas(canvas, width, height) {
@@ -181,7 +206,7 @@ export function createPlotView(app, initial) {
       updateHeader(view, null);
       return;
     }
-    const indices = population(view, ws(), spec.populationId);
+    const indices = populationSet(view, ws(), spec.populationId);
     if (indices === undefined) {
       loading.hidden = false;
       loading.textContent = 'This population does not apply to this sample.';
@@ -199,7 +224,7 @@ export function createPlotView(app, initial) {
       const ancestors = gateAncestors(ws(), selected).map((g) => g.id);
       const isDescendant = spec.populationId === ROOT || ancestors.includes(spec.populationId);
       if (isDescendant) {
-        const sub = population(view, ws(), selected);
+        const sub = populationSet(view, ws(), selected);
         const gate = gateById(ws(), selected);
         if (sub !== undefined && gate) overlays.push({ xs, ys, indices: sub, color: gate.color, label: gate.name });
       }
@@ -210,7 +235,7 @@ export function createPlotView(app, initial) {
         data.ensure(extra.sampleId).then(() => schedule(), () => {});
         continue;
       }
-      const otherIndices = population(other, ws(), extra.populationId ?? spec.populationId);
+      const otherIndices = populationSet(other, ws(), extra.populationId ?? spec.populationId);
       if (otherIndices === undefined || !other.hasChannel(spec.x)) continue;
       overlays.push({ xs: other.scaled(spec.x, dims[0].transform), ys: dims[1] && other.hasChannel(spec.y) ? other.scaled(spec.y, dims[1].transform) : null, indices: otherIndices, color: extra.color, label: extra.label });
     }
@@ -249,7 +274,7 @@ export function createPlotView(app, initial) {
   function updateHeader(view, indices) {
     const gate = spec.populationId === ROOT ? null : gateById(ws(), spec.populationId);
     titleEl.textContent = spec.title ?? (gate ? gate.name : 'All events');
-    const count = view && indices !== undefined && indices !== null ? indices.length : view?.eventCount;
+    const count = view && indices !== undefined ? countOf(indices, view) : view?.eventCount;
     metaEl.textContent = view && indices !== undefined ? `${formatCount(count)} events` : '';
     typeButton.replaceChildren(icon(spec.type === 'histogram' || spec.type === 'cdf' || !spec.y ? 'histogram' : spec.type === 'contour' || spec.type === 'zebra' ? 'contour' : spec.type === 'density' ? 'density' : 'dots'));
   }
@@ -280,7 +305,7 @@ export function createPlotView(app, initial) {
     const view = data.view(sampleId);
     if (!view) return;
     const dims = plotDims(view);
-    const parentIndices = population(view, ws(), spec.populationId);
+    const parentIndices = populationSet(view, ws(), spec.populationId);
     const items = visibleGates(view, dims);
     const selectedId = ui().gateId;
     scene.gates = items.map(({ gate, geometry, outline }) => ({
@@ -442,6 +467,7 @@ export function createPlotView(app, initial) {
       if (!gate) return;
       if (ui().gateId !== gate.id) app.selectGate(gate.id, { keepPlots: true });
       drag = { gateId: gate.id, linkId: gate.linkId, part: hit.part, index: hit.index, rect: hit.rect, start: uv, original: effectiveGeometry(gate, sampleId), geometry: null, gate, dims: plotDims(view), moved: false };
+      interactionStarted();
       overlay.setPointerCapture(event.pointerId);
       return;
     }
@@ -471,6 +497,7 @@ export function createPlotView(app, initial) {
       return;
     }
     draft = { tool, points: [uv, uv] };
+    interactionStarted();
     overlay.setPointerCapture(event.pointerId);
     scheduleOverlay();
   });
@@ -504,6 +531,14 @@ export function createPlotView(app, initial) {
     scheduleOverlay();
   });
 
+  // The system took the pointer away (a gesture, a dialog): drop what was being drawn or moved.
+  overlay.addEventListener('pointercancel', () => {
+    if ((draft && draft.tool !== 'polygon') || drag) interactionEnded();
+    if (draft?.tool !== 'polygon') draft = null;
+    drag = null;
+    scheduleOverlay();
+  });
+
   overlay.addEventListener('pointerleave', () => {
     hoverPoint = null;
     readout.textContent = '';
@@ -513,12 +548,14 @@ export function createPlotView(app, initial) {
     if (draft && draft.tool !== 'polygon') {
       const d = draft;
       draft = null;
+      interactionEnded();
       finishDrag(d);
       return;
     }
     if (drag) {
       const d = drag;
       drag = null;
+      interactionEnded();
       if (d.moved && d.geometry) commitGeometry(d.gate, d.geometry);
       else scheduleOverlay();
     }
@@ -618,12 +655,13 @@ export function createPlotView(app, initial) {
     const view = data.view(sampleId);
     const last = view?.lastRender;
     if (!last) return;
+    const indices = last.indices ? view.indicesOf(last.indices) : last.indices;
     if (is1D()) {
-      const result = valleyThreshold(last.xs, last.indices);
+      const result = valleyThreshold(last.xs, indices);
       createGates('split', { threshold: result.threshold }, { method: 'valley', explanation: result.explanation });
       return;
     }
-    const proposal = densityGateAt(last.xs, last.ys, last.indices, uv[0], uv[1]);
+    const proposal = densityGateAt(last.xs, last.ys, indices, uv[0], uv[1]);
     if (!proposal) {
       toast('No population found there.');
       return;
@@ -791,6 +829,10 @@ export function createPlotView(app, initial) {
     canvas: () => [base, overlay],
     destroy() {
       destroyed = true;
+      // A plot removed while a gate was being moved or drawn (the view changed) ends that.
+      if (drag || (draft && draft.tool !== 'polygon')) interactionEnded();
+      drag = null;
+      draft = null;
       resize.disconnect();
       cancelAnimationFrame(schedule.frame);
       el.remove();

@@ -56,6 +56,9 @@ func TestServesTheAppWithSecurityHeaders(t *testing.T) {
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("missing nosniff")
 	}
+	if rec.Header().Get("Cross-Origin-Embedder-Policy") != "require-corp" || rec.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {
+		t.Fatal("the page is not cross-origin isolated (shared memory for workers)")
+	}
 	js := request(t, handler, http.MethodGet, "/app.js", nil, nil)
 	if !strings.HasPrefix(js.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("app.js content type %q", js.Header().Get("Content-Type"))
@@ -161,6 +164,62 @@ func TestFilesAreStoredUnderTheirHash(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(a.store.dir, "files", sha[:2], sha+".fcs")); err != nil {
 		t.Fatalf("file not at its content address: %v", err)
+	}
+}
+
+func TestFilesAreAddedUnderTheHashTheProgramComputes(t *testing.T) {
+	dir := t.TempDir()
+	local := filepath.Join(dir, "big.fcs")
+	content := []byte("FCS3.1    a local file to copy into the library")
+	os.WriteFile(local, content, 0o644)
+	a, handler := testApp(t, local)
+	sum := sha256.Sum256(content)
+	sha := hex.EncodeToString(sum[:])
+	same := map[string]string{"Sec-Fetch-Site": "same-origin"}
+	var body struct {
+		SHA256   string `json:"sha256"`
+		Size     int64  `json:"size"`
+		Existing bool   `json:"existing"`
+	}
+	rec := request(t, handler, http.MethodPost, "/api/library/local/0", nil, same)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("local copy %d %s", rec.Code, rec.Body)
+	}
+	json.NewDecoder(rec.Body).Decode(&body)
+	if body.SHA256 != sha || body.Size != int64(len(content)) || body.Existing {
+		t.Fatalf("local copy answered %+v", body)
+	}
+	if _, err := os.Stat(filepath.Join(a.store.dir, "files", sha[:2], sha+".fcs")); err != nil {
+		t.Fatalf("local file not at its content address: %v", err)
+	}
+	rec = request(t, handler, http.MethodPost, "/api/library/files", bytes.NewReader(content), same)
+	json.NewDecoder(rec.Body).Decode(&body)
+	if rec.Code != http.StatusOK || body.SHA256 != sha || !body.Existing {
+		t.Fatalf("upload of a stored file: %d %+v", rec.Code, body)
+	}
+	other := []byte("FCS3.1    another file")
+	rec = request(t, handler, http.MethodPost, "/api/library/files", bytes.NewReader(other), same)
+	json.NewDecoder(rec.Body).Decode(&body)
+	otherSum := sha256.Sum256(other)
+	if rec.Code != http.StatusOK || body.SHA256 != hex.EncodeToString(otherSum[:]) || body.Existing {
+		t.Fatalf("upload: %d %+v", rec.Code, body)
+	}
+	// Range requests read part of a stored file (the browser streams large files this way).
+	part := request(t, handler, http.MethodGet, "/api/library/files/"+sha, nil, map[string]string{"Range": "bytes=10-14"})
+	if part.Code != http.StatusPartialContent || part.Body.String() != string(content[10:15]) {
+		t.Fatalf("range: %d %q", part.Code, part.Body.String())
+	}
+	if rec := request(t, handler, http.MethodPost, "/api/library/local/7", nil, same); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown local file: %d", rec.Code)
+	}
+	if rec := request(t, handler, http.MethodPost, "/api/library/files", bytes.NewReader(content), map[string]string{"Origin": "https://example.com"}); rec.Code == http.StatusOK {
+		t.Fatal("cross-origin upload accepted")
+	}
+	entries, _ := os.ReadDir(filepath.Join(a.store.dir, "files"))
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".upload-") {
+			t.Fatalf("temporary file left behind: %s", entry.Name())
+		}
 	}
 }
 

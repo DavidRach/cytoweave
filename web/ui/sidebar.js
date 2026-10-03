@@ -2,7 +2,7 @@
 
 import { h, icon, clear, iconButton, formatCount, formatPercent } from './dom.js';
 import { showMenu, promptDialog, confirmDialog, toast } from './overlays.js';
-import { countOf, population } from '../lib/engine.js';
+import { countOf, populationSet } from '../lib/engine.js';
 import {
   ROOT,
   SAMPLE_ROLES,
@@ -237,8 +237,8 @@ export function mountSidebar(app) {
         const view = data.view(sample.id);
         if (view) {
           try {
-            const indices = population(view, ws, gate.id);
-            const parent = population(view, ws, gate.parentId ?? ROOT);
+            const indices = populationSet(view, ws, gate.id);
+            const parent = populationSet(view, ws, gate.parentId ?? ROOT);
             if (indices !== undefined && parent !== undefined) freq = formatPercent((100 * countOf(indices, view)) / (countOf(parent, view) || 1));
           } catch { /* channel missing */ }
         }
@@ -328,11 +328,11 @@ export function mountSidebar(app) {
     let applies = true;
     if (view) {
       try {
-        const indices = population(view, ws, id ?? ROOT);
+        const indices = populationSet(view, ws, id ?? ROOT);
         if (indices === undefined) applies = false;
         else {
           count = countOf(indices, view);
-          const parent = id ? population(view, ws, gate.parentId ?? ROOT) : null;
+          const parent = id ? populationSet(view, ws, gate.parentId ?? ROOT) : null;
           freq = id ? (100 * count) / (countOf(parent, view) || 1) : 100;
         }
       } catch {

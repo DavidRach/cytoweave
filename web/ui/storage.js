@@ -62,6 +62,31 @@ class BackendLibrary {
     const response = await fetch(`api/library/files/${sha}`, { method: 'PUT', body: bytes });
     if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? 'The file could not be stored.');
   }
+
+  // Where the parse worker reads a stored file: by range requests, so it is never held whole.
+  fileSource(sha, size) {
+    return { kind: 'url', url: new URL(`api/library/files/${sha}`, location.href).href, size };
+  }
+
+  // Stores a file (a Blob or File, which the browser streams from disk, or bytes); the program
+  // computes its SHA-256 while writing it. Returns { sha256, size }.
+  async addFile(data) {
+    const response = await fetch('api/library/files', { method: 'POST', body: data });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? 'The file could not be stored.');
+    return body;
+  }
+
+  // Copies a file named on the command line (its URL, api/local/<index>) into the library, on
+  // this computer. Returns { sha256, size }.
+  async addLocalFile(url) {
+    const index = /api\/local\/(\d+)/.exec(url)?.[1];
+    if (index === undefined) throw new Error('Not a local file.');
+    const response = await fetch(`api/library/local/${index}`, { method: 'POST' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? 'The file could not be stored.');
+    return body;
+  }
 }
 
 const DB_NAME = 'cytoweave';
@@ -163,17 +188,27 @@ class BrowserLibrary {
     return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
   }
 
-  async putFile(sha, bytes) {
+  // Stores bytes or a Blob (File) under its SHA-256.
+  async putFile(sha, data) {
     const handle = await this.fileHandle(sha, true);
     if (handle?.createWritable) {
       const writable = await handle.createWritable();
-      await writable.write(bytes);
+      await writable.write(data);
       await writable.close();
       return;
     }
     const db = await this.dbPromise;
     if (!db) throw new Error('This browser does not allow storing files.');
-    await idb(db, 'files', 'readwrite', (store) => store.put(new Blob([bytes]), sha));
+    await idb(db, 'files', 'readwrite', (store) => store.put(data instanceof Blob ? data : new Blob([data]), sha));
+  }
+
+  // A stored file as a Blob for the parse worker to read in slices; null when not stored.
+  async fileSource(sha) {
+    const handle = await this.fileHandle(sha);
+    if (handle) return { kind: 'blob', blob: await handle.getFile() };
+    const db = await this.dbPromise;
+    const blob = db ? await idb(db, 'files', 'readonly', (store) => store.get(sha)) : null;
+    return blob ? { kind: 'blob', blob } : null;
   }
 }
 

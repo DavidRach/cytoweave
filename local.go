@@ -179,6 +179,17 @@ func (l *localFiles) list() []localFile {
 	return out
 }
 
+// path is the location on disk of the local file with this index.
+func (l *localFiles) path(index string) (string, bool) {
+	i, err := strconv.Atoi(index)
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	if err != nil || i < 0 || i >= len(l.files) {
+		return "", false
+	}
+	return l.files[i].path, true
+}
+
 func (l *localFiles) serve(w http.ResponseWriter, r *http.Request) {
 	index, err := strconv.Atoi(r.PathValue("index"))
 	l.mu.RLock()

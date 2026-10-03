@@ -5,7 +5,7 @@
 
 import { h, icon, clear, downloadBlob, formatCount } from './dom.js';
 import { showDialog, toast, progressToast } from './overlays.js';
-import { countOf, population } from '../lib/engine.js';
+import { countOf, population, populationSet } from '../lib/engine.js';
 import { gateById, gatePath } from '../lib/workspace.js';
 import { writeCLR } from '../lib/clr.js';
 import {
@@ -228,7 +228,7 @@ export async function runMigrationComparison(app, migrationId) {
       for (const [path, gateId] of Object.entries(migration.gates)) {
         if (!gateById(ws, gateId)) continue;
         try {
-          const indices = population(view, ws, gateId);
+          const indices = populationSet(view, ws, gateId);
           out[path] = indices === undefined ? null : countOf(indices, view);
         } catch {
           out[path] = null;

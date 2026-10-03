@@ -95,39 +95,57 @@ export function identityMatrix(n) {
 // Compensates the named channels. columns: { [channel]: Float32Array }. Returns new columns for
 // the matrix channels (others are untouched and not returned).
 export function compensate(columns, spill) {
+  const compensated = compensator(columns, spill);
+  return Object.fromEntries(spill.channels.map((name) => [name, compensated.column(name)]));
+}
+
+// Compensation one channel at a time, for samples too large to compensate every channel up front:
+// { channels, inverse, column(name) } computes a channel's compensated values when first asked.
+// Channel j is Σᵢ rawᵢ · S⁻¹[i][j] over the nonzero entries, summed in the order of i, in double
+// precision and stored as float32 (as compensate always has).
+export function compensator(columns, spill, allocate = (n) => new Float32Array(n)) {
   const { channels, matrix } = spill;
   const n = channels.length;
-  const inv = invertMatrix(matrix, n);
+  const inverse = invertMatrix(matrix, n);
   const inputs = channels.map((name) => {
     const column = columns[name];
     if (!column) throw new CompensationError(`The data have no channel "${name}" named by the compensation matrix.`);
     return column;
   });
   const count = inputs[0].length;
-  const outputs = channels.map(() => new Float32Array(count));
-  const row = new Float64Array(n);
-  // Sparse inverse columns speed up the common case of mostly-zero spillover.
-  const nonzero = [];
-  for (let j = 0; j < n; j += 1) {
-    const list = [];
-    for (let i = 0; i < n; i += 1) if (inv[i * n + j] !== 0) list.push(i);
-    nonzero.push(list);
-  }
-  for (let e = 0; e < count; e += 1) {
-    for (let i = 0; i < n; i += 1) row[i] = inputs[i][e];
-    for (let j = 0; j < n; j += 1) {
-      let sum = 0;
-      const list = nonzero[j];
-      for (let k = 0; k < list.length; k += 1) {
-        const i = list[k];
-        sum += row[i] * inv[i * n + j];
+  const index = new Map(channels.map((c, j) => [c, j]));
+  const cache = new Map();
+  const column = (name) => {
+    const j = index.get(name);
+    if (j === undefined) return undefined;
+    let out = cache.get(j);
+    if (out) return out;
+    // Sparse inverse columns speed up the common case of mostly-zero spillover.
+    const sources = [];
+    const weights = [];
+    for (let i = 0; i < n; i += 1) {
+      if (inverse[i * n + j] !== 0) {
+        sources.push(inputs[i]);
+        weights.push(inverse[i * n + j]);
       }
-      outputs[j][e] = sum;
     }
-  }
-  const result = {};
-  channels.forEach((name, j) => { result[name] = outputs[j]; });
-  return result;
+    out = allocate(count);
+    // In blocks, one input at a time: each event's sum still adds the inputs in the same order.
+    const block = new Float64Array(4096);
+    for (let start = 0; start < count; start += block.length) {
+      const n = Math.min(block.length, count - start);
+      block.fill(0, 0, n);
+      for (let k = 0; k < sources.length; k += 1) {
+        const source = sources[k];
+        const w = weights[k];
+        for (let i = 0; i < n; i += 1) block[i] += source[start + i] * w;
+      }
+      for (let i = 0; i < n; i += 1) out[start + i] = block[i];
+    }
+    cache.set(j, out);
+    return out;
+  };
+  return { channels, inverse, column, computed: () => [...cache.values()] };
 }
 
 // --- Statistics used by the control-based methods ---------------------------------------------

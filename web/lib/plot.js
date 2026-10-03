@@ -5,6 +5,7 @@
 import { createTransform } from './transforms.js';
 import { bin2d, contours, dotRaster, densityRaster, histogram, outlierRaster, overlayRaster, pseudocolorRaster } from './density.js';
 import { gateCenter } from './gates.js';
+import { sizeOf } from './eventset.js';
 
 export const PLOT_TYPES = [
   { id: 'pseudocolor', label: 'Pseudocolor', dims: 2 },
@@ -33,7 +34,8 @@ export function plotMargins(width, height, options = {}) {
 //   width, height                CSS pixels of the whole plot (axes included)
 //   type                         a PLOT_TYPES id
 //   x, y                         { channel, transform, label } (y absent for histograms)
-//   xs, ys, indices              scaled columns and the population (null = all events)
+//   xs, ys, indices              scaled columns and the population (indices, an EventSet, or
+//                                null for all events)
 //   overlays                     [{ xs, ys, indices, color, label, alpha }]
 //   gates                        [{ outline, name, label, color, selected, id }]
 //   options                      { colormap, dotSize, smoothing, densityScale, histogramMode,
@@ -75,7 +77,7 @@ export function buildPlotScene(input) {
   const dotSize = Math.max(1, options.dotSize ?? 1);
   const gridW = Math.max(16, Math.round(plotRect.w * (options.resolution ?? 1) / dotSize));
   const gridH = Math.max(16, Math.round(plotRect.h * (options.resolution ?? 1) / dotSize));
-  const count = input.indices ? input.indices.length : input.xs?.length ?? 0;
+  const count = input.xs ? sizeOf(input.indices, input.xs.length) : 0;
   scene.eventsShown = count;
 
   if (input.type === 'histogram' || input.type === 'cdf') {

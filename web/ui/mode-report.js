@@ -6,7 +6,7 @@ import { h, icon, clear, downloadBlob, formatPercent, relativeTime } from './dom
 import { toast, promptDialog, confirmDialog } from './overlays.js';
 import { writeMethods, miflowcytChecklist, toBibTeX } from '../lib/methods.js';
 import { analysisSnapshot, diffAnalyses } from '../lib/diff.js';
-import { countOf, population } from '../lib/engine.js';
+import { countOf, populationSet } from '../lib/engine.js';
 import { newId } from '../lib/gates.js';
 import { ROOT, gatePath, setNotes } from '../lib/workspace.js';
 
@@ -99,10 +99,10 @@ export function mountReportMode(app, container) {
         const old = snapshot.gates.find((g) => g.id === gate.id);
         if (!old) continue;
         try {
-          const a = population(view, before, gate.id);
-          const pa = population(view, before, old.parentId ?? ROOT);
-          const b = population(view, ws, gate.id);
-          const pb = population(view, ws, gate.parentId ?? ROOT);
+          const a = populationSet(view, before, gate.id);
+          const pa = populationSet(view, before, old.parentId ?? ROOT);
+          const b = populationSet(view, ws, gate.id);
+          const pb = populationSet(view, ws, gate.parentId ?? ROOT);
           if (a === undefined || b === undefined) continue;
           const fa = (100 * countOf(a, view)) / (countOf(pa, view) || 1);
           const fb = (100 * countOf(b, view)) / (countOf(pb, view) || 1);

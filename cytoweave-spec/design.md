@@ -56,17 +56,20 @@ these choices, see `research.md`.
 - **Easy to install.** No Python or R, and nothing that is broken by the next
   OS update.
 - **Fast enough.** Typed arrays, lookup-table transforms, memoized
-  populations and workers handle millions of events. WebGPU can later
-  accelerate hot loops (unmixing, kNN, SOM), but every algorithm keeps a CPU
-  path, because WebGPU availability still varies by browser and OS.
+  populations and workers handle ten million events per sample (see "Large
+  samples" below). WebGPU can later accelerate hot loops (unmixing, kNN,
+  SOM), but every algorithm keeps a CPU path, because WebGPU availability
+  still varies by browser and OS.
 
 ### The Go host
 
 - **Network exposure.** It binds to 127.0.0.1 by default. Every request's
   Host header must name a loopback address, which blocks DNS rebinding. API
   calls must be same-origin. Responses carry a strict Content-Security-Policy
-  and `X-Content-Type-Options`, and Cross-Origin-Opener- and Resource-Policy
-  `same-origin`.
+  and `X-Content-Type-Options`, Cross-Origin-Opener- and Resource-Policy
+  `same-origin`, and Cross-Origin-Embedder-Policy `require-corp`. The last
+  two make the page cross-origin isolated, which allows shared memory with
+  workers.
 - **Single instance.** A second launch forwards its files to the running
   instance (`/api/open`) instead of starting another server.
 - **App window.** `--window app` opens a chromeless Chrome/Edge/Brave/Chromium
@@ -75,7 +78,12 @@ these choices, see `research.md`.
 - **Library.** The library stores each FCS file once, under its SHA-256. A
   workspace refers to files by hash, so it never breaks when files move.
   Derived per-event results (cluster labels, embeddings, unmixed abundances,
-  QC masks) are stored the same way.
+  QC masks) are stored the same way. The host computes the hash while it
+  writes a file: an uploaded file (`POST /api/library/files`), or a file
+  named on the command line, which it copies itself
+  (`POST /api/library/local/{index}`). The browser streams the upload from
+  disk and never holds or hashes the file. Stored files are served with
+  range requests.
 - **Static hosting.** With no host, `web/ui/storage.js` switches to the
   browser's origin-private file system, falling back to IndexedDB for
   workspaces. Nothing in `web/` requires the host.
@@ -86,14 +94,16 @@ these choices, see `research.md`.
 FCS bytes ─parseFCS→ columns (Float32, linear scale values)
           ─compensate (S⁻¹) or unmix (M⁺)→ compensated columns       [SampleView cache]
           ─transform (logicle/biex/arcsinh/…)→ scaled columns ∈ ~[0,1] [SampleView cache]
-          ─gates (in their own scale space)→ populations (sorted Uint32Array) [memo by gate-chain hash]
+          ─gates (in their own scale space)→ populations (EventSet)       [memo by gate-chain hash]
           ─statistics / plots / algorithms
 ```
 
 ### Data and precision
 
 - **Storage.** Event data are kept as column-major `Float32Array`s, the
-  precision of most FCS files.
+  precision of most FCS files. On a cross-origin isolated page they live on
+  `SharedArrayBuffer`s (`web/lib/memory.js`), so workers read them without a
+  copy.
 - **Arithmetic.** Accumulators, matrices and transform constants are
   `Float64Array` or plain numbers.
 - **Integer files.** Integer data are converted to linear scale values on
@@ -148,7 +158,7 @@ FCS bytes ─parseFCS→ columns (Float32, linear scale values)
 following:
 
 - compensated columns, keyed by matrix (the sample's, and any that a gate
-  dimension names);
+  dimension names), each computed the first time it is asked for;
 - channels computed on demand from the workspace's derived records: Gating-ML
   ratios and spectral unmixing;
 - scaled columns, keyed by channel and transform key;
@@ -157,6 +167,53 @@ following:
 
 Editing a gate invalidates only that gate and its descendants. Moving a gate
 on one sample, through an override, invalidates only that sample.
+
+A population is an `EventSet` (`web/lib/eventset.js`) in the smaller of two
+forms:
+- a bitset of one bit per event (1.25 MB at ten million events);
+- the sorted indices of its members, when fewer than 1/32 of the events
+  belong.
+
+Gates, set operations, counts, plots and statistics work on either form
+directly. `populationSet` returns the set; `population` returns indices, for
+code that needs them, expanding a bitset once into a bounded cache. The
+caches are bounded by bytes, least recently used first: scaled columns
+384 MB, populations 128 MB, expanded indices 128 MB. When samples exceed
+the memory budget, the data store first drops other samples' caches, then
+whole samples. It never drops the sample in use, even when that sample alone
+exceeds the budget.
+
+### Large samples
+
+The aim is ten million events per sample at interactive speed (requirement
+D6). `validation/bench.mjs` measures each stage; the results are in
+`validation/README.md`. Six things make it work:
+- **Reading in parts.** `parseFCSAsync` reads the HEADER and TEXT first.
+  It then reads the file once, start to end, in 16 MB parts, decoding events
+  as they arrive. Parts come from a `File` (slices), from the host (range
+  requests) or from memory. Only the columns and one part are held, never the
+  whole file. Little-endian float data are decoded through a `Float32Array`.
+- **Hashing.** Without the host, the parse worker hashes the file with an
+  incremental SHA-256 (`web/lib/sha256.js`) as it reads it.
+- **Lazy compensation.** A channel's compensated values are computed when a
+  gate, plot or statistic first needs them. The first plots, on scatter,
+  need none.
+- **Polygon gates by cell grid.** For 20,000 or more events, a 256 × 256 grid
+  over the polygon classes each cell as inside, outside or near an edge. Only
+  events in cells near an edge take the per-edge test (and the exact
+  boundary test), so membership is identical to testing every event.
+- **Statistics by selection.** Medians, percentiles and robust SDs are exact
+  order statistics. They are found by a radix selection on the bits of each
+  value, in a few passes, instead of a sort.
+- **No waiting on the page.** The inspector's statistics table is cached per
+  population and filled one channel at a time. It waits while a gate is
+  dragged. During a drag, the label of a gate on a large parent is an
+  estimate (≈) from an even 200,000-event sample; dropping the gate gives
+  the exact value.
+
+Plots bin events onto a pixel grid; binning ten million events takes about
+30 ms. Drawing is therefore not the bottleneck, and the planned optional
+WebGL renderer was not needed.
 
 ### Workspace state, undo and provenance
 
@@ -174,9 +231,11 @@ on one sample, through an override, invalidates only that sample.
 ### Workers
 
 Each heavy algorithm runs in a module worker (`web/workers/`). The protocol
-is `{id, type, payload}` → progress* → result | error. Large arrays are
-transferred, not copied. Jobs can be cancelled. Long loops check an abort
-signal and report progress.
+is `{id, type, payload}` → progress* → result | error. Event columns on shared
+memory are shared, not copied. Without isolation, a browser refuses to copy
+much more than a gigabyte to a worker. Other large arrays are transferred.
+A payload that cannot be handed over fails the job with a message. Jobs can
+be cancelled. Long loops check an abort signal and report progress.
 
 ## Interoperability
 
@@ -292,5 +351,7 @@ signal and report progress.
   against hand-computed, published or reference-tool values.
 - `node validation/run.mjs` checks the pipelines end to end against
   simulated truth and published reference values.
+- `node --expose-gc validation/bench.mjs [events]` times the pipeline on a
+  large sample (ten million events by default).
 - CI runs all of these, plus `node --check` of every web file,
   cross-compilation for six platforms, and a lint of the install scripts.

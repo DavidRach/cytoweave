@@ -86,6 +86,41 @@ Rscript validation/reference/generate_r.R
 `reference/fcsparser.json` holds the first data rows that fcsparser's own tests
 expect (MIT licence), for files that FlowIO cannot read.
 
+### Performance on large samples
+
+`bench.mjs` times each stage of the pipeline on one large sample. The sample is
+the PBMC example's D01_Unstim (21 parameters, its suggested gates) repeated
+to the size asked for. It needs no downloads:
+
+```bash
+node --expose-gc validation/bench.mjs 10000000
+```
+
+At ten million events (an 801 MB file), on an Apple M4 laptop (32 GB) with
+Node 22.17:
+
+| Stage | 0.1.0 | Now |
+| --- | --- | --- |
+| Parse the file (in memory) | 1.2 s | 0.44 s |
+| Read it in 16 MB parts (as from a dropped file) | — | 0.75 s, holding only the columns |
+| Same, hashing it on the way (browser-only mode) | — | 4.9 s |
+| Compensate at load | 2.1 s, 534 MB | none; about 155 ms per channel when first used |
+| Evaluate the 6 gates, cold | 2.5 s | 2.0 s (including the channels and scales they use) |
+| Move the top gate (every population re-evaluated) | 1.6 s | 0.43 s |
+| Memory of the 6 populations | 148 MB | 7 MB |
+| Bin a plot of all events (300 × 300) | 41 ms | 32 ms |
+| Statistics table, 14 channels of 6.7 million events | 11.1 s | 0.78 s |
+
+In the app (Chromium, desktop program, the same file named on the command
+line):
+- The program copies and hashes the file in 1.8 s, while the worker reads it.
+- Reopening the workspace loads the sample from the library in 4.0 s.
+- Dragging a gate draws each frame in about 8 ms.
+- Dropping it re-evaluates and redraws every population in about 0.4 s.
+- QC runs in about 70 s in a worker, with no main-thread task over 100 ms.
+  Before, QC on this sample could not start: the browser would not copy
+  1.3 GB to the worker.
+
 ## What is checked
 
 | Suite | CytoWeave | Against | Required | Current |
