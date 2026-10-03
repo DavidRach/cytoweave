@@ -812,6 +812,10 @@ link, anchor and screenshot:
 node docs/site/build.mjs ../cytoweave-site
 ```
 
+[docs/site/README.md](docs/site/README.md) describes how to set up the
+`gh-pages` checkout, preview and publish the site, write pages, and add
+screenshots.
+
 ### Code layout
 
 ```text
