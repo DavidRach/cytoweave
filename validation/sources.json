@@ -1769,6 +1769,120 @@
      "sha256": "da50bcc50ecca7a16ce11023d9c6d891e8bea4110dce8f9c5c63ced141799cc8"
     }
    ]
+  },
+  "flowqbdata": {
+   "title": "flowQB test data: an LSR II's LED pulser series and multi-level beads",
+   "description": "From the Bioconductor package flowQBData (Spidlen, El Khettabi, Moore, Parks, Brinkman), measured at Stanford's Shared FACS Facility: 19 files of an LED pulser at increasing intensities, a Spherotech 8-peak (Sph8) and a Thermo Fisher 6-peak (TF6) bead file, all on one BD LSR II.",
+   "source": "https://bioconductor.org/packages/flowQBData (mirror: https://github.com/bioc/flowQBData)",
+   "licence": "Artistic License 2.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "base": "https://raw.githubusercontent.com/bioc/flowQBData/d2fe2443179da536fdd91401b9bc9d722b5d2b36/inst/extdata/SSFF_LSRII/",
+   "files": [
+    {
+     "path": "LED_Series/935281.fcs",
+     "size": 3446408,
+     "sha256": "fc926bf50c32e19c20ee3d3b866e277731c95cbb67e06b517d000c8bf6d3ec51"
+    },
+    {
+     "path": "LED_Series/935283.fcs",
+     "size": 3446408,
+     "sha256": "7765d953070696603c297c8743f875f52d1bcb655fa7314eb5c71cd03487dd08"
+    },
+    {
+     "path": "LED_Series/935285.fcs",
+     "size": 3446408,
+     "sha256": "2aa1cc501b37d349b85d16348ee8d50c3d4de2ac16065c73d00f1116b02d8755"
+    },
+    {
+     "path": "LED_Series/935287.fcs",
+     "size": 3446408,
+     "sha256": "dcebb0d3d0f77ab8b563a093abfaab6397e5a401f1502c349ed524f20e570145"
+    },
+    {
+     "path": "LED_Series/935289.fcs",
+     "size": 3446408,
+     "sha256": "fd2c726efea31d9dc78ab4ad4ed295ea95e0fb6f1c7183096e4b2a2c34bccd76"
+    },
+    {
+     "path": "LED_Series/935291.fcs",
+     "size": 3446408,
+     "sha256": "26a4c9c33f3afa8a3020d295a12939f29b17126f06affc1edfa9f8bb380aa46a"
+    },
+    {
+     "path": "LED_Series/935293.fcs",
+     "size": 3446408,
+     "sha256": "52b4e4e366b2b90baa933953377df5847876b24c0124ec4b1fa25f525577ee81"
+    },
+    {
+     "path": "LED_Series/935295.fcs",
+     "size": 3446408,
+     "sha256": "09a1193793c550f42e0aa50571db9d34c3f46fcad5889fc49961ad85d573b397"
+    },
+    {
+     "path": "LED_Series/935297.fcs",
+     "size": 3446408,
+     "sha256": "5ee365f127fa9a57e968bdbb65961a5aa4d9273d06f3020d1d83e9b54f73fa04"
+    },
+    {
+     "path": "LED_Series/935299.fcs",
+     "size": 3446408,
+     "sha256": "9e1a7f4b4cc3bcd784253cd773046dab013a65b9694f2e589f6b726f4d1ff38b"
+    },
+    {
+     "path": "LED_Series/935301.fcs",
+     "size": 3446408,
+     "sha256": "0144c245ebc286bb6fefbe1911ad51a56f676ab69e494e12b49f98330585223c"
+    },
+    {
+     "path": "LED_Series/935303.fcs",
+     "size": 3446408,
+     "sha256": "02b41fa879c4015cdbba1e076d1cbeb8ce280f617e0f4ae565a0bd708a430996"
+    },
+    {
+     "path": "LED_Series/935305.fcs",
+     "size": 3446408,
+     "sha256": "aa097b9c2d08d858d0fd18b2164143d02c7b4494d483b03020f646ac4a39a25f"
+    },
+    {
+     "path": "LED_Series/935307.fcs",
+     "size": 3446408,
+     "sha256": "63cefb921088068a814f6ba628e6f4a27096c7ea5ac52fe27d90c7fa13b49280"
+    },
+    {
+     "path": "LED_Series/935309.fcs",
+     "size": 3446408,
+     "sha256": "0305db9133ee11a8c3acf774e5e4091e1dc31cd03220d2192f87dd413160a464"
+    },
+    {
+     "path": "LED_Series/935311.fcs",
+     "size": 3446408,
+     "sha256": "f794d26918da1646e362400d5752133ff3bfd18ee3a15a3d1032d20520b34afd"
+    },
+    {
+     "path": "LED_Series/935313.fcs",
+     "size": 3446408,
+     "sha256": "94a7423ed46a2d7e3ed6b92f7d5d67ee66eb58aeceaecc3dba4d9fa4f9d4c84f"
+    },
+    {
+     "path": "LED_Series/935315.fcs",
+     "size": 3446408,
+     "sha256": "bd7dd66c2a5c21ff5c31159e3ec5b6a79ad524cfb042a3c5b7205b98ea0381a6"
+    },
+    {
+     "path": "LED_Series/935317.fcs",
+     "size": 3446408,
+     "sha256": "c6646d545f873b2907033c15389bf7775e4ac0de0eb7cff28239cc8f7ce1d9d9"
+    },
+    {
+     "path": "Other_Tests/933745.fcs",
+     "size": 17206408,
+     "sha256": "d81fb427857059324a2e1f2362984c1de38e556ab261f16fc445e24b70e152c6"
+    },
+    {
+     "path": "Other_Tests/933747.fcs",
+     "size": 17206408,
+     "sha256": "b919eb9056b6a1998bd71d580cae937ec537fc58ad4010ae07ac6b310cf2c2ab"
+    }
+   ]
   }
  }
 }

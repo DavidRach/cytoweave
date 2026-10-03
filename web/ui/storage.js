@@ -1,4 +1,6 @@
-// The workspace library: workspaces and the FCS files they use, stored once each by SHA-256.
+// The workspace library: workspaces and the FCS files they use, stored once each by SHA-256, and
+// records kept across workspaces by kind (an instrument's characterization runs, reference
+// spectra): listRecords(kind), getRecord(kind, id), putRecord(kind, id, doc), deleteRecord.
 // With the CytoWeave program running, the library is a folder on disk (served at /api/library);
 // served as a plain web site, it lives in the browser's origin-private file system (OPFS), with
 // IndexedDB as a fallback for workspaces.
@@ -63,6 +65,28 @@ class BackendLibrary {
     if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? 'The file could not be stored.');
   }
 
+  async listRecords(kind) {
+    const response = await fetch(`api/library/records/${encodeURIComponent(kind)}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Could not list the library\'s records.');
+    return (await response.json()).records;
+  }
+
+  async getRecord(kind, id) {
+    const response = await fetch(`api/library/records/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { cache: 'no-store' });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error('The record could not be read.');
+    return response.json();
+  }
+
+  async putRecord(kind, id, doc) {
+    const response = await fetch(`api/library/records/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(doc), headers: { 'Content-Type': 'application/json' } });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? 'The record could not be saved.');
+  }
+
+  async deleteRecord(kind, id) {
+    await fetch(`api/library/records/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   // Where the parse worker reads a stored file: by range requests, so it is never held whole.
   fileSource(sha, size) {
     return { kind: 'url', url: new URL(`api/library/files/${sha}`, location.href).href, size };
@@ -93,11 +117,12 @@ const DB_NAME = 'cytoweave';
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(DB_NAME, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('workspaces')) db.createObjectStore('workspaces');
       if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
+      if (!db.objectStoreNames.contains('records')) db.createObjectStore('records');
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -155,6 +180,32 @@ class BrowserLibrary {
   async deleteWorkspace(id) {
     const db = await this.dbPromise;
     if (db) await idb(db, 'workspaces', 'readwrite', (store) => store.delete(id));
+  }
+
+  async listRecords(kind) {
+    const db = await this.dbPromise;
+    if (!db) return [];
+    const range = IDBKeyRange.bound(`${kind}/`, `${kind}/\uffff`);
+    const all = await idb(db, 'records', 'readonly', (store) => store.getAll(range));
+    return (all ?? []).map(({ id, name, modified, size }) => ({ id, name, modified, size })).sort((a, b) => (a.modified < b.modified ? 1 : -1));
+  }
+
+  async getRecord(kind, id) {
+    const db = await this.dbPromise;
+    const record = db ? await idb(db, 'records', 'readonly', (store) => store.get(`${kind}/${id}`)) : null;
+    return record ? JSON.parse(record.text) : null;
+  }
+
+  async putRecord(kind, id, doc) {
+    const db = await this.dbPromise;
+    if (!db) throw new Error('This browser does not allow saving (private window?).');
+    const text = JSON.stringify(doc);
+    await idb(db, 'records', 'readwrite', (store) => store.put({ id, name: doc.name ?? '', modified: doc.modified ?? new Date().toISOString(), size: text.length, text }, `${kind}/${id}`));
+  }
+
+  async deleteRecord(kind, id) {
+    const db = await this.dbPromise;
+    if (db) await idb(db, 'records', 'readwrite', (store) => store.delete(`${kind}/${id}`));
   }
 
   async fileHandle(sha, create = false) {

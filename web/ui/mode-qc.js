@@ -1,6 +1,6 @@
 // QC: acquisition quality control of every sample (PeacoQC, a flowAI-style flow-rate check,
 // margin events and signal drift), batch normalization (CytoNorm; bead normalization for mass
-// cytometry) and debarcoding of barcoded samples. The computations run in the QC worker and the
+// cytometry), debarcoding of barcoded samples, and the instrument's Q and B (qc-instrument.js). The computations run in the QC worker and the
 // results are derived channels — a 0/1 "QC pass" mask, "<channel> (norm)", "Barcode" — so nothing
 // is removed from the data, everything can be gated on, and every step can be undone.
 
@@ -15,6 +15,7 @@ import { applyTransform, createTransform } from '../lib/transforms.js';
 import { histogram } from '../lib/density.js';
 import { categoricalColor } from '../lib/colormaps.js';
 import { createRandom, sampleIndices } from '../lib/random.js';
+import { createInstrumentSection } from './qc-instrument.js';
 
 const QC_CHANNEL = 'QC pass';
 const BEAD_CHANNEL = 'Bead';
@@ -48,6 +49,7 @@ const SECTIONS = [
   { id: 'clean', label: 'Clean', icon: 'qc', title: 'Acquisition QC: clogs, bursts, drift and saturated events' },
   { id: 'normalize', label: 'Normalize', icon: 'layers', title: 'Batch normalization with reference samples' },
   { id: 'debarcode', label: 'Debarcode', icon: 'tag', title: 'Split barcoded samples' },
+  { id: 'instrument', label: 'Instrument', icon: 'gauge', title: 'Detector efficiency Q and background B from beads, and Levey–Jennings charts across runs' },
 ];
 
 // --- Small helpers ------------------------------------------------------------------------------
@@ -676,6 +678,8 @@ export function mountQCMode(app, container) {
     return job;
   }
 
+  const instrumentSection = createInstrumentSection({ app, chart, alpha, rerender: () => scheduleRender() });
+
   // --- Rendering ------------------------------------------------------------------------------
 
   function renderTabs() {
@@ -707,6 +711,7 @@ export function mountQCMode(app, container) {
     }
     if (S.section === 'normalize') renderNormalize();
     else if (S.section === 'debarcode') renderDebarcode();
+    else if (S.section === 'instrument') instrumentSection.render(sectionHost);
     else renderClean();
     const body = root.querySelector('.view-body');
     if (body) body.scrollTop = scroll;

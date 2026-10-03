@@ -7,8 +7,8 @@
 //   node validation/run.mjs [suite …] [--verbose]
 //
 // Suites: fcs, compensation, gating, qc, spectral, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, flowjo, figures, autogating, reference, experts, gatingml,
-// flowkit, fcsparser, diva, bioconductor
+// normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
+// experts, flowqb, gatingml, flowkit, fcsparser, diva, bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -23,6 +23,9 @@ import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs'
 import { deidentifyFCS } from '../web/lib/deidentify.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
+import { characterize, findBeadPeaks, REJECT_RULES } from '../web/lib/qb.js';
+import { beadRun, runFlags, seriesRun } from '../web/lib/instrument-record.js';
+import { compareWithLibrary, latestEntries, libraryEntry, spectrumOn, withEntries as withSpectra } from '../web/lib/spectral-library.js';
 import { EXPERT_GATES, ORDER, TRUTH, adaptTopDown, againstExperts, buildCohort, expertCorrection, expertWorkspace, f1 as truthF1, randomGains } from './autogating-cases.mjs';
 import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
@@ -250,7 +253,7 @@ function deidentifyChecks(suite, label, files) {
 const suites = {
   fcs() {
     const all = [];
-    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase']) {
+    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc']) {
       const { files } = generateExample(id, { scale: 0.05 });
       all.push(...files);
       let problems = 0;
@@ -425,6 +428,43 @@ const suites = {
     check('spectral', 'largest shortfall against unmixing with the true spectra', `${worst.name}: r = ${fmt(worst.r, 3)} vs ${fmt(worst.oracle, 3)}`, worst.r > worst.oracle - 0.02, 'within 0.02');
     const hardest = rows.slice().sort((x, y) => x.oracle - y.oracle)[0];
     check('spectral', 'hardest fluorochrome (limited by spreading, not by software)', `${hardest.name}: r = ${fmt(hardest.r, 3)}, true spectra give ${fmt(hardest.oracle, 3)}`, true, 'reported');
+
+    // The spectral library: this experiment's spectra kept, and compared with later experiments
+    // on the same instrument (independent controls, other seeds).
+    let library = withSpectra({ name: 'Aurora (simulated)', entries: [] }, spectra.map((sp) => libraryEntry({ fluorochrome: sp.name, spectrum: sp.spectrum, detectors, date: '2026-05-20', file: `Ref_${sp.name}.fcs`, sha256: `a-${sp.name}` })));
+    const experiment = (options) => {
+      const { files: more } = generateExample('spectral-25color', options);
+      const refs = more.filter((f) => f.meta.role === 'single-stain').map((f) => {
+        const cols = columnsOf(load(f));
+        const gate = autoGateControl(cols, detectors, {});
+        return { name: f.meta.stain, spectrum: referenceSpectrum(cols, detectors, gate.positive, gate.negative, {}).spectrum, detectors };
+      });
+      return { files: more, refs };
+    };
+    const repeat = experiment({ seed: 2, samples: files.filter((f) => f.meta.role === 'single-stain').map((f) => f.name) });
+    const same = compareWithLibrary(repeat.refs, library, detectors);
+    const worstSame = same.slice().sort((a, b) => b.maxDiff - a.maxDiff)[0];
+    check('spectral', `spectral library: another experiment's ${same.length} controls on the same instrument against the library — flagged as changed, and the largest difference (peak = 1)`, `${same.filter((r) => r.status === 'changed').length} flagged; ${worstSame.name} ${fmt(worstSame.maxDiff, 4)} at ${worstSame.detector}`, same.every((r) => r.status === 'match'), 'none');
+    const degraded = experiment({ seed: 3, tandemDegradation: { 'PE-Cy7': 0.05 }, samples: [...files.filter((f) => f.meta.role !== 'sample').map((f) => f.name), donor.name] });
+    const flagged = compareWithLibrary(degraded.refs, library, detectors).filter((r) => r.status === 'changed');
+    check('spectral', 'spectral library: a PE-Cy7 that lost 5% of its emission to PE is flagged, and nothing else', flagged.map((r) => `${r.name} ${fmt(r.maxDiff, 3)} at ${r.detector}`).join('; ') || 'nothing flagged', flagged.length === 1 && flagged[0].name === 'PE-Cy7' && /^YG/.test(flagged[0].detector), 'PE-Cy7 only, at a YG detector');
+    // A fluorochrome without a control, unmixed with its library spectrum (from the repeat
+    // experiment) instead: as accurate as with its own control.
+    const viaLibrary = spectra.map((sp) => (sp.name === 'PE-Cy7' ? { ...sp, spectrum: Array.from(spectrumOn(latestEntries(withSpectra(library, [libraryEntry({ fluorochrome: 'PE-Cy7', spectrum: repeat.refs.find((r) => r.name === 'PE-Cy7').spectrum, detectors, date: '2026-06-01', file: 'Ref_PE-Cy7.fcs', sha256: 'b-PE-Cy7' })]), detectors).get('pe cy7'), detectors)) } : sp));
+    const withLib = unmixWithAutofluorescence(columnsOf(d), viaLibrary, af.signatures, { detectors });
+    const own = rows.find((row) => row.name === 'PE-Cy7').r;
+    const lib = pearson(withLib.abundances[withLib.names.indexOf('PE-Cy7')], donor.meta.truth.abundances[truthNames.indexOf('PE-Cy7')]);
+    check('spectral', 'PE-Cy7 unmixed with its spectrum from the library (another experiment\'s control) instead of this experiment\'s control: Pearson r with the truth', `${fmt(lib, 4)} vs ${fmt(own, 4)}`, lib > own - 0.005, 'within 0.005');
+    // Why changes matter: the degraded experiment unmixed with the stale library spectrum.
+    const dDonor = degraded.files.find((f) => f.name === donor.name);
+    const dCols = columnsOf(load(dDonor));
+    const dAF = extractAutofluorescence(columnsOf(load(degraded.files.find((f) => f.meta.role === 'unstained'))), detectors, {});
+    const stale = degraded.refs.map((sp) => (sp.name === 'PE-Cy7' ? spectra.find((x) => x.name === 'PE-Cy7') : sp));
+    const truthOf = (name) => dDonor.meta.truth.abundances[dDonor.meta.truth.abundanceNames.indexOf(name)];
+    const rOf = (result, name) => pearson(result.abundances[result.names.indexOf(name)], truthOf(name));
+    const fresh = unmixWithAutofluorescence(dCols, degraded.refs, dAF.signatures, { detectors });
+    const staleResult = unmixWithAutofluorescence(dCols, stale, dAF.signatures, { detectors });
+    check('spectral', 'degraded PE-Cy7 unmixed with its stale library spectrum vs its own control: Pearson r of PE (whose detectors the donor emission reaches) and PE-Cy7', `PE ${fmt(rOf(staleResult, 'PE'), 3)} vs ${fmt(rOf(fresh, 'PE'), 3)}; PE-Cy7 ${fmt(rOf(staleResult, 'PE-Cy7'), 3)} vs ${fmt(rOf(fresh, 'PE-Cy7'), 3)}`, rOf(staleResult, 'PE') < rOf(fresh, 'PE'), 'the stale spectrum is worse for PE');
   },
 
   cellcycle() {
@@ -774,6 +814,103 @@ const suites = {
     check('experts', 'one gate per donor: share sent to review where the template differs from the expert (F1 < 0.99) vs where it agrees', `${(100 * rate(differs)).toFixed(0)}% of ${differs.length} vs ${(100 * rate(agrees)).toFixed(0)}% of ${agrees.length}`, rate(differs) > rate(agrees), 'higher');
     const a = summary(alone);
     check('experts', `each well adapted alone (ignoring the design): mean F1, template → adapted, and the worst adjustment`, `${a.before.toFixed(4)} → ${a.after.toFixed(4)}; ${a.adjusted.length} adjusted, ${a.harmful.length} lowering F1 by more than 0.02, worst ${a.worst.toFixed(3)}; ${a.review} sent to review`, a.worst >= -0.15 && a.after >= a.before - 0.002, 'worst ≥ −0.15, mean no worse than −0.002');
+  },
+
+  // Instrument characterization: 30 daily runs of 8-peak beads whose detectors' true Q, B and
+  // CV0 are known, with three planted problems (a PMT ageing from run 21, a dirty flow cell on
+  // run 25, a weaker violet laser from run 27) against a baseline of the first 20 runs.
+  instrument() {
+    const { files } = generateExample('bead-qc');
+    const runs = files.map((file) => {
+      const d = parseFCS(file.bytes).datasets[0];
+      const sample = sampleFromDataset(d, { name: file.name, sha256: file.name });
+      return beadRun(new SampleView(sample, d), sample, { peaks: 8 });
+    });
+    const err = { Q: [], B: [], CV0: [] };
+    let within = 0;
+    let total = 0;
+    files.forEach((file, i) => {
+      for (const [ch, truth] of Object.entries(file.meta.truth.detectors)) {
+        const got = runs[i].channels[ch];
+        for (const k of ['Q', 'B', 'CV0']) err[k].push(Math.abs(got[k] - truth[k]) / truth[k]);
+        for (const k of ['Q', 'B']) { total += 1; if (Math.abs(got[k] - truth[k]) <= 2 * got.se[k]) within += 1; }
+      }
+    });
+    const q = (xs, p) => { const s = xs.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+    const pct = (v) => `${(100 * v).toFixed(1)}%`;
+    check('instrument', `Q, B and bead CV of 18 detectors on ${runs.length} runs (15,000 events each) against the truth: median (95th percentile) relative error`, `Q ${pct(q(err.Q, 0.5))} (${pct(q(err.Q, 0.95))}); B ${pct(q(err.B, 0.5))} (${pct(q(err.B, 0.95))}); CV ${pct(q(err.CV0, 0.5))} (${pct(q(err.CV0, 0.95))})`, q(err.Q, 0.5) < 0.03 && q(err.Q, 0.95) < 0.1 && q(err.B, 0.5) < 0.1 && q(err.B, 0.95) < 0.3 && q(err.CV0, 0.5) < 0.08, 'Q < 3% (95th < 10%), B < 10% (95th < 30%), CV < 8%');
+    check('instrument', 'Q and B: the truth within 2 standard errors of the fit (as flowQB reports them)', `${within} of ${total} (${pct(within / total)})`, within / total >= 0.8, '≥ 80%');
+
+    // Levey–Jennings against the first 20 runs.
+    const planted = (ch, metric, run) => (ch === 'BV421-A' && (metric === 'Q' || metric === 'B') && run >= 21)
+      || (ch === 'FITC-A' && metric === 'B' && run >= 25)
+      || (/^BV/.test(ch) && metric === 'level' && run >= 27);
+    const flags = runs.map((_, i) => runFlags(runs, i, { baseline: 20 }).filter((f) => f.rules.some((r) => REJECT_RULES.has(r))));
+    const baselineAlarms = flags.slice(0, 20).flat().length;
+    const firstFlag = (pred) => flags.findIndex((list) => list.some(pred)) + 1;
+    const pmt = firstFlag((f) => f.channel === 'BV421-A' && f.metric === 'Q');
+    const flowCell = firstFlag((f) => f.channel === 'FITC-A' && f.metric === 'B');
+    const laser = flags.findIndex((list) => ['BV421-A', 'BV510-A', 'BV605-A', 'BV650-A', 'BV711-A', 'BV786-A'].every((ch) => list.some((f) => f.channel === ch && f.metric === 'level'))) + 1;
+    check('instrument', 'Levey–Jennings: first run flagged for each planted problem (PMT ageing from run 21, dirty flow cell from 25, weaker violet laser from 27, all six violet detectors)', `PMT run ${pmt}; flow cell run ${flowCell}; laser run ${laser}`, pmt >= 21 && pmt <= 23 && flowCell === 25 && laser === 27, 'within 2 runs, at once, at once');
+    let falseFlags = 0;
+    let series = 0;
+    for (let i = 20; i < runs.length; i += 1) {
+      for (const ch of Object.keys(runs[i].channels)) for (const metric of ['Q', 'B', 'level']) {
+        if (planted(ch, metric, i + 1)) continue;
+        series += 1;
+        if (flags[i].some((f) => f.channel === ch && f.metric === metric)) falseFlags += 1;
+      }
+    }
+    check('instrument', 'Levey–Jennings: runs flagged out of control in the 20 baseline runs, and false flags on unaffected detectors and metrics in runs 21–30', `${baselineAlarms} in the baseline; ${falseFlags} of ${series} (${pct(falseFlags / series)})`, baselineAlarms === 0 && falseFlags / series <= 0.02, 'none; ≤ 2%');
+  },
+
+  // External data: flowQB (Parks et al. 2017's weighted quadratic fit) on its own LSR II data —
+  // an LED pulser series and Spherotech 8-peak and Thermo Fisher 6-peak beads — with its results
+  // (reference/flowqb.json, written by generate_flowqb.R) beside CytoWeave's.
+  flowqb() {
+    const data = dataset('flowqbdata');
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowqb.json', import.meta.url), 'utf8'));
+    // flowQB writes undefined standard errors (three peaks, no degrees of freedom) as "NaN".
+    const num = (v) => (typeof v === 'number' ? v : Number.NaN);
+    const rel = (a, b) => (Number.isNaN(a) && Number.isNaN(num(b)) ? 0 : a === num(b) ? 0 : Math.abs(a - num(b)) / Math.max(Math.abs(num(b)), 1e-300));
+    const sci = (v) => (v === 0 ? '0' : v.toExponential(1));
+    const compare = (ours, theirs) => {
+      let worst = 0;
+      let fitted = 0;
+      let peaksAgree = true;
+      for (const [ch, r] of Object.entries(theirs)) {
+        const mine = ours[ch];
+        if (!mine) { worst = Infinity; continue; }
+        if (mine.peaks.length !== r.peaks.length || mine.peaks.some((p, i) => p.n !== r.peaks[i].n || p.omit !== r.peaks[i].omit)) peaksAgree = false;
+        mine.peaks.forEach((p, i) => { if (!p.omit) worst = Math.max(worst, rel(p.mean, r.peaks[i].mean), rel(p.sd, r.peaks[i].sd)); });
+        const c = r.iterated.c;
+        if (c.some((v) => typeof v !== 'number')) continue;
+        fitted += 1;
+        worst = Math.max(worst, ...c.map((v, k) => rel(mine.fit.c[k], v)), ...r.iterated.se.map((v, k) => rel(mine.fit.se[k], v)));
+      }
+      return { worst, fitted, peaksAgree };
+    };
+    // LED: one level per file, every event of a file.
+    const ledFiles = ref.led.files.map((name) => parseFCS(data.read(`LED_Series/${name}`)).datasets[0]);
+    const ledPeaks = {};
+    for (const ch of Object.keys(ref.led.channels)) ledPeaks[ch] = ledFiles.map((d) => d.data[d.parameters.find((p) => p.name === ch).index]);
+    const led = compare(characterize(ledPeaks), ref.led.channels);
+    check('flowqb', `LED pulser (${ref.led.files.length} files, ${Object.keys(ref.led.channels).length} channels): peak statistics and iterated fit coefficients with standard errors vs flowQB ${ref.versions.flowQB}`, `${led.fitted} channels fitted; peaks ${led.peaksAgree ? 'identical' : 'differ'}; largest relative difference ${sci(led.worst)}`, led.peaksAgree && led.worst < 1e-6, 'identical peaks, < 1e-6');
+    // Beads: scatter gate, k-means peaks, fit.
+    for (const b of ref.beads) {
+      const d = parseFCS(data.read(`Other_Tests/${b.file}`)).datasets[0];
+      const columns = Object.fromEntries(d.parameters.map((p) => [p.name, d.data[p.index]]));
+      const channels = Object.keys(b.channels);
+      const { events, labels } = findBeadPeaks(columns, { channels, scatter: ['FSC-A', 'SSC-A'], peaks: b.peaks });
+      const peaks = {};
+      for (const ch of channels) {
+        peaks[ch] = Array.from({ length: b.peaks }, () => []);
+        events.forEach((e, k) => peaks[ch][labels[k]].push(columns[ch][e]));
+      }
+      const got = compare(characterize(peaks), b.channels);
+      const name = b.peaks === 8 ? 'Spherotech 8-peak' : 'Thermo Fisher 6-peak';
+      check('flowqb', `${name} beads (${b.file}, ${channels.length} channels): scatter gate, peaks found by k-means, and the fit vs flowQB`, `${got.fitted} channels fitted; peak memberships ${got.peaksAgree ? 'identical' : 'differ'}; largest relative difference ${sci(got.worst)}`, got.peaksAgree && got.worst < 1e-6, 'identical peaks, < 1e-6');
+    }
   },
 
   gatingml() {

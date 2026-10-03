@@ -70,6 +70,7 @@ func (s *store) register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/library/files/{sha}", s.putFile)
 	mux.HandleFunc("POST /api/library/files", s.addFile)
 	mux.HandleFunc("GET /api/library/has/{sha}", s.hasFile)
+	s.registerRecords(mux)
 }
 
 // hasFile answers whether the library holds a file, without the 404 a HEAD request would log.

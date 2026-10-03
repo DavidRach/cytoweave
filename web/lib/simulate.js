@@ -584,6 +584,25 @@ export function buildPanel(instrument, assignments, detectorNames = null) {
   return { instrument, detectors, markers, fluors, emitters, spill };
 }
 
+// A tandem dye whose acceptor has partly broken down: a fraction of its emission comes from its
+// donor instead (degraded PE-Cy7 emits partly like PE). Mixes the donor's emission, scaled to the
+// tandem's peak, into the marker's row of the panel's emitters, in place.
+export function degradeTandem(panel, marker, donor, fraction) {
+  const m = panel.markers.indexOf(marker);
+  const fluor = FLUOROCHROMES[donor];
+  if (m < 0 || !fluor) throw new Error(`Cannot degrade ${marker}: no such marker or donor "${donor}".`);
+  const nDet = panel.detectors.length;
+  const row = (2 + m) * nDet;
+  let peak = 0;
+  for (let j = 0; j < nDet; j += 1) peak = Math.max(peak, panel.emitters[row + j]);
+  let donorPeak = 0;
+  for (const d of panel.instrument.detectors) donorPeak = Math.max(donorPeak, detectorResponse(fluor, d));
+  for (let j = 0; j < nDet; j += 1) {
+    panel.emitters[row + j] = (1 - fraction) * panel.emitters[row + j] + fraction * peak * (detectorResponse(fluor, panel.detectors[j]) / donorPeak);
+  }
+  return panel;
+}
+
 // --- Acquisition clock ----------------------------------------------------------------------------
 
 // Anomaly windows: [{ kind, start, end (s), rate (arrival-rate factor), signal, scatter
@@ -1047,6 +1066,83 @@ export function simulateCellCycle(config, random, options = {}) {
     columns.Time[e] = Math.floor(times[e] / instrument.timestep);
   }
   return { columns, order: names, labels, labelNames: CELL_CYCLE_LABELS.slice(), times, duration: count ? times[count - 1] : 0, phaseCounts };
+}
+
+// --- Multi-level beads (instrument characterization) ---------------------------------------------
+
+// Simulates a tube of multi-level calibration beads (8-peak rainbow beads and the like) for
+// measuring detector efficiency Q and optical background B (Parks et al. 2017). Each bead carries
+// one dye loading for every detector (its level times a lognormal factor of CV cv0, shared by the
+// detectors); a detector sees signal I = loading × response, with variance
+//   k·(I + background) + sigma²
+// (photoelectron counting on the signal and on stray light, plus electronic noise), so its true
+// Q = 1/k, B = (k·background + sigma²)/k² statistical photoelectrons and CV0 = cv0. config:
+//   count, instrument, detectors: [{ name, k, sigma, background, response }], levels: bead
+//   brightness of each level (response × level is its signal), cv0, rate, mix: { doublets,
+//   debris }. Returns the same shape as simulateEvents ({ columns, order, labels (level index;
+//   doublets and debris after the levels), labelNames, times, duration }).
+export function simulateBeadRun(config, random, options = {}) {
+  const { count, instrument, detectors, levels } = config;
+  const cv0 = config.cv0 ?? 0.02;
+  const rate = config.rate ?? 800;
+  const mix = { doublets: 0.03, debris: 0.02, ...config.mix };
+  const g = createNormal(random);
+  const nLevels = levels.length;
+  const weights = new Float64Array(nLevels + 2);
+  for (let l = 0; l < nLevels; l += 1) weights[l] = (1 - mix.doublets - mix.debris) / nLevels;
+  weights[nLevels] = mix.doublets;
+  weights[nLevels + 1] = mix.debris;
+  const labels = sampledLabels(count, weights, random);
+  const labelNames = [...levels.map((_, l) => `Level ${l + 1}`), 'Doublets', 'Debris'];
+  const times = acquisitionTimes(count, rate, [], random);
+  const maxValue = instrument.range - 1;
+  const scatter = instrument.scatter.slice(0, 2);
+  const columns = {};
+  const order = [];
+  for (const sc of scatter) for (const part of ['A', 'H', 'W']) {
+    columns[`${sc.base}-${part}`] = new Float32Array(count);
+    order.push(`${sc.base}-${part}`);
+  }
+  for (const d of detectors) {
+    columns[d.name] = new Float32Array(count);
+    order.push(d.name);
+  }
+  columns.Time = new Float32Array(count);
+  order.push('Time');
+  const clip = (v) => (v > maxValue ? maxValue : v);
+  for (let e = 0; e < count; e += 1) {
+    if ((e & 4095) === 0 && options.signal?.aborted) throw new Error('Simulation was cancelled.');
+    const kind = labels[e];
+    const debris = kind === nLevels + 1;
+    const beads = kind === nLevels ? 2 : 1;
+    // Scatter: tight for beads, pulses twice as long and twice the area for doublets.
+    const width = (debris ? 0.6 : beads === 2 ? 1.9 : 1) * Math.exp(0.02 * g());
+    scatter.forEach((sc, i) => {
+      const base = i === 0 ? 52000 : 21000;
+      const area = debris ? base * 0.12 * Math.exp(0.6 * g()) : beads * base * Math.exp(0.025 * g());
+      const a = area + sc.sigma * g();
+      columns[`${sc.base}-A`][e] = clip(Math.max(0, a));
+      columns[`${sc.base}-H`][e] = clip(Math.max(0, a / width + sc.sigma * 0.5 * g()));
+      columns[`${sc.base}-W`][e] = width * instrument.widthScale;
+    });
+    // Dye loading: one factor per bead, shared by the detectors.
+    let loading = 0;
+    if (debris) loading = levels[0] * 0.3 * Math.exp(0.8 * g());
+    else for (let b = 0; b < beads; b += 1) loading += levels[beads === 2 ? Math.floor(random() * nLevels) : kind] * Math.exp(cv0 * g() - 0.5 * cv0 * cv0);
+    for (const d of detectors) {
+      const signal = loading * d.response;
+      const variance = d.k * (signal + (d.background ?? 0)) + d.sigma * d.sigma;
+      columns[d.name][e] = clip(signal + Math.sqrt(variance) * g());
+    }
+    columns.Time[e] = Math.floor(times[e] / instrument.timestep);
+  }
+  return { columns, order, labels, labelNames, times, duration: count ? times[count - 1] : 0 };
+}
+
+// The true Q (Spe per unit), B (Spe) and CV0 of a simulated bead detector (the loading is
+// lognormal, so its CV is √(exp(cv0²) − 1)).
+export function beadDetectorTruth(d, cv0) {
+  return { Q: 1 / d.k, B: ((d.background ?? 0) * d.k + d.sigma * d.sigma) / (d.k * d.k), CV0: Math.sqrt(Math.expm1(cv0 * cv0)) };
 }
 
 // --- Mass cytometry -------------------------------------------------------------------------------

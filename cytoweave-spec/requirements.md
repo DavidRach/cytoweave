@@ -68,7 +68,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | S4 | Complexity index, similarity and spreading matrices | done |
 | S5 | Comparison of unmixing models on the user's own sample | done |
 | S6 | Predicted spread for panel design from the user's own references | planned |
-| S7 | Spectral reference library across experiments | planned |
+| S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
 
 ## Quality control and normalization
 
@@ -78,7 +78,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | Q2 | Cohort QC overview with scores | done |
 | Q3 | CytoNorm with a confounding check; bead normalization; debarcoding | done |
 | Q4 | QC of files as they are acquired (folder watching) | planned |
-| Q5 | Instrument characterization (Q and B, Levey–Jennings) | planned |
+| Q5 | Instrument characterization (Q and B, Levey–Jennings) | done: Q, B and CV0 from multi-level beads or LED series as flowQB computes them (validation `flowqb`: equal within 6e-9), runs kept per instrument and followed on Levey–Jennings charts with Westgard rules (validation `instrument`) |
 
 ## High-dimensional analysis
 

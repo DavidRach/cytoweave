@@ -7,12 +7,17 @@
 // The reference library (spectra, their quality, autofluorescence signatures, the spreading
 // matrix and the chosen settings) is kept as one derived record in the workspace,
 // { id: 'spectral-setup', kind: 'spectral-setup', … }, so it is saved, undoable and auditable.
+// Spectra are also kept across experiments in the library's spectral library of the instrument
+// (lib/spectral-library.js): the Library tab compares the controls with it, saves them to it,
+// and adds library spectra for fluorochromes without a control (setup.libraryReferences).
 
 import { h, icon, clear, formatCount } from './dom.js';
 import { showMenu, showDialog, toast, progressToast, promptDialog } from './overlays.js';
 import { population } from '../lib/engine.js';
 import { ROOT, addDerived, gatePath, updateSample } from '../lib/workspace.js';
 import { complexityIndex, similarityMatrix } from '../lib/spectral.js';
+import { LIBRARY_TOLERANCE, SPECTRA_RECORDS, compareWithLibrary, libraryEntry, missingFromPanel, spectrumOn, withEntries } from '../lib/spectral-library.js';
+import { acquisitionDate, instrumentOf } from '../lib/instrument-record.js';
 import { applyTransform, axisTicks, createTransform, defaultTransform } from '../lib/transforms.js';
 import { categoricalColor, colormapLUT, luminance } from '../lib/colormaps.js';
 import {
@@ -52,6 +57,7 @@ const TABS = [
   { id: 'compare', label: 'Compare models', icon: 'compare' },
   { id: 'residuals', label: 'Residuals', icon: 'target' },
   { id: 'ribbon', label: 'Signature', icon: 'density' },
+  { id: 'library', label: 'Library', icon: 'library' },
 ];
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -77,6 +83,9 @@ export function mountSpectralMode(app, container) {
     residual: null,
     ribbon: null,
     busy: null,
+    library: undefined, // the instrument's spectral library record (null: none; undefined: not read)
+    libraryFor: null,
+    libraryChosen: null,
   };
 
   const headTitle = h('h1');
@@ -131,10 +140,17 @@ export function mountSpectralMode(app, container) {
   function references() {
     const refs = setup()?.references ?? [];
     const detectors = setup()?.params?.detectors ?? panelDetectors();
-    return controls().map((sample) => {
+    const fromControls = controls().map((sample) => {
       const ref = refs.find((r) => r.sampleId === sample.id);
       return { sample, ref, name: guessFluorochrome(sample, detectors), marker: sample.meta?.marker ?? '', excluded: Boolean(controlSettings(sample.id).excluded) };
     });
+    // Library spectra added for fluorochromes without a control: a stand-in sample, no events.
+    const fromLibrary = (setup()?.libraryReferences ?? []).map((e) => {
+      const id = `lib:${e.id}`;
+      const ref = { spectrum: e.spectrum, peakDetector: e.peakDetector, computed: e.added, fromLibrary: true, entry: e, separation: e.quality?.separation ?? null, stainIndex: e.quality?.stainIndex ?? null, heterogeneity: e.quality?.heterogeneity ?? null, warnings: [], positiveEvents: null, negativeEvents: null };
+      return { sample: { id, name: `Library · ${(e.date ?? e.added ?? '').slice(0, 10)} · ${e.file ?? ''}`, library: true, role: 'library', meta: {} }, ref, name: e.fluorochrome, marker: e.marker ?? '', excluded: Boolean(controlSettings(id).excluded) };
+    });
+    return [...fromControls, ...fromLibrary];
   }
 
   function activeRefs() {
@@ -509,7 +525,7 @@ export function mountSpectralMode(app, container) {
           afMode,
           detectors,
           fluorochromes: refs.map((r) => r.name),
-          references: refs.map((r) => ({ fluorochrome: r.name, sampleId: r.sample.id, peakDetector: r.ref.peakDetector, computed: r.ref.computed })),
+          references: refs.map((r) => ({ fluorochrome: r.name, sampleId: r.sample.library ? null : r.sample.id, peakDetector: r.ref.peakDetector, computed: r.ref.computed, ...(r.sample.library ? { library: { file: r.ref.entry.file, date: r.ref.entry.date, workspace: r.ref.entry.workspace, sha256: r.ref.entry.sha256 } } : {}) })),
           autofluorescence: afMode === 'none' ? [] : afSignatures().map((s) => s.name),
           referenceLibrary: SETUP_ID,
           weights: method.startsWith('wls') ? (unstainedSample() ? `background variance from ${unstainedSample().name}` : 'background variance from the dimmest 10% of events') : null,
@@ -560,7 +576,7 @@ export function mountSpectralMode(app, container) {
     let current = null;
     const progress = progressToast('Unmixing the controls for the spreading matrix…', () => { cancelled = true; current?.cancel(); });
     try {
-      const needUnstained = refs.some((r) => controlSettings(r.sample.id).negative === 'unstained');
+      const needUnstained = refs.some((r) => !r.sample.library && controlSettings(r.sample.id).negative === 'unstained');
       const unstained = needUnstained ? await unstainedColumns(detectors) : null;
       const names = refs.map((r) => r.name);
       const F = names.length;
@@ -568,6 +584,8 @@ export function mountSpectralMode(app, container) {
       const matrix = new Array(F * F).fill(null);
       for (let i = 0; i < F && !cancelled; i += 1) {
         const r = refs[i];
+        // A library spectrum has no control events to unmix: its row stays empty.
+        if (r.sample.library) continue;
         progress.update(i / F, `Unmixing the ${r.name} control (${i + 1}/${F})`);
         const view = await data.ensure(r.sample.id);
         const columns = copyColumns(detectorColumns(view, detectors), thinIndices(null, view.eventCount, LIMITS.control));
@@ -765,6 +783,13 @@ export function mountSpectralMode(app, container) {
   function controlMenu(anchor, entry) {
     const detectors = setup()?.params?.detectors ?? panelDetectors();
     const cs = controlSettings(entry.sample.id);
+    if (entry.sample.library) {
+      showMenu(anchor, [
+        { label: entry.excluded ? 'Include in the panel' : 'Exclude from the panel', icon: entry.excluded ? 'plus' : 'minus', onSelect: () => setControlSetting(entry.sample.id, { excluded: !entry.excluded }, entry.excluded ? `Include ${entry.name}` : `Exclude ${entry.name}`) },
+        { label: 'Remove the library spectrum', icon: 'close', danger: true, onSelect: () => saveSetup({ libraryReferences: (setup()?.libraryReferences ?? []).filter((e) => `lib:${e.id}` !== entry.sample.id), spreading: null }, `Remove the library spectrum of ${entry.name}`) },
+      ]);
+      return;
+    }
     showMenu(anchor, [
       { label: 'Name fluorochrome and marker…', icon: 'edit', onSelect: () => renameControl(entry) },
       { label: 'Gate this control again', icon: 'play', onSelect: () => gateControls([entry.sample.id]) },
@@ -845,9 +870,12 @@ export function mountSpectralMode(app, container) {
       const warnings = ref?.warnings ?? [];
       const badges = [];
       if (entry.excluded) badges.push(h('span.badge', 'excluded'));
-      if (!ref) badges.push(h('span.badge', 'not gated'));
+      const changed = libraryChanges().get(entry.sample.id);
+      if (entry.sample.library) badges.push(h('span.badge.accent', { title: `From the spectral library: ${ref.entry.file ?? ''}${ref.entry.workspace ? ` (${ref.entry.workspace})` : ''}, acquired ${(ref.entry.date ?? '').slice(0, 10)}. No control events: not in the spreading matrix.` }, 'library'), h('span.badge.accent', { title: 'Peak detector' }, ref.peakDetector));
+      else if (!ref) badges.push(h('span.badge', 'not gated'));
       else if (ref.error) badges.push(h('span.badge.danger', { title: ref.error }, 'failed'));
       else {
+        if (changed) badges.push(h('span.badge.danger', { title: `Differs from the library's ${changed.entry.fluorochrome} of ${(changed.entry.date ?? '').slice(0, 10)} by ${changed.maxDiff.toFixed(3)} at ${changed.detector} (peak = 1): a degraded tandem, a new lot or a changed instrument? See the Library tab.` }, 'differs from library'));
         badges.push(h('span.badge', { title: `Positive events (of ${formatCount(ref.eventsUsed)} used)` }, `+${formatCount(ref.positiveEvents)}`));
         badges.push(h('span.badge', { title: `Negative events (${ref.negativeSource === 'unstained' ? 'unstained control' : 'internal'}${ref.matchedNegatives ? ', matched in autofluorescence' : ''})` }, `−${formatCount(ref.negativeEvents)}`));
         badges.push(h('span.badge.accent', { title: 'Peak detector' }, ref.peakDetector));
@@ -860,7 +888,7 @@ export function mountSpectralMode(app, container) {
           if (expanded) ui.expanded.delete(entry.sample.id);
           else ui.expanded.add(entry.sample.id);
           ui.hover = entry.name;
-          app.selectSample(entry.sample.id);
+          if (!entry.sample.library) app.selectSample(entry.sample.id);
           renderControls();
           redrawBoxes();
         },
@@ -872,7 +900,7 @@ export function mountSpectralMode(app, container) {
       h('div.badges', badges),
       h('button.icon-button.small', { type: 'button', title: 'Control options', onclick: (event) => { event.stopPropagation(); controlMenu(event.currentTarget, entry); } }, icon('more')));
       list.append(row);
-      if (expanded && ref) {
+      if (expanded && ref && !entry.sample.library) {
         const facts = h('dl.kv',
           h('dt', 'Separation at peak'), h('dd', ref.separation ? `${ref.separation.toFixed(1)} × rSD` : '—'),
           h('dt', 'Stain index'), h('dd', ref.stainIndex ? ref.stainIndex.toFixed(1) : '—'),
@@ -978,7 +1006,7 @@ export function mountSpectralMode(app, container) {
   function renderTab() {
     disposeBoxes(tabHost);
     clear(tabHost);
-    const renderers = { spectra: renderSpectraTab, quality: renderQualityTab, compare: renderCompareTab, residuals: renderResidualTab, ribbon: renderRibbonTab };
+    const renderers = { spectra: renderSpectraTab, quality: renderQualityTab, compare: renderCompareTab, residuals: renderResidualTab, ribbon: renderRibbonTab, library: renderLibraryTab };
     try {
       renderers[ui.tab]();
     } catch (error) {
@@ -1037,8 +1065,8 @@ export function mountSpectralMode(app, container) {
       body.append(h('tr', { onmouseenter: () => { ui.hover = r.name; redrawBoxes(); }, onmouseleave: () => { ui.hover = null; redrawBoxes(); } },
         h('td', h('span.swatch', { style: { background: categoricalColor(i), marginRight: '6px' } }), r.name, r.marker ? h('span.muted', ` ${r.marker}`) : null),
         h('td', ref.peakDetector),
-        h('td.r', formatCount(ref.positiveEvents)),
-        h('td.r', formatCount(ref.negativeEvents)),
+        h('td.r', ref.positiveEvents != null ? formatCount(ref.positiveEvents) : 'library'),
+        h('td.r', ref.negativeEvents != null ? formatCount(ref.negativeEvents) : '—'),
         h('td.r', h(`span.badge.${ref.separation >= 10 ? 'ok' : ref.separation >= 5 ? 'warn' : 'danger'}`, ref.separation ? `${ref.separation.toFixed(0)}×` : '—')),
         h('td.r', ref.heterogeneity ? h(`span.badge.${ref.heterogeneity >= 0.98 ? 'ok' : 'warn'}`, ref.heterogeneity.toFixed(3)) : '—'),
         h('td', { style: { maxWidth: '320px', whiteSpace: 'normal' } }, ref.warnings?.length ? ref.warnings.map((w) => h('div.muted', { style: { fontSize: '11.5px' } }, '⚠ ', w)) : h('span.muted', '—'))));
@@ -1351,6 +1379,132 @@ export function mountSpectralMode(app, container) {
 
   function redrawBoxes() {
     for (const box of boxes) if (box.isConnected) box.redraw();
+  }
+
+  // --- The spectral library --------------------------------------------------------------------
+
+  function instrument() {
+    const sample = controls()[0] ?? ws().samples[0];
+    return sample ? instrumentOf(sample.keywords) : null;
+  }
+
+  // Reads the instrument's library record once (and again after saving).
+  function loadLibrary(force = false) {
+    const inst = instrument();
+    if (!inst || !app.library?.getRecord) return;
+    if (!force && ui.libraryFor === inst.id) return;
+    ui.libraryFor = inst.id;
+    ui.library = undefined;
+    app.library.getRecord(SPECTRA_RECORDS, inst.id).then((record) => {
+      if (ui.libraryFor !== inst.id) return;
+      ui.library = record ?? null;
+      renderControls();
+      if (ui.tab === 'library') renderTab();
+    }).catch(() => { ui.library = null; });
+  }
+
+  // Controls whose spectrum differs from the library's latest: Map sample id → comparison.
+  function libraryChanges() {
+    loadLibrary();
+    const out = new Map();
+    if (!ui.library) return out;
+    const detectors = setup()?.params?.detectors ?? panelDetectors();
+    const refs = activeRefs().filter((r) => !r.sample.library && !r.ref.error);
+    const rows = compareWithLibrary(refs.map((r) => ({ name: r.name, spectrum: r.ref.spectrum })), ui.library, detectors);
+    rows.forEach((row, i) => { if (row.status === 'changed') out.set(refs[i].sample.id, row); });
+    return out;
+  }
+
+  async function saveToLibrary(refs) {
+    const inst = instrument();
+    const detectors = setup()?.params?.detectors ?? panelDetectors();
+    try {
+      let record = (await app.library.getRecord(SPECTRA_RECORDS, inst.id)) ?? { name: inst.name, instrument: inst, entries: [] };
+      const entries = refs.map((r) => libraryEntry({
+        fluorochrome: r.name,
+        marker: r.marker,
+        spectrum: r.ref.spectrum,
+        detectors,
+        peakDetector: r.ref.peakDetector,
+        date: acquisitionDate(r.sample.keywords),
+        file: r.sample.fileName ?? r.sample.name,
+        sha256: r.sample.sha256,
+        workspace: ws().name,
+        carrier: r.sample.meta?.carrier ?? null,
+        quality: { separation: r.ref.separation, stainIndex: r.ref.stainIndex, heterogeneity: r.ref.heterogeneity },
+      }));
+      record = withEntries(record, entries);
+      await app.library.putRecord(SPECTRA_RECORDS, inst.id, record);
+      ui.library = record;
+      toast(`Saved ${entries.length} spectra to the spectral library of ${inst.name} (${record.entries.length} in all).`, { kind: 'ok' });
+      renderControls();
+      renderTab();
+    } catch (error) {
+      toast(`The spectral library could not be saved: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  function addFromLibrary(entry) {
+    const detectors = setup()?.params?.detectors ?? panelDetectors();
+    const spectrum = spectrumOn(entry, detectors);
+    if (!spectrum) return;
+    const existing = (setup()?.libraryReferences ?? []).filter((e) => e.fluorochrome.toLowerCase() !== entry.fluorochrome.toLowerCase());
+    saveSetup({ libraryReferences: [...existing, { ...entry, detectors: [...detectors], spectrum: Array.from(spectrum) }], params: { ...(setup()?.params ?? {}), detectors }, spreading: null }, `Add ${entry.fluorochrome} from the spectral library`);
+  }
+
+  function renderLibraryTab() {
+    loadLibrary();
+    const inst = instrument();
+    const detectors = setup()?.params?.detectors ?? panelDetectors();
+    const pane = h('div.pane', h('h3', icon('library'), 'Spectral library', h('span.muted', { style: { fontWeight: 500 } }, inst ? inst.name : '')));
+    tabHost.append(pane);
+    pane.append(h('p.muted', 'Reference spectra kept across experiments for this instrument. Compare today\'s controls with them to catch a dye that changed (a tandem that degraded, a new lot, a realigned laser), and unmix a fluorochrome you have no control for with its spectrum from an earlier experiment.'));
+    if (!app.library?.getRecord) {
+      pane.append(h('div.callout', icon('info'), h('span', 'This library cannot keep records.')));
+      return;
+    }
+    if (ui.library === undefined) {
+      pane.append(h('p.muted', 'Reading the library…'));
+      return;
+    }
+    const own = activeRefs().filter((r) => !r.sample.library && !r.ref.error);
+    const rows = ui.library ? compareWithLibrary(own.map((r) => ({ name: r.name, spectrum: r.ref.spectrum })), ui.library, detectors) : own.map((r) => ({ name: r.name, status: 'new' }));
+    const entries = ui.library?.entries?.length ?? 0;
+    pane.append(h('p', ui.library ? `${entries} spectra in the library, of ${new Set(ui.library.entries.map((e) => e.fluorochrome.toLowerCase())).size} fluorochromes.` : 'The library has no spectra of this instrument yet.'));
+    if (own.length) {
+      const changed = rows.filter((r) => r.status === 'changed');
+      if (!ui.libraryChosen || !rows.some((r) => r.name === ui.libraryChosen)) ui.libraryChosen = changed[0]?.name ?? rows.find((r) => r.entry)?.name ?? null;
+      const body = h('tbody', rows.map((row) => h(`tr${row.name === ui.libraryChosen ? '.selected' : ''}`, { style: { cursor: row.entry ? 'pointer' : 'default' }, onclick: () => { if (row.entry) { ui.libraryChosen = row.name; renderTab(); } } },
+        h('td', row.name),
+        h('td', row.entry ? `${(row.entry.date ?? row.entry.added ?? '').slice(0, 10)} · ${row.entry.file ?? ''}` : h('span.muted', 'not in the library')),
+        h('td.r', !row.entry ? '—' : row.maxDiff < 0.0005 ? 'identical' : `${row.maxDiff.toFixed(3)} at ${row.detector}`),
+        h('td', row.status === 'changed' ? h('span.badge.danger', 'changed') : row.status === 'match' ? h('span.badge.ok', 'matches') : h('span.badge', 'new')))));
+      pane.append(h('div', { style: { overflow: 'auto', maxHeight: '320px' } }, h('table.data', h('thead', h('tr', h('th', 'Fluorochrome'), h('th', 'Latest in the library'), h('th.r', { title: 'Largest difference in any detector, each spectrum scaled to a peak of 1' }, 'Largest difference'), h('th', 'Status'))), body)),
+        h('p.muted.small-print', `A spectrum differing by more than ${LIBRARY_TOLERANCE} in any detector (each scaled to a peak of 1) is marked changed. Controls of one instrument usually agree within ~0.01; a tandem that lost 5% of its emission to its donor differs by ~0.05 where the donor emits.`),
+        h('div.btn-row', h('button.btn', { type: 'button', onclick: () => saveToLibrary(own) }, icon('library'), `Save ${own.length} spectra to the library`)));
+      const chosen = rows.find((r) => r.name === ui.libraryChosen && r.entry);
+      if (chosen) {
+        const current = own.find((r) => r.name === chosen.name);
+        const box = spectraBox(detectors, [
+          { name: `${chosen.name} (this experiment)`, values: current.ref.spectrum, color: categoricalColor(0) },
+          { name: `${chosen.name} (library, ${(chosen.entry.date ?? '').slice(0, 10)})`, values: Array.from(spectrumOn(chosen.entry, detectors)), color: categoricalColor(3), dashed: true },
+        ]);
+        tabHost.append(h('div.pane', h('h3', `${chosen.name}: this experiment against the library`), box));
+      }
+    } else {
+      pane.append(h('div.callout', icon('info'), h('span', 'Gate the controls to compare them with the library or save them to it.')));
+    }
+    if (ui.library) {
+      const names = activeRefs().map((r) => r.name);
+      const missing = missingFromPanel(ui.library, detectors, names);
+      if (missing.length) {
+        tabHost.append(h('div.pane', h('h3', 'In the library, not in this panel'),
+          h('p.muted', 'Add a fluorochrome you have no control for: its library spectrum joins the panel (it has no control events, so it is left out of the spreading matrix). The spectrum must come from this instrument with the same detectors and settings.'),
+          h('div', { style: { overflow: 'auto', maxHeight: '260px' } }, h('table.data', h('thead', h('tr', h('th', 'Fluorochrome'), h('th', 'Acquired'), h('th', 'From'), h('th'))),
+            h('tbody', missing.map((e) => h('tr', h('td', e.fluorochrome, e.marker ? h('span.muted', ` ${e.marker}`) : null), h('td', (e.date ?? e.added ?? '').slice(0, 10)), h('td.muted', `${e.file ?? ''}${e.workspace ? ` · ${e.workspace}` : ''}`),
+              h('td', h('button.btn.small', { type: 'button', onclick: () => addFromLibrary(e) }, icon('plus'), 'Add to the panel')))))))));
+      }
+    }
   }
 
   function spectraBox(detectors, series) {

@@ -168,10 +168,29 @@ wave 4 completes the release.
    - Found on the way: FlowJo writes "LIVE/DEAD" as "LIVE_DEAD", and those channels were missing
      on import (fixed); FlowJo appears to evaluate gates at its display resolution, so cytokine
      gates whose edges sit in dense negative events differ by a few events (to investigate).
-4. **Instrument characterization (Q5) and a spectral reference library (S7).** Q and B from
-   multi-peak bead files (Parks 2017's weighted fit), Levey–Jennings charts across runs, and
-   reference spectra kept across experiments. Validated against the simulator's known Q and B and
-   against flowQB in R.
+4. **Instrument characterization (Q5) and a spectral reference library (S7): done.**
+   - Q, B and the beads' CV per detector from multi-level beads or an LED series, as flowQB
+     computes them (Parks et al. 2017): a scatter gate and k-means on the logicle-scaled detectors
+     find the levels, a normal fitted to each level's central 80% gives its mean and SD, and the
+     weighted quadratic fit is re-weighted until it settles. On flowQB's own LSR II data (an LED
+     series, 8-peak and 6-peak beads) the peaks, coefficients and standard errors equal flowQB's
+     within 6e-9 in all 36 detectors. flowQB is deprecated in Bioconductor and needs a one-line
+     fix to run on R 4 (in `generate_flowqb.R`).
+   - The simulator now knows every detector's Q and B (its noise model is the same quadratic), and
+     a new example has 30 daily bead runs with a PMT ageing, a dirty flow cell and a weaker laser:
+     Q within 2% and B within 6% (median), every problem flagged at once on the Levey–Jennings
+     charts (Westgard rules against the first 20 runs), nothing in the baseline, 0.8% false flags
+     after. The standard errors are somewhat optimistic (87% of the truths within 2 SE): the robust
+     peak statistics are less efficient than the weights assume, as in flowQB.
+   - Bead-level charts follow one level that is in the linear range in every run: following "the
+     brightest kept level" made a weaker laser look like a brighter one when the top level came
+     back into range.
+   - The library now keeps records across workspaces (instrument runs, spectra). Reference spectra
+     are compared peak-normalized, detector by detector: cosine similarity hardly moves when a
+     tandem loses 5% of its emission (0.9988), the donor's detector moves by 0.05. Independent
+     controls of the simulated instrument agree within 0.01, so 0.03 flags a change; a stale
+     PE-Cy7 spectrum cost PE nearly a third of its correlation with the truth (0.68 → 0.48). Real controls will vary
+     more than simulated ones; the threshold may need to be per laboratory.
 
 ### Wave 4
 

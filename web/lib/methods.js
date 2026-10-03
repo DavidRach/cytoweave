@@ -33,6 +33,8 @@ export const REFERENCES = {
   miflowcyt: { text: 'Lee JA, Spidlen J, Boyce K, et al. MIFlowCyt: the minimum information about a flow cytometry experiment. Cytometry A. 2008;73(10):926–930.', doi: '10.1002/cyto.a.20623' },
   unmixing: { text: 'Novo D, Grégori G, Rajwa B. Generalized unmixing model for multispectral flow cytometry utilizing nonsquare compensation matrices. Cytometry A. 2013;83(5):508–520.', doi: '10.1002/cyto.a.22272' },
   autofluorescence: { text: 'Roet JEG, Mikula AM, de Kok M, et al. Unbiased method for spectral analysis of cells with great diversity of autofluorescence spectra. Cytometry A. 2024;105(8):595–606.', doi: '10.1002/cyto.a.24856' },
+  parksQB: { text: 'Parks DR, El Khettabi F, Chase E, et al. Evaluating flow cytometer performance with weighted quadratic least squares analysis of LED and multi-level bead data. Cytometry A. 2017;91(3):232–249.', doi: '10.1002/cyto.a.23052' },
+  westgard: { text: 'Westgard JO, Barry PL, Hunt MR, Groth T. A multi-rule Shewhart chart for quality control in clinical chemistry. Clin Chem. 1981;27(3):493–501.', doi: '10.1093/clinchem/27.3.493' },
   gaussNorm: { text: 'Hahne F, Khodabakhshi AH, Bashashati A, et al. Per-channel basis normalization methods for flow cytometry data. Cytometry A. 2010;77(2):121–131.', doi: '10.1002/cyto.a.20823' },
   stainIndex: { text: 'Maecker HT, Frey T, Nomura LE, Trotter J. Selecting fluorochrome conjugates for maximum sensitivity. Cytometry A. 2004;62(2):169–173.', doi: '10.1002/cyto.a.20092' },
 };
@@ -90,7 +92,12 @@ export function writeMethods(ws, options = {}) {
   if (uncompensated) compSentences.push(`${uncompensated} file(s) were not compensated`);
   if (compSentences.length) paragraphs.push(`${compSentences.join('; ')}.`.replace(/^./, (c) => c.toUpperCase()));
   const unmixing = ws.derived.filter((d) => d.kind === 'unmixing');
-  for (const d of unmixing) paragraphs.push(`Spectral data were unmixed by ${d.method ?? 'least squares'} ${cite('unmixing')}${d.params?.autofluorescence ? `, with ${d.params.autofluorescence === 'multiple' ? 'per-cell selection among multiple autofluorescence signatures' : 'an autofluorescence signature'} ${cite('autofluorescence')}` : ''}.`);
+  for (const d of unmixing) {
+    // Spectra taken from the instrument's spectral library rather than this experiment's controls.
+    const fromLibrary = (d.params?.references ?? []).filter((r) => r.library);
+    const library = fromLibrary.length ? ` The reference spectra of ${list(fromLibrary.map((r) => `${r.fluorochrome}${r.library.date ? ` (acquired ${String(r.library.date).slice(0, 10)})` : ''}`))} came from the instrument's spectral library, measured on single-stain controls of an earlier experiment.` : '';
+    paragraphs.push(`Spectral data were unmixed by ${d.method ?? 'least squares'} ${cite('unmixing')}${d.params?.autofluorescence ? `, with ${d.params.autofluorescence === 'multiple' ? 'per-cell selection among multiple autofluorescence signatures' : 'an autofluorescence signature'} ${cite('autofluorescence')}` : ''}.${library}`);
+  }
 
   // Scales: channels sharing a transform family and its fixed parameters are described together,
   // with the range of their per-channel linear widths.
@@ -125,6 +132,17 @@ export function writeMethods(ws, options = {}) {
     paragraphs.push(`Acquisition anomalies were flagged with a PeacoQC-style algorithm ${cite('peacoqc')} and a flow-rate check ${cite('flowai')}${d.params ? ` (${Object.entries(d.params).slice(0, 4).map(([k, v]) => `${k} = ${v}`).join(', ')})` : ''}${Number.isFinite(removed) ? `, removing ${removed.toFixed(1)}% of events on average` : ''}.`);
   }
   for (const d of ws.derived.filter((r) => r.kind === 'normalization')) paragraphs.push(`Batch effects were corrected with ${d.method?.toLowerCase().includes('bead') ? `bead normalization ${cite('beads')}` : `CytoNorm ${cite('cytonorm')}`}${d.params?.channels ? ` on ${d.params.channels.length} channels` : ''}.`);
+
+  // Instrument characterization.
+  for (const d of ws.derived.filter((r) => r.kind === 'instrument-qc')) {
+    const runs = d.runs ?? [];
+    if (!runs.length) continue;
+    const beads = runs.filter((r) => r.method === 'beads');
+    const series = runs.filter((r) => r.method === 'series');
+    const what = [beads.length ? `${beads.length} run${beads.length === 1 ? '' : 's'} of ${beads[0].product ? `${beads[0].product} beads` : `${beads[0].peaks}-level beads`}` : '', series.length ? `${series.length} series of single-level files (an LED pulser or single-level beads)` : ''].filter(Boolean).join(' and ');
+    const dates = runs.map((r) => r.date).filter(Boolean).sort();
+    paragraphs.push(`The detection efficiency (Q) and optical background (B) of each fluorescence detector of ${d.instrument?.name ?? 'the cytometer'} were measured from ${what}${dates.length > 1 ? ` between ${dates[0].slice(0, 10)} and ${dates.at(-1).slice(0, 10)}` : ''} by weighted quadratic least squares on the peaks' means and variances, as in flowQB ${cite('parksQB')}: each peak's mean and SD from a normal fitted to its central 80%, peaks outside the detector's linear range left out, and weights re-estimated from the fit.${runs.length >= 3 ? ` Runs were followed on Levey–Jennings charts with Westgard rules ${cite('westgard')} against the mean and SD of the first ${Math.min(20, runs.length)} runs.` : ''}`);
+  }
 
   // Gating.
   const roots = ws.gates.filter((g) => !g.parentId);

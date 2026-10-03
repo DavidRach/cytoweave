@@ -21,8 +21,11 @@ import {
   deriveSeed,
   encodeFCS,
   rangeFor,
+  beadDetectorTruth,
+  simulateBeadRun,
   simulateCellCycle,
   simulateEvents,
+  degradeTandem,
   simulateMassEvents,
   spectralSignature,
 } from './simulate.js';
@@ -238,6 +241,8 @@ function createContext(entry, options) {
     signal: options.signal,
     truth: options.truth !== false,
     only: options.samples ? new Set(options.samples) : null,
+    // { fluorochrome → fraction }: tandems degraded in this experiment (spectral example).
+    degrade: options.tandemDegradation ?? null,
     random: (...parts) => createRandom(deriveSeed(seed, entry.id, ...parts)),
     // Acquisition start times follow the file's place in the full design, so a file generated
     // on its own is byte-identical to the same file generated with the whole example.
@@ -690,6 +695,11 @@ function* generateSpectral(ctx, samples, all) {
   const instrument = INSTRUMENTS.aurora;
   const names = spectralDetectorNames();
   const panel = buildPanel(instrument, SPECTRAL_PANEL, names);
+  for (const [fluor, fraction] of Object.entries(ctx.degrade ?? {})) {
+    const a = SPECTRAL_PANEL.find((x) => x.fluor === fluor);
+    if (!a) throw new Error(`The spectral panel has no ${fluor}.`);
+    degradeTandem(panel, a.marker, fluor.split('-')[0], fraction);
+  }
   const signatures = {};
   const peaks = {};
   for (const a of SPECTRAL_PANEL) {
@@ -1390,6 +1400,92 @@ function* generateQC(ctx, samples, all) {
   };
 }
 
+// --- 10. Daily bead QC (instrument characterization) ------------------------------------------
+
+// Spherotech-like 8-peak rainbow beads: the blank and seven levels, in brightness units (a
+// detector's response converts them to its signal).
+const BEAD_LEVELS = [0, 0.012, 0.035, 0.1, 0.3, 0.9, 2.6, 7.5];
+const BEAD_CV0 = 0.02;
+const BEAD_RUNS = 30;
+const BEAD_EVENTS = {
+  'BV421-A': { from: 21, what: 'PMT ageing: Q falls 7 % per run' },
+  'FITC-A': { from: 25, what: 'dirty flow cell: optical background ×5' },
+  violet: { from: 27, what: 'violet laser at 70 % power: bead signals of the BV detectors fall 30 % (Q and B unchanged)' },
+};
+
+// Run dates: weekdays from 2026-03-02.
+function beadRunDates() {
+  const dates = [];
+  const day = new Date(Date.UTC(2026, 2, 2));
+  while (dates.length < BEAD_RUNS) {
+    const wd = day.getUTCDay();
+    if (wd !== 0 && wd !== 6) dates.push(day.toISOString().slice(0, 10));
+    day.setUTCDate(day.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function beadQCDesign(scale) {
+  return beadRunDates().map((date, i) => ({ name: `Beads_${date}.fcs`, events: eventsFor(15000, scale, 2000), role: 'bead', condition: 'Daily QC', timepoint: `Run ${i + 1}`, date, run: i + 1 }));
+}
+
+// Each detector's state on each run: the fixed instrument (k, sigma), a response and stray-light
+// background drawn once, day-to-day wobble, and the planted events.
+function beadDetectors(ctx, run) {
+  const fixed = ctx.random('bead-detectors');
+  const wobble = ctx.random('bead-run', run);
+  const gf = () => fixed.gaussian();
+  const gw = () => wobble.gaussian();
+  return INSTRUMENTS.fortessa.detectors.map((d) => {
+    const response = 15000 * Math.exp(0.3 * gf());
+    const background = 120 * Math.exp(0.5 * gf());
+    let k = d.k * Math.exp(0.012 * gw());
+    let r = response * Math.exp(0.015 * gw());
+    let bg = background * Math.exp(0.05 * gw());
+    if (d.name === 'BV421-A' && run >= BEAD_EVENTS['BV421-A'].from) k *= 1.07 ** (run - BEAD_EVENTS['BV421-A'].from + 1);
+    if (d.name === 'FITC-A' && run >= BEAD_EVENTS['FITC-A'].from) bg *= 5;
+    if (d.laser === 'V' && run >= BEAD_EVENTS.violet.from) r *= 0.7;
+    return { name: d.name, k, sigma: d.sigma, background: bg, response: r };
+  });
+}
+
+function* generateBeadQC(ctx, samples, all) {
+  ctx.schedule(800, all);
+  const instrument = INSTRUMENTS.fortessa;
+  const files = [];
+  for (const [index, sample] of samples.entries()) {
+    ctx.check();
+    ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
+    const detectors = beadDetectors(ctx, sample.run);
+    const sim = simulateBeadRun({ count: sample.events, instrument, detectors, levels: BEAD_LEVELS, cv0: BEAD_CV0, rate: 800 }, ctx.random(sample.name), { signal: ctx.signal });
+    const panel = { detectors: instrument.detectors };
+    files.push(flowFile(ctx, sample, sim, {
+      instrument,
+      panel,
+      date: sample.date,
+      keywords: { 'BEADS': 'Rainbow 8-peak (simulated)', 'BEAD LOT': 'SIM-8P-0426' },
+      truth: {
+        run: sample.run,
+        detectors: Object.fromEntries(detectors.map((d) => [d.name, { ...beadDetectorTruth(d, BEAD_CV0), brightMean: BEAD_LEVELS[BEAD_LEVELS.length - 1] * d.response }])),
+      },
+    }));
+    yield;
+  }
+  const transforms = channelTransforms(bdChannels(beadQCAssignments()), () => LOGICLE_BD, 262144, 4096);
+  return {
+    files,
+    workspaceHints: {
+      groups: [{ name: 'Daily QC beads', color: '#f59e0b', files: samples.map((s) => s.name) }],
+      sampleMeta: Object.fromEntries(samples.map((s) => [s.name, sampleMeta(s)])),
+      channelSettings: Object.fromEntries(Object.entries(transforms).map(([k, v]) => [k, { transform: v }])),
+    },
+  };
+}
+
+function beadQCAssignments() {
+  return INSTRUMENTS.fortessa.detectors.map((d) => ({ detector: d.name, marker: '', label: '' }));
+}
+
 // --- Catalog ------------------------------------------------------------------------------------
 
 const DEFINITIONS = [
@@ -1558,6 +1654,23 @@ const DEFINITIONS = [
     }),
     generate: generateQC,
   },
+  {
+    id: 'bead-qc',
+    title: 'Daily bead QC: Q, B and Levey–Jennings',
+    description: 'Thirty daily runs of 8-peak rainbow beads on an 18-colour LSRFortessa-like instrument. Measure each detector\'s efficiency Q, optical background B and the beads\' intrinsic CV (QC → Instrument), save the runs to the instrument\'s record, and follow them on Levey–Jennings charts against the first 20 runs: one detector\'s PMT ages from run 21, the flow cell gets dirty on run 25, and the violet laser weakens on run 27. The true Q and B of every detector on every run are known.',
+    technology: 'conventional',
+    instrument: 'BD LSRFortessa X-20-like, 18 fluorescence detectors, range 2^18',
+    tags: ['QC', 'Q and B', 'Levey–Jennings', 'beads', 'instrument', 'intermediate'],
+    design: beadQCDesign,
+    channels: () => bdChannels(beadQCAssignments()),
+    transforms: () => channelTransforms(bdChannels(beadQCAssignments()), () => LOGICLE_BD, 262144, 4096),
+    answerKey: () => ({
+      truth: 'files[i].meta.truth.detectors: the true Q (photoelectrons per unit), B (photoelectrons) and CV0 of every detector on that run, and the brightest level\'s mean signal; meta.truth.labels gives each event\'s level (doublets and debris after the 8 levels).',
+      beads: `${BEAD_LEVELS.length} levels (a blank and 7), intrinsic CV ${BEAD_CV0 * 100} %`,
+      events: Object.fromEntries(Object.entries(BEAD_EVENTS).map(([k, v]) => [k, `from run ${v.from}: ${v.what}`])),
+    }),
+    generate: generateBeadQC,
+  },
 ];
 
 function summarize(def) {
@@ -1603,7 +1716,9 @@ function startGeneration(id, options) {
 }
 
 // Generates an example's files. options: { seed, scale (event-count multiplier, default 1),
-// samples (file names to generate; default all), truth (default true), onProgress, signal }.
+// samples (file names to generate; default all), truth (default true), tandemDegradation
+// ({ fluorochrome: fraction of its emission from its donor }, spectral example), onProgress,
+// signal }.
 // Returns { files: [{ name, bytes (Uint8Array, FCS 3.1), meta }], workspaceHints }.
 export function generateExample(id, options = {}) {
   const { ctx, steps } = startGeneration(id, options);
