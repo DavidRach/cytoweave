@@ -7,8 +7,8 @@
 //   node validation/run.mjs [suite …] [--verbose]
 //
 // Suites: fcs, compensation, gating, qc, spectral, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, flowjo, figures, reference, gatingml, flowkit, fcsparser,
-// diva, bioconductor
+// normalization, debarcode, transforms, flowjo, figures, autogating, reference, experts, gatingml,
+// flowkit, fcsparser, diva, bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -23,8 +23,10 @@ import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs'
 import { deidentifyFCS } from '../web/lib/deidentify.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
+import { EXPERT_GATES, ORDER, TRUTH, adaptTopDown, againstExperts, buildCohort, expertCorrection, expertWorkspace, f1 as truthF1, randomGains } from './autogating-cases.mjs';
+import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
-import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset } from '../web/lib/workspace.js';
+import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, flowRateCheck } from '../web/lib/qc.js';
 import { autoGateControl, referenceSpectrum, extractAutofluorescence, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
@@ -153,6 +155,10 @@ function flowJoMigration(xml, files) {
     counts[target.sampleId] = out;
   }
   return { rows: migrationCountRows(plan.migration, counts), fidelity: result.fidelity };
+}
+
+function setGateGeometryAt(ws, gateId, geometry, sampleId) {
+  return setGateGeometry(ws, gateId, geometry, { sampleId });
 }
 
 // A FlowJo export case (flowjo-export-cases.mjs): the round trip, and what was not exported.
@@ -633,9 +639,143 @@ const suites = {
     check('figures', 'moving one gate flags exactly the plots that show it or depend on it', `${flagged.length} of ${record.plots.length} flagged (expected ${expected})`, flagged.length === expected, `${expected}`);
   },
 
+  // Autogating: the PBMC example with instrument-like shifts (per-detector gains, the spillover
+  // following them, and a scatter gain) applied to every sample but the one the gates were drawn
+  // on; every event's true cell type is known (autogating-cases.mjs).
+  autogating() {
+    const cohort = buildCohort({ scale: 0.25, gainOf: randomGains(1.6, 7) });
+    const reference = cohort.ws.samples.find((s) => s.name === 'D01_Unstim').id;
+    const { rows } = adaptTopDown(cohort.ws, cohort.views, cohort.truth, { reference });
+    const mean = (xs) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+    const lines = [];
+    let noWorse = true;
+    for (const name of ORDER) {
+      const r = rows.filter((x) => x.gate === name);
+      const before = mean(r.map((x) => x.before));
+      const after = mean(r.map((x) => x.after));
+      if (after < before - 0.002) noWorse = false;
+      lines.push(`${name} ${before.toFixed(3)} → ${after.toFixed(3)}`);
+    }
+    check('autogating', `shifted cohort (${rows.length / ORDER.length} samples): mean F1 against the true cell types, template → adapted`, lines.join('; '), noWorse, 'no gate worse');
+    // Safety: a population left inaccurate is never reported as fitting: it is sent to review, or
+    // shown as an adjustment that raised it.
+    const poor = rows.filter((x) => x.after < 0.85);
+    const passed = poor.filter((x) => x.status === 'keep' || (x.status === 'adjust' && x.after <= x.before));
+    const raised = poor.filter((x) => x.status === 'adjust' && x.after > x.before);
+    check('autogating', 'shifted cohort: no population left with F1 below 0.85 is reported as fitting', `${poor.length} below 0.85 (${[...new Set(poor.map((x) => x.gate))].join(', ') || 'none'}): ${poor.filter((x) => x.status === 'review').length} sent to review, ${raised.length} raised by an adjustment${raised.length ? ` (${raised.map((x) => `${x.before.toFixed(2)} → ${x.after.toFixed(2)}`).join(', ')})` : ''}; ${passed.length} reported as fitting`, passed.length === 0, 'none');
+    const adjusted = rows.filter((x) => x.status === 'adjust');
+    const worsened = adjusted.filter((x) => x.after < x.before - 0.01);
+    check('autogating', 'proposed adjustments (confidence ≥ 0.8): none makes a population less accurate', `${adjusted.length} proposed; ${worsened.length} lowered F1 by more than 0.01${worsened.length ? ` (${worsened.map((x) => x.gate).join(', ')})` : ''}`, worsened.length === 0 && adjusted.length > 0, 'none');
+    const reviewed = rows.filter((x) => x.status === 'review');
+    const accepted = rows.filter((x) => x.status !== 'review');
+    check('autogating', 'samples sent to review are the ones left least accurate', `${reviewed.length} sent to review, mean F1 ${mean(reviewed.map((x) => x.after)).toFixed(3)}; the other ${accepted.length} ${mean(accepted.map((x) => x.after)).toFixed(3)}`, reviewed.length > 0 && mean(reviewed.map((x) => x.after)) < mean(accepted.map((x) => x.after)), 'lower');
+
+    // The workflow: an expert corrects each sample sent to review, gate by gate from the top; the
+    // gates below are adapted after their parents are right.
+    const loop = adaptTopDown(cohort.ws, cohort.views, cohort.truth, { reference, reviewer: true });
+    const looked = loop.rows.filter((x) => x.status === 'review').length;
+    // The ceiling: each template gate's F1 on the sample it was drawn on (the shape of the gate,
+    // not its placement, limits it there).
+    const ceiling = (name) => truthF1(cohort.ws, cohort.views, cohort.truth, cohort.ws.gates.find((g) => g.name === name).id, reference, TRUTH[name]);
+    const finals = ORDER.map((name) => [name, mean(loop.rows.filter((x) => x.gate === name).map((x) => x.after)), ceiling(name)]);
+    // Boundaries that are robust on a sample are kept by design (moving them harms agreement with
+    // experts on real data), so a gap to the reference remains where a large shift left a robust
+    // boundary off-center.
+    const templates = ORDER.map((name) => mean(loop.rows.filter((x) => x.gate === name).map((x) => x.before)));
+    const overall = mean(finals.map(([, v]) => v));
+    const ceilingMean = mean(finals.map(([, , c]) => c));
+    check('autogating', `review workflow: after an expert corrects the ${looked} of ${loop.rows.length} gate-sample pairs sent to review, mean F1 (and on the reference sample)`, `${finals.map(([n, v, c]) => `${n} ${v.toFixed(3)} (${c.toFixed(3)})`).join('; ')}; all gates ${overall.toFixed(3)} (${ceilingMean.toFixed(3)})`, finals.every(([, v], i) => v >= templates[i] - 0.002) && overall >= ceilingMean - 0.02, 'every gate no worse than the template; all gates within 0.02 of the reference');
+
+    // Probabilities: events the ensemble agrees on are true members more often than uncertain ones.
+    let sure = [0, 0];
+    let unsure = [0, 0];
+    const mono = cohort.ws.gates.find((g) => g.name === 'Monocytes');
+    for (const x of rows.filter((r) => r.gate === 'Monocytes')) {
+      const { labels, names } = cohort.truth.get(x.sampleId);
+      x.result.list.forEach((e, k) => {
+        const p = x.result.probabilities[k];
+        const member = labels[e] >= 0 && TRUTH.Monocytes(names[labels[e]]);
+        if (p >= 0.9) sure = [sure[0] + (member ? 1 : 0), sure[1] + 1];
+        else if (p > 0.1) unsure = [unsure[0] + (member ? 1 : 0), unsure[1] + 1];
+      });
+    }
+    void mono;
+    check('autogating', 'membership probabilities: true monocytes among events with p ≥ 0.9 vs 0.1 < p < 0.9', `${(100 * sure[0] / sure[1]).toFixed(1)}% of ${sure[1]} vs ${(100 * unsure[0] / Math.max(1, unsure[1])).toFixed(1)}% of ${unsure[1]}`, sure[0] / sure[1] > unsure[0] / Math.max(1, unsure[1]) && sure[0] / sure[1] > 0.85, 'higher, and > 85%');
+
+    // No shift (the same instrument throughout): nothing to review, and nothing made worse.
+    const steady = buildCohort({ scale: 0.25, gainOf: () => null });
+    const calm = adaptTopDown(steady.ws, steady.views, steady.truth, {}).rows;
+    const calmReview = calm.filter((x) => x.status === 'review').length;
+    const delta = mean(calm.map((x) => x.after)) - mean(calm.map((x) => x.before));
+    check('autogating', 'unshifted cohort (no record of where the gates were drawn): false alarms, and the change in mean F1', `${calmReview} of ${calm.length} sent to review; ${delta >= 0 ? '+' : ''}${delta.toFixed(4)}`, calmReview <= 0.05 * calm.length && delta > -0.002, '≤ 5% and no loss');
+
+    // Learning from a correction: two batches, the second with a 20% lower scatter gain. An expert
+    // corrects the monocyte gate on one sample of the second batch; the rest of that batch follows.
+    const batch = buildCohort({ scale: 0.25, gainOf: (sample, p) => (/^D0[456]/.test(sample) && p.type === 'scatter' ? 0.8 : null) });
+    const ref = batch.ws.samples.find((s) => s.name === 'D01_Unstim').id;
+    const corrected = batch.ws.samples.find((s) => s.name === 'D04_Unstim').id;
+    const targets = batch.ws.samples.filter((s) => /^D0[456]/.test(s.name) && s.id !== corrected).map((s) => s.id);
+    const monocytes = batch.ws.gates.find((g) => g.name === 'Monocytes');
+    const withDrawn = { ...batch.ws, gates: batch.ws.gates.map((g) => (g.id === monocytes.id ? { ...g, meta: { ...(g.meta ?? {}), drawnOn: ref } } : g)) };
+    const applyRun = (w) => {
+      let next = w;
+      for (const r of adaptAcrossSamples(w, monocytes.id, batch.views).results) if (r.status === 'adjust') next = setGateGeometryAt(next, monocytes.id, r.geometry, r.sampleId);
+      return mean(targets.map((id) => truthF1(next, batch.views, batch.truth, monocytes.id, id, TRUTH.Monocytes)));
+    };
+    const template = mean(targets.map((id) => truthF1(withDrawn, batch.views, batch.truth, monocytes.id, id, TRUTH.Monocytes)));
+    const alone = applyRun(withDrawn);
+    const expert = expertCorrection(withDrawn, batch.views, batch.truth, 'Monocytes', corrected);
+    const learned = applyRun(setGateGeometryAt(withDrawn, monocytes.id, expert.geometry, corrected));
+    check('autogating', 'learning from a correction: the second batch\'s monocyte F1, template / adapted / adapted after one expert correction', `${template.toFixed(3)} / ${alone.toFixed(3)} / ${learned.toFixed(3)}`, learned >= alone && learned > template, 'the correction helps');
+  },
+
   // External data: the ISAC Gating-ML 2.0 compliance suite. Each gate file is imported as the app
   // imports it (compensations, ratio and unmixed channels, gates) into a workspace whose sample
   // uses the file's own spillover, and every gate is evaluated by the engine on every event.
+  // External data: four FlowJo workspaces of an intracellular cytokine study (als-ics), whose
+  // expert adjusted the gates per donor. Each version of a gate the expert drew is the template in
+  // turn and is adapted to the other wells; the measure is agreement (F1) with the expert's own
+  // gate for each well. Stimulated wells shift populations for biological reasons (CD3 and CD4
+  // down-regulation), which an adaptation must not gate away.
+  experts() {
+    const data = dataset('als-ics');
+    const grouped = [];
+    const alone = [];
+    const counts = [];
+    for (const screen of ['screen3', 'screen4']) {
+      for (const set of ['ALS', 'HC']) {
+        const { ws, views, rows } = expertWorkspace((name) => data.read(`${screen}/${set}/${name === 'workspace' ? `${set}.wsp` : name}`), 'workspace');
+        counts.push(...rows);
+        grouped.push(...againstExperts(ws, views, { groupBy: 'donor' }));
+        alone.push(...againstExperts(ws, views));
+      }
+    }
+    const mean = (xs) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+    // The populations adapted here. FlowJo evaluates gates at its display resolution (256 channels
+    // per axis), so edges through dense events differ by a few: up to about 1% for the scatter
+    // polygons, and more for the cytokine gates, whose edges sit in the dense negative events.
+    const adapted = counts.filter((r) => EXPERT_GATES.includes(r.path.split('/').pop()));
+    const missing = counts.filter((r) => r.status === 'missing').length;
+    const worstCount = Math.max(...adapted.map((r) => Math.abs(r.cytoweave - r.flowjo) / r.flowjo));
+    check('experts', `FlowJo's counts of the ${adapted.length} populations adapted here, in 4 workspaces (FlowJo writes "LIVE/DEAD Aqua-A" as "LIVE_DEAD Aqua-A")`, `${missing} of ${counts.length} populations missing; largest difference ${(100 * worstCount).toFixed(2)}%`, missing === 0 && worstCount <= 0.015, 'none missing, ≤ 1.5%');
+
+    const summary = (rows) => {
+      const adjusted = rows.filter((r) => r.status === 'adjust');
+      const harmful = adjusted.filter((r) => r.after < r.before - 0.02);
+      const worst = adjusted.length ? Math.min(...adjusted.map((r) => r.after - r.before)) : 0;
+      return { adjusted, harmful, worst, before: mean(rows.map((r) => r.before)), after: mean(rows.map((r) => r.after)), review: rows.filter((r) => r.status === 'review').length };
+    };
+    const g = summary(grouped);
+    check('experts', `one gate per donor (the assay's design), ${grouped.length} well-gate results: mean F1 with the expert's gates, template → adapted`, `${g.before.toFixed(4)} → ${g.after.toFixed(4)}; ${g.adjusted.length} adjusted, ${g.review} sent to review`, g.after >= g.before - 0.001, 'no worse');
+    check('experts', 'one gate per donor: adjustments that lower agreement with the expert by more than 0.02', `${g.harmful.length} of ${g.adjusted.length}${g.harmful.length ? ` (${g.harmful.map((r) => `${r.gate} on ${r.sample}`).join('; ')})` : ''}`, g.harmful.length === 0, 'none');
+    const agrees = grouped.filter((r) => r.before >= 0.99);
+    const differs = grouped.filter((r) => r.before < 0.99);
+    const rate = (rows) => rows.filter((r) => r.status === 'review').length / Math.max(1, rows.length);
+    check('experts', 'one gate per donor: share sent to review where the template differs from the expert (F1 < 0.99) vs where it agrees', `${(100 * rate(differs)).toFixed(0)}% of ${differs.length} vs ${(100 * rate(agrees)).toFixed(0)}% of ${agrees.length}`, rate(differs) > rate(agrees), 'higher');
+    const a = summary(alone);
+    check('experts', `each well adapted alone (ignoring the design): mean F1, template → adapted, and the worst adjustment`, `${a.before.toFixed(4)} → ${a.after.toFixed(4)}; ${a.adjusted.length} adjusted, ${a.harmful.length} lowering F1 by more than 0.02, worst ${a.worst.toFixed(3)}; ${a.review} sent to review`, a.worst >= -0.15 && a.after >= a.before - 0.002, 'worst ≥ −0.15, mean no worse than −0.002');
+  },
+
   gatingml() {
     const data = dataset('gatingml');
     const sets = { 1: 'data1.fcs', 2: 'data2.fcs', 3: '9399_1_3_NKR.fcs', 4: '9399_1_3_NKR.fcs', 5: '9399_1_3_NKR.fcs' };

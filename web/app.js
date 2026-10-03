@@ -10,6 +10,7 @@ import { mountInspector } from './ui/inspector.js';
 import { installActions } from './ui/actions.js';
 import { installExportDialogs } from './ui/export-dialogs.js';
 import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
+import { installAutogating } from './ui/autogate-dialog.js';
 import { openPalette } from './ui/palette.js';
 import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
 import { WorkerClient } from './ui/workers.js';
@@ -86,6 +87,7 @@ async function start() {
   installActions(app);
   installExportDialogs(app);
   installFigureProvenance(app);
+  installAutogating(app);
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
   app.exportCLR = () => import('./ui/import-flowjo.js').then((m) => m.exportCLRDialog(app));
   app.compareColumn = (table, column) => {
@@ -660,6 +662,7 @@ async function start() {
     { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
+    { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },
     { label: 'Toggle dark theme', icon: 'moon', run: () => toggleTheme() },
     { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: showHelp },
     { label: 'Load every sample', icon: 'download', run: () => app.loadAll() },

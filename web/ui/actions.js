@@ -212,6 +212,7 @@ export function installActions(app) {
         '-',
         gate.type === 'boolean' ? { label: 'Edit Boolean population…', icon: 'edit', onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { gateId: gate.id })) } : null,
         { label: 'Review across samples…', icon: 'target', onSelect: () => app.reviewGate(gate.id) },
+        ['range', 'split', 'rectangle', 'polygon', 'ellipse', 'quadrant'].includes(gate.type) && gate.dims.length <= 2 ? { label: 'Adapt to each sample…', icon: 'sparkles', onSelect: () => app.adaptGate(gate.id) } : null,
         { label: 'Copy to another population…', icon: 'copy', onSelect: () => copyGateMenu(anchor, gate) },
         { label: 'Applies to', icon: 'layers', onSelect: () => scopeMenu(anchor, gate) },
         gate.overrides?.[sampleId] ? { label: 'Use the shared gate for this sample', icon: 'undo', onSelect: () => store.commit(clearOverride(store.ws, gate.id, sampleId), 'Reset gate for sample') } : null,
@@ -374,9 +375,14 @@ export function installActions(app) {
       h('td', row.error ? h('span.muted', row.error) : flag),
       h('td', robust)));
     }
+    const adaptable = ['range', 'split', 'rectangle', 'polygon', 'ellipse', 'quadrant'].includes(gate.type) && gate.dims.length <= 2;
     const dialog = showDialog({
       title: `Review ${gate.name} across samples`,
       width: 'wide',
+      buttons: [
+        ...(adaptable ? [{ label: 'Adapt to each sample…', onClick: () => { app.adaptGate(gate.id); } }] : []),
+        { label: 'Close', primary: true },
+      ],
       content: [
         h('p', `Median ${formatPercent(median)} of parent across ${freqs.length} samples. Samples are ranked for review: frequency outliers (robust z-score against the cohort), boundaries that cut through dense events, and low counts come first. Click a sample to adjust the gate for it alone.`),
         h('div', { style: { maxHeight: '58vh', overflow: 'auto' } }, h('table.data', h('thead', h('tr', h('th', 'Sample'), h('th.r', '% of parent'), h('th.r', 'Events'), h('th.r', 'z'), h('th', 'Frequency'), h('th', 'Boundary'))), body)),

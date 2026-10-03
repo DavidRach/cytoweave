@@ -339,7 +339,8 @@ export function setGateGeometry(ws, id, geometry, options = {}) {
     if (!ids.has(g.id)) return g;
     const next = shared(g);
     if (options.sampleId) return { ...g, overrides: { ...(g.overrides ?? {}), [options.sampleId]: next } };
-    return { ...g, geometry: next };
+    // The shared geometry was last set while looking at this sample (autogating's reference).
+    return { ...g, geometry: next, ...(options.editedOn ? { meta: { ...(g.meta ?? {}), drawnOn: options.editedOn } } : {}) };
   });
   return touch(ws, { gates }, options.sampleId ? 'adjust-gate-for-sample' : 'move-gate', `${gate.name}${options.sampleId ? ` (${options.sampleId})` : ''}`);
 }

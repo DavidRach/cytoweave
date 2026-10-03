@@ -95,6 +95,7 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `propose_compensation` | Computes a spillover matrix from the workspace's single-stain controls and proposes it for the samples. |
 | `proposals` | The agent's open proposal and your recent decisions. |
 | `review_gate` | A gate's frequency on every sample with a robust z-score and its boundary robustness, outliers first. |
+| `adapt_gate` | Adapts a gate to every sample (density landmark registration) with a confidence for each: confident adjustments are proposed, uncertain samples listed for you to check. `groupBy` keeps one gate per donor or subject. |
 | `compare` | Tests a statistic between groups of samples defined by metadata, optionally paired. |
 | `methods` | A methods paragraph with numbered references. |
 | `export_gating_ml` | The gating strategy as Gating-ML 2.0. |

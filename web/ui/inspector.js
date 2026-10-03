@@ -118,7 +118,7 @@ export function mountInspector(app) {
       return h('label.field', { style: { marginBottom: '6px' } }, h('span', label), input);
     };
     const commit = (next) => {
-      const scope = store.ui.editScope === 'sample' ? { sampleId } : {};
+      const scope = store.ui.editScope === 'sample' ? { sampleId } : { editedOn: sampleId };
       store.commit(setGateGeometry(store.ws, gate.id, next, scope), `Edit ${gate.name}`);
     };
     if (gate.type === 'ellipsoid' || (gate.type === 'rectangle' && gate.dims.length !== 2)) {

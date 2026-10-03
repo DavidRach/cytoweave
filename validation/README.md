@@ -30,6 +30,9 @@ that are known in advance:
     simulated QC wells.
   - A BD LSRFortessa panel's 15 single-stain controls (Zenodo, CC BY 4.0) and
     the spillover matrix FACSDiva computed from them.
+  - Four FlowJo workspaces of an intracellular cytokine study (ALS C9orf72,
+    Zenodo, CC BY 4.0) whose expert adjusted the gates per donor: 48 wells,
+    four donors per workspace in a negative, a peptide and a PMA well.
 
 ## Running the checks
 
@@ -40,17 +43,17 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-`fetch.mjs` downloads the public test data (about 150 MB) into
+`fetch.mjs` downloads the public test data (about 350 MB) into
 `validation/cache/` and checks every file against the SHA-256 recorded in
 `sources.json`, which also records each data set's source and licence. Files
 already present are not downloaded again. The data are not part of the
 repository or of the CytoWeave program. Without them, the suites that need them
 are skipped and the others still run; the run needs no network and takes about
-20 seconds.
+20 seconds without them, and about 80 with them.
 
 | Option | Effect |
 | --- | --- |
-| `fcs`, `compensation`, `gating`, `qc`, `spectral`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `reference`, `gatingml`, `flowkit`, `fcsparser`, `diva`, `bioconductor` | Run only these suites |
+| `fcs`, `compensation`, `gating`, `qc`, `spectral`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `figures`, `autogating`, `reference`, `experts`, `gatingml`, `flowkit`, `fcsparser`, `diva`, `bioconductor` | Run only these suites |
 | `--verbose` | Print every check, not only failures |
 | `--require-data` | Fail, rather than skip, when the public test data are missing |
 
@@ -143,12 +146,14 @@ line):
 | `transforms` | FlowJo biexponential (`transforms.js`) | 52 of BD's FlowJo biex lookup tables: width basis −1 to −1000, extra negative decades 0, 0.5 and 1 | Table values within 2e-5 (the tables print 6 digits); event positions within 0.05 of 4096 channels | 4.9e-6; 0.002 channel |
 | `flowjo` | FlowJo import, migration and engine (`flowjo.js`, `flowjo-match.js`) | The bundled FlowJo example: a workspace whose counts are computed independently, as FlowJo evaluates each gate | Every population's count equal to FlowJo's; every population converted exactly. FlowJo export (`flowjo-export.js`) of the example and of a workspace built in CytoWeave (splits, quadrants on mixed scales, Booleans, overrides, scopes, a category gate): imported back with every count unchanged, outlines traced on another scale within 0.5%, and only the category gate left out | 56 of 56; all. Export: 56 of 56 and 50 of 50 unchanged; QC pass only |
 | `figures` | `buildProvenance`, `embedSVG`, `embedPNG`, `readFigureProvenance`, `rebuildWorkspace`, `compareProvenance` (`figure-provenance.js`); `writePDF` attachments (`pdf.js`) | A gating-strategy figure of the 12 PBMC samples (60 plots) | The record read back intact from SVG, PNG and PDF; rebuilt from the record alone, every plot drawn from the same events and checked unchanged; moving one gate flags exactly the plots that show it or depend on it | Intact in all three (66 KB); 60 of 60; 60 of 60; 36 of 36 |
+| `autogating` | `adaptGate`, `decide` (`adapt.js`); `adaptAcrossSamples` (`autogating.js`) | The 12 PBMC samples with instrument-like shifts on all but the one the gates were drawn on: random gains up to fivefold per detector (the spillover following them) and on scatter, so the true cell type of every event stays known; the gates adapted top-down as a user would (`autogating-cases.mjs`) | Mean F1 against the true cell types no worse for any gate; no population with F1 < 0.85 reported as fitting; no proposed adjustment lowering F1 by more than 0.01; samples sent to review less accurate than the rest; after an expert corrects those, every gate no worse than the template and all within 0.02 of the gates' F1 on the sample they were drawn on; events with p ≥ 0.9 true members more often than uncertain ones, and > 85%; without shifts, ≤ 5% sent to review and no loss; one correction helps a second batch | Lymphocytes 0.902 → 0.945, monocytes 0.752 → 0.803, T cells 0.954 → 0.994, others unchanged; 4 to review (0.57 → 0.83 raised); 0 of 8; 0.616 vs 0.973; 0.969 (0.982); 90.3% vs 54.3%; 0 of 66, +0.0000; monocytes 0.842 → 0.903 |
 | `gatingml` | Gating-ML import (`gatingml.js`) and the engine, as the app imports a file | ISAC's Gating-ML 2.0 compliance suite (5 gate files, 3 data files): expected membership of every event | Every gate matches on every event | 190 of 190 gates (12.4 million event decisions) |
 | `flowkit` | FCS reader, compensation, OLS unmixing, transforms, FlowJo import and export, de-identification | FlowKit 1.3.2 and FlowIO 1.4 on FlowKit's test data; FlowJo's counts saved in 13 workspaces | FCS values within 1e-6; compensation within 1e-5; unmixing within 1e-7 of the largest value (float32); transforms within 1e-6. FlowJo counts: wherever FlowKit reproduces one, CytoWeave does too, and per workspace at least as many exact counts as FlowKit and a mean difference no larger | 4e-8; equal; 1.5e-8; 1e-10. 51 of 51 reproduced; real 8-colour workspaces 9–13 exact vs FlowKit's 8–12, mean difference 1.40–1.78% vs 1.41–1.79%; synthetic workspaces all exact. FlowJo export of 10 FlowKit workspaces: every count unchanged when imported back; FlowKit reads every export (and the two cases of `flowjo`) and counts what CytoWeave counts, ellipse boundaries within 0.1%; FlowKit's counts on each export equal its counts on the original or come closer to FlowJo's (time gates, written in `$TIMESTEP` units) |
 | `fcsparser` | FCS reader (`fcs.js`) | 16 files from Cytek, BD, Miltenyi (FCS 2.0–3.1), Guava, Partec and malformed files; FlowIO's decoding and fcsparser's published rows | Every readable file read; malformed ones refused clearly; values within 1e-6 of FlowIO and of fcsparser; written and read back bit-exact; de-identified copies hold the same events | 14 files, 17 data sets; both refused with a message; 0; 3e-9; bit-exact; 14 of 14 |
 | `diva` | `computeSpillover` (`compensation.js`), as the Compensation view runs it, with no gating | The spillover matrix BD FACSDiva computed from the same 15 single-stain controls (LSRFortessa; Zenodo 22808501) and stored in the samples | Every one of the 210 entries within 0.02 (median method) and 0.03 (regression) | Largest difference 0.0145 and 0.026 |
 | `bioconductor` | FCS reader, compensation, `estimateLogicleW` and logicle (`transforms.js`); `peacoQC` classic mode (`qc.js`); `flowsom` (`flowsom.js`); `trainCytoNorm`, `applyCytoNorm`; FlowJo import | flowCore, PeacoQC, FlowSOM and CytoNorm in R (`reference/r.json`) on 5 real files and the 4 simulated QC wells; FlowKit and FlowJo on FlowSOM's FlowJo workspace | flowCore: values read, compensated and logicle within 1e-6, estimated W within 1e-6. PeacoQC: the same events removed. FlowSOM: every event mapped to the same node of R's map; R's metaclustering of the map reproduced; whole runs agree with R as closely as R agrees with itself across seeds (mean ARI within 0.02). CytoNorm: within 1e-9 (QuantileNorm) and 1e-5 (clustered, given R's clusters). Workspace: every count equal to FlowKit's | flowCore 5e-15, 6e-8, 5e-15, 9e-9. PeacoQC: 0 events differ in 7 files (removing 0–30.7%). FlowSOM: 19 225 of 19 225 mapped alike; ARI 1; 0.931 vs R's own 0.935. CytoNorm 9e-14 and 7e-6. Workspace: 15 of 15 |
 | `reference` | `hypothesis.js`, `transforms.js` | R 4.x: `t.test` (Welch, Student, paired), `wilcox.test` with ties, `p.adjust` (BH), `qt` | Within 1e-5 (tests), 1e-4 (Wilcoxon p), 1e-9 (`qt`) | All agree |
+| `experts` | `adaptAcrossSamples` (`autogating.js`) on imported FlowJo workspaces (`flowjo.js`, `flowjo-match.js`) | An expert's per-donor gates in four FlowJo workspaces of a cytokine study (`als-ics`): each version of each scatter, singlet, live, CD3, CD4 and CD8 gate the expert drew is the template in turn, adapted to the other wells, and F1 with the expert's own gate for each well measured | FlowJo's counts of the adapted populations within 1.5%, none missing; with one gate per donor (the assay's design): mean F1 no worse, no adjustment lowering it by more than 0.02, and wells the expert gated differently (F1 < 0.99) sent to review more often than the others; each well alone: worst adjustment ≥ −0.15 and mean no worse than −0.002 | Within 1.13%, 0 of 768 missing; 0.9876 → 0.9877, 0 of 3, 45% vs 14%; −0.111, 0.9876 → 0.9874 |
 
 ## Notes
 

@@ -9,12 +9,20 @@
 
 - **Figures carry their analysis.** Exported figures and plots (SVG, PNG and PDF) embed the samples (with their files' SHA-256 checksums), the gates, scales and compensation behind every plot, and each plot's event count. Opening an exported figure in CytoWeave shows where it came from and, plot by plot, what has changed since; it can rebuild the figure in a new workspace from the same files (found in the library by checksum) or add it back to the open one. "Embed the analysis" in the Figures view turns it off.
 - `cytoweave figure.svg` (or .png, .pdf) opens an exported figure from the command line.
+- **Adapt a gate to each sample.** A gate's menu → Adapt to each sample… carries a shared gate from the samples it is known to be right on (where it was drawn, adjusted or confirmed) to every other sample, by registering the density landmarks of its parent population along its axes. Each sample gets a confidence and a status: the gate already fits, a confident adjustment (ticked, applied in one undoable step), or uncertain and listed first for review, with the reason. A gate is moved only where it cuts into a population and the adaptation finds sparser events, since populations also move for biological reasons. "Keep one gate per" a metadata field (a donor, a subject) adapts each group's samples together, as assays with stimulated and unstimulated wells need; a sample unlike the rest of its group goes to review. "Looks right" teaches CytoWeave a sample, and per-event membership probabilities export as CLR files. The methods paragraph describes the adaptation.
+- Agents can adapt gates too (`adapt_gate`): confident adjustments wait in a proposal for the user, and uncertain samples are listed for the user to check.
 
 ### Validation
 
 - A 60-plot figure is read back intact from SVG, PNG and PDF, rebuilt with every plot drawn from the same events, and a moved gate flags exactly the plots it affects (new `figures` suite).
 - Each FlowJo export is imported back with every count unchanged: the bundled example, ten FlowKit test workspaces and a workspace built in CytoWeave. FlowKit reads every export and counts what CytoWeave counts, and its counts on an export equal those on the original workspace or come closer to FlowJo's saved counts.
 - De-identified copies of every example and corpus FCS file hold the same events, bit for bit.
+- Autogating on a simulated cohort with instrument shifts (gains up to fivefold) raises every shifted gate's accuracy against the true cell types (T cells F1 0.954 → 0.994) without lowering any population's, sends the 4 least accurate of 66 gate-sample pairs to review, and sends nothing to review when nothing shifted (`autogating` suite).
+- Against an expert's own per-donor gates in four FlowJo workspaces of a real intracellular cytokine study (48 wells), adapting with one gate per donor leaves agreement with the expert unchanged (F1 0.9876 → 0.9877) with no adjustment lowering it, and sends wells the expert gated differently to review three times as often as the others (new `experts` suite, external data `als-ics`).
+
+### Fixed
+
+- **FlowJo import.** FlowJo writes some characters of parameter names as "_" ("LIVE/DEAD Aqua-A" becomes "LIVE_DEAD Aqua-A"); such channels were not found and every population gated on them was missing. They are now mapped back to the file's names.
 
 ## 0.2.0 (2026-10-02)
 

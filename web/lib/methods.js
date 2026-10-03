@@ -33,6 +33,7 @@ export const REFERENCES = {
   miflowcyt: { text: 'Lee JA, Spidlen J, Boyce K, et al. MIFlowCyt: the minimum information about a flow cytometry experiment. Cytometry A. 2008;73(10):926–930.', doi: '10.1002/cyto.a.20623' },
   unmixing: { text: 'Novo D, Grégori G, Rajwa B. Generalized unmixing model for multispectral flow cytometry utilizing nonsquare compensation matrices. Cytometry A. 2013;83(5):508–520.', doi: '10.1002/cyto.a.22272' },
   autofluorescence: { text: 'Roet JEG, Mikula AM, de Kok M, et al. Unbiased method for spectral analysis of cells with great diversity of autofluorescence spectra. Cytometry A. 2024;105(8):595–606.', doi: '10.1002/cyto.a.24856' },
+  gaussNorm: { text: 'Hahne F, Khodabakhshi AH, Bashashati A, et al. Per-channel basis normalization methods for flow cytometry data. Cytometry A. 2010;77(2):121–131.', doi: '10.1002/cyto.a.20823' },
   stainIndex: { text: 'Maecker HT, Frey T, Nomura LE, Trotter J. Selecting fluorochrome conjugates for maximum sensitivity. Cytometry A. 2004;62(2):169–173.', doi: '10.1002/cyto.a.20092' },
 };
 
@@ -142,6 +143,20 @@ export function writeMethods(ws, options = {}) {
     const agentGates = ws.gates.filter((g) => g.meta?.proposedBy && g.meta?.acceptedBy).length;
     const pending = ws.gates.filter((g) => g.meta?.proposal).length;
     paragraphs.push(`Populations were identified by sequential gating (${ws.gates.length} gates): ${paths.slice(0, 8).join('; ')}${paths.length > 8 ? `; and ${paths.length - 8} further branches` : ''}. ${auto ? `${auto} gate(s) were proposed automatically from the data's density and accepted by the analyst. ` : ''}${agentGates ? `${agentGates} gate(s) were proposed by an AI agent (${byAgents.join(', ')}) and reviewed and accepted by the analyst. ` : ''}${pending ? `${pending} gate(s) proposed by an AI agent have not yet been reviewed. ` : ''}${adjusted ? `${adjusted} gate(s) were adjusted for individual samples; all other gates were applied identically to every sample. ` : 'Gates were applied identically to every sample. '}The gating strategy is available in Gating-ML 2.0 format ${cite('gatingml')}.`);
+  }
+  // Autogating: the latest adaptation of each gate.
+  const adaptations = new Map();
+  for (const d of ws.derived.filter((r) => r.kind === 'autogating')) adaptations.set(d.gateId, d);
+  if (adaptations.size) {
+    const records = [...adaptations.values()];
+    const results = records.flatMap((d) => Object.values(d.results ?? {}));
+    const applied = results.filter((r) => r.applied).length;
+    const review = results.filter((r) => r.status === 'review').length;
+    const reviewedByHand = results.filter((r) => r.status === 'review' && r.applied).length;
+    const threshold = records[0].params?.confident ?? 0.8;
+    const names = records.map((d) => ws.gates.find((g) => g.id === d.gateId)?.name ?? d.name.replace(/^Autogating of /, ''));
+    const agents = [...new Set(records.map((d) => d.proposedBy).filter(Boolean))];
+    paragraphs.push(`${list(names)} ${records.length === 1 ? 'was' : 'were'} adapted to each sample by landmark registration of the parent population's density along each gate axis ${cite('gaussNorm')}, from the samples the analyst had drawn, adjusted or confirmed the gate on, with an ensemble over exemplar samples, smoothing bandwidths and halves of the events giving each sample a confidence. Adaptations with confidence of at least ${threshold} were ${agents.length ? `proposed by an AI agent (${agents.join(', ')}) and ` : ''}applied after review by the analyst (${applied} sample-gate adjustment${applied === 1 ? '' : 's'}${reviewedByHand ? `, ${reviewedByHand} of them below that confidence and applied by the analyst` : ''}); ${review ? `${review} sample-gate pair${review === 1 ? ' was' : 's were'} flagged as uncertain for manual review` : 'no sample was flagged as uncertain'}.`);
   }
 
   // High-dimensional analysis.

@@ -53,7 +53,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | G6 | Statistics of FlowJo's set plus confidence intervals for frequencies | done |
 | G7 | Batch tables, CSV/TSV export, heat maps | done |
 | G8 | Review a gate across samples; boundary robustness | done |
-| G9 | Learned per-sample gate adjustment with abstention (uncertainty-aware autogating) | planned |
+| G9 | Learned per-sample gate adjustment with abstention (uncertainty-aware autogating) | done: landmark registration from the gate's exemplars with an ensemble confidence; confident adjustments proposed, uncertain samples sent to review; one gate per donor or subject; CLR probabilities; validated on simulated shifts (validation `autogating`) and against an expert's per-donor gates in a real ICS study (`experts`) |
 
 ## Compensation and spectral
 

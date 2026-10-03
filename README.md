@@ -311,6 +311,7 @@ live histogram preview. It can estimate the logicle width from the data.
 
 Right-click a population for more:
 - **Review across samples** ranks every sample's result for this gate;
+- **Adapt to each sample** carries the gate to every sample (below);
 - **Copy to another population**, and **Applies to** limits a gate to a
   sample group;
 - export of the population's events as FCS (raw values and the original
@@ -323,6 +324,26 @@ Right-click a population for more:
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/review-dark.webp">
   <img alt="Review Lymphocytes across samples: every sample ranked by a robust z-score of its frequency, with a rating of its boundary" src="docs/images/review-light.webp">
 </picture>
+
+**Adapt to each sample** moves a shared gate where the data have shifted. It
+learns from the samples the gate is known to be right on (where you drew,
+adjusted or confirmed it) and registers the density peaks of the parent
+population along the gate's axes on every other sample. Each sample gets a
+confidence:
+- **Fits:** the gate already fits, or does not cut into a population there.
+- **Adjust:** a confident adjustment, ticked; applying them is one undoable
+  step.
+- **Review:** uncertain, listed first with the reason. Adjust the gate on the
+  sample by hand, or mark it **Looks right**, and adapt again: CytoWeave
+  learns from it.
+
+A gate is moved only where it cuts into a population and the adaptation finds
+sparser events, because populations also move for biological reasons: a
+stimulation down-regulates CD3 and CD4. When a donor's or subject's samples
+differ by the stimulation you are measuring, choose **Keep one gate per**
+donor (or subject): its samples are adapted together, and one unlike the rest
+goes to review. Each event's membership probability exports as CLR files, and
+the methods paragraph describes the adaptation.
 
 An **index-sorted** sample shows its plate below the plots. Wells come from
 BD FACSDiva's `INDEX SORTING LOCATIONS` keyword or from well parameters such
@@ -707,8 +728,8 @@ window you are watching:
 - open files and examples, and inspect the gating tree;
 - create gates from coordinates or propose them from the data's density;
 - edit gates, compute statistics across samples and render plots;
-- review a gate across the cohort, compare groups, write the methods, and
-  export Gating-ML.
+- review a gate across the cohort, adapt it to each sample, compare groups,
+  write the methods, and export Gating-ML.
 
 ```sh
 claude mcp add cytoweave -- ~/.local/bin/cytoweave mcp
@@ -729,7 +750,7 @@ its renames, deletions and compensation matrices wait. A strip above the
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 17 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 18 tools, other clients
 and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
@@ -756,8 +777,10 @@ pipelines, as the app does, against answers known in advance:
 | Normalization | Same-donor anchors in two batches | Batch distance reduced 25× |
 | Scales | BD's FlowJo lookup tables | Biexponential within 5e-6 (the tables' precision) |
 | Statistics | R 4.x | t-tests, Wilcoxon, Benjamini–Hochberg and t quantiles agree |
+| Autogating | True cell types of a cohort with instrument shifts up to fivefold | Every shifted gate more accurate (T cells F1 0.954 → 0.994), none less; the 4 least accurate of 66 sent to review; nothing sent to review without a shift |
 | Figure provenance | A 60-plot figure of 12 samples | Read back intact from SVG, PNG and PDF; rebuilt with every plot drawn from the same events; a moved gate flags exactly the plots it affects |
 | Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
+| Autogating, against experts | An expert's per-donor gates in 4 FlowJo workspaces of a cytokine study (48 wells) | Agreement with the expert unchanged (F1 0.9876 → 0.9877), no adjustment lowering it; wells gated differently sent to review 3× as often as the others |
 | FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-colour workspaces at least as close to FlowJo as FlowKit |
 | FlowJo export | The workspace imported back, and FlowKit reading the export | Every count unchanged in 12 workspaces; FlowKit counts what CytoWeave counts (ellipse boundaries aside) |
 | De-identification | Every example and corpus FCS file | The same events, bit for bit |
@@ -845,7 +868,7 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-`fetch.mjs` downloads the public test data the validation uses (about 150 MB,
+`fetch.mjs` downloads the public test data the validation uses (about 350 MB,
 into the git-ignored `validation/cache/`); without it those suites are
 skipped.
 

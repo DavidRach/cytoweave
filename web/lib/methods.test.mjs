@@ -81,3 +81,13 @@ test('methods describe clustering and embedding of one result, samples placed on
   assert.match(text, /1 gate\(s\) were proposed by an AI agent \(Claude Code\) and reviewed and accepted by the analyst/);
   for (const key of ['kmeans', 'kmeansPlusPlus', 'hamerly', 'umap', 'louvain', 'phenograph']) assert.ok(references.some((r) => r.key === key), key);
 });
+
+test('methods describe an autogating run: what was applied and what was left for review', () => {
+  let ws = workspace();
+  ws = { ...ws, derived: [{ kind: 'autogating', name: 'Autogating of T cells', gateId: 'g2', params: { confident: 0.8 }, results: { s1: { status: 'adjust', confidence: 0.93, applied: true }, s3: { status: 'review', confidence: 0.41, applied: false }, s4: { status: 'keep', confidence: 0.97, applied: false } } }] };
+  const { paragraphs, references } = writeMethods(ws, { version: '0.3.0' });
+  const text = paragraphs.join(' ');
+  assert.match(text, /T cells was adapted to each sample by landmark registration/);
+  assert.match(text, /confidence of at least 0.8 were applied after review by the analyst \(1 sample-gate adjustment\); 1 sample-gate pair was flagged as uncertain/);
+  assert.ok(references.some((r) => r.key === 'gaussNorm'));
+});

@@ -14,9 +14,12 @@
 //   { kind: 'edit-gate', gateId, patch, name }        (name: the gate's name when proposed)
 //   { kind: 'remove-gate', gateId, name }
 //   { kind: 'add-compensation', compensation, sampleIds }
+//   { kind: 'adjust-gate', gateId, name, overrides: { sampleId: geometry }, confidence: { sampleId },
+//     record }                                         (per-sample adjustments, as from autogating,
+//                                                      with the autogating record kept on accepting)
 
 import { newId } from './gates.js';
-import { addCompensation, addGates, gateById, gateDescendants, removeGate, setSampleCompensation, updateGate } from './workspace.js';
+import { addCompensation, addDerived, addGates, gateById, gateDescendants, removeGate, setGateGeometry, setSampleCompensation, updateGate } from './workspace.js';
 
 const now = () => new Date().toISOString();
 
@@ -109,6 +112,24 @@ export function proposeCompensation(ws, author, compensation, sampleIds) {
   return { ws: log(withChange(opened, proposal.id, change, null), 'propose-compensation', compensation.name ?? 'Compensation'), proposal: proposalById(opened, proposal.id) };
 }
 
+// Per-sample adjustments of a gate ({ sampleId: geometry }, with a confidence per sample), held for
+// review. Adjusting a gate that is itself still proposed applies at once.
+export function proposeGateAdjustments(ws, author, gateId, overrides, confidence = {}, record = null) {
+  const gate = gateById(ws, gateId);
+  if (!gate) throw new Error(`No gate ${gateId}.`);
+  if (proposalOfGate(ws, gate)) {
+    let next = ws;
+    for (const [sampleId, geometry] of Object.entries(overrides)) next = setGateGeometry(next, gateId, geometry, { sampleId });
+    if (record) next = addDerived(next, record).ws;
+    return { ws: next, held: false };
+  }
+  const { ws: opened, proposal } = openProposal(ws, author);
+  const earlier = proposal.changes.find((c) => c.kind === 'adjust-gate' && c.gateId === gateId);
+  const kept = record ?? earlier?.record;
+  const change = { kind: 'adjust-gate', gateId, name: gate.name, overrides: { ...(earlier?.overrides ?? {}), ...overrides }, confidence: { ...(earlier?.confidence ?? {}), ...confidence }, ...(kept ? { record: kept } : {}) };
+  return { ws: log(withChange(opened, proposal.id, change, (c) => c.kind === 'adjust-gate' && c.gateId === gateId), 'propose-adjustments', `${gate.name} (${Object.keys(overrides).length} samples)`), held: true };
+}
+
 // Drops from the open proposals the ids of gates that no longer exist (removed by the user, or
 // with their parents).
 function forgetGates(ws) {
@@ -140,6 +161,9 @@ export function describeProposal(ws, proposal) {
     } else if (change.kind === 'remove-gate') {
       const below = gateById(ws, change.gateId) ? gateDescendants(ws, change.gateId).length : 0;
       items.push({ kind: 'remove', gateId: change.gateId, text: `Delete ${change.name}${below ? ` and the ${below} population${below === 1 ? '' : 's'} under it` : ''}` });
+    } else if (change.kind === 'adjust-gate') {
+      const n = Object.keys(change.overrides).length;
+      items.push({ kind: 'adjust', gateId: change.gateId, text: `Adjust ${gateById(ws, change.gateId)?.name ?? change.name} for ${n} sample${n === 1 ? '' : 's'}` });
     } else if (change.kind === 'add-compensation') {
       const samples = change.sampleIds.filter((id) => (ws.samples ?? []).some((s) => s.id === id)).length;
       items.push({ kind: 'compensation', text: `Add the compensation matrix "${change.compensation.name}" (${change.compensation.channels.length} channels) and apply it to ${samples} sample${samples === 1 ? '' : 's'}` });
@@ -162,6 +186,11 @@ export function acceptProposal(ws, proposalId, acceptedBy = 'the user') {
       next = updateGate(next, change.gateId, change.patch, 'edit-gate');
     } else if (change.kind === 'remove-gate' && gateById(next, change.gateId)) {
       next = removeGate(next, change.gateId);
+    } else if (change.kind === 'adjust-gate' && gateById(next, change.gateId)) {
+      for (const [sampleId, geometry] of Object.entries(change.overrides)) {
+        if (next.samples.some((x) => x.id === sampleId)) next = setGateGeometry(next, change.gateId, geometry, { sampleId });
+      }
+      if (change.record) next = addDerived(next, change.record).ws;
     } else if (change.kind === 'add-compensation') {
       const added = addCompensation(next, { ...change.compensation, source: change.compensation.source ?? 'agent' });
       next = setSampleCompensation(added.ws, change.sampleIds.filter((id) => next.samples.some((s) => s.id === id)), added.compensation.id);

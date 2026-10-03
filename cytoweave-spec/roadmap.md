@@ -141,11 +141,33 @@ wave 4 completes the release.
    back. The `figures` suite reads a 60-plot record back intact from all three formats, rebuilds
    every plot from the same events, and checks that a moved gate flags exactly the plots it
    affects; pypdf lists the PDF attachment.
-3. **Uncertainty-aware autogating (G9).** Adapt each shared gate to each sample by density
-   landmark registration; give each sample a confidence; confident adjustments become proposals,
-   low-confidence samples go to a review queue. Learn corrections from the user's own per-sample
-   overrides; export per-event probabilities as CLR. Validated on simulated cohorts with batch
-   shifts (calibrated abstention) and on real multi-sample workspaces against human gates.
+3. **Uncertainty-aware autogating (G9): done.** A shared gate is carried to each sample by
+   landmark registration of its parent population's density along each axis (after gaussNorm),
+   from its exemplars: the samples it was drawn, adjusted or confirmed on, the most similar first.
+   An ensemble over exemplars, smoothing bandwidths, halves of the events and left-out landmarks
+   gives each sample a confidence and each event a membership probability (exported as CLR).
+   Confident adjustments are ticked in a review dialog (or held in a proposal, for agents); the
+   uncertain are listed first with the reason; "Looks right" adds an exemplar.
+   - Real expert gates changed the design. On four FlowJo workspaces of an intracellular cytokine
+     study (four donors × negative, peptide and PMA wells, gates adjusted per donor), the first
+     version made agreement with the expert worse: it followed populations that moved for
+     biological reasons (PMA down-regulates CD3 and CD4; one CD4 gate fell from F1 1.00 to 0.37).
+     Now a gate is moved only where its boundary cuts into a population (it is not robust there)
+     and the adaptation finds sparser events; landmarks are matched only within 0.16 of the axis;
+     and "keep one gate per" a metadata field adapts a donor's wells together, as the expert did,
+     sending a well unlike the rest of its donor to review. With one gate per donor no adjustment
+     lowers agreement with the expert and the mean is unchanged (0.9876 → 0.9877); wells the
+     expert gated differently go to review three times as often (45% vs 14%).
+   - On a simulated cohort with up to fivefold gains, the gates' mean F1 against the true cell
+     types rises (T cells 0.954 → 0.994, monocytes 0.752 → 0.803), no adjustment lowers a
+     population's, nothing is sent to review without a shift, and an expert reviewing the 4 of 66
+     flagged pairs brings the gates' mean F1 to 0.969 (0.982 on the sample they were drawn on). Robust boundaries left
+     off-center by large shifts are kept by design; offering those moves as optional adjustments
+     was tried and rejected (on the expert data they lowered agreement four times as often as
+     they raised it).
+   - Found on the way: FlowJo writes "LIVE/DEAD" as "LIVE_DEAD", and those channels were missing
+     on import (fixed); FlowJo appears to evaluate gates at its display resolution, so cytokine
+     gates whose edges sit in dense negative events differ by a few events (to investigate).
 4. **Instrument characterization (Q5) and a spectral reference library (S7).** Q and B from
    multi-peak bead files (Parks 2017's weighted fit), Levey–Jennings charts across runs, and
    reference spectra kept across experiments. Validated against the simulator's known Q and B and

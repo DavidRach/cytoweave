@@ -661,7 +661,7 @@ export function createPlotView(app, initial) {
   }
 
   function commitGeometry(gate, geometry) {
-    const scope = ui().editScope === 'sample' ? { sampleId } : {};
+    const scope = ui().editScope === 'sample' ? { sampleId } : { editedOn: sampleId };
     store.commit(setGateGeometry(ws(), gate.id, geometry, scope), scope.sampleId ? `Adjust ${gate.name} for this sample` : `Move ${gate.name}`);
   }
 
@@ -725,7 +725,8 @@ export function createPlotView(app, initial) {
       const name = uniqueGateName(ws(), parentId, suggestGateName(ws(), view, gateDims, type, geometry));
       gates = [{ id: newId('g'), parentId, name, type, dims: gateDims, geometry }];
     }
-    if (meta) gates = gates.map((g) => ({ ...g, meta }));
+    // Which sample the gate was drawn on: autogating's reference for the shared geometry.
+    gates = gates.map((g) => ({ ...g, meta: { origin: 'manual', created: new Date().toISOString(), ...(meta ?? {}), drawnOn: sampleId } }));
     gates = gates.map((g) => ({ ...g, name: uniqueGateName(ws(), parentId, g.name) }));
     const result = addGates(ws(), gates);
     store.commit(result.ws, gates.length > 1 ? `Add ${type} gates` : `Add gate ${gates[0].name}`);
