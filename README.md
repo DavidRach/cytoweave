@@ -121,6 +121,8 @@ guides to every view, with screenshots.
     export them, as SVG, PNG or PDF.
   - A methods paragraph with numbered references, written from what the
     workspace actually did, and a MIFlowCyt checklist.
+  - Exported figures carry the analysis behind them (gates, scales, matrices
+    and file checksums): open one to see what changed since, or rebuild it.
   - Checkpoints, with a plain-language diff of what changed between two
     versions of an analysis and how it moved every frequency.
 - **Interchange.**
@@ -258,6 +260,7 @@ Press ⌘K (Ctrl+K) to search samples, populations, channels and commands, and
 | `.wsp` | A FlowJo 10 workspace (see [below](#working-with-flowjo-and-other-tools)) |
 | `.xml` | Gating-ML 2.0 gates and compensation |
 | `.csv`, `.tsv` | Sample annotations: the first column names the sample or file, the other columns become fields |
+| `.svg`, `.png`, `.pdf` | A figure or plot CytoWeave exported: where it came from, what changed since, and a rebuild (see [Figures](#figures)) |
 
 Drag files onto the window, use the **+** button of the sample list, or name
 them on the command line.
@@ -534,6 +537,24 @@ in slide (16:9), Letter, A4, landscape and square sizes.
   <img alt="The Figures view: the gating strategy of T cells laid out on a page" src="docs/images/figures-light.webp">
 </picture>
 
+**Exports carry their analysis.** Every exported figure and plot (SVG, PNG and
+PDF) embeds what it shows:
+- the samples, by name and the SHA-256 checksum of each FCS file;
+- every gate the plots depend on, with per-sample adjustments;
+- the scales and compensation matrices;
+- each plot's event count.
+
+The record goes in SVG metadata, a PNG text chunk, or a PDF attachment
+(`cytoweave-provenance.json`, which PDF readers list). It holds no keywords or
+event data. Open the exported file in CytoWeave (drop it on the window) to see
+where it came from and what has changed since, plot by plot: for example
+"Live changed; 84,450 events now, 84,284 in the figure". From there you can:
+- **Rebuild in a new workspace**, from the same files, which the library finds
+  by checksum (missing ones can be added, whatever their names now);
+- or **Add to this workspace** again.
+
+**Embed the analysis** in the Figures view turns it off.
+
 ### Report
 
 <picture>
@@ -735,6 +756,7 @@ pipelines, as the app does, against answers known in advance:
 | Normalization | Same-donor anchors in two batches | Batch distance reduced 25× |
 | Scales | BD's FlowJo lookup tables | Biexponential within 5e-6 (the tables' precision) |
 | Statistics | R 4.x | t-tests, Wilcoxon, Benjamini–Hochberg and t quantiles agree |
+| Figure provenance | A 60-plot figure of 12 samples | Read back intact from SVG, PNG and PDF; rebuilt with every plot drawn from the same events; a moved gate flags exactly the plots it affects |
 | Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
 | FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-colour workspaces at least as close to FlowJo as FlowKit |
 | FlowJo export | The workspace imported back, and FlowKit reading the export | Every count unchanged in 12 workspaces; FlowKit counts what CytoWeave counts (ellipse boundaries aside) |

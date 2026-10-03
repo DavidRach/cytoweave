@@ -56,6 +56,9 @@ func fileKind(name string) string {
 		return "table"
 	case strings.HasSuffix(lower, ".acs"), strings.HasSuffix(lower, ".zip"):
 		return "archive"
+	case strings.HasSuffix(lower, ".svg"), strings.HasSuffix(lower, ".png"), strings.HasSuffix(lower, ".pdf"):
+		// A figure CytoWeave exported, which carries its analysis.
+		return "figure"
 	}
 	return ""
 }
@@ -152,8 +155,8 @@ func walkFolder(dir string) ([]localFile, string) {
 			return nil
 		}
 		kind := fileKind(name)
-		if kind == "" || kind == "table" || kind == "gatingml" {
-			// Tables and XML inside a data folder are usually not analyses; name them directly.
+		if kind == "" || kind == "table" || kind == "gatingml" || kind == "figure" {
+			// Tables, XML and images inside a data folder are usually not analyses; name them directly.
 			return nil
 		}
 		info, err := entry.Info()

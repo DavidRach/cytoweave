@@ -7,8 +7,12 @@
 - **FlowJo workspace export.** Workspace → Export → FlowJo workspace writes a FlowJo 10 workspace: one gating tree per sample, with its own adjustments and group scopes, its compensation, the scales, the sample groups and, optionally, CytoWeave's population counts and the FCS files in a ZIP. A report lists every population as exact, traced (a gate drawn on another scale than the one written, with enough vertices to follow its outline) or not exported (category gates, gates on channels CytoWeave computed, gates of three or more dimensions).
 - **De-identified FCS files.** Workspace → Export → De-identified FCS files writes the files (a ZIP, or an ACS archive with the workspace) keeping only technical keywords: operator, specimen and patient fields, free-text comments, file names, dates (unless kept), serial numbers and vendor keywords are removed and listed. The events are copied byte for byte. Population exports and the FlowJo export can de-identify too.
 
+- **Figures carry their analysis.** Exported figures and plots (SVG, PNG and PDF) embed the samples (with their files' SHA-256 checksums), the gates, scales and compensation behind every plot, and each plot's event count. Opening an exported figure in CytoWeave shows where it came from and, plot by plot, what has changed since; it can rebuild the figure in a new workspace from the same files (found in the library by checksum) or add it back to the open one. "Embed the analysis" in the Figures view turns it off.
+- `cytoweave figure.svg` (or .png, .pdf) opens an exported figure from the command line.
+
 ### Validation
 
+- A 60-plot figure is read back intact from SVG, PNG and PDF, rebuilt with every plot drawn from the same events, and a moved gate flags exactly the plots it affects (new `figures` suite).
 - Each FlowJo export is imported back with every count unchanged: the bundled example, ten FlowKit test workspaces and a workspace built in CytoWeave. FlowKit reads every export and counts what CytoWeave counts, and its counts on an export equal those on the original workspace or come closer to FlowJo's saved counts.
 - De-identified copies of every example and corpus FCS file hold the same events, bit for bit.
 

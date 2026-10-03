@@ -7,8 +7,8 @@
 //   node validation/run.mjs [suite …] [--verbose]
 //
 // Suites: fcs, compensation, gating, qc, spectral, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, flowjo, reference, gatingml, flowkit, fcsparser, diva,
-// bioconductor
+// normalization, debarcode, transforms, flowjo, figures, reference, gatingml, flowkit, fcsparser,
+// diva, bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -21,6 +21,8 @@ import { SampleView, countOf, population } from '../web/lib/engine.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
 import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs';
 import { deidentifyFCS } from '../web/lib/deidentify.js';
+import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
+import { writePDF } from '../web/lib/pdf.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
@@ -582,6 +584,55 @@ const suites = {
     // every population recomputed from the re-imported gates.
     for (const c of [bundledCase(), builtCase()]) exportChecks('flowjo', c);
   },
+  // Figure provenance: a gating-strategy figure of every PBMC sample, exported, read back from
+  // SVG, PNG and PDF, and rebuilt in a new workspace from the same files.
+  async figures() {
+    const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', { scale: 0.1 });
+    let ws = createWorkspace('figures');
+    const datasets = new Map();
+    for (const file of files.filter((f) => /^D0/.test(f.name))) {
+      const data = parseFCS(file.bytes).datasets[0];
+      const record = sampleFromDataset(data, { name: file.name, sha256: file.name.padEnd(64, '0').slice(0, 64) });
+      datasets.set(record.id, data);
+      ws = addSamples(ws, [record]);
+    }
+    ws = addGates(ws, workspaceHints.suggestedGates).ws;
+    const viewsOf = (w) => new Map(w.samples.map((s) => {
+      const data = datasets.get(s.id);
+      const view = new SampleView(s, data);
+      const spill = readSpillover(data.keywords, data.parameters);
+      if (s.compensationId === 'file' && spill && !spill.identity) view.setCompensation({ id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) });
+      return [s.id, view];
+    }));
+    // One row per sample: each step of the gating path, as the Figures view's builder lays it out.
+    const steps = ['Cells', 'Single cells', 'Live', 'Lymphocytes', 'T cells'].map((name) => ws.gates.find((g) => g.name === name));
+    const items = [];
+    ws.samples.forEach((sample, r) => steps.forEach((gate, c) => items.push({ id: `p${r}-${c}`, kind: 'plot', x: c * 250, y: r * 250, w: 240, h: 240, sampleId: sample.id, spec: { populationId: gate.parentId ?? 'root', x: gate.dims[0].channel, y: gate.dims[1]?.channel ?? null, type: gate.dims.length === 1 ? 'histogram' : 'pseudocolor' } })));
+    const figure = { id: 'f', name: 'Gating strategy', width: 1250, height: ws.samples.length * 250, items };
+    const record = buildProvenance(ws, figure, { views: viewsOf(ws), version: 'validation' });
+    const json = JSON.stringify(record);
+    const svg = embedSVG('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>', record);
+    const png = embedPNG(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]), record);
+    const pdf = await writePDF([{ width: 10, height: 10, image: { width: 1, height: 1, rgb: new Uint8Array(3) } }], { attachments: [pdfAttachment(record)] });
+    const back = [svg, png, pdf].map((f) => JSON.stringify(readFigureProvenance(typeof f === 'string' ? new TextEncoder().encode(f) : f)) === json);
+    check('figures', `the analysis of a ${items.length}-plot figure (${record.gates.length} gates, ${record.samples.length} files, ${(json.length / 1024).toFixed(0)} KB) is read back intact from SVG, PNG and PDF`, back.map((ok, i) => `${['SVG', 'PNG', 'PDF'][i]} ${ok ? 'intact' : 'differs'}`).join(', '), back.every(Boolean), 'all three intact');
+    const rebuilt = rebuildWorkspace(record);
+    const views = viewsOf(rebuilt);
+    const same = record.plots.filter((p) => {
+      const members = population(views.get(p.sample), rebuilt, p.population);
+      return countOf(members, views.get(p.sample)) === p.events;
+    }).length;
+    check('figures', 'rebuilt from the figure alone: plots drawn from the same events', `${same} of ${record.plots.length}`, same === record.plots.length, 'all');
+    const report = compareProvenance(record, rebuilt, { views });
+    const unchanged = report.plots.filter((p) => p.status === 'unchanged').length;
+    check('figures', 'the rebuilt workspace checks as unchanged against the figure', `${unchanged} of ${report.plots.length}`, unchanged === report.plots.length, 'all');
+    const live = ws.gates.find((g) => g.name === 'Live');
+    const moved = { ...ws, gates: ws.gates.map((g) => (g.id === live.id ? { ...g, geometry: { vertices: g.geometry.vertices.map(([x, y]) => [x + 0.03, y]) } } : g)) };
+    const flagged = compareProvenance(record, moved, { views: viewsOf(moved) }).plots.filter((p) => p.status === 'changed');
+    const expected = record.plots.filter((p) => ['Single cells', 'Live', 'Lymphocytes'].some((n) => p.path.endsWith(n))).length;
+    check('figures', 'moving one gate flags exactly the plots that show it or depend on it', `${flagged.length} of ${record.plots.length} flagged (expected ${expected})`, flagged.length === expected, `${expected}`);
+  },
+
   // External data: the ISAC Gating-ML 2.0 compliance suite. Each gate file is imported as the app
   // imports it (compensations, ratio and unmixed channels, gates) into a workspace whose sample
   // uses the file's own spillover, and every gate is evaluated by the engine on every event.

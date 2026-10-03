@@ -132,8 +132,15 @@ wave 4 completes the release.
      the files and an ACS archive whose workspace keeps none of the removed keywords.
    - **To do:** open an export in FlowJo itself (no FlowJo licence was available while building
      it): check that FlowJo 10 and 11 open it, find its FCS files, and show the same counts.
-2. **Provenance in figures (R5).** SVG and PDF exports embed the gates, scales, matrices and file
-   checksums they show, so a figure can be traced to, and rebuilt from, its analysis.
+2. **Provenance in figures (R5): done.** Exported figures and plots (SVG metadata, a PNG iTXt
+   chunk, a PDF attachment) embed the samples with their files' checksums, every gate the plots
+   depend on with per-sample adjustments, the scales, the compensation each sample was drawn with,
+   and each plot's event count; no keywords or events. Opening one reports, plot by plot, what
+   changed since (gates, scales, compensation, counts), matching another workspace by checksum and
+   population path; it rebuilds the figure in a new workspace from the library's files, or adds it
+   back. The `figures` suite reads a 60-plot record back intact from all three formats, rebuilds
+   every plot from the same events, and checks that a moved gate flags exactly the plots it
+   affects; pypdf lists the PDF attachment.
 3. **Uncertainty-aware autogating (G9).** Adapt each shared gate to each sample by density
    landmark registration; give each sample a confidence; confident adjustments become proposals,
    low-confidence samples go to a review queue. Learn corrections from the user's own per-sample

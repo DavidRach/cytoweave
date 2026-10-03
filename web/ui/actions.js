@@ -1,6 +1,7 @@
 // User actions shared by the views: importing and exporting, menus and dialogs about gates and
 // samples, plot export and the cohort review of a gate.
 
+import { prefs } from './storage.js';
 import { h, icon, clear, downloadBlob, formatCount, formatPercent } from './dom.js';
 import { showMenu, showDialog, promptDialog, confirmDialog, toast, progressToast } from './overlays.js';
 import { buildPlotScene, drawScene, sceneToSVG } from '../lib/plot.js';
@@ -126,9 +127,18 @@ export function installActions(app) {
     const scene = buildExportScene(ws, view, spec, { width: options.width ?? 480, height: options.height ?? 440, theme: options.theme ?? 'light', title: options.title });
     const sample = ws.samples.find((s) => s.id === plotView.sampleId);
     const base = `${sample?.name ?? 'plot'}-${gateById(ws, spec.populationId)?.name ?? 'all'}`.replace(/[^\w.-]+/g, '_');
+    // The plot's analysis, embedded as in figure exports (a one-plot figure).
+    const provenance = async () => {
+      if (prefs.get('figureProvenance', true) === false) return null;
+      const { buildProvenance } = await import('../lib/figure-provenance.js');
+      const figure = { id: null, name: base, width: scene.width, height: scene.height, items: [{ id: 'plot', kind: 'plot', x: 0, y: 0, w: scene.width, h: scene.height, sampleId: plotView.sampleId, spec: { populationId: spec.populationId, x: spec.x, y: spec.y, type: spec.type, options: spec.options ?? {} } }] };
+      return buildProvenance(ws, figure, { views: new Map([[plotView.sampleId, view]]), version: app.version });
+    };
     if (format === 'svg') {
       const href = scene.raster ? await rasterDataURL(scene.raster) : null;
-      const svg = sceneToSVG(scene, { rasterHref: href });
+      let svg = sceneToSVG(scene, { rasterHref: href });
+      const record = await provenance();
+      if (record) svg = (await import('../lib/figure-provenance.js')).embedSVG(svg, record);
       downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${base}.svg`);
       return;
     }
@@ -150,7 +160,8 @@ export function installActions(app) {
       }
       return;
     }
-    downloadBlob(blob, `${base}.png`);
+    const record = await provenance();
+    downloadBlob(record ? new Blob([(await import('../lib/figure-provenance.js')).embedPNG(new Uint8Array(await blob.arrayBuffer()), record)], { type: 'image/png' }) : blob, `${base}.png`);
   };
 
   // A complete scene (events, gates with labels) for export or figures.

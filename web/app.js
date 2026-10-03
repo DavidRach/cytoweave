@@ -9,6 +9,7 @@ import { mountSidebar } from './ui/sidebar.js';
 import { mountInspector } from './ui/inspector.js';
 import { installActions } from './ui/actions.js';
 import { installExportDialogs } from './ui/export-dialogs.js';
+import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
 import { openPalette } from './ui/palette.js';
 import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
 import { WorkerClient } from './ui/workers.js';
@@ -84,6 +85,7 @@ async function start() {
 
   installActions(app);
   installExportDialogs(app);
+  installFigureProvenance(app);
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
   app.exportCLR = () => import('./ui/import-flowjo.js').then((m) => m.exportCLRDialog(app));
   app.compareColumn = (table, column) => {
@@ -242,13 +244,15 @@ async function start() {
     const gatingml = items.filter((item) => /\.xml$/i.test(item.name));
     const tables = items.filter((item) => /\.(csv|tsv)$/i.test(item.name));
     const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
+    const figures = items.filter((item) => /\.(svg|png|pdf)$/i.test(item.name));
     for (const item of workspaces) await openWorkspaceFile(item);
     if (fcs.length) await importFCSItems(fcs);
     for (const item of archives) await importArchive(item);
     for (const item of flowjo) await importFlowJo(item);
     for (const item of gatingml) await importGatingML(item);
     for (const item of tables) await importMetadataTable(item);
-    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml) and sample annotation tables (.csv, .tsv).', { kind: 'error' });
+    for (const item of figures) await app.openFigureFile(item);
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv) and figures it exported (.svg, .png, .pdf).', { kind: 'error' });
   };
 
   async function readBytes(item) {
@@ -941,7 +945,7 @@ async function start() {
   app.openStartupFiles = async (files) => {
     const opened = new Set(prefs.get(`opened:${info.session}`, []));
     const known = new Set(store.ws.samples.map((s) => s.fileName));
-    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
+    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table', 'figure'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
     for (const file of files) opened.add(file.url);
     prefs.set(`opened:${info.session}`, [...opened]);
     if (!pending.length) return;
