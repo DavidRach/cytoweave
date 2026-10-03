@@ -39,7 +39,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | D4 | Annotate samples (condition, subject, batch, …), from file names or a CSV table | done |
 | D5 | Content-addressed library: workspaces refer to files by SHA-256 and survive moves | done |
 | D6 | Large data: 10 million events per sample at interactive speed | done: files read in parts (never whole), bitset populations, lazy compensation, statistics by selection, shared memory with workers; at 10M events a gate drag draws in about 8 ms and dropping it re-evaluates every population in about 0.4 s (`validation/bench.mjs`) |
-| D7 | FCS de-identification on export | planned |
+| D7 | FCS de-identification on export | done: an allowlist of technical keywords, the rest removed and reported; the TEXT segment rewritten and the events copied byte for byte (checked on every example and corpus file); for population exports, the FlowJo export, a ZIP of the files and an ACS archive |
 
 ## Gating and statistics
 
@@ -125,7 +125,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | I1 | FlowJo 10 workspaces imported with a per-population fidelity report and count comparison | done (on real workspaces, FlowJo's saved counts reproduced at least as often as FlowKit does; FlowJo's display-resolution gating moves 0.1–0.3% of large populations) |
 | I2 | Gating-ML 2.0 import and export, including spectrum (unmixing) matrices, ratio dimensions and per-dimension compensation | done |
 | I3 | CLR export; ACS containers | done |
-| I4 | FlowJo workspace export | planned |
+| I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Not yet opened in FlowJo itself |
 
 ## Automation
 

@@ -19,6 +19,8 @@ import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck } from '../web/lib/compensation.js';
 import { SampleView, countOf, population } from '../web/lib/engine.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
+import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs';
+import { deidentifyFCS } from '../web/lib/deidentify.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
@@ -151,12 +153,98 @@ function flowJoMigration(xml, files) {
   return { rows: migrationCountRows(plan.migration, counts), fidelity: result.fidelity };
 }
 
+// A FlowJo export case (flowjo-export-cases.mjs): the round trip, and what was not exported.
+function exportChecks(suite, c) {
+  const traced = (r) => c.report.populations.some((p) => p.status === 'approximated' && r.path.endsWith(p.path.split('/').pop()));
+  const exact = c.rows.filter((r) => r.flowjo === r.cytoweave);
+  const close = c.rows.filter((r) => r.flowjo !== r.cytoweave && traced(r) && Math.abs(r.cytoweave - r.flowjo) <= Math.max(2, 0.005 * r.flowjo));
+  const { exact: e, approximated: a, omitted: o } = c.report.summary;
+  check(suite, `${c.name}: exported to FlowJo and imported back, counts unchanged (${e} population${e === 1 ? '' : 's'} exact, ${a} traced on another scale, ${o} not exported)`, `${exact.length} of ${c.rows.length} identical${close.length ? `, ${close.length} traced within 0.5%` : ''}`, exact.length + close.length === c.rows.length && c.rows.length > 0, 'all (traced outlines within 0.5%)');
+  const lost = c.fidelity.filter((f) => f.status === 'unsupported');
+  check(suite, `${c.name}: the export imports without unsupported populations`, lost.length ? lost.slice(0, 2).map((f) => `${f.path}: ${f.detail}`).join('; ') : 'none', !lost.length, 'none');
+  if (c.kind === 'cytoweave') {
+    const omitted = c.report.populations.filter((p) => p.status === 'omitted').map((p) => p.path);
+    check(suite, `${c.name}: populations FlowJo cannot evaluate are reported, not written`, `${[...new Set(omitted)].join(', ')}`, omitted.length > 0 && omitted.every((p) => /QC pass/.test(p)), 'the category gate only');
+  }
+}
+
+// FlowKit's counts on an exported workspace (reference/flowkit.json "exports"): against
+// CytoWeave's, and against FlowKit's on the original workspace and FlowJo's saved counts.
+function flowKitExportChecks(c, ref, originals) {
+  const fk = ref.exports?.[c.name];
+  if (!fk || fk.error) {
+    check('flowkit', `${c.name}: FlowKit reads CytoWeave's FlowJo export`, fk?.error ?? 'not generated (run write_flowjo_exports.mjs and generate_flowkit.py)', false, 'read');
+    return;
+  }
+  const key = (sample, path) => `${sample}|${path}`;
+  const exported = new Map(fk.populations.map((p) => [key(p.sample, p.path.join('/')), p.count]));
+  const isEllipse = (path) => c.report.populations.some((p) => /ellipse/i.test(p.path.split('/').pop()) && path.endsWith(p.path.split('/').pop())) || /ellipse/i.test(path.split('/').pop());
+  let same = 0;
+  const ellipses = [];
+  const differ = [];
+  for (const r of c.rows) {
+    const n = exported.get(key(r.sampleName, r.path));
+    if (n === r.flowjo) same += 1;
+    else if (n !== undefined && isEllipse(r.path) && Math.abs(n - r.flowjo) <= Math.max(5, 0.001 * r.flowjo)) ellipses.push(r.path);
+    else differ.push(`${r.sampleName} ${r.path}: FlowKit ${n}, CytoWeave ${r.flowjo}`);
+  }
+  check('flowkit', `${c.name}: FlowKit reads CytoWeave's FlowJo export; populations whose count equals CytoWeave's`, `${same} of ${c.rows.length}${ellipses.length ? ` (${ellipses.length} ellipse${ellipses.length === 1 ? '' : 's'} within 0.1%: FlowKit and CytoWeave decide ellipse boundary events differently${c.source ? ', as on the original workspace' : ''})` : ''}${differ.length ? `; ${differ.slice(0, 2).join('; ')}` : ''}`, !differ.length && c.rows.length > 0, 'all (ellipses within 0.1%)');
+  if (!c.source) return;
+  const original = new Map((ref.workspaces[c.source]?.populations ?? []).map((p) => [key(p.sample, p.path.join('/')), p.count]));
+  const flowJoSaved = new Map(originals.rows.map((r) => [key(r.sampleName, r.path), r.flowjo]));
+  let unchanged = 0;
+  let closer = 0;
+  const worse = [];
+  for (const [k, n] of exported) {
+    if (!original.has(k)) continue;
+    const before = original.get(k);
+    const saved = flowJoSaved.get(k);
+    if (before === n) unchanged += 1;
+    else if (saved >= 0 && Math.abs(n - saved) <= Math.abs(before - saved)) closer += 1;
+    else worse.push(`${k}: ${before} → ${n} (FlowJo ${saved})`);
+  }
+  check('flowkit', `${c.name}: FlowKit's counts on the export vs on the original workspace`, `${unchanged} unchanged${closer ? `, ${closer} closer to FlowJo's saved counts (time gates, which the export writes in $TIMESTEP units)` : ''}${worse.length ? `; ${worse.slice(0, 2).join('; ')}` : ''}`, !worse.length && unchanged + closer === original.size, 'each unchanged or closer to FlowJo');
+}
+
+// De-identified files: the same events as the original, and only allowlisted keywords.
+function deidentifyChecks(suite, label, files) {
+  let readable = 0;
+  let identical = 0;
+  const problems = [];
+  for (const file of files) {
+    let before;
+    try {
+      before = parseFCS(file.bytes);
+    } catch {
+      continue;
+    }
+    readable += 1;
+    try {
+      const after = parseFCS(deidentifyFCS(file.bytes).bytes);
+      let same = after.datasets.length === before.datasets.length;
+      for (let d = 0; same && d < before.datasets.length; d += 1) {
+        const x = before.datasets[d];
+        const y = after.datasets[d];
+        same = x.eventCount === y.eventCount && x.data.length === y.data.length;
+        for (let p = 0; same && p < x.data.length; p += 1) for (let e = 0; e < x.eventCount; e += 1) if (!Object.is(x.data[p][e], y.data[p][e])) { same = false; break; }
+      }
+      if (same) identical += 1;
+      else problems.push(file.name);
+    } catch (error) {
+      problems.push(`${file.name}: ${error.message}`);
+    }
+  }
+  check(suite, `${label}: de-identified files hold the same events (bit-exact)`, `${identical} of ${readable}${problems.length ? `; ${problems.slice(0, 2).join('; ')}` : ''}`, identical === readable && readable > 0, 'all');
+}
+
 // --- Suites ---------------------------------------------------------------------------------------
 
 const suites = {
   fcs() {
+    const all = [];
     for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase']) {
       const { files } = generateExample(id, { scale: 0.05 });
+      all.push(...files);
       let problems = 0;
       let exact = true;
       for (const file of files) {
@@ -171,6 +259,7 @@ const suites = {
       check('fcs', `${id}: ${files.length} files parse without warnings`, `${problems} warning(s)`, problems === 0, '0');
       check('fcs', `${id}: write and read back`, exact ? 'bit-exact' : 'differs', exact, 'bit-exact');
     }
+    deidentifyChecks('fcs', `${all.length} example files`, all);
   },
 
   compensation() {
@@ -488,6 +577,10 @@ const suites = {
     check('flowjo', `bundled FlowJo workspace: populations whose count equals FlowJo's (${new Set(rows.map((r) => r.sampleName)).size} samples)`, `${exact} of ${rows.length}`, exact === rows.length && rows.length > 40, 'all');
     const approximated = fidelity.filter((f) => f.status !== 'imported');
     check('flowjo', 'bundled FlowJo workspace: populations converted exactly', approximated.length ? approximated.map((f) => `${f.path}: ${f.detail}`).slice(0, 2).join('; ') : 'all', !approximated.length, 'all');
+
+    // FlowJo export: each workspace is exported with CytoWeave's counts and imported back, with
+    // every population recomputed from the re-imported gates.
+    for (const c of [bundledCase(), builtCase()]) exportChecks('flowjo', c);
   },
   // External data: the ISAC Gating-ML 2.0 compliance suite. Each gate file is imported as the app
   // imports it (compensations, ratio and unmixed channels, gates) into a workspace whose sample
@@ -710,6 +803,15 @@ const suites = {
       check('flowkit', `${name}: populations whose count equals FlowJo's, CytoWeave vs FlowKit (${valid.length} populations); mean difference from FlowJo`, `${ours} vs ${theirs}; ${meanOurs.toFixed(3)}% vs ${meanTheirs.toFixed(3)}%`, ours >= theirs && meanOurs <= meanTheirs + 0.01, 'at least as many; mean no larger');
     }
     check('flowkit', 'FlowJo counts that FlowKit reproduces exactly, CytoWeave reproduces too', `${reproduced} of ${reproducedTotal}${missed.length ? `; missed ${missed.slice(0, 3).join('; ')}` : ''}`, reproduced === reproducedTotal, 'all');
+
+    // FlowJo export of FlowKit's workspaces and of the bundled and built cases: the round trip in
+    // CytoWeave, and FlowKit's reading of each export.
+    for (const c of flowKitCases()) {
+      exportChecks('flowkit', c);
+      flowKitExportChecks(c, ref, c.original);
+    }
+    for (const c of [bundledCase(), builtCase()]) flowKitExportChecks(c, ref, c.original ?? { rows: [] });
+    deidentifyChecks('flowkit', `${fcsFiles.size} FlowKit FCS files`, [...fcsFiles.values()]);
   },
   // External data: FCS files from several instruments and deliberately malformed files
   // (fcsparser's tests), against FlowIO's decoding and fcsparser's published values.
@@ -795,6 +897,7 @@ const suites = {
     }
     check('fcsparser', `stored values equal fcsparser's published rows (${Object.keys(published).length} files, incl. 3-byte integers, large-file offsets and masked bits)`, `within ${rawWorst.toExponential(1)}`, rawWorst < 1e-6, '< 1e-6 relative');
     check('fcsparser', 'every data set is written and read back', exactTrip ? 'bit-exact' : 'differs', exactTrip, 'bit-exact');
+    deidentifyChecks('fcsparser', `${data.files.filter((p) => /\.(fcs|lmd)$/i.test(p)).length} instrument and malformed files`, data.files.filter((p) => /\.(fcs|lmd)$/i.test(p)).map((p) => ({ name: p, bytes: data.read(p) })));
   },
   // External data: a BD LSRFortessa panel's 15 single-stain controls (Zenodo 22808501, CC BY 4.0)
   // and FACSDiva's own spillover matrix, computed from them and stored in the samples.

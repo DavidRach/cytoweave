@@ -8,6 +8,7 @@ import { createLibrary, detectBackend, prefs } from './ui/storage.js';
 import { mountSidebar } from './ui/sidebar.js';
 import { mountInspector } from './ui/inspector.js';
 import { installActions } from './ui/actions.js';
+import { installExportDialogs } from './ui/export-dialogs.js';
 import { openPalette } from './ui/palette.js';
 import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
 import { WorkerClient } from './ui/workers.js';
@@ -82,6 +83,7 @@ async function start() {
   };
 
   installActions(app);
+  installExportDialogs(app);
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
   app.exportCLR = () => import('./ui/import-flowjo.js').then((m) => m.exportCLRDialog(app));
   app.compareColumn = (table, column) => {
@@ -623,6 +625,8 @@ async function start() {
       { label: 'Workspace with FCS files (ACS archive)', icon: 'download', onSelect: exportBundle },
       { label: 'Gates as Gating-ML 2.0', icon: 'download', onSelect: exportGatingML },
       { label: 'Population memberships (CLR)…', icon: 'download', onSelect: () => app.exportCLR() },
+      { label: 'FlowJo workspace (.wsp)…', icon: 'download', onSelect: () => app.exportFlowJo() },
+      { label: 'De-identified FCS files…', icon: 'download', onSelect: () => app.exportDeidentified() },
       ...(store.ws.migrations?.length ? [{ label: 'FlowJo migration report…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
       '-',
       { section: 'Import' },
@@ -647,6 +651,8 @@ async function start() {
     { label: 'Save workspace now', icon: 'save', hint: `${modKey}S`, run: saveNow },
     { label: 'Export workspace file', icon: 'download', run: exportWorkspaceFile },
     { label: 'Export gates as Gating-ML', icon: 'download', run: exportGatingML },
+    { label: 'Export as a FlowJo workspace', icon: 'download', run: () => app.exportFlowJo(), keywords: 'wsp flowjo' },
+    { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymise privacy keywords' },
     { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },

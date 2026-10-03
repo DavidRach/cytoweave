@@ -210,6 +210,7 @@ export function installActions(app) {
     items.push(
       { label: 'New Boolean population…', icon: 'layers', disabled: !ws.gates.length, onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { operands: gate ? [gate.id] : [] })) },
       { label: 'Export events as FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs') },
+      { label: 'Export events as de-identified FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs', { deidentify: true }) },
       { label: 'Export events as CSV…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'csv') },
       { label: 'Add statistics to a table', icon: 'table', onSelect: () => { app.setMode('tables'); setTimeout(() => app.addPopulationToTable?.(gateId), 50); } },
       '-',
@@ -257,7 +258,7 @@ export function installActions(app) {
     ]);
   }
 
-  async function exportPopulation(gateId, sampleId, format) {
+  async function exportPopulation(gateId, sampleId, format, { deidentify = false } = {}) {
     const view = await data.ensure(sampleId);
     const ws = store.ws;
     const indices = population(view, ws, gateId ?? ROOT);
@@ -292,9 +293,14 @@ export function installActions(app) {
     keywords.$FIL = `${base}.fcs`;
     keywords.$ORIGINALITY = 'DataModified';
     keywords['CYTOWEAVE POPULATION'] = gate ? gatePath(ws, gate.id) : 'All events';
-    const bytes = writeFCS({ parameters: view.parameters.map((p) => ({ name: p.name, label: p.label, range: p.range })), data: view.parameters.map((p) => pick(view.raw.get(p.name))), keywords });
+    let written = keywords;
+    if (deidentify) {
+      const { deidentifyKeywords } = await import('../lib/deidentify.js');
+      written = deidentifyKeywords(keywords, { fileName: `${base}.fcs` }).keywords;
+    }
+    const bytes = writeFCS({ parameters: view.parameters.map((p) => ({ name: p.name, label: p.label, range: p.range })), data: view.parameters.map((p) => pick(view.raw.get(p.name))), keywords: written });
     downloadBlob(new Blob([bytes], { type: 'application/octet-stream' }), `${base}.fcs`);
-    toast(`Exported ${formatCount(n)} events.`, { kind: 'ok' });
+    toast(`Exported ${formatCount(n)} events${deidentify ? ' without identifying keywords' : ''}.`, { kind: 'ok' });
   }
 
   // --- Cohort review of a gate ---------------------------------------------------------------

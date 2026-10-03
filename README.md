@@ -125,7 +125,10 @@ guides to every view, with screenshots.
     versions of an analysis and how it moved every frequency.
 - **Interchange.**
   - FlowJo workspaces (.wsp), imported with a report of exactly what was
-    reproduced, plus a population-by-population count comparison.
+    reproduced, plus a population-by-population count comparison, and
+    exported with one gating tree per sample.
+  - De-identified FCS files: only technical keywords kept, the events copied
+    byte for byte.
   - Gating-ML 2.0 in and out, and classification results (CLR).
   - Archival Cytometry Standard containers that bundle the workspace with its
     FCS files.
@@ -579,7 +582,19 @@ moved or renamed. Deleted workspaces go to the library's `trash` folder.
 - an ACS container with the FCS files, to send to a colleague or archive with
   a paper;
 - the gates as Gating-ML;
-- population memberships as CLR.
+- population memberships as CLR;
+- a FlowJo workspace (see [below](#working-with-flowjo-and-other-tools));
+- de-identified FCS files, as a ZIP or as an ACS archive with the workspace.
+
+**De-identified files** keep the keywords needed to read and analyze them
+(parameters, markers, ranges, voltages, compensation, the instrument model, the
+time step, index-sort wells) and remove everything else: operator, specimen and
+patient fields, free-text comments, file names, dates (unless you keep them),
+serial numbers and vendor keywords. The dialog lists what it removes. Only the
+keyword text is rewritten; the events are copied byte for byte. Files are named
+after their samples, and sample names are kept, so rename any sample whose name
+identifies a person first. **Export events as de-identified FCS** in the
+population menu does the same for one population.
 
 ## Working with FlowJo and other tools
 
@@ -605,6 +620,23 @@ algorithm. On FlowJo's own test workspaces CytoWeave reproduces the counts
 FlowJo saved; on real workspaces it matches them exactly at least as often as
 FlowKit does, and within 0.1–0.3% for large populations (FlowJo evaluates
 gates at its display resolution, which moves events near gate boundaries).
+
+**Exporting to FlowJo.** **Workspace → Export → FlowJo workspace** writes a
+FlowJo 10 workspace (which FlowJo 11 also opens). Each sample gets its own
+gating tree: the gates that apply to it, with its own adjustments. The
+compensation, scales and sample groups go with it, and optionally CytoWeave's
+population counts and the FCS files in a ZIP (de-identified if you choose). The
+dialog lists every population as:
+- **exact**;
+- **traced**: drawn on a different scale than the one written for its
+  channel, so its outline is written with enough vertices to follow it;
+- **not exported**: category gates (QC pass, barcodes, clusters), gates on
+  channels CytoWeave computed (unmixed, normalized, ratios), and gates of three
+  or more dimensions, with their children.
+
+Every validation case imports back with its counts unchanged, and FlowKit
+reads every export and counts what CytoWeave counts. The exports have not yet
+been opened in FlowJo itself.
 
 **Gating-ML 2.0** import and export covers:
 - rectangle, polygon, ellipsoid, quadrant and Boolean gates, including gates
@@ -705,14 +737,16 @@ pipelines, as the app does, against answers known in advance:
 | Statistics | R 4.x | t-tests, Wilcoxon, Benjamini–Hochberg and t quantiles agree |
 | Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
 | FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-colour workspaces at least as close to FlowJo as FlowKit |
+| FlowJo export | The workspace imported back, and FlowKit reading the export | Every count unchanged in 12 workspaces; FlowKit counts what CytoWeave counts (ellipse boundaries aside) |
+| De-identification | Every example and corpus FCS file | The same events, bit for bit |
 | Reference tools | FlowKit 1.3.2 and FlowIO | FCS decoding, compensation, spectral unmixing and transforms agree |
 | FCS files | 16 instrument and malformed test files | All readable files read and written back bit-exact; malformed ones refused with a clear message |
 | R packages | flowCore, PeacoQC 1.22, FlowSOM and CytoNorm in R, on their example data and other public files | Values read, compensated and logicle-scaled within 1e-7; PeacoQC (classic) removes the same events; FlowSOM maps every event alike and agrees with R as closely as R agrees with itself; CytoNorm within 1e-5 |
 | BD FACSDiva | Its spillover matrix from 15 real single-stain controls | Every entry within 0.015 (median method), with no manual gating |
 
-The last six rows use public test data that `node validation/fetch.mjs`
-downloads and checksums. Details, tolerances and how to run it are in
-[validation/README.md](validation/README.md).
+The rows from Gating-ML down use public test data, which
+`node validation/fetch.mjs` downloads and checksums. Details, tolerances and
+how to run it are in [validation/README.md](validation/README.md).
 
 ## Privacy and security
 

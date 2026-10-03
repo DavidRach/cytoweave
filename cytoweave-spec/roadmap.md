@@ -108,26 +108,52 @@ shared columns.
 
 ## Then (0.3): beyond a single tool
 
-1. **Uncertainty-aware autogating (G9).** Learn per-sample adjustments of a
-   template from the user's own gated examples. Each sample gets a confidence
-   value; low-confidence samples go to the review queue instead of being
-   moved silently. Per-event probabilities export as CLR.
-2. **Provenance in figures (R5).** SVG and PDF exports embed the gates,
-   scales, matrices and file checksums they show, so a figure can be traced
-   to, and rebuilt from, its analysis.
-3. **Predicted spread for panel design (S6).** Compute the unmixed covariance
-   U Σ Uᵀ from the user's own reference library and the instrument's noise
-   model, and compare candidate panels before staining. This needs a
-   **spectral reference library (S7)** kept across experiments, and
-   **instrument characterization (Q5)**: Q and B, and Levey–Jennings charts
-   from bead files.
-4. **Acquisition-time QC (Q4).** The host watches the instrument's export
-   folder and runs QC on each file as it lands.
-5. **Counterfactual preprocessing.** Generalize the comparison of unmixing
-   models to every analysis choice: logicle width or cofactor, matrix, QC
-   thresholds, gate variants. Report whether the conclusion of a comparison
-   survives them.
-6. **FlowJo workspace export (I4)** and **FCS de-identification (D7).**
+Two waves. Wave 3 builds what no single tool combines, each part checked against a reference;
+wave 4 completes the release.
+
+### Wave 3
+
+1. **FlowJo workspace export (I4) and FCS de-identification (D7): done.**
+   - A workspace exports as a FlowJo 10 workspace: one gating tree per sample with its own
+     overrides and group scopes, compensation, scales, groups and, optionally, CytoWeave's counts
+     and the FCS files. Gates drawn on another scale than the one exported are traced with enough
+     vertices to follow their outline; populations FlowJo cannot evaluate (category gates, gates on
+     computed channels, gates of three or more dimensions) are reported and left out.
+   - Checked three ways: every case (the bundled example, ten FlowKit test workspaces and a
+     workspace built in CytoWeave with splits, quadrants on mixed scales, Booleans, overrides and
+     scopes) imports back with every count unchanged; FlowKit 1.3.2 reads every export and counts
+     what CytoWeave counts (ellipse boundaries aside, as on the originals); and FlowKit's counts on
+     an export equal its counts on the original workspace, or come closer to FlowJo's saved counts
+     (time gates, which the export writes in `$TIMESTEP` units).
+   - De-identification keeps an allowlist of technical keywords and removes everything else
+     (operator, specimen and patient fields, free text, file names, dates, serial numbers, vendor
+     keywords). Only the TEXT segment is rewritten; the events are copied byte for byte, checked on
+     every example and corpus file. It applies to population exports, the FlowJo export, a ZIP of
+     the files and an ACS archive whose workspace keeps none of the removed keywords.
+   - **To do:** open an export in FlowJo itself (no FlowJo licence was available while building
+     it): check that FlowJo 10 and 11 open it, find its FCS files, and show the same counts.
+2. **Provenance in figures (R5).** SVG and PDF exports embed the gates, scales, matrices and file
+   checksums they show, so a figure can be traced to, and rebuilt from, its analysis.
+3. **Uncertainty-aware autogating (G9).** Adapt each shared gate to each sample by density
+   landmark registration; give each sample a confidence; confident adjustments become proposals,
+   low-confidence samples go to a review queue. Learn corrections from the user's own per-sample
+   overrides; export per-event probabilities as CLR. Validated on simulated cohorts with batch
+   shifts (calibrated abstention) and on real multi-sample workspaces against human gates.
+4. **Instrument characterization (Q5) and a spectral reference library (S7).** Q and B from
+   multi-peak bead files (Parks 2017's weighted fit), Levey–Jennings charts across runs, and
+   reference spectra kept across experiments. Validated against the simulator's known Q and B and
+   against flowQB in R.
+
+### Wave 4
+
+1. **Predicted spread for panel design (S6)** from the library of wave 3 and the noise model,
+   validated against observed spread.
+2. **Acquisition-time QC (Q4):** the host watches the instrument's export folder; PeacoQC runs its
+   channels in parallel on the shared columns.
+3. **Counterfactual preprocessing:** whether a comparison's conclusion survives alternative scales,
+   matrices, QC thresholds and gate variants.
+4. **Accessibility (V4):** keyboard-only operation, labels on every control, colour maps checked
+   for colour-vision deficiency.
 
 ## Later
 - Branches of an analysis, three-way merge of non-conflicting edits, and
