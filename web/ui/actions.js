@@ -72,6 +72,21 @@ export function installActions(app) {
     return added.derived;
   };
 
+  // Adds more samples' columns to an existing derived record (more samples placed on a map).
+  // perSample: Map(sampleId → { channel: Float32Array }); params merge into the record's.
+  app.addDerivedSamples = async (recordId, perSample, params, label) => {
+    const { extendDerived } = await import('../lib/workspace.js');
+    const files = {};
+    for (const [sampleId, columns] of perSample) {
+      files[sampleId] = {};
+      for (const [name, column] of Object.entries(columns)) {
+        data.setDerived(sampleId, name, column);
+        files[sampleId][name] = await data.persistColumn(column);
+      }
+    }
+    store.commit(extendDerived(store.ws, recordId, files, params, label), label, ['derived', 'data']);
+  };
+
   // --- Plot export ------------------------------------------------------------------------------
 
   // Rebuilds a plot view's scene at export size with its gates, then writes SVG/PNG/clipboard.
@@ -184,6 +199,7 @@ export function installActions(app) {
         { label: 'Color', icon: 'tag', onSelect: () => showMenu(anchor, CATEGORICAL.map((color) => ({ label: color, swatch: color, onSelect: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate') }))) },
         { label: store.ui.backgate ? 'Stop backgating' : 'Backgate on ancestors', icon: 'backgate', hint: 'B', onSelect: () => { app.selectGate(gate.id); store.setUI({ backgate: !store.ui.backgate }, ['backgate']); } },
         '-',
+        gate.type === 'boolean' ? { label: 'Edit Boolean population…', icon: 'edit', onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { gateId: gate.id })) } : null,
         { label: 'Review across samples…', icon: 'target', onSelect: () => app.reviewGate(gate.id) },
         { label: 'Copy to another population…', icon: 'copy', onSelect: () => copyGateMenu(anchor, gate) },
         { label: 'Applies to', icon: 'layers', onSelect: () => scopeMenu(anchor, gate) },
@@ -192,6 +208,7 @@ export function installActions(app) {
       );
     }
     items.push(
+      { label: 'New Boolean population…', icon: 'layers', disabled: !ws.gates.length, onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { operands: gate ? [gate.id] : [] })) },
       { label: 'Export events as FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs') },
       { label: 'Export events as CSV…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'csv') },
       { label: 'Add statistics to a table', icon: 'table', onSelect: () => { app.setMode('tables'); setTimeout(() => app.addPopulationToTable?.(gateId), 50); } },

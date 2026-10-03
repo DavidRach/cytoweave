@@ -288,7 +288,8 @@ export function drawGates(ctx, scene, options = {}) {
     const color = gate.color ?? '#111827';
     ctx.strokeStyle = color;
     ctx.lineWidth = gate.selected ? 2.2 : 1.5;
-    ctx.setLineDash(gate.dashed ? [5, 4] : []);
+    // Dotted: proposed by an agent, not yet accepted; dashed: adjusted for this sample.
+    ctx.setLineDash(gate.proposed ? [2, 3] : gate.dashed ? [5, 4] : []);
     if (outline.kind === 'polygon') {
       ctx.beginPath();
       outline.points.forEach(([u, v], i) => (i ? ctx.lineTo(px(u), py(v)) : ctx.moveTo(px(u), py(v))));

@@ -88,8 +88,9 @@ CytoWeave is free and open source (Apache 2.0).
     check and before/after distances.
   - Bead normalization for mass cytometry, and debarcoding.
 - **Clustering and maps.**
-  - FlowSOM and Leiden (PhenoGraph) clustering, and UMAP, t-SNE and PCA
-    across samples.
+  - FlowSOM, Leiden (PhenoGraph), Louvain and k-means clustering, and UMAP,
+    t-SNE and PCA across samples; samples left out of a UMAP can be placed on
+    it afterwards.
   - Clusters are named from their marker enrichment and can become gateable
     populations.
   - Every map reports **how faithful it is**: trustworthiness, continuity,
@@ -130,7 +131,8 @@ CytoWeave is free and open source (Apache 2.0).
   barcoded plate, an index sort and a QC plate.
 - **Scripting and agents.** An MCP server lets AI agents such as Claude Code
   open data, gate, compute statistics, review gates and write methods in the
-  window you are watching. Every change can be undone.
+  window you are watching. Their changes arrive as proposals that you accept
+  or reject, and every change can be undone.
 - **Large files.** Samples of ten million events open in seconds and stay
   responsive: files are read in parts and never held whole, populations are
   kept as bitsets, and analyses in the background share the events rather
@@ -301,7 +303,16 @@ Right-click a population for more:
   sample group;
 - export of the population's events as FCS (raw values and the original
   keywords) or CSV;
+- **New Boolean population**: the events in all of, any of or none of chosen
+  populations, with a live count;
 - the **cell cycle** and **proliferation** models.
+
+An **index-sorted** sample shows its plate below the plots. Wells come from
+BD FACSDiva's `INDEX SORTING LOCATIONS` keyword or from well parameters such
+as "Index X" and "Index Y". Each well is colored by the population its cell
+falls in, or by a channel's value; selecting a population colors its wells.
+Clicking a well marks its cell on the plots, and the wells export as CSV with
+their populations and values.
 
 The **cell cycle** model fits Dean–Jett–Fox or Watson to the DNA content and
 suggests a singlet gate. The **proliferation** model fits generations of dye
@@ -402,9 +413,12 @@ degraded tandem.
 
 Pick a population, the samples (an equal number of events from each) and the
 markers. Then run:
-- **FlowSOM** or **Leiden** (PhenoGraph) clustering on every event of the
-  population;
+- **FlowSOM**, **Leiden** (PhenoGraph), **Louvain** or **k-means**
+  clustering on every event of the population;
 - **UMAP**, **t-SNE** or **PCA** on the sampled events.
+
+**Place samples on this map** positions other samples' events on a finished
+UMAP without changing it, so later samples can be compared on the same map.
 
 Clusters are named from their marker enrichment (MEM). The heatmap shows each
 cluster's median of every marker. **Make populations of the clusters** turns
@@ -605,10 +619,14 @@ claude mcp add cytoweave -- ~/.local/bin/cytoweave mcp
 > then CD4 and CD8 T cells, and tell me how the CD4:CD8 ratio differs between
 > stimulated and unstimulated samples.
 
-The agent works through the same actions as you do. Its gates are marked as
-added by an agent, every change appears in the change log, and any of it can
-be undone. See [Using CytoWeave with AI agents](docs/MCP.md) for the 15 tools,
-other clients and how it works.
+The agent works through the same actions as you do, and its changes are
+proposals. Its gates appear at once, marked as proposed, with real counts;
+its renames, deletions and compensation matrices wait. A strip above the
+population tree lets you review the proposal, then accept or reject it as a
+whole. The change log records which agent proposed what and what you decided,
+and any change can be undone. See
+[Using CytoWeave with AI agents](docs/MCP.md) for the 17 tools, other clients
+and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
 scripts) with `--remote-control`; [docs/MCP.md](docs/MCP.md#scripts-without-an-agent)
@@ -755,7 +773,8 @@ code and in the methods text it writes, among them:
 - PeacoQC (Emmaneel et al.);
 - FlowSOM (Van Gassen et al.);
 - UMAP (McInnes et al.) and t-SNE (van der Maaten & Hinton);
-- Leiden (Traag et al.);
+- Leiden (Traag et al.) and Louvain (Blondel et al.);
+- k-means++ (Arthur & Vassilvitskii) and Hamerly's k-means;
 - CytoNorm (Van Gassen et al.);
 - the spillover spreading matrix (Nguyen et al.);
 - MEM (Diggins et al.);

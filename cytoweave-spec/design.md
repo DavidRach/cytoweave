@@ -150,7 +150,22 @@ FCS bytes ─parseFCS→ columns (Float32, linear scale values)
   them.
 - **Scopes** limit a gate to a sample group.
 - **Gates on derived channels.** Category gates select cluster labels.
-  Boolean gates combine others (and, or, not).
+  Boolean gates combine others (and, or, not) within their parent: "not" is
+  the parent minus the operands. They are made from the population menu
+  (all of / any of / none of chosen populations, with a live count). A gate
+  cannot use itself, its descendants, or Boolean gates that depend on them.
+
+### Index sorting
+
+`web/lib/indexsort.js` reads each sorted event's well from BD FACSDiva's
+`INDEX SORTING LOCATIONS` keyword ("row,column;", 0-based, in event order) or
+from well-coordinate parameters ("Index X"/"Index Y" and similar). It sizes
+the plate from `INDEX SORTING DEVICE TYPE` or from the positions. In Gate mode,
+an index-sorted sample shows its plate below the plots:
+- Wells are colored by the deepest population their cell is in, or by a chosen
+  population or channel. Selecting a population in the tree colors its wells.
+- Clicking a well marks its cell on every plot of the sample.
+- The wells, their populations and values export as CSV.
 
 ### Populations and caching
 
@@ -268,8 +283,15 @@ be cancelled. Long loops check an abort signal and report progress.
   render plots, create, auto-place, edit and review gates, compare groups,
   write methods and export Gating-ML (`docs/MCP.md`).
   - Agents act through the same commands as the user.
-  - Gates they create are marked with their origin, appear in the change log
-    and can be undone.
+  - Their changes are proposals (`web/lib/proposals.js`), one open proposal
+    per agent, accepted or rejected as a group. New gates are added at once,
+    marked as proposed, so their counts are real and the agent can gate on
+    them; edits and deletions of accepted gates, and compensation matrices,
+    are held until accepted. Rejecting removes the proposed gates.
+  - The change log records each decision with the agent's name (from the MCP
+    client's `clientInfo`, or the `client` a script gives) and who decided.
+    Accepted gates keep `proposedBy` and `acceptedBy`, which the inspector and
+    the methods paragraph report.
   - Agents read numbers and text descriptions, not screenshots.
 
 ## Features that go beyond existing tools, and how they work
@@ -325,6 +347,12 @@ be cancelled. Long loops check an abort signal and report progress.
   - mixing (LISI, entropy) by sample or batch;
   - per-event reliability, which can shade unreliable regions;
   - plain-language warnings.
+
+  Samples left out of a UMAP can be placed on it afterwards with UMAP's
+  transform (each event among its nearest neighbours of the map's own events;
+  the map does not change). Placed events get no quality measures of their
+  own: a sample unlike any on the map lands on its nearest look-alikes, which
+  the dialog and the methods paragraph say.
 - **Methods and MIFlowCyt.** The Report view writes a methods paragraph from
   what the workspace actually did, with numbered references and DOIs:
   instrument, panel, compensation source, scales, gating hierarchy,

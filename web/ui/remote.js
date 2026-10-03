@@ -7,7 +7,9 @@ import { createTransform } from '../lib/transforms.js';
 import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
 import { densityGateAt, suggestSinglets, valleyThreshold } from '../lib/autogate.js';
-import { ROOT, addGates, gateById, gatePath, removeGate, uniqueGateName, updateGate } from '../lib/workspace.js';
+import { ROOT, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
+import { describeProposal, openProposals, proposalHistory, proposeCompensation, proposeGateEdit, proposeGateRemoval, proposeGates } from '../lib/proposals.js';
+import { spilloverFromControls } from './controls.js';
 import { describe } from '../lib/stats.js';
 import { toast } from './overlays.js';
 
@@ -24,6 +26,8 @@ const round = (v, digits = 4) => (Number.isFinite(v) ? +v.toPrecision(digits) : 
 export function installRemote(app) {
   const { store, data } = app;
   const ws = () => store.ws;
+  // Who sent the action being performed (an MCP client's name, or a script's).
+  let author = 'an AI agent';
 
   // --- Resolution of names ------------------------------------------------------------------------
 
@@ -320,15 +324,18 @@ export function installRemote(app) {
       if (id === ROOT) throw new ActionError('All events is not a gate.');
       const gate = gateById(ws(), id);
       if (args.delete) {
-        store.commit(removeGate(ws(), id), `Delete ${gate.name} (agent)`);
-        return { message: `Deleted ${gate.name} and its subpopulations. The user can undo this.` };
+        const result = proposeGateRemoval(ws(), author, id);
+        store.commit(result.ws, `${author} ${result.held ? 'proposed deleting' : 'deleted'} ${gate.name}`);
+        if (result.held) toast(`${author} proposes deleting ${gate.name}. Review the proposal to accept or reject it.`);
+        return { message: result.held ? `Proposed deleting ${gate.name} and its subpopulations; it stays until the user accepts your proposal.` : `Deleted ${gate.name}, which you had proposed, with its subpopulations.`, data: { proposal: proposalSummary() } };
       }
       const patch = {};
-      if (args.name) patch.name = String(args.name);
+      if (args.name && String(args.name) !== gate.name) patch.name = uniqueGateName(ws(), gate.parentId, String(args.name));
       if (args.color && /^#[0-9a-f]{6}$/i.test(args.color)) patch.color = args.color;
       if (!Object.keys(patch).length) throw new ActionError('Give a new name, a color or delete: true.');
-      store.commit(updateGate(ws(), id, patch), `Edit ${gate.name} (agent)`);
-      return { message: `Updated ${gatePath(ws(), id)}.` };
+      const result = proposeGateEdit(ws(), author, id, patch);
+      store.commit(result.ws, `${author} ${result.held ? 'proposed changing' : 'changed'} ${gate.name}`);
+      return { message: result.held ? `Proposed the change to ${gatePath(ws(), id)}; it applies when the user accepts your proposal.` : `Updated ${gatePath(ws(), id)}.`, data: { proposal: proposalSummary() } };
     },
 
     async review_gate(args) {
@@ -354,6 +361,37 @@ export function installRemote(app) {
       rows.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
       const outliers = rows.filter((r) => Math.abs(r.z) > 3).map((r) => r.sample);
       return { message: `${gate.name}: median ${median.toFixed(2)}% of parent across ${rows.length} samples${outliers.length ? `; outliers: ${outliers.join(', ')}` : '; no outliers'}.`, data: { population: gatePath(ws(), id), median: round(median), rows } };
+    },
+
+    async propose_compensation(args) {
+      const gateId = args.population ? resolvePopulation(args.population) : ROOT;
+      const unstained = args.unstained ? resolveSample(args.unstained) : null;
+      const method = args.method === 'regression' ? 'regression' : 'median';
+      let result;
+      try {
+        result = await spilloverFromControls(data, ws(), { gateId: gateId === ROOT ? null : gateId, unstainedId: unstained?.id ?? null, method });
+      } catch (error) {
+        throw new ActionError(`${error.message} Single-stain controls have the role "single-stain" and a stained channel (workspace_summary lists the samples).`);
+      }
+      const targets = args.samples?.length ? args.samples.map((s) => resolveSample(s)) : ws().samples.filter((s) => s.role !== 'single-stain' && s.role !== 'unstained');
+      if (!targets.length) throw new ActionError('No samples to apply the matrix to.');
+      const name = `Proposed by ${author} (${method}, ${new Date().toLocaleDateString()})`;
+      const proposed = proposeCompensation(ws(), author, { name, channels: result.detectors, matrix: result.matrix, source: 'computed', method, report: result.report }, targets.map((s) => s.id));
+      store.commit(proposed.ws, `${author} proposed a compensation matrix`);
+      toast(`${author} proposes a compensation matrix from ${result.controls.length} controls. Review the proposal to accept or reject it.`);
+      const n = result.detectors.length;
+      const largest = [];
+      for (let i = 0; i < n; i += 1) for (let j = 0; j < n; j += 1) if (i !== j) largest.push({ from: result.detectors[i], into: result.detectors[j], spillover: round(result.matrix[i * n + j], 3) });
+      largest.sort((a, b) => b.spillover - a.spillover);
+      const warnings = result.report.flatMap((r) => (r.warnings ?? []).map((w) => `${r.control}: ${w}`));
+      return { message: `Proposed a ${n}×${n} matrix from ${result.controls.length} single-stain controls for ${targets.length} sample${targets.length === 1 ? '' : 's'}; it applies when the user accepts your proposal.${warnings.length ? ` Warnings: ${warnings.slice(0, 4).join(' ')}` : ''}`, data: { detectors: result.detectors, largest: largest.slice(0, 12), warnings, proposal: proposalSummary() } };
+    },
+
+    async proposals() {
+      const history = proposalHistory(ws(), 10).map((e) => ({ time: e.time, decision: e.action === 'accept-proposal' ? 'accepted' : 'rejected', detail: e.detail }));
+      const mine = proposalSummary();
+      const others = openProposals(ws()).filter((p) => p.author !== author).map((p) => ({ author: p.author, changes: describeProposal(ws(), p).map((i) => i.text) }));
+      return { message: `${mine ? `Your open proposal: ${mine.changes.join('; ') || 'nothing left'}.` : 'You have no open proposal.'}${history.length ? ` Latest decision: ${history[0].decision} (${history[0].time}).` : ''}`, data: { open: mine, others, decisions: history } };
     },
 
     async compare(args) {
@@ -418,6 +456,7 @@ export function installRemote(app) {
     },
   };
 
+  // Adds gates as a proposal of the agent, for the user to review.
   function commitGates(gates, { parentId, dims, name, view, origin, method, explanation }) {
     const w = ws();
     const meta = { origin, method, note: explanation, created: new Date().toISOString() };
@@ -431,16 +470,21 @@ export function installRemote(app) {
       name: uniqueGateName(w, parentId, g.name ?? name ?? defaultName(view, g.dims ?? dims, g)),
       meta,
     }));
-    const result = addGates(w, records, 'add-gate-agent');
-    store.commit(result.ws, `Add ${records.map((r) => r.name).join(', ')} (${origin === 'auto' ? 'proposed' : 'agent'})`);
+    const result = proposeGates(w, author, records);
+    store.commit(result.ws, `${author} proposed ${records.map((r) => r.name).join(', ')}`);
     app.selectGate(records[records.length > 1 ? 1 : 0].id, { keepMode: true });
-    toast(`${origin === 'auto' ? 'Proposed' : 'An agent added'} ${records.map((r) => r.name).join(', ')}. Undo with ${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}Z.`);
+    toast(`${author} proposed ${records.map((r) => r.name).join(', ')}. Review the proposal to keep or discard it.`);
     const parent = populationSet(view, store.ws, parentId ?? ROOT);
     const created = records.map((r) => {
       const indices = populationSet(view, store.ws, r.id);
       return { population: gatePath(store.ws, r.id), count: indices === undefined ? null : countOf(indices, view), percentOfParent: indices === undefined ? null : round((100 * countOf(indices, view)) / (countOf(parent, view) || 1)) };
     });
-    return { message: `${created.map((c) => `${c.population}: ${c.percentOfParent}% of parent (${c.count} events)`).join('; ')} in ${view.record.name}.${explanation ? ` ${explanation}` : ''}`, data: { created } };
+    return { message: `Proposed ${created.map((c) => `${c.population}: ${c.percentOfParent}% of parent (${c.count} events)`).join('; ')} in ${view.record.name}.${explanation ? ` ${explanation}` : ''} The user will accept or reject your proposal; meanwhile the populations can be used as parents.`, data: { created, proposal: proposalSummary() } };
+  }
+
+  function proposalSummary() {
+    const proposal = openProposals(ws()).find((p) => p.author === author);
+    return proposal ? { id: proposal.id, opened: proposal.opened, changes: describeProposal(ws(), proposal).map((i) => i.text) } : null;
   }
 
   function defaultName(view, dims, gate) {
@@ -457,6 +501,7 @@ export function installRemote(app) {
       const handler = actions[event.action];
       if (!handler) throw new ActionError(`Unknown action "${event.action}". Actions: ${Object.keys(actions).join(', ')}.`);
       const args = typeof event.args === 'object' && event.args ? event.args : {};
+      author = event.client || 'a program on this computer';
       const result = await handler(args, event);
       outcome = { ok: true, message: result.message ?? 'Done.', data: result.data ?? null };
     } catch (error) {

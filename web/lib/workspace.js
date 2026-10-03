@@ -36,6 +36,8 @@ export function createWorkspace(name = 'Untitled workspace') {
     tables: [],
     comparisons: [],
     checkpoints: [],
+    // Changes from agents waiting for the user's review (proposals.js).
+    proposals: [],
     notes: '',
     provenance: [{ time, action: 'create', detail: name }],
   };
@@ -376,6 +378,60 @@ export function removeGate(ws, id) {
   return touch(ws, { gates: ws.gates.filter((g) => !doomed.has(g.id)), plots: (ws.plots ?? []).filter((p) => !doomed.has(p.populationId)) }, 'remove-gate', gate?.name ?? id);
 }
 
+// --- Boolean populations -------------------------------------------------------------------
+//
+// A Boolean gate combines other populations: 'and' (in all of them), 'or' (in any of them) or
+// 'not' (in none of them), within its parent: the engine intersects the combination with the
+// parent's events ('not' is the parent minus the operands).
+
+export const BOOLEAN_OPS = { and: 'all of', or: 'any of', not: 'none of' };
+
+// Gates a Boolean gate may combine or sit under: not itself or anything that depends on it (its
+// descendants, and Boolean gates that use those), which would make it depend on itself.
+export function booleanCandidates(ws, gateId = null) {
+  if (!gateId) return ws.gates.slice();
+  const dependent = new Set([gateId, ...gateDescendants(ws, gateId).map((g) => g.id)]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const g of ws.gates) {
+      if (dependent.has(g.id)) continue;
+      if (g.type === 'boolean' && (g.geometry?.operands ?? []).some((id) => dependent.has(id))) {
+        dependent.add(g.id);
+        for (const d of gateDescendants(ws, g.id)) dependent.add(d.id);
+        changed = true;
+      }
+    }
+  }
+  return ws.gates.filter((g) => !dependent.has(g.id));
+}
+
+// A default name: "CD4+ and CD25+", "B or NK", "not Debris".
+export function booleanName(ws, op, operands) {
+  const names = operands.map((id) => gateById(ws, id)?.name ?? '?');
+  if (op === 'not') return `not ${names.join(' or ')}`;
+  return names.join(op === 'and' ? ' and ' : ' or ');
+}
+
+// Adds a Boolean gate ({ op, operands, parentId, name }), or with `id` changes an existing one.
+// Returns { ws, gate }.
+export function setBooleanGate(ws, { id = null, op, operands, parentId = null, name }) {
+  if (!BOOLEAN_OPS[op]) throw new Error(`Unknown Boolean operator ${op}.`);
+  const allowed = new Set(booleanCandidates(ws, id).map((g) => g.id));
+  if (!operands.length) throw new Error('Choose at least one population to combine.');
+  for (const operand of operands) if (!allowed.has(operand)) throw new Error('A Boolean population cannot use itself or a population under it.');
+  const parent = parentId === ROOT ? null : parentId;
+  if (parent && !allowed.has(parent)) throw new Error('A Boolean population cannot sit under itself.');
+  const geometry = { op, operands: [...new Set(operands)] };
+  const gateName = (name ?? '').trim() || booleanName(ws, op, geometry.operands);
+  if (id) {
+    const next = touch(ws, { gates: ws.gates.map((g) => (g.id === id ? { ...g, geometry, parentId: parent, name: gateName } : g)) }, 'edit-boolean-gate', gateName);
+    return { ws: next, gate: gateById(next, id) };
+  }
+  const added = addGates(ws, [{ name: uniqueGateName(ws, parent, gateName), parentId: parent, type: 'boolean', dims: [], geometry }], 'add-boolean-gate');
+  return { ws: added.ws, gate: added.gates[0] };
+}
+
 // Copies a gate (and its subtree) under another parent, e.g. to repeat a strategy elsewhere.
 export function copyGateSubtree(ws, id, newParentId) {
   const root = gateById(ws, id);
@@ -430,6 +486,13 @@ export function addDerived(ws, record) {
   return { ws: touch(ws, { derived: [...ws.derived.filter((d) => d.id !== entry.id), entry] }, `derive-${record.kind}`, record.name ?? record.kind), derived: entry };
 }
 
+// Adds per-sample files ({ sampleId: { channel: ref } }) and parameters to a derived record, as
+// when more samples are placed on an existing map.
+export function extendDerived(ws, id, files, params = {}, detail = '') {
+  const derived = ws.derived.map((d) => (d.id === id ? { ...d, files: { ...(d.files ?? {}), ...files }, params: { ...(d.params ?? {}), ...params } } : d));
+  return touch(ws, { derived }, 'extend-derived', detail || id);
+}
+
 export function removeDerived(ws, id) {
   return touch(ws, { derived: ws.derived.filter((d) => d.id !== id) }, 'remove-derived', id);
 }
@@ -466,7 +529,7 @@ export function parseWorkspace(text) {
   if (doc.version > FORMAT_VERSION) throw new WorkspaceError(`The workspace was written by a newer CytoWeave (format ${doc.version}); please update.`);
   const base = createWorkspace(doc.name);
   const ws = { ...base, ...doc };
-  for (const key of ['samples', 'groups', 'compensations', 'gates', 'plots', 'derived', 'figures', 'tables', 'comparisons', 'checkpoints', 'migrations', 'provenance']) if (!Array.isArray(ws[key])) ws[key] = [];
+  for (const key of ['samples', 'groups', 'compensations', 'gates', 'plots', 'derived', 'figures', 'tables', 'comparisons', 'checkpoints', 'migrations', 'proposals', 'provenance']) if (!Array.isArray(ws[key])) ws[key] = [];
   if (!ws.channelSettings || typeof ws.channelSettings !== 'object') ws.channelSettings = {};
   // Gates whose parents are missing are re-rooted rather than lost.
   const ids = new Set(ws.gates.map((g) => g.id));

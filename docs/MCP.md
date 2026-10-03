@@ -6,10 +6,11 @@ gating tree, add gates (drawn from coordinates or proposed from the data's densi
 statistics across samples, render plots as images, review a gate across a cohort, compare groups
 of samples and write a methods paragraph.
 
-The agent works in the CytoWeave window you see. You watch what it does, every change it makes
-appears in the gating tree and the history, and you can undo any of it.
+The agent works in the CytoWeave window you see. Its changes are proposals that you accept or
+reject (see [Proposals](#proposals)), and you can undo anything.
 
 - [Requirements](#requirements)
+- [Proposals](#proposals)
 - [Claude Code](#claude-code)
 - [Claude Desktop and other clients](#claude-desktop-and-other-clients)
 - [Tools](#tools)
@@ -17,6 +18,25 @@ appears in the gating tree and the history, and you can undo any of it.
 - [Scripts without an agent](#scripts-without-an-agent)
 - [Privacy and security](#privacy-and-security)
 - [How it works](#how-it-works)
+
+## Proposals
+
+An agent's changes wait for your review:
+- **New gates** appear at once, marked *proposed*: dotted on the plots and in italics in the
+  population tree. Their counts are real, so you can judge them, and the agent can gate on them.
+- **Renaming or deleting** gates you have accepted, and **compensation matrices**
+  (`propose_compensation`), are held. The tree shows a held rename next to the name (→ new
+  name) and strikes through a population the agent proposes to delete.
+
+A strip above the population tree says who proposes how many changes. Click **Review** for the
+list with each new population's frequency, then **Accept all** or **Reject all**. Rejecting
+removes the proposed gates, together with anything drawn under them since; CytoWeave asks first
+in that case.
+
+The change log records each decision: what was proposed, by which agent (the name its MCP
+client gives, such as Claude Code), and that you accepted or rejected it. Accepted gates keep
+this, and the inspector and the methods paragraph show it. The agent can ask for the outcome
+with `proposals`.
 
 ## Requirements
 
@@ -69,9 +89,11 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `population_statistics` | Count, frequencies and per-channel statistics (median, mean, geometric mean, SD, robust SD, CV, robust CV, percentiles) of a population. |
 | `statistics_table` | A statistic of populations across samples (or a group). |
 | `render_plot` | A PNG of a plot (pseudocolor, dot, density, contour, zebra or histogram) with its gates. |
-| `create_gate` | Adds a rectangle, polygon, ellipse, range, quadrant or split gate from data coordinates. |
-| `auto_gate` | Adds a gate found from the data: the density basin around a point ("magic wand"), singlets on area versus height, or the valley between two modes. |
-| `edit_gate` | Renames, recolors or deletes a population. |
+| `create_gate` | Proposes a rectangle, polygon, ellipse, range, quadrant or split gate from data coordinates. |
+| `auto_gate` | Proposes a gate found from the data: the density basin around a point ("magic wand"), singlets on area versus height, or the valley between two modes. |
+| `edit_gate` | Renames, recolors or deletes a population (held for review unless the agent proposed it). |
+| `propose_compensation` | Computes a spillover matrix from the workspace's single-stain controls and proposes it for the samples. |
+| `proposals` | The agent's open proposal and your recent decisions. |
 | `review_gate` | A gate's frequency on every sample with a robust z-score and its boundary robustness, outliers first. |
 | `compare` | Tests a statistic between groups of samples defined by metadata, optionally paired. |
 | `methods` | A methods paragraph with numbered references. |
@@ -99,6 +121,9 @@ print(requests.post(url, json={"action": "list_populations"}).json())
 print(requests.post(url, json={"action": "statistics_table", "args": {"statistic": "freqParent"}}).json())
 ```
 
+A script's changes are proposals too, shown under the name it gives in `"client"` (for
+example `{"action": "create_gate", "client": "Plate pipeline", "args": {…}}`).
+
 `open_files` also needs the `X-CytoWeave-Token` header with the token CytoWeave prints when it
 starts, because it makes the program read files.
 
@@ -106,8 +131,8 @@ starts, because it makes the program read files.
 
 - Everything runs on this computer: the server only accepts requests from this computer, and
   the data never leave it.
-- Agents act through the same window you use; nothing happens out of sight, and every change can
-  be undone.
+- Agents act through the same window you use; nothing happens out of sight. Their changes are
+  proposals you accept or reject, and every change can be undone.
 - Opening files by path is limited to the agent connected over stdio (MCP) or to scripts that
   hold the token printed at startup.
 

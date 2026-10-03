@@ -5,7 +5,7 @@ import { showMenu, toast } from './overlays.js';
 import { channelTransform, countOf, describePopulation, gateRobustness, isMultidimensional, populationSet } from '../lib/engine.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { formatStatistic, wilsonInterval } from '../lib/stats.js';
-import { ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
+import { BOOLEAN_OPS, ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
 import { CATEGORICAL } from '../lib/colormaps.js';
 import { isInteracting } from './activity.js';
 
@@ -73,10 +73,19 @@ export function mountInspector(app) {
         pinnedText ? [h('dt', 'Compensation'), h('dd', { title: 'This gate keeps the compensation its Gating-ML file names, whatever the sample uses.' }, pinnedText)] : null,
         h('dt', 'Path'), h('dd', { title: gatePath(ws, gate.id) }, gatePath(ws, gate.id)),
         h('dt', 'Applies to'), h('dd', gate.scope?.groupId ? ws.groups.find((g) => g.id === gate.scope.groupId)?.name ?? 'a group' : 'All samples'),
-        h('dt', 'Origin'), h('dd', gate.meta?.origin === 'auto' ? `Proposed from the data (${gate.meta.method ?? 'density'})` : gate.meta?.origin === 'imported' ? 'Imported' : gate.meta?.origin === 'agent' ? 'Added by an AI agent' : 'Drawn')),
+        h('dt', 'Origin'), h('dd', gate.meta?.proposedBy
+          ? `Proposed by ${gate.meta.proposedBy}${gate.meta.origin === 'auto' ? ` from the data (${gate.meta.method ?? 'density'})` : ''}${gate.meta.acceptedBy ? `; accepted by ${gate.meta.acceptedBy}` : '; waiting for your review'}`
+          : gate.meta?.origin === 'auto' ? `Proposed from the data (${gate.meta.method ?? 'density'})` : gate.meta?.origin === 'imported' ? 'Imported' : gate.meta?.origin === 'agent' ? 'Added by an AI agent' : 'Drawn')),
     ];
     if (gate.meta?.note) content.push(h('div.callout.accent', { style: { marginTop: '8px' } }, icon('sparkles'), h('span', gate.meta.note)));
-    content.push(geometryEditor(gate, geometry, sampleId));
+    if (gate.type === 'boolean') {
+      const operands = (geometry.operands ?? []).map((id) => gateById(ws, id)?.name ?? 'a missing population');
+      content.push(h('div', { style: { marginTop: '10px', fontSize: '12.5px' } },
+        h('div', `In ${BOOLEAN_OPS[geometry.op] ?? geometry.op}: ${operands.join(', ')}.`),
+        h('button.btn.small', { type: 'button', style: { marginTop: '8px' }, onclick: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { gateId: gate.id })) }, icon('edit'), 'Edit')));
+    } else {
+      content.push(geometryEditor(gate, geometry, sampleId));
+    }
     if (overridden || overrideCount) {
       content.push(h('div.callout.warn', { style: { marginTop: '8px' } }, icon('info'),
         h('div', overridden ? 'This gate is adjusted for this sample.' : `Adjusted for ${overrideCount} other sample(s).`,

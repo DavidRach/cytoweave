@@ -8,6 +8,8 @@ import { gateOutline, plotPointToGate, simplifyPolyline, pointTest, translateGeo
 import { channelTransform, countOf, evaluateGate, populationSet } from '../lib/engine.js';
 import { EventSet } from '../lib/eventset.js';
 import { interactionEnded, interactionStarted } from './activity.js';
+import { proposalOfGate } from '../lib/proposals.js';
+import { markedEvents } from './plate-view.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { ROOT, addGates, channelLabel, effectiveGeometry, gateAncestors, gateById, gateChildren, setGateGeometry, uniqueGateName } from '../lib/workspace.js';
 import { densityGateAt, valleyThreshold } from '../lib/autogate.js';
@@ -311,7 +313,8 @@ export function createPlotView(app, initial) {
     scene.gates = items.map(({ gate, geometry, outline }) => ({
       id: gate.id,
       outline,
-      name: compact && items.length > 2 ? '' : gate.name,
+      name: compact && items.length > 2 ? '' : proposalOfGate(ws(), gate) ? `${gate.name} (proposed)` : gate.name,
+      proposed: Boolean(proposalOfGate(ws(), gate)),
       label: parentIndices === undefined ? '' : gateLabel(view, gate, geometry, parentIndices),
       color: gate.color,
       selected: gate.id === selectedId || (gate.linkId && gateById(ws(), selectedId)?.linkId === gate.linkId),
@@ -319,6 +322,7 @@ export function createPlotView(app, initial) {
       level: 0.55,
     }));
     drawGates(ctx, scene, { handles: !compact });
+    drawMarked(ctx, view, dims);
     if (draft) drawDraft(ctx);
     if (hoverPoint && !draft && !drag && scene) {
       const [u, v] = hoverPoint;
@@ -327,6 +331,39 @@ export function createPlotView(app, initial) {
       if (dims[1]) parts.push(`y ${formatNumber(createTransform(dims[1].transform).inverse(v))}`);
       readout.textContent = parts.join('  ');
     }
+  }
+
+  // Cells marked from the index-sort plate: a ring (a line on a histogram) with the well's name.
+  function drawMarked(ctx, view, dims) {
+    const marked = app.store.ui.marked;
+    if (!marked || marked.sampleId !== sampleId) return;
+    const events = markedEvents(app.store, sampleId, spec.populationId, view, ws());
+    if (!events.length) return;
+    const xs = view.scaled(spec.x, dims[0].transform);
+    const ys = dims[1] ? view.scaled(spec.y, dims[1].transform) : null;
+    const r = scene.plotRect;
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    ctx.save();
+    for (const e of events) {
+      const [px, py] = toPixel(scene, xs[e], ys ? ys[e] : 0.5);
+      const x = clamp(px, r.x, r.x + r.w);
+      const y = clamp(py, r.y, r.y + r.h);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      if (ys) {
+        ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#e8590c';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        ctx.strokeStyle = '#e8590c';
+        ctx.beginPath(); ctx.moveTo(x, r.y); ctx.lineTo(x, r.y + r.h); ctx.stroke();
+      }
+      ctx.font = '600 11px Inter, system-ui, sans-serif';
+      ctx.fillStyle = '#e8590c';
+      ctx.fillText(marked.well, Math.min(x + 10, r.x + r.w - 28), Math.max(y - 9, r.y + 11));
+    }
+    ctx.restore();
   }
 
   function drawDraft(ctx) {
@@ -827,6 +864,7 @@ export function createPlotView(app, initial) {
     render: schedule,
     setSpec,
     canvas: () => [base, overlay],
+    refreshOverlay: () => scheduleOverlay(),
     destroy() {
       destroyed = true;
       // A plot removed while a gate was being moved or drawn (the view changed) ends that.

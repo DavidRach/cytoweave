@@ -124,6 +124,17 @@ func TestMCPToolCallsReachThePage(t *testing.T) {
 	if args["x"] != "CD3" {
 		t.Fatalf("arguments not passed: %s", seen.Args)
 	}
+	if seen.Client != "an AI agent" {
+		t.Fatalf("an unnamed client should be called an AI agent, not %q", seen.Client)
+	}
+	// The page learns which agent acts (it records it with the agent's proposals).
+	runLines(t, server,
+		`{"jsonrpc":"2.0","id":3,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"claude-code","title":"Claude Code\u0007"}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"workspace_summary","arguments":{}}}`,
+	)
+	if seen.Client != "Claude Code" {
+		t.Fatalf("client %q", seen.Client)
+	}
 }
 
 func TestMCPRequiredArgumentsAndMissingPage(t *testing.T) {

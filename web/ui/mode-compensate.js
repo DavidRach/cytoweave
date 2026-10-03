@@ -3,7 +3,8 @@
 
 import { h, icon, clear, formatCount } from './dom.js';
 import { showMenu, toast, progressToast, promptDialog, confirmDialog } from './overlays.js';
-import { computeSpillover, conditionNumber, compensate, controlResiduals, leanCheck, spilloverSpreading, identityMatrix } from '../lib/compensation.js';
+import { conditionNumber, compensate, controlResiduals, leanCheck, identityMatrix } from '../lib/compensation.js';
+import { spilloverFromControls } from './controls.js';
 import { readSpillover } from '../lib/fcs.js';
 import { buildPlotScene, drawScene } from '../lib/plot.js';
 import { channelTransform, population } from '../lib/engine.js';
@@ -123,45 +124,15 @@ export function mountCompensateMode(app, container) {
   }
 
   async function computeFromControls(controls, gateId, unstainedId, method) {
-    const ws = store.ws;
     const usable = controls.filter((c) => c.stain);
     if (usable.length < 2) {
       toast('Assign a stained channel to at least two controls.', { kind: 'error' });
       return;
     }
-    const detectors = [...new Set(usable.map((c) => c.stain))];
     const progress = progressToast('Computing spillover from controls…');
     try {
-      const pick = (view, indices, channel) => {
-        const column = view.raw.get(channel);
-        if (!indices) return column;
-        const out = new Float32Array(indices.length);
-        for (let i = 0; i < indices.length; i += 1) out[i] = column[indices[i]];
-        return out;
-      };
-      const inputs = [];
-      let i = 0;
-      for (const control of usable) {
-        const view = await data.ensure(control.id);
-        const indices = population(view, ws, gateId);
-        const columns = {};
-        for (const d of detectors) if (view.raw.has(d)) columns[d] = pick(view, indices ?? null, d);
-        inputs.push({ channel: control.stain, columns, name: control.name });
-        i += 1;
-        progress.update(i / (usable.length + 1), `Reading ${control.name}`);
-      }
-      let unstained = null;
-      if (unstainedId) {
-        const view = await data.ensure(unstainedId);
-        const indices = population(view, ws, gateId);
-        unstained = { columns: Object.fromEntries(detectors.filter((d) => view.raw.has(d)).map((d) => [d, pick(view, indices ?? null, d)])) };
-      }
-      const result = computeSpillover(inputs, detectors, { method, unstained, range: 262144 });
-      // Spreading from the compensated controls.
-      const compensatedControls = inputs.map((input) => ({ channel: input.channel, columns: compensate(input.columns, { channels: detectors, matrix: result.matrix }) }));
-      const spreading = spilloverSpreading(compensatedControls, detectors);
-      const report = result.report.map((r, k) => ({ ...r, control: inputs[k]?.name }));
-      const added = addCompensation(store.ws, { name: `Computed ${new Date().toLocaleDateString()} (${method})`, channels: detectors, matrix: result.matrix, source: 'computed', method, report });
+      const { detectors, matrix, report, spreading } = await spilloverFromControls(data, store.ws, { gateId, unstainedId, method, onProgress: (f, m) => progress.update(f, m) });
+      const added = addCompensation(store.ws, { name: `Computed ${new Date().toLocaleDateString()} (${method})`, channels: detectors, matrix, source: 'computed', method, report });
       store.commit(added.ws, 'Compute compensation');
       selectedId = added.compensation.id;
       ssm = { channels: detectors, matrix: spreading.matrix };

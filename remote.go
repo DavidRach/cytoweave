@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -54,12 +55,14 @@ type remoteClient struct {
 	done   chan struct{}
 }
 
-// An event carries an action for the page: { id, action, args }.
+// An event carries an action for the page: { id, action, args }, and who sent it (an MCP
+// client's name, or what a script calls itself), which the page records with proposals.
 type remoteEvent struct {
 	ID     string          `json:"id"`
 	Action string          `json:"action"`
 	Args   json.RawMessage `json:"args,omitempty"`
 	Files  []localFile     `json:"files,omitempty"`
+	Client string          `json:"client,omitempty"`
 }
 
 var (
@@ -76,7 +79,7 @@ type remoteResult struct {
 }
 
 // Actions that can run for a long time (analyses over many samples).
-var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "compare": true}
+var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "compare": true, "propose_compensation": true}
 
 func newRemoteHub() *remoteHub {
 	return &remoteHub{
@@ -103,6 +106,23 @@ func (h *remoteHub) register(mux *http.ServeMux) {
 	if h.scripts {
 		mux.HandleFunc("POST /api/remote/action", localOnly(h.serveAction))
 	}
+}
+
+// clientName is a sender's name as the page shows it: printable, at most 60 characters.
+func clientName(name, fallback string) string {
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(name))
+	if name == "" {
+		return fallback
+	}
+	if runes := []rune(name); len(runes) > 60 {
+		name = string(runes[:60])
+	}
+	return name
 }
 
 // localOnly refuses requests from other machines and from web pages that reach the loopback
@@ -209,6 +229,7 @@ func (h *remoteHub) serveAction(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Action string          `json:"action"`
 		Args   json.RawMessage `json:"args"`
+		Client string          `json:"client"`
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRemoteActionBytes))
 	if err == nil {
@@ -218,16 +239,18 @@ func (h *remoteHub) serveAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, `Send JSON such as {"action": "workspace_summary"}.`)
 		return
 	}
-	event := remoteEvent{Action: request.Action, Args: request.Args}
+	event := remoteEvent{Action: request.Action, Args: request.Args, Client: clientName(request.Client, "a program on this computer")}
 	if request.Action == "open_files" {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get(remoteTokenHeader)), []byte(h.token)) != 1 {
 			writeError(w, http.StatusUnauthorized, "Opening files needs the X-CytoWeave-Token header with the token CytoWeave printed when it started.")
 			return
 		}
+		client := event.Client
 		if event, err = h.openEvent(request.Args); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		event.Client = client
 	}
 	h.respond(w, r, event)
 }

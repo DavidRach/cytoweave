@@ -387,6 +387,31 @@ textarea.input { height: auto; padding: 7px 9px; resize: vertical; }
 .tree-row .auto-mark { display: inline-grid; place-items: center; color: var(--accent-text); }
 .tree-row .auto-mark svg { width: 12px; height: 12px; }
 .tree-row .gate-icon { color: var(--text-3); }
+.tree-row.proposed .label { font-style: italic; font-weight: 500; }
+.tree-row.pending-removal .label { text-decoration: line-through; color: var(--text-3); }
+.tree-row .proposal-mark { font-size: 10px; padding: 0 5px; line-height: 16px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Proposals from agents, waiting for review */
+.proposal-strip {
+  margin: 4px 4px 8px; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid rgba(91, 76, 230, 0.3); background: var(--accent-soft);
+  display: grid; gap: 6px;
+}
+.proposal-strip .proposal-title { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.proposal-strip .proposal-title svg { width: 14px; height: 14px; color: var(--accent-text); flex: none; }
+.proposal-strip .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.proposal-items { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.proposal-items li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.proposal-items li.remove { border-color: rgba(214, 59, 74, 0.3); }
+.proposal-items li .muted { font-size: 12px; }
+
+/* Boolean population dialog */
+.boolean-dialog { min-width: min(460px, 100%); }
+.boolean-list { margin-top: 6px; max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
+.boolean-option { display: grid; grid-template-columns: auto 10px minmax(0, 1fr); gap: 8px; align-items: center; padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+.boolean-option:hover { background: var(--hover); }
+.boolean-option > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.boolean-option .swatch { width: 10px; height: 10px; border-radius: 3px; }
 
 /* ---------- Workbench ---------- */
 
@@ -831,3 +856,28 @@ table.spectral-bars td { min-width: 120px; }
 .explore-markers { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; max-height: 300px; overflow: auto; }
 .explore-markers .check { font-size: 12px; }
 @media (max-width: 1400px) { .explore-top { grid-template-columns: 1fr; } }
+
+/* ---------- Index-sorted plate ---------- */
+
+.plate-section { margin-top: 18px; }
+.plate-section .section-title { display: flex; align-items: center; gap: 6px; }
+.plate-section .section-title svg { width: 14px; height: 14px; }
+.plate-controls { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin: 6px 0 8px; }
+.plate-controls .field { margin-bottom: 0; min-width: 240px; }
+.plate-body { display: grid; grid-template-columns: minmax(0, 640px) minmax(200px, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .plate-body { grid-template-columns: minmax(0, 1fr); } }
+.plate-grid { display: grid; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-elev); }
+.plate-head { font-size: 10.5px; color: var(--text-3); text-align: center; align-self: center; font-variant-numeric: tabular-nums; }
+.plate-well {
+  aspect-ratio: 1; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--bg-sunk, var(--hover));
+  padding: 0; cursor: pointer; min-width: 0;
+}
+.plate-well.empty { background: transparent; border-style: dashed; cursor: default; }
+.plate-well.multiple { box-shadow: inset 0 0 0 2px var(--warn); }
+.plate-well.marked { outline: 2.5px solid #e8590c; outline-offset: 1.5px; }
+.plate-well:not(.empty):hover { transform: scale(1.12); }
+.plate-info { font-size: 12.5px; display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.plate-values { display: flex; flex-wrap: wrap; gap: 4px 12px; font-variant-numeric: tabular-nums; }
+.plate-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0 4px; font-size: 12px; }
+.plate-legend .swatch, .plate-legend-item .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+.plate-scale { width: 120px; height: 10px; border-radius: 5px; display: inline-block; }

@@ -18,6 +18,10 @@ export const REFERENCES = {
   tsne: { text: 'van der Maaten L. Accelerating t-SNE using tree-based algorithms. J Mach Learn Res. 2014;15:3221–3245.', doi: null },
   optsne: { text: 'Belkina AC, Ciccolella CO, Anno R, et al. Automated optimized parameters for T-distributed stochastic neighbor embedding improve visualization and analysis of large datasets. Nat Commun. 2019;10:5415.', doi: '10.1038/s41467-019-13055-y' },
   leiden: { text: 'Traag VA, Waltman L, van Eck NJ. From Louvain to Leiden: guaranteeing well-connected communities. Sci Rep. 2019;9:5233.', doi: '10.1038/s41598-019-41695-z' },
+  louvain: { text: 'Blondel VD, Guillaume J-L, Lambiotte R, Lefebvre E. Fast unfolding of communities in large networks. J Stat Mech. 2008;2008:P10008.', doi: '10.1088/1742-5468/2008/10/P10008' },
+  kmeans: { text: 'Lloyd S. Least squares quantization in PCM. IEEE Trans Inf Theory. 1982;28(2):129–137.', doi: '10.1109/TIT.1982.1056489' },
+  kmeansPlusPlus: { text: 'Arthur D, Vassilvitskii S. k-means++: the advantages of careful seeding. Proceedings of the 18th ACM-SIAM Symposium on Discrete Algorithms. 2007:1027–1035.', doi: null },
+  hamerly: { text: 'Hamerly G. Making k-means even faster. Proceedings of the 2010 SIAM International Conference on Data Mining. 2010:130–140.', doi: '10.1137/1.9781611972801.12' },
   phenograph: { text: 'Levine JH, Simonds EF, Bendall SC, et al. Data-driven phenotypic dissection of AML reveals progenitor-like cells that correlate with prognosis. Cell. 2015;162(1):184–197.', doi: '10.1016/j.cell.2015.05.047' },
   cytonorm: { text: 'Van Gassen S, Gaudilliere B, Angst MS, Saeys Y, Aghaeepour N. CytoNorm: A normalization algorithm for cytometry data. Cytometry A. 2020;97(3):268–278.', doi: '10.1002/cyto.a.23904' },
   beads: { text: 'Finck R, Simonds EF, Jager A, et al. Normalization of mass cytometry data with bead standards. Cytometry A. 2013;83(5):483–494.', doi: '10.1002/cyto.a.22271' },
@@ -133,18 +137,28 @@ export function writeMethods(ws, options = {}) {
     };
     for (const root of roots) walk(root, []);
     const adjusted = ws.gates.filter((g) => Object.keys(g.overrides ?? {}).length).length;
-    const auto = ws.gates.filter((g) => g.meta?.origin === 'auto').length;
-    paragraphs.push(`Populations were identified by sequential gating (${ws.gates.length} gates): ${paths.slice(0, 8).join('; ')}${paths.length > 8 ? `; and ${paths.length - 8} further branches` : ''}. ${auto ? `${auto} gate(s) were proposed automatically from the data's density and accepted by the analyst. ` : ''}${adjusted ? `${adjusted} gate(s) were adjusted for individual samples; all other gates were applied identically to every sample. ` : 'Gates were applied identically to every sample. '}The gating strategy is available in Gating-ML 2.0 format ${cite('gatingml')}.`);
+    const auto = ws.gates.filter((g) => g.meta?.origin === 'auto' && !g.meta?.proposedBy).length;
+    const byAgents = [...new Set(ws.gates.filter((g) => g.meta?.proposedBy && g.meta?.acceptedBy).map((g) => g.meta.proposedBy))];
+    const agentGates = ws.gates.filter((g) => g.meta?.proposedBy && g.meta?.acceptedBy).length;
+    const pending = ws.gates.filter((g) => g.meta?.proposal).length;
+    paragraphs.push(`Populations were identified by sequential gating (${ws.gates.length} gates): ${paths.slice(0, 8).join('; ')}${paths.length > 8 ? `; and ${paths.length - 8} further branches` : ''}. ${auto ? `${auto} gate(s) were proposed automatically from the data's density and accepted by the analyst. ` : ''}${agentGates ? `${agentGates} gate(s) were proposed by an AI agent (${byAgents.join(', ')}) and reviewed and accepted by the analyst. ` : ''}${pending ? `${pending} gate(s) proposed by an AI agent have not yet been reviewed. ` : ''}${adjusted ? `${adjusted} gate(s) were adjusted for individual samples; all other gates were applied identically to every sample. ` : 'Gates were applied identically to every sample. '}The gating strategy is available in Gating-ML 2.0 format ${cite('gatingml')}.`);
   }
 
   // High-dimensional analysis.
-  for (const d of ws.derived.filter((r) => ['flowsom', 'clustering', 'umap', 'tsne', 'embedding', 'phenograph', 'leiden'].includes(r.kind))) {
+  for (const d of ws.derived.filter((r) => ['flowsom', 'clustering', 'umap', 'tsne', 'pca', 'embedding', 'phenograph', 'leiden', 'louvain', 'kmeans'].includes(r.kind))) {
     const params = d.params ?? {};
     const seed = d.seed !== undefined ? `, seed ${d.seed}` : '';
-    if (d.kind === 'flowsom' || /flowsom/i.test(d.method ?? '')) paragraphs.push(`Cells were clustered with FlowSOM ${cite('flowsom')} (${params.xdim ?? 10}×${params.ydim ?? 10} grid, ${params.k ?? 'k'} metaclusters by consensus clustering ${cite('consensus')}${seed}) on ${params.markers?.length ?? 'the selected'} markers.`);
-    else if (d.kind === 'umap' || /umap/i.test(d.method ?? '')) paragraphs.push(`Data were embedded with UMAP ${cite('umap')} (${params.nNeighbors ?? 15} neighbors, minimum distance ${params.minDist ?? 0.1}${seed}) on ${params.markers?.length ?? 'the selected'} markers of ${params.events ? `${params.events.toLocaleString('en-US')} events` : 'a subsample of events'}.`);
-    else if (d.kind === 'tsne' || /t-?sne/i.test(d.method ?? '')) paragraphs.push(`Data were embedded with Barnes–Hut t-SNE ${cite('tsne')} (perplexity ${params.perplexity ?? 30}, learning rate set as in opt-SNE ${cite('optsne')}${seed}).`);
-    else if (/leiden|phenograph/i.test(`${d.kind} ${d.method}`)) paragraphs.push(`Cells were clustered by Leiden community detection ${cite('leiden')} on a k-nearest-neighbor graph with Jaccard weights as in PhenoGraph ${cite('phenograph')}${seed}.`);
+    const markers = `${params.markers?.length ?? 'the selected'} markers`;
+    const text = `${d.kind} ${d.method ?? ''}`;
+    // A result may hold a clustering, an embedding or both (Explore records both in params).
+    const clustering = params.clustering ?? (/flowsom/i.test(text) ? 'flowsom' : /k-?means/i.test(text) ? 'kmeans' : /louvain/i.test(text) ? 'louvain' : /leiden|phenograph/i.test(text) ? 'phenograph' : 'none');
+    const embedding = params.embedding ?? (/umap/i.test(text) ? 'umap' : /t-?sne/i.test(text) ? 'tsne' : /\bpca\b/i.test(text) ? 'pca' : 'none');
+    if (clustering === 'flowsom') paragraphs.push(`Cells were clustered with FlowSOM ${cite('flowsom')} (${params.xdim ?? 10}×${params.ydim ?? 10} grid, ${params.k ?? 'k'} metaclusters by consensus clustering ${cite('consensus')}${seed}) on ${markers}.`);
+    else if (clustering === 'kmeans') paragraphs.push(`Cells were clustered by k-means ${cite('kmeans')} into ${params.k ?? 'k'} clusters (k-means++ initialization ${cite('kmeansPlusPlus')}, Hamerly's algorithm ${cite('hamerly')}${seed}) on ${markers} of the embedded subsample; every other event was assigned to the nearest cluster center.`);
+    else if (clustering === 'louvain') paragraphs.push(`Cells were clustered by Louvain community detection ${cite('louvain')} (resolution ${params.resolution ?? 1}) on a ${params.leidenK ?? 30}-nearest-neighbor graph with Jaccard weights as in PhenoGraph ${cite('phenograph')}${seed}; every other event was assigned to the nearest cluster centroid.`);
+    else if (clustering === 'phenograph') paragraphs.push(`Cells were clustered by Leiden community detection ${cite('leiden')} on a k-nearest-neighbor graph with Jaccard weights as in PhenoGraph ${cite('phenograph')}${seed}.`);
+    if (embedding === 'umap') paragraphs.push(`Data were embedded with UMAP ${cite('umap')} (${params.nNeighbors ?? 15} neighbors, minimum distance ${params.minDist ?? 0.1}${seed}) on ${markers} of ${params.events ? `${params.events.toLocaleString('en-US')} events` : 'a subsample of events'}.${params.placed?.length ? ` ${params.placed.length} further sample(s) (${params.placed.join(', ')}) were placed on the finished map with UMAP's transform, which positions new events among their nearest neighbors in the reference without changing the map.` : ''}`);
+    else if (embedding === 'tsne') paragraphs.push(`Data were embedded with Barnes–Hut t-SNE ${cite('tsne')} (perplexity ${params.perplexity ?? 30}, learning rate set as in opt-SNE ${cite('optsne')}${seed}).`);
   }
   for (const d of ws.derived.filter((r) => r.kind === 'cellcycle')) paragraphs.push(`DNA content histograms were modeled with the ${/watson/i.test(d.method ?? '') ? `Watson pragmatic model ${cite('watson')}` : `Dean–Jett–Fox model ${cite('deanJettFox')}`}.`);
   for (const d of ws.derived.filter((r) => r.kind === 'proliferation')) paragraphs.push(`Proliferation was modeled by fitting generation peaks of dye dilution; division, proliferation and expansion indices follow Roederer ${cite('proliferation')}.`);

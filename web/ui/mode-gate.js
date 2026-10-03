@@ -1,6 +1,7 @@
 // The gating workbench: the selected population's lineage (each ancestor gate shown on its
 // parent's plot) and the population's own plots, where new gates are drawn.
 
+import { createPlateView } from './plate-view.js';
 import { h, icon, clear, iconButton, formatCount } from './dom.js';
 import { showMenu } from './overlays.js';
 import { createPlotView } from './plot-view.js';
@@ -147,7 +148,9 @@ export function mountGateMode(app, container) {
   const lineageTitle = h('div.section-title', 'Gating path');
   const plotsTitle = h('div.section-title');
   const grid = h('div.plot-grid');
-  const scroll = h('div.workbench-scroll', lineageTitle, lineage, plotsTitle, grid);
+  // An index-sorted sample's plate, linked to the plots (hidden for other samples).
+  const plate = createPlateView(app);
+  const scroll = h('div.workbench-scroll', lineageTitle, lineage, plotsTitle, grid, plate.el);
   const root = h('div.view', head, scroll);
   container.append(root);
 
@@ -305,6 +308,11 @@ export function mountGateMode(app, container) {
         renderPlots();
       }
       if (structural || topics.has('lineage')) renderLineage();
+      if (structural || topics.has('ws') || topics.has('data') || topics.has('gate') || topics.has('marked') || topics.has('theme')) plate.render();
+      if (topics.has('marked')) {
+        for (const view of views.values()) view.refreshOverlay();
+        for (const view of lineageViews) view.refreshOverlay();
+      }
       renderedFor = key;
       if (!structural && (topics.has('ws') || topics.has('data') || topics.has('theme') || topics.has('backgate') || topics.has('gate'))) {
         // Same population and sample: refresh gates and data in place.

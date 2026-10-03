@@ -79,14 +79,22 @@ large files is checked against them.
      failed: the browser would not copy 1.3 GB to the worker.
    - WebGL was not needed: binning ten million events onto a plot takes about
      30 ms, so drawing is not the bottleneck. Everything runs on the CPU.
-4. **Workbench gaps.**
-   - Agent proposals (M3): gates and matrices from an agent arrive as
-     proposals in a review queue, accepted or rejected as a group, and the
-     change log records who accepted them.
-   - Drawing Boolean gates (G1) in the population tree.
-   - Index-sort plate view (A3): a 96/384-well plate linked to the plots.
-   - Explore: offer k-means and Louvain (already in the library), and place
-     new samples on an existing UMAP (H1, H5).
+4. **Workbench gaps: done.**
+   - Agent proposals (M3): an agent's gates arrive as marked proposals
+     (usable at once, removed if rejected). Its renames, deletions and
+     compensation matrices (a new `propose_compensation` tool) wait for
+     review. A strip above the population tree reviews, accepts or rejects
+     each agent's proposal as a group. The change log records the agent's
+     name (from its MCP client) and the decision; a `proposals` tool tells the
+     agent the outcome.
+   - Boolean populations (G1) from the population menu: all of, any of or
+     none of chosen populations, with a live count, and editable later.
+   - Index-sort plate view (A3) in Gate mode. Wells come from BD's
+     `INDEX SORTING LOCATIONS` or well parameters, are colored by population
+     or channel, and mark their cells on the plots; they export as CSV.
+   - Explore offers k-means and Louvain, and places samples left out of a
+     UMAP on the finished map (H1, H5). The methods paragraph now describes a
+     result's clustering and embedding separately.
 
 Found by slice 1 and not yet solved: FlowJo evaluates gates at its display
 resolution, which moves events near boundaries (0.1–0.3% of large populations

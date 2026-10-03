@@ -18,9 +18,10 @@
   - Events on a polygon's edge are inside it.
 - **Gate boundaries** are decided in double precision, so an event within rounding distance of a boundary falls on the same side as in reference tools.
 - **FCS files:** Guava Muse log channels (log10 values stored as floating point) are read correctly, and a file cut off before its data now says so instead of failing.
-- **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-colour panel the matrix is now within 0.015 of FACSDiva's.
+- **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-colour panel the matrix is now within 0.015 of FACSDiva's. Each detector's own range ($PnR) decides what is saturated, rather than 262,144 for every instrument.
 - **Logicle width estimates** take the 5th percentile of the negative values, as flowCore's `estimateLogicle` does, rather than of all values, and are no longer held at 0.25 or more when the data have negative values.
 - **Workers on large samples.** Analyses in workers (QC, normalization, clustering) read the sample's events in shared memory instead of a copy. At ten million events the copy failed and the job waited forever; a job whose data cannot be handed over now fails with a message.
+- **Methods.** A result with both a clustering and an embedding (for example FlowSOM and UMAP) now describes both; before, only the clustering was described.
 - **Memory.** A sample larger than most of the memory budget (1.6 GB) could be dropped from memory as soon as it had loaded. The sample in use is now never dropped, and on machines with 8 GB or more the budget is 3 GB.
 - **PeacoQC classic** is now an exact port of PeacoQC 1.22 (its density estimate, peak tracking, isolation tree and `smooth.spline` MAD test) and removes the same events as PeacoQC in R. The default refined mode is unchanged.
 
@@ -37,6 +38,10 @@
 
 ### Added
 
+- **Proposals from AI agents.** An agent's gates arrive as proposals: shown at once, marked as proposed, with real counts. Its renames, deletions and compensation matrices wait for review. A strip above the population tree reviews each agent's proposal, to accept or reject as a group. The change log records which agent proposed what (its MCP client's name) and who decided; accepted gates keep it, and the methods paragraph reports it. New agent tools: `propose_compensation` (a matrix from the single-stain controls) and `proposals` (what is open, what was decided).
+- **Boolean populations** from the population menu: all of, any of or none of chosen populations, with a live count, editable later.
+- **Index-sort plate view.** An index-sorted sample shows its plate (96, 384 or other wells) below the plots. Wells come from BD's INDEX SORTING LOCATIONS or from well parameters, are colored by population or channel, and mark their cells on every plot. They export as CSV.
+- **Explore** offers Louvain and k-means clustering, and places samples left out of a UMAP on the finished map.
 - Gating-ML spectral unmixing matrices (more detectors than fluorochromes) import as unmixed channels.
 - Gates of three or more dimensions are evaluated in all of them; the inspector shows their axes and any compensation a gate keeps.
 - The migration report explains differences of a few events as boundary events.

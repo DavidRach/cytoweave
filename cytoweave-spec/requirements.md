@@ -45,7 +45,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| G1 | Rectangle, polygon, freehand, ellipse, quadrant, range, split, Boolean and category gates with Gating-ML semantics; imported gates of three or more dimensions; a gate dimension may keep its own compensation | done (all 190 gates of ISAC's Gating-ML compliance suite match on every event; Boolean gates come from imports; drawing them is planned) |
+| G1 | Rectangle, polygon, freehand, ellipse, quadrant, range, split, Boolean and category gates with Gating-ML semantics; imported gates of three or more dimensions; a gate dimension may keep its own compensation | done (all 190 gates of ISAC's Gating-ML compliance suite match on every event; Boolean populations are made from the population menu: all of, any of or none of chosen populations) |
 | G2 | Shared gates with per-sample overrides and group scopes | done |
 | G3 | Plot types: pseudocolor, dot, density, contour, zebra, histogram, cumulative; backgating; overlays | done |
 | G4 | Scales: linear, log, logicle (reference), arcsinh, FlowJo biexponential (exact), fasinh and hyperlog (import); Gating-ML bounds | done (FlowJo's counts follow the reference logicle, not BD's published logicle tables: `validation/README.md`) |
@@ -84,11 +84,11 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| H1 | FlowSOM and Leiden clustering; UMAP, t-SNE and PCA across samples with equal sampling | done (k-means and Louvain exist in the library but are not offered in the view) |
+| H1 | FlowSOM, Leiden, Louvain and k-means clustering; UMAP, t-SNE and PCA across samples with equal sampling | done |
 | H2 | Cluster naming from marker enrichment; clusters as populations | done |
 | H3 | Embedding faithfulness: trustworthiness, continuity, kNN preservation, mixing, seed stability, unreliable regions | done |
 | H4 | Differential abundance of clusters across groups | done (quasi-binomial, diffcyt-like) |
-| H5 | Placing new samples on an existing map | partial: in the library (UMAP transform), not in the view |
+| H5 | Placing new samples on an existing map | done: samples left out of a UMAP are placed on it with UMAP's transform, the map unchanged |
 
 ## Specialized analyses
 
@@ -96,7 +96,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | --- | --- | --- |
 | A1 | Cell cycle: Dean–Jett–Fox and Watson | done |
 | A2 | Proliferation: generation fitting and Roederer's indices | done |
-| A3 | Index sorting: well-to-event links | partial: the parameters are read and plotted; a plate view is planned |
+| A3 | Index sorting: well-to-event links | done: a plate view (96- and 384-well and others) from BD's INDEX SORTING LOCATIONS or well parameters, colored by population or channel, wells marked on the plots, CSV export |
 | A4 | Kinetics and ratiometric (calcium) analysis | planned |
 
 ## Comparison and statistics
@@ -133,7 +133,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | --- | --- | --- |
 | M1 | MCP server for AI agents, acting in the visible window, every change undoable | done |
 | M2 | Remote control for local scripts | done |
-| M3 | Agent changes arrive as proposals to accept or reject | partial: they are marked and undoable; a review queue is planned |
+| M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
 
 ## Quality
 

@@ -5,7 +5,7 @@
 // heatmap, enrichment labels and abundances, and become populations with one click.
 
 import { h, icon, clear, formatCount, formatPercent, downloadBlob } from './dom.js';
-import { showMenu, toast, progressToast } from './overlays.js';
+import { showDialog, showMenu, toast, progressToast } from './overlays.js';
 import { channelTransform, countOf, population } from '../lib/engine.js';
 import { ROOT, addGates, channelLabel, gateById, gatePath } from '../lib/workspace.js';
 import { newId } from '../lib/gates.js';
@@ -22,6 +22,8 @@ const EMBEDDINGS = [
 const CLUSTERINGS = [
   { id: 'flowsom', label: 'FlowSOM', channel: 'FlowSOM cluster' },
   { id: 'phenograph', label: 'Leiden (PhenoGraph)', channel: 'Leiden cluster' },
+  { id: 'louvain', label: 'Louvain', channel: 'Louvain cluster' },
+  { id: 'kmeans', label: 'k-means', channel: 'k-means cluster' },
   { id: 'none', label: 'None', channel: '' },
 ];
 
@@ -111,7 +113,8 @@ export function mountExploreMode(app, container) {
       : settings.embedding === 'tsne' ? h('div.row', field('Perplexity', number('perplexity', 5, 5, 200), 'Effective number of neighbours (default 30). The learning rate follows opt-SNE (n/12).')) : null;
     const clusterParams = settings.clustering === 'flowsom'
       ? h('div.row', field('Metaclusters', number('k', 1, 2, 60), 'Number of metaclusters by consensus clustering of the SOM nodes.'), field('Grid', number('xdim', 1, 3, 30), 'Self-organizing map of grid × grid nodes (default 10 × 10).'))
-      : settings.clustering === 'phenograph' ? h('div.row', field('Neighbours', number('leidenK', 1, 5, 200), 'k of the nearest-neighbour graph (PhenoGraph default 30).'), field('Resolution', number('resolution', 0.1, 0.05, 5), 'Leiden resolution: higher gives more, smaller clusters.')) : null;
+      : settings.clustering === 'phenograph' || settings.clustering === 'louvain' ? h('div.row', field('Neighbours', number('leidenK', 1, 5, 200), 'k of the nearest-neighbour graph (PhenoGraph default 30).'), field('Resolution', number('resolution', 0.1, 0.05, 5), `${settings.clustering === 'louvain' ? 'Louvain' : 'Leiden'} resolution: higher gives more, smaller clusters.`))
+        : settings.clustering === 'kmeans' ? h('div.row', field('Clusters', number('k', 1, 2, 100), 'k-means makes exactly this many clusters (k-means++ seeding). Clusters are trained on the embedded subsample; every other event goes to the nearest centre.')) : null;
     const total = samplingPlan(samples.map((s) => s.eventCount), settings.perSample, settings.maxTotal).reduce((a, b) => a + b, 0);
     setupHost.append(
       h('div.pane',
@@ -186,11 +189,14 @@ export function mountExploreMode(app, container) {
       let k = 0;
       let fullLabels = null;
       let flowsomResult = null;
+      // How events outside the subsample (and placed samples) get a cluster.
+      let assign = null;
       if (settings.clustering === 'flowsom') {
         progress.update(0.18, 'FlowSOM: training the map');
         flowsomResult = await call('cluster', 'flowsom', { data: matrix.slice(), n, dim, options: { xdim: settings.xdim, ydim: settings.xdim, k: settings.k, seed: settings.seed } }, [], 0.18, 0.4);
         labels = Int32Array.from(flowsomResult.labels);
         k = flowsomResult.k;
+        assign = { som: flowsomResult.som, metaclusters: flowsomResult.metaclusters, k };
         fullLabels = [];
         for (const [i, item] of loaded.entries()) {
           progress.update(0.4 + (0.1 * i) / loaded.length, `FlowSOM: mapping ${item.sample.name}`);
@@ -199,12 +205,22 @@ export function mountExploreMode(app, container) {
           const mapped = await call('cluster', 'map', { som: flowsomResult.som, data: full, n: all.length }, [full.buffer], 0.4, 0.5);
           fullLabels.push({ all, labels: Int32Array.from(mapped.mapping, (node) => flowsomResult.metaclusters[node]) });
         }
-      } else if (settings.clustering === 'phenograph') {
-        progress.update(0.18, 'Leiden clustering');
-        const result = await call('dimred', 'phenograph', { data: matrix.slice(), n, dim, options: { k: settings.leidenK, resolution: settings.resolution, seed: settings.seed } }, [], 0.18, 0.45);
-        labels = Int32Array.from(result.labels);
-        k = result.communities ?? (Math.max(...labels) + 1);
-        const centers = centroids(matrix, n, dim, labels, k);
+      } else if (settings.clustering === 'phenograph' || settings.clustering === 'louvain' || settings.clustering === 'kmeans') {
+        let centers;
+        if (settings.clustering === 'kmeans') {
+          progress.update(0.18, 'k-means clustering');
+          const result = await call('cluster', 'kmeans', { data: matrix.slice(), n, dim, k: Math.min(settings.k, n), options: { seed: settings.seed } }, [], 0.18, 0.45);
+          labels = Int32Array.from(result.labels);
+          k = Math.min(settings.k, n);
+        } else {
+          const louvain = settings.clustering === 'louvain';
+          progress.update(0.18, louvain ? 'Louvain clustering' : 'Leiden clustering');
+          const result = await call('dimred', 'phenograph', { data: matrix.slice(), n, dim, options: { k: settings.leidenK, resolution: settings.resolution, seed: settings.seed, algorithm: louvain ? 'louvain' : 'leiden' } }, [], 0.18, 0.45);
+          labels = Int32Array.from(result.labels);
+          k = result.communities ?? (Math.max(...labels) + 1);
+        }
+        centers = centroids(matrix, n, dim, labels, k);
+        assign = { centers, k };
         fullLabels = loaded.map((item) => {
           const all = item.indices ?? Uint32Array.from({ length: item.view.eventCount }, (_, e) => e);
           return { all, labels: assignNearest(gatherMatrix(scaledOf(item.view), all), all.length, dim, centers, k) };
@@ -295,7 +311,8 @@ export function mountExploreMode(app, container) {
           abundance,
         },
       }, `Explore: ${clustering.id !== 'none' ? clustering.label : ''}${clustering.id !== 'none' && method.id !== 'none' ? ' + ' : ''}${method.id !== 'none' ? method.label : ''}`);
-      S.run = { recordId: record.id, settings, loaded: loaded.map((l) => ({ id: l.sample.id, name: l.sample.name, count: l.count, offset: l.offset, n: l.picked.length })), matrix, n, dim, sampleOf, embedding, ranges: embedding ? embeddingRanges(embedding, n) : null, labels, k, summary, names, quality, abundance, method, clustering, popId, reliability: quality?.reliability?.score ?? null };
+      S.run = { recordId: record.id, settings, loaded: loaded.map((l) => ({ id: l.sample.id, name: l.sample.name, count: l.count, offset: l.offset, n: l.picked.length })), matrix, n, dim, sampleOf, embedding, ranges: embedding ? embeddingRanges(embedding, n) : null, labels, k, summary, names, quality, abundance, method, clustering, popId, reliability: quality?.reliability?.score ?? null, modelId, assign, placed: [] };
+      S.mapShows = 'reference';
       S.colorBy = labels ? 'cluster' : 'density';
       S.highlight = null;
       S.hidden = new Set();
@@ -353,7 +370,7 @@ export function mountExploreMode(app, container) {
 
   function renderPlot() {
     clear(plotHost);
-    const r = S.run;
+    const r = displayRun(S.run);
     if (!r?.embedding) {
       plotHost.append(h('div.empty', { style: { minHeight: '420px' } }, icon('explore'), h('h3', r ? 'Clusters without an embedding' : 'Explore cells across samples'),
         h('p', r ? 'Run again with UMAP, t-SNE or PCA to see the cells as a map.' : 'Choose a population, markers and methods, then Run. Clusters become populations you can gate, plot and compare; embeddings come with a report of how faithful they are.')));
@@ -366,7 +383,15 @@ export function mountExploreMode(app, container) {
     const canvas = h('canvas.explore-canvas');
     const wrap = h('div.explore-canvas-wrap', canvas);
     const legend = h('div.explore-legend');
-    plotHost.append(h('h3', `${r.method.label} of ${formatCount(r.n)} events`, h('span.spacer'), h('span.field-label', 'Color'), select), h('div.row', { style: { marginBottom: '6px' } }, shade, h('span.grow'), lassoButton), wrap, legend);
+    // Samples placed on a UMAP after it was made can be shown with the reference or alone.
+    const placed = S.run.placed ?? [];
+    const showSelect = placed.length ? h('select.input.small', { 'aria-label': 'Map of', onchange: (e) => { S.mapShows = e.target.value; S.highlight = null; S.hidden = new Set(); renderPlot(); } },
+      h('option', { value: 'reference', selected: S.mapShows === 'reference' }, `The map's own ${formatCount(S.run.n)} events`),
+      h('option', { value: 'all', selected: S.mapShows === 'all' }, 'With the placed samples'),
+      ...placed.map((p) => h('option', { value: `placed:${p.id}`, selected: S.mapShows === `placed:${p.id}` }, `Placed: ${p.name}`))) : null;
+    const placeButton = S.run.method?.id === 'umap' ? h('button.btn.small', { type: 'button', disabled: Boolean(running), title: 'Position the events of other samples on this map without changing it (UMAP transform)', onclick: () => placeSamples() }, icon('plus'), 'Place samples on this map') : null;
+    plotHost.append(h('h3', `${r.method.label} of ${formatCount(r.n)} events`, h('span.spacer'), h('span.field-label', 'Color'), select),
+      h('div.row', { style: { marginBottom: '6px', flexWrap: 'wrap', gap: '8px' } }, shade, h('span.grow'), showSelect, placeButton, lassoButton), wrap, legend);
     let lasso = null;
     let lassoMode = false;
     lassoButton.addEventListener('click', () => {
@@ -462,6 +487,124 @@ export function mountExploreMode(app, container) {
     });
     new ResizeObserver(() => draw()).observe(wrap);
     requestAnimationFrame(draw);
+  }
+
+  // The run as the map shows it: the reference events, or with (or only) the placed samples.
+  function displayRun(r) {
+    if (!r?.placed?.length || !S.mapShows || S.mapShows === 'reference') return r;
+    const parts = S.mapShows === 'all' ? [{ reference: true }, ...r.placed] : r.placed.filter((p) => `placed:${p.id}` === S.mapShows);
+    if (!parts.length) return r;
+    const n = parts.reduce((sum, p) => sum + (p.reference ? r.n : p.n), 0);
+    const embedding = new Float32Array(n * 2);
+    const matrix = new Float32Array(n * r.dim);
+    const sampleOf = new Int32Array(n);
+    const labels = r.labels ? new Int32Array(n) : null;
+    const loaded = [];
+    let offset = 0;
+    for (const part of parts) {
+      if (part.reference) {
+        embedding.set(r.embedding, 0);
+        matrix.set(r.matrix, 0);
+        sampleOf.set(r.sampleOf, 0);
+        if (labels) labels.set(r.labels, 0);
+        loaded.push(...r.loaded);
+        offset = r.n;
+        continue;
+      }
+      embedding.set(part.embedding, offset * 2);
+      matrix.set(part.matrix, offset * r.dim);
+      sampleOf.fill(loaded.length, offset, offset + part.n);
+      if (labels) labels.set(part.labels, offset);
+      loaded.push({ id: part.id, name: `${part.name} (placed)`, count: part.count, offset, n: part.n });
+      offset += part.n;
+    }
+    return { ...r, n, embedding, matrix, sampleOf, labels, loaded, reliability: null };
+  }
+
+  // Places other samples' events on the UMAP: each event goes among its nearest neighbours of the
+  // map's own events (UMAP's transform), the map itself unchanged; clusters come as for the
+  // events outside the subsample (FlowSOM's map, or the nearest cluster centre).
+  async function placeSamples() {
+    const r = S.run;
+    if (!r?.embedding || r.method.id !== 'umap') return;
+    const ws = store.ws;
+    const taken = new Set([...r.loaded.map((l) => l.id), ...(r.placed ?? []).map((p) => p.id)]);
+    const candidates = ws.samples.filter((s) => !taken.has(s.id) && s.role !== 'single-stain' && s.role !== 'unstained');
+    if (!candidates.length) return toast('Every sample is already on this map.');
+    const chosen = new Set(candidates.map((s) => s.id));
+    const list = h('div.boolean-list', ...candidates.map((sample) => {
+      const box = h('input', { type: 'checkbox', checked: true });
+      box.addEventListener('change', () => { if (box.checked) chosen.add(sample.id); else chosen.delete(sample.id); });
+      return h('label.boolean-option', box, h('span.swatch', { style: { background: 'var(--line-strong)' } }), h('span', sample.name));
+    }));
+    const ok = await new Promise((resolve) => showDialog({
+      title: 'Place samples on this map',
+      content: h('div', h('p.muted', `Up to ${formatCount(r.settings.perSample)} events of ${r.popId === ROOT ? 'all events' : gatePath(ws, r.popId)} per sample are positioned among their nearest neighbours on the map, which does not change. Their quality is not measured: a sample unlike any on the map lands on its nearest look-alikes.`), list),
+      buttons: [{ label: 'Cancel', ghost: true, value: false }, { label: 'Place', primary: true, value: true, onClick: () => true }],
+      onClose: (result) => resolve(Boolean(result)),
+    }));
+    if (!ok || !chosen.size) return;
+    const progress = progressToast('Placing samples on the map…');
+    running = { cancel: () => {} };
+    renderAll();
+    try {
+      const markers = r.settings.markers;
+      const perSample = new Map();
+      const placedNow = [];
+      const targets = candidates.filter((s) => chosen.has(s.id));
+      for (const [i, sample] of targets.entries()) {
+        progress.update(i / targets.length, `Placing ${sample.name}`);
+        const view = await data.ensure(sample.id);
+        const indices = population(view, store.ws, r.popId);
+        if (indices === undefined) continue;
+        const missing = markers.filter((m) => !view.hasChannel(m));
+        if (missing.length) throw new Error(`${sample.name} lacks ${missing.join(', ')}.`);
+        const scaled = markers.map((m) => view.scaled(m, channelTransform(store.ws, view, m)));
+        const count = countOf(indices, view);
+        const picked = pickEvents(indices, view.eventCount, r.settings.perSample, r.settings.seed + 7919 + i);
+        const matrix = gatherMatrix(scaled, picked);
+        const placed = await app.worker('dimred').call('transformUmap', { modelId: r.modelId, data: matrix.slice(), m: picked.length, options: { seed: r.settings.seed } }, { onProgress: (f) => progress.update((i + 0.8 * f) / targets.length, `Placing ${sample.name}`) });
+        const columns = {};
+        const x = new Float32Array(view.eventCount).fill(Number.NaN);
+        const y = new Float32Array(view.eventCount).fill(Number.NaN);
+        const embedded = new Float32Array(view.eventCount);
+        picked.forEach((e, j) => { x[e] = placed.embedding[2 * j]; y[e] = placed.embedding[2 * j + 1]; embedded[e] = 1; });
+        columns[`${r.method.axis} 1`] = x;
+        columns[`${r.method.axis} 2`] = y;
+        columns.Embedded = embedded;
+        let labels = null;
+        if (r.assign && r.clustering?.channel) {
+          const all = indices ?? Uint32Array.from({ length: view.eventCount }, (_, e) => e);
+          const full = gatherMatrix(scaled, all);
+          let fullLabels;
+          if (r.assign.som) {
+            const mapped = await app.worker('cluster').call('map', { som: r.assign.som, data: full, n: all.length }, { transfer: [full.buffer] });
+            fullLabels = Int32Array.from(mapped.mapping, (node) => r.assign.metaclusters[node]);
+          } else {
+            fullLabels = assignNearest(full, all.length, r.dim, r.assign.centers, r.assign.k);
+          }
+          const column = new Float32Array(view.eventCount).fill(-1);
+          all.forEach((e, j) => { column[e] = fullLabels[j]; });
+          columns[r.clustering.channel] = column;
+          labels = Int32Array.from(picked, (e) => column[e]);
+        }
+        perSample.set(sample.id, columns);
+        placedNow.push({ id: sample.id, name: sample.name, count, n: picked.length, embedding: Float32Array.from(placed.embedding), matrix, labels: labels ?? new Int32Array(picked.length) });
+      }
+      if (!placedNow.length) throw new Error('The population applies to none of the chosen samples.');
+      const record = store.ws.derived.find((d) => d.id === r.recordId);
+      const names = [...(record?.params?.placed ?? []), ...placedNow.map((p) => p.name)];
+      await app.addDerivedSamples(r.recordId, perSample, { placed: names }, `Place ${placedNow.length} sample${placedNow.length === 1 ? '' : 's'} on the ${r.method.label}`);
+      r.placed = [...(r.placed ?? []), ...placedNow];
+      S.mapShows = 'all';
+      S.colorBy = 'sample';
+      progress.done(`Placed ${placedNow.map((p) => p.name).join(', ')} on the map.`);
+    } catch (error) {
+      progress.fail(/model/i.test(error.message) ? 'The map\'s model is no longer in memory (it lasts for this session); run the UMAP again, then place the samples.' : error.message);
+    } finally {
+      running = null;
+      if (!destroyed) renderAll();
+    }
   }
 
   function countLabel(labels, c) {
