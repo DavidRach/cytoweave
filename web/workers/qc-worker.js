@@ -11,6 +11,10 @@
 //                      driftChannels } } — PeacoQC, flow rate, margins and drift of one sample in one
 //                      call, compacted for the page (the combined mask plus the explanatory tracks)
 //   peacoQC          { sample, options }
+//   peacoQCChannels  { sample, names, options (with eventsPerBin) } — PeacoQC's per-channel work on
+//                      some channels → { results }; the page splits a sample's channels among
+//                      several workers (sample columns on SharedArrayBuffers are not copied) and
+//                      passes the results to acquisitionQC as options.peacoQC.channelResults
 //   flowRateCheck    { sample, options }
 //   marginEvents     { sample, options }
 //   signalDrift      { sample, channels, options }
@@ -27,7 +31,7 @@
 // applyCytoNorm and beadNormalize return only the columns they changed (not the input columns).
 
 import { applyCytoNorm, batchDiagnostics, beadBaseline, beadNormalize, confoundingCheck, quantileNormalize, trainCytoNorm } from '../lib/normalize.js';
-import { flowRateCheck, marginEvents, peacoQC, qcSummary, signalDrift } from '../lib/qc.js';
+import { createDensityWorkspace, flowRateCheck, marginEvents, peacoQC, peacoQCChannel, peacoQCLayout, qcSummary, signalDrift } from '../lib/qc.js';
 import { debarcode } from '../lib/debarcode.js';
 
 function pickColumns(columns, names) {
@@ -134,6 +138,17 @@ function acquisitionQC(payload, o) {
 const TASKS = {
   acquisitionQC,
   peacoQC: (p, o) => peacoQC(p.sample, o),
+  peacoQCChannels: (p, o) => {
+    if (!(o.eventsPerBin > 0)) throw new Error('peacoQCChannels needs the eventsPerBin of the whole sample.');
+    const { bins } = peacoQCLayout(p.sample, { ...o, channels: p.names });
+    const shared = { ws: createDensityWorkspace(o.densitySmoothing), buffer: new Float64Array(o.eventsPerBin) };
+    return {
+      results: p.names.map((name, k) => {
+        o.onProgress(k / p.names.length, `Finding peaks in ${name}`);
+        return peacoQCChannel(p.sample, name, bins, o, shared);
+      }),
+    };
+  },
   flowRateCheck: (p, o) => flowRateCheck(p.sample, o),
   marginEvents: (p, o) => marginEvents(p.sample, o),
   signalDrift: (p, o) => signalDrift(p.sample, p.channels ?? null, o),

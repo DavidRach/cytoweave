@@ -249,6 +249,8 @@ kbd {
 }
 .statusbar .spacer { flex: 1; }
 .statusbar .item { display: flex; align-items: center; gap: 5px; }
+.statusbar .statusbar-link { border: 0; background: none; color: var(--accent-text); font: inherit; padding: 0; cursor: pointer; }
+.statusbar .statusbar-link:hover { text-decoration: underline; }
 .statusbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .statusbar .dot.busy { background: var(--accent); animation: pulse 1s infinite; }
 

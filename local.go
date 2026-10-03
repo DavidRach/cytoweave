@@ -21,6 +21,8 @@ type localFile struct {
 	Folder string `json:"folder,omitempty"`
 	Kind   string `json:"kind"`
 	path   string
+	// From a watched folder (watch.go): not among the files the page opens at once.
+	watched bool
 }
 
 type localFiles struct {

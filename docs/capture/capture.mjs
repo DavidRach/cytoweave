@@ -8,11 +8,12 @@
 // Needs Go (to run CytoWeave from source) and Chrome, Chromium, Edge or Brave (CHROME=path).
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from './cdp.mjs';
+import { generateExample } from '../../web/lib/examples.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const IMAGES = join(ROOT, 'docs/images');
@@ -363,6 +364,24 @@ const scenes = {
     await scenes.spectral();
     await click('Panel quality');
     await sleep(3000);
+  },
+  // QC → Live: the QC showcase's wells written one by one into a watched export folder, and a
+  // fifth file still being written.
+  async 'qc-live'() {
+    const folder = join(mkdtempSync(join(tmpdir(), 'cytoweave-capture-')), 'Fortessa exports');
+    mkdirSync(folder);
+    const { files } = generateExample('qc-showcase', {});
+    // Show an export folder's path rather than this run's temporary one, as for the library.
+    await js(`(() => { const real = window.fetch; window.fetch = async (...args) => { const response = await real(...args); if (!String(args[0]).startsWith('api/watch')) return response; const body = await response.clone().json(); if (body.folder) body.folder = '/Volumes/Cytometry/Fortessa exports'; return new Response(JSON.stringify(body), { status: response.status, headers: response.headers }); }; })()`);
+    // One CytoWeave serves every theme: stop the watch an earlier run left, and start afresh.
+    await app(`if (app.live.status?.watching) await app.live.stop(); while (app.live.busy) await new Promise((r) => setTimeout(r, 200)); await app.newWorkspace(); await app.openLiveQC(); await app.live.start(${JSON.stringify(folder)});`);
+    for (const file of files) {
+      writeFileSync(join(folder, file.name), file.bytes);
+      await sleep(1600);
+    }
+    writeFileSync(join(folder, 'A05.fcs'), files[0].bytes.subarray(0, files[0].bytes.length >> 1));
+    await waitFor(`window.cytoweave.live.queue.length === ${files.length} && window.cytoweave.live.queue.every((q) => q.state === 'checked') && (window.cytoweave.live.status?.pending ?? []).length === 1`, 180000);
+    await sleep(1500);
   },
   // Spectral: Panel design, with the noise fitted to the controls and BV711 left out.
   async 'spectral-design'() {

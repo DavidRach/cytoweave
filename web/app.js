@@ -11,6 +11,7 @@ import { installActions } from './ui/actions.js';
 import { installExportDialogs } from './ui/export-dialogs.js';
 import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
 import { installAutogating } from './ui/autogate-dialog.js';
+import { installLiveQC } from './ui/live-qc.js';
 import { openPalette } from './ui/palette.js';
 import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
 import { WorkerClient } from './ui/workers.js';
@@ -729,11 +730,13 @@ async function start() {
   function renderStatus() {
     clear(statusbar);
     const busy = [...store.state.busy.values()];
+    const watch = app.live?.status?.watching ? app.live.status : null;
     statusbar.append(...[
       h('span.item', h(`span.dot${busy.length ? '.busy' : ''}`), busy.length ? busy[0] : 'Ready'),
       h('span.item', icon('library'), library.kind === 'desktop' ? `Library: ${library.location}` : 'Library: this browser'),
       h('span.item', `${store.ws.samples.length} sample${store.ws.samples.length === 1 ? '' : 's'} · ${store.ws.gates.length} gate${store.ws.gates.length === 1 ? '' : 's'}`),
       h('span.item', `${data.views.size} loaded · ${formatBytes(data.totalBytes())}`),
+      watch ? h('button.item.statusbar-link', { type: 'button', title: `Watching ${watch.folder}: open QC → Live`, onclick: () => app.openLiveQC() }, icon('play'), `Watching ${watch.name} · ${app.live.queue.length} file${app.live.queue.length === 1 ? '' : 's'}`) : null,
       h('span.spacer'),
       store.ui.editScope === 'sample' ? h('span.item', h('span.badge.warn', 'Editing this sample only')) : null,
       h('span.item', `CytoWeave ${VERSION}${info ? '' : ' · web'}`),
@@ -976,6 +979,15 @@ async function start() {
   };
   if (info?.files?.length) await app.openStartupFiles(info.files);
   // Programs on this computer (AI agents through "cytoweave mcp") act in this window.
+  // A watched folder (cytoweave --watch, or QC → Live): files checked as they are acquired.
+  app.refreshStatus = renderStatus;
+  app.openLiveQC = async () => {
+    if (app.qcState) app.qcState.section = 'live';
+    else app.qcStartSection = 'live';
+    if (store.ui.mode === 'qc') store.setUI({}, ['selection']);
+    else await app.setMode('qc');
+  };
+  installLiveQC(app, info);
   if (info?.remoteControl) {
     const { installRemote } = await import('./ui/remote.js');
     app.remote = installRemote(app);

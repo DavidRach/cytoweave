@@ -31,7 +31,7 @@ import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
-import { peacoQC, flowRateCheck } from '../web/lib/qc.js';
+import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
 import { autoGateControl, referenceSpectrum, extractAutofluorescence, spectralSpreading, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
 import { agreement, crossValidate, fitNoise, predictedSpreading, spreadModel } from '../web/lib/spread.js';
 import { INSTRUMENTS } from '../web/lib/simulate.js';
@@ -94,6 +94,21 @@ function median(values) {
 // External data (validation/sources.json, fetched into validation/cache/ by fetch.mjs).
 const sources = JSON.parse(readFileSync(new URL('./sources.json', import.meta.url), 'utf8'));
 class MissingData extends Error {}
+// PeacoQC as the app runs a large sample: each channel's work done apart (in parallel workers, here
+// one after another, each with fresh scratch space and through a structured clone, as postMessage
+// passes it), then combined. Must equal the serial run event for event.
+function splitPeacoQC(sample, options) {
+  const layout = peacoQCLayout(sample, options);
+  const channelResults = layout.channels.map((name) => structuredClone(peacoQCChannel(sample, name, layout.bins, options)));
+  return peacoQC(sample, { ...options, eventsPerBin: layout.eventsPerBin, channelResults });
+}
+
+function sameMask(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 function dataset(name) {
   const set = sources.datasets[name];
   const root = new URL(`./cache/${name}/`, import.meta.url);
@@ -358,6 +373,7 @@ const suites = {
     // Each file with its example's display scales, which the QC view passes to PeacoQC.
     const withScales = ({ files, workspaceHints }) => files.map((file) => ({ file, transforms: Object.fromEntries(Object.entries(workspaceHints?.channelSettings ?? {}).map(([name, setting]) => [name, setting.transform])) }));
     const cases = [...withScales(generateExample('qc-showcase', {})), ...withScales(generateExample('pbmc-immunophenotyping', { samples: ['D05_Unstim.fcs', 'D02_Unstim.fcs'] })).filter(({ file }) => /^D0/.test(file.name))];
+    const splitRuns = [];
     for (const { file, transforms } of cases) {
       const d = load(file);
       const time = d.data[d.parameters.findIndex((p) => p.type === 'time')];
@@ -370,6 +386,10 @@ const suites = {
       if (spill) sample.columns = { ...sample.columns, ...compensate(sample.columns, spill) };
       const channels = d.parameters.filter((p) => p.type === 'scatter' || p.type === 'fluorescence').map((p) => p.name);
       const pq = peacoQC(sample, { channels, transforms });
+      for (const mode of ['refined', 'classic']) {
+        const serial = mode === 'refined' ? pq : peacoQC(sample, { channels, transforms, mode });
+        splitRuns.push({ same: sameMask(serial.mask, splitPeacoQC(sample, { channels, transforms, mode }).mask), events: d.eventCount });
+      }
       const fr = flowRateCheck(sample, { timestep: Number(d.keywords.$TIMESTEP) });
       let anomalous = 0; let caught = 0; let falseRemoved = 0;
       for (let i = 0; i < d.eventCount; i += 1) {
@@ -381,6 +401,8 @@ const suites = {
       if (anomalous) check('qc', `${label}: anomalous events removed`, pct(caught / anomalous), caught / anomalous > 0.95, '> 95%');
       check('qc', `${label}: clean events removed`, pct(falseRate), falseRate < (anomalous ? 0.06 : 0.01), anomalous ? '< 6%' : '< 1%');
     }
+    const differ = splitRuns.filter((r) => !r.same).length;
+    check('qc', `PeacoQC with each channel computed apart (as on parallel workers) vs the serial run: ${splitRuns.length} runs (${cases.length} files, refined and classic)`, differ ? `${differ} runs differ` : 'identical masks', differ === 0, 'identical');
   },
 
   spectral() {
@@ -1441,6 +1463,7 @@ const suites = {
       for (const channel of p.channels) transforms[channel] ??= { type: 'linear', min: 0, max: 1 };
       const sample = { eventCount: d.eventCount, channels: d.parameters.map((q) => ({ name: q.name, type: q.type, range: q.range })), columns: compensated, keywords: d.keywords };
       const result = peacoQC(sample, { channels: p.channels, transforms, mode: 'classic', method: 'all' });
+      const split = splitPeacoQC(sample, { channels: p.channels, transforms, mode: 'classic', method: 'all' });
       const removedByR = new Uint8Array(d.eventCount);
       for (const [a, b] of p.removed) removedByR.fill(1, a, b + 1);
       let differing = 0;
@@ -1450,10 +1473,11 @@ const suites = {
         removed += out;
         if (out !== removedByR[e]) differing += 1;
       }
-      peaco.push({ file: p.file.split('/').pop(), differing, ours: (100 * removed) / d.eventCount, theirs: p.percentageRemoved, binsAgree: result.eventsPerBin === p.eventsPerBin });
+      peaco.push({ file: p.file.split('/').pop(), differing, ours: (100 * removed) / d.eventCount, theirs: p.percentageRemoved, binsAgree: result.eventsPerBin === p.eventsPerBin, split: sameMask(split.mask, result.mask) });
     }
     const differing = peaco.reduce((s, p) => s + p.differing, 0);
     check('bioconductor', `PeacoQC ${versions.PeacoQC} (all checks, isolation tree and MAD) and CytoWeave's classic mode remove the same events (${peaco.length} files: 3 real and 4 simulated wells with clogs, bubbles and drift)`, `${differing} events differ; removed ${peaco.map((p) => `${p.file} ${p.ours.toFixed(2)}% vs ${p.theirs.toFixed(2)}%`).join(', ')}`, differing === 0 && peaco.every((p) => p.binsAgree) && peaco.length === 7, '0 events differ, same bins');
+    check('bioconductor', `the same with each channel computed apart, as on parallel workers (${peaco.length} files)`, peaco.every((p) => p.split) ? 'identical masks' : `${peaco.filter((p) => !p.split).length} files differ`, peaco.every((p) => p.split), 'identical');
 
     // FlowSOM: mapping to R's own map and R's metaclustering of it are deterministic and must agree;
     // whole runs depend on each implementation's random numbers, so they are compared as R compares

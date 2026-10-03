@@ -761,6 +761,8 @@ cytoweave mcp [flags]
 | `--host` | `127.0.0.1` | Interface to bind. Keep the default unless you mean to serve other machines (for example `0.0.0.0` on a trusted network), which turns off the DNS-rebinding check |
 | `--data-dir` | user config dir | Folder of the workspace library |
 | `--no-library` | | Keep workspaces in the browser's own storage instead |
+| `--watch` | | Watch a folder for FCS files as they are acquired, and check each one (QC → Live). The folder is only read |
+| `--watch-interval` | `1s` | How often the watched folder is checked |
 | `--remote-control` | | Accept actions from local programs (see below) |
 | `--dev` | | Serve `web/` from the working directory (for development) |
 | `--version` | | Print the version |

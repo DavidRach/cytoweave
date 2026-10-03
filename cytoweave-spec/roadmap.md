@@ -217,11 +217,20 @@ released as 0.3.0; wave 4 follows in 0.4.
    - Found on the way: the compensation spreading matrix counted off-scale events (an entry of
      53 instead of 4 on a real control), and BD FACSDiscover detector names (`UV1 (375)-A`)
      were not recognized as spectral (both fixed).
-2. **Acquisition-time QC (Q4).** The host polls a folder (`--watch`, or from the app when local)
-   and hands over each FCS file once complete (size stable, the header's data end within the
-   file); it never writes there. A live queue runs acquisition QC as files land, and bead files are
-   characterized and added to the instrument's Levey–Jennings charts. PeacoQC's per-channel work
-   runs in parallel on the shared columns, with results identical to the serial run.
+2. **Acquisition-time QC (Q4): done.** The program polls a folder (`--watch`, or QC → Live) and
+   hands over each FCS file once complete: size and modification time steady between two checks
+   and the header's data end (or `$ENDDATA`) within the file. It never writes there; files already
+   present wait to be asked for. The page adds each file (in a group named after the folder) and
+   checks it at once, in any view: acquisition QC for samples and controls, Q and B for bead files,
+   added to the instrument's record and checked against the Levey–Jennings rules. PeacoQC's
+   per-channel work (88–100% of its time) runs on up to four workers on shared columns, identical
+   to the serial run (×3.1 at 2 M events, 20 channels).
+   - Validation: Go tests of slow and paused writers, coarse modification times, temporary names,
+     renames, nested folders, large-file offsets and the API; parallel PeacoQC identical to serial
+     on the simulated QC files and PeacoQC's own 7 files; the benchmark times both.
+   - Found on the way: names with underscores ("Beads_…", "Comp_FITC") were not given their
+     roles, so a watched bead file would have been QC'd as a sample (fixed).
+   - Not done: an agent tool to start a watch, and system notifications outside the window.
 3. **Counterfactual preprocessing.** Whether a comparison's conclusion survives other reasonable
    choices: gate boundaries (shifted, adapted per sample), QC (none, thresholds, classic or
    refined), compensation or unmixing, and scales where an algorithm sees them. Each choice is

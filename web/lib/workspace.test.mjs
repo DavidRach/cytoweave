@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addGates, createWorkspace, suggestFieldsFromNames } from './workspace.js';
+import { addGates, createWorkspace, guessRole, suggestFieldsFromNames } from './workspace.js';
+
+test('roles are guessed from file names, with underscores as separators', () => {
+  assert.equal(guessRole('Beads_2026-03-27.fcs'), 'bead');
+  assert.equal(guessRole('CS&T beads.fcs'), 'bead');
+  assert.equal(guessRole('Comp_FITC.fcs'), 'single-stain');
+  assert.equal(guessRole('Unstained_01.fcs'), 'unstained');
+  assert.equal(guessRole('FMO_CD25.fcs'), 'fmo');
+  assert.equal(guessRole('D01_Stim.fcs'), 'sample');
+  assert.equal(guessRole('Compound_A_well3.fcs'), 'sample', 'a word that merely starts with comp');
+});
 
 test('fields suggested from file names follow what the parts look like', () => {
   const summary = (names) => suggestFieldsFromNames(names).map((f) => `${f.field}:${f.values.join('/')}`);

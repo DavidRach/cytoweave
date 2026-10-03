@@ -1,7 +1,7 @@
 // Large-sample benchmark: times each stage of the pipeline on one sample of N events, the way the
 // app runs it, and reports the memory each stage holds. The sample is the PBMC example's D01_Unstim
 // (14 colours, with its suggested gates) repeated to N events with a little jitter: fine for
-// timing, not for QC (the repeats make a periodic signal that PeacoQC rightly flags).
+// timing, not for judging QC results.
 //
 //   node --expose-gc validation/bench.mjs [events, default 10000000] [--json]
 
@@ -12,6 +12,8 @@ import { SampleView, describePopulation, populationSet, populationSummary } from
 import { addGates, createWorkspace, updateGate } from '../web/lib/workspace.js';
 import { bin2d } from '../web/lib/density.js';
 import { createRandom } from '../web/lib/random.js';
+import { peacoQC, peacoQCLayout } from '../web/lib/qc.js';
+import { Worker } from 'node:worker_threads';
 
 const args = process.argv.slice(2);
 const N = Number(args.find((a) => /^\d+$/.test(a)) ?? 10_000_000);
@@ -103,6 +105,42 @@ const channels = dataset.parameters.filter((p) => p.type === 'fluorescence').map
 time(`compensate the other ${channels.length - 2} fluorescence channels`, () => channels.forEach((c) => view.column(c)));
 time(`statistics table: ${channels.length} channels of ${lymph.name} (median, mean, rSD)`, () => describePopulation(view, ws, lymph.id, channels, { basic: true }), () => `${populationSet(view, ws, lymph.id)?.count} events`);
 time(`full description of one channel of ${lymph.name}`, () => describePopulation(view, ws, lymph.id, channels.slice(0, 1)));
+
+// Acquisition QC's PeacoQC on the compensated channels, serially and with its per-channel work
+// on 4 worker threads reading the columns from shared memory (as the browser's QC pool does);
+// the two must remove the same events.
+{
+  const qcChannels = dataset.parameters.filter((p) => p.type === 'scatter' || p.type === 'fluorescence').map((p) => p.name);
+  const columns = {};
+  for (const name of qcChannels) {
+    const source = view.column(name);
+    const shared = new Float32Array(new SharedArrayBuffer(source.length * 4));
+    shared.set(source);
+    columns[name] = shared;
+  }
+  const sample = { eventCount: view.eventCount, channels: dataset.parameters.filter((p) => columns[p.name]).map((p) => ({ name: p.name, type: p.type, range: p.range })), columns };
+  const options = { channels: qcChannels };
+  const serial = time(`PeacoQC, ${qcChannels.length} channels, 1 thread`, () => peacoQC(sample, options), (r) => `${r.percentRemoved.toFixed(1)}% removed`);
+  const workers = Array.from({ length: 4 }, () => new Worker(new URL('./bench-peaks-worker.mjs', import.meta.url)));
+  const { channels: names, eventsPerBin } = peacoQCLayout(sample, options);
+  const groups = workers.map((_, g) => names.filter((_, c) => c % workers.length === g));
+  const t0 = performance.now();
+  const results = await Promise.all(workers.map((worker, g) => new Promise((resolve) => {
+    worker.once('message', resolve);
+    worker.postMessage({ sample: { ...sample, columns: Object.fromEntries(groups[g].map((n) => [n, columns[n]])) }, names: groups[g], options: { ...options, eventsPerBin } });
+  })));
+  const byName = new Map();
+  groups.forEach((group, g) => group.forEach((name, k) => byName.set(name, results[g][k])));
+  const parallel = peacoQC(sample, { ...options, eventsPerBin, channelResults: names.map((n) => byName.get(n)) });
+  const ms = performance.now() - t0;
+  let same = serial.mask.length === parallel.mask.length;
+  for (let i = 0; same && i < serial.mask.length; i += 1) same = serial.mask[i] === parallel.mask[i];
+  const stage = `PeacoQC, ${qcChannels.length} channels, 4 threads`;
+  rows.push({ stage, ms, heldMB: 0, note: `×${(rows.at(-1).ms / ms).toFixed(1)}; ${same ? 'same mask' : 'MASKS DIFFER'}` });
+  if (!json) console.log(`${stage.padEnd(52)} ${ms.toFixed(0).padStart(7)} ms          ${rows.at(-1).note}`);
+  await Promise.all(workers.map((w) => w.terminate()));
+}
+
 rows.push({ stage: 'held: whole sample view', ms: 0, heldMB: view.bytes / MB, note: 'raw, compensated, scaled and populations' });
 if (!json) console.log(`  sample view holds ${(view.bytes / MB).toFixed(0)} MB`);
 if (json) console.log(JSON.stringify({ events: N, rows }, null, 1));
