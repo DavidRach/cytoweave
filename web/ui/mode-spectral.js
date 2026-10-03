@@ -1468,7 +1468,10 @@ export function mountSpectralMode(app, container) {
       return;
     }
     const own = activeRefs().filter((r) => !r.sample.library && !r.ref.error);
-    const rows = ui.library ? compareWithLibrary(own.map((r) => ({ name: r.name, spectrum: r.ref.spectrum })), ui.library, detectors) : own.map((r) => ({ name: r.name, status: 'new' }));
+    // Changed dyes first, then those new to the library, then the matching ones.
+    const order = { changed: 0, new: 1, match: 2 };
+    const rows = (ui.library ? compareWithLibrary(own.map((r) => ({ name: r.name, spectrum: r.ref.spectrum })), ui.library, detectors) : own.map((r) => ({ name: r.name, status: 'new' })))
+      .map((row, i) => ({ row, i })).sort((a, b) => order[a.row.status] - order[b.row.status] || a.i - b.i).map(({ row }) => row);
     const entries = ui.library?.entries?.length ?? 0;
     pane.append(h('p', ui.library ? `${entries} spectra in the library, of ${new Set(ui.library.entries.map((e) => e.fluorochrome.toLowerCase())).size} fluorochromes.` : 'The library has no spectra of this instrument yet.'));
     if (own.length) {
@@ -1477,7 +1480,7 @@ export function mountSpectralMode(app, container) {
       const body = h('tbody', rows.map((row) => h(`tr${row.name === ui.libraryChosen ? '.selected' : ''}`, { style: { cursor: row.entry ? 'pointer' : 'default' }, onclick: () => { if (row.entry) { ui.libraryChosen = row.name; renderTab(); } } },
         h('td', row.name),
         h('td', row.entry ? `${(row.entry.date ?? row.entry.added ?? '').slice(0, 10)} · ${row.entry.file ?? ''}` : h('span.muted', 'not in the library')),
-        h('td.r', !row.entry ? '—' : row.maxDiff < 0.0005 ? 'identical' : `${row.maxDiff.toFixed(3)} at ${row.detector}`),
+        h('td.r', !row.entry ? '—' : row.maxDiff < 0.0005 ? '< 0.001' : `${row.maxDiff.toFixed(3)} at ${row.detector}`),
         h('td', row.status === 'changed' ? h('span.badge.danger', 'changed') : row.status === 'match' ? h('span.badge.ok', 'matches') : h('span.badge', 'new')))));
       pane.append(h('div', { style: { overflow: 'auto', maxHeight: '320px' } }, h('table.data', h('thead', h('tr', h('th', 'Fluorochrome'), h('th', 'Latest in the library'), h('th.r', { title: 'Largest difference in any detector, each spectrum scaled to a peak of 1' }, 'Largest difference'), h('th', 'Status'))), body)),
         h('p.muted.small-print', `A spectrum differing by more than ${LIBRARY_TOLERANCE} in any detector (each scaled to a peak of 1) is marked changed. Controls of one instrument usually agree within ~0.01; a tandem that lost 5% of its emission to its donor differs by ~0.05 where the donor emits.`),

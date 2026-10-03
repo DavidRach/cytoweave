@@ -243,6 +243,10 @@ function createContext(entry, options) {
     only: options.samples ? new Set(options.samples) : null,
     // { fluorochrome → fraction }: tandems degraded in this experiment (spectral example).
     degrade: options.tandemDegradation ?? null,
+    // Detector gains that differ between the PBMC samples, as day-to-day instrument drift
+    // (PBMC example): log-uniform within ±strength per fluorescence detector, a quarter of that
+    // for scatter; the first sample is left as it is.
+    shift: options.instrumentShift ?? null,
     random: (...parts) => createRandom(deriveSeed(seed, entry.id, ...parts)),
     // Acquisition start times follow the file's place in the full design, so a file generated
     // on its own is byte-identical to the same file generated with the whole example.
@@ -381,6 +385,30 @@ function pbmcDesign(scale) {
   return samples;
 }
 
+// Multiplies a simulated sample's detectors by random gains (instrumentShift). Returns the gains.
+function shiftSample(ctx, sample, sim, panel, strength) {
+  const random = ctx.random('instrument-shift', sample.name);
+  const gains = new Map();
+  const scatter = Math.exp((random() * 2 - 1) * strength * 0.25);
+  for (const name of sim.order) {
+    if (name === 'Time' || /-W$/.test(name)) continue;
+    const gain = /^(FSC|SSC)/.test(name) ? scatter : panel.detectors.some((d) => d.name === name) ? Math.exp((random() * 2 - 1) * strength) : 1;
+    gains.set(name, gain);
+    const column = sim.columns[name];
+    for (let e = 0; e < column.length; e += 1) column[e] = Math.min(262143, column[e] * gain);
+  }
+  return gains;
+}
+
+// The spillover a sample's acquisition software would write after its detectors' gains changed:
+// spill[i][j] × gain[j] / gain[i].
+function shiftedSpill(spill, gains) {
+  const { channels, n } = spill;
+  const matrix = Float64Array.from(spill.matrix);
+  for (let i = 0; i < n; i += 1) for (let j = 0; j < n; j += 1) matrix[i * n + j] *= (gains.get(channels[j]) ?? 1) / (gains.get(channels[i]) ?? 1);
+  return { ...spill, matrix };
+}
+
 function pbmcWrittenSpill(panel) {
   const { channels, matrix, n } = panel.spill;
   const written = Float64Array.from(matrix);
@@ -444,6 +472,10 @@ function* generatePBMC(ctx, samples, all) {
         recordState: true,
       }, ctx.random(sample.name), { signal: ctx.signal });
       fileSetup = { ...setup, spill: written, truth: { state: sim.state, stateNames: ['resting', 'activated'], anomalies: windowsTruth(sim, instrument) } };
+      if (ctx.shift && sample !== all.find((x) => x.role === 'sample')) {
+        const gains = shiftSample(ctx, sample, sim, panel, ctx.shift);
+        fileSetup = { ...fileSetup, spill: shiftedSpill(written, gains), truth: { ...fileSetup.truth, gains: Object.fromEntries(gains) } };
+      }
     }
     files.push(flowFile(ctx, sample, sim, fileSetup));
     yield;
@@ -1717,8 +1749,8 @@ function startGeneration(id, options) {
 
 // Generates an example's files. options: { seed, scale (event-count multiplier, default 1),
 // samples (file names to generate; default all), truth (default true), tandemDegradation
-// ({ fluorochrome: fraction of its emission from its donor }, spectral example), onProgress,
-// signal }.
+// ({ fluorochrome: fraction of its emission from its donor }, spectral example), instrumentShift
+// (strength of per-sample detector gains, PBMC example), onProgress, signal }.
 // Returns { files: [{ name, bytes (Uint8Array, FCS 3.1), meta }], workspaceHints }.
 export function generateExample(id, options = {}) {
   const { ctx, steps } = startGeneration(id, options);

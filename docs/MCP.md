@@ -40,7 +40,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0.
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, and `adapt_gate` 0.3.0.
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the

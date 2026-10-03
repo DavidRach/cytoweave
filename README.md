@@ -14,11 +14,14 @@ and never leave your machine.
 It covers the analysis loop a cytometry lab works through every day, and
 checks each step:
 
-- gating many samples consistently, with per-sample adjustments;
+- gating many samples consistently, with per-sample adjustments, and gates
+  adapted to each sample with a confidence for each;
 - spillover from single-stain controls, checked against those controls;
 - spectral unmixing with autofluorescence, and a comparison of how the choice
   of unmixing model changes the result;
 - acquisition QC that finds clogs and bubbles and leaves clean data alone;
+- the instrument itself: detector efficiency Q and background B from beads,
+  Levey–Jennings charts across runs, and a library of reference spectra;
 - batch normalization and debarcoding;
 - clustering and UMAP/t-SNE maps that report how far they can be trusted;
 - statistics tables and group comparisons with the right test for the design;
@@ -26,8 +29,8 @@ checks each step:
 - publication figures, a methods paragraph with references, and a MIFlowCyt
   checklist.
 
-It reads FlowJo workspaces and Gating-ML, and reproduces FlowJo's scales
-exactly.
+It reads and writes FlowJo workspaces and Gating-ML, and reproduces FlowJo's
+scales exactly.
 
 CytoWeave is free and open source (Apache 2.0).
 
@@ -61,6 +64,10 @@ guides to every view, with screenshots.
     population as a row of plots.
   - Gates are shared by every sample. Adjusting one for a single sample makes
     a visible override, not a copy.
+  - **Adapt a gate to each sample** where the data have drifted: each sample
+    gets a confidence, confident adjustments are proposed, uncertain samples
+    go to review with the reason. Checked against an expert's own gates in a
+    real study.
 - **Scales that match.** Logicle (Moore & Parks reference implementation),
   arcsinh, log, linear and FlowJo's biexponential. The biexponential is
   reproduced exactly from FlowJo's own table algorithm, and checked against
@@ -82,6 +89,8 @@ guides to every view, with screenshots.
   - Panel complexity index, similarity and spreading matrices, a residual
     check, and a side-by-side **comparison of unmixing models** on your own
     sample.
+  - A **spectral library** across experiments that flags a degraded tandem
+    and supplies spectra for dyes without a control.
 - **Acquisition QC.**
   - PeacoQC, with CytoWeave's refinements that stop it removing events from
     clean or slowly drifting files.
@@ -89,6 +98,10 @@ guides to every view, with screenshots.
   - A 0–100 score per sample and a cohort overview.
   - The result is a "QC pass" channel to gate on. Your data are never
     changed.
+- **The instrument.** Every detector's efficiency Q, background B and the
+  beads' CV from multi-level beads or an LED pulser, as flowQB computes them,
+  followed across runs and experiments on Levey–Jennings charts with the
+  Westgard rules.
 - **Batch effects.**
   - CytoNorm normalization against reference samples, with a confounding
     check and before/after distances.
@@ -326,6 +339,11 @@ Right-click a population for more:
   <img alt="Review Lymphocytes across samples: every sample ranked by a robust z-score of its frequency, with a rating of its boundary" src="docs/images/review-light.webp">
 </picture>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/autogate-dark.webp">
+  <img alt="Adapt Monocytes to each sample: six confident adjustments ticked, four samples that already fit and one sent to review, each with its confidence and reason" src="docs/images/autogate-light.webp">
+</picture>
+
 **Adapt to each sample** moves a shared gate where the data have shifted. It
 learns from the samples the gate is known to be right on (where you drew,
 adjusted or confirmed it) and registers the density peaks of the parent
@@ -402,6 +420,11 @@ writes each code's events as a sample of its own, named after the code, so
 the wells of a pooled plate can be annotated and compared. A key can name the
 codes after the samples they hold.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/levey-jennings-dark.webp">
+  <img alt="QC Instrument: a Levey–Jennings chart of one detector's Q over 30 daily bead runs, in control for 20 baseline runs and then falling out of control" src="docs/images/levey-jennings-light.webp">
+</picture>
+
 **Instrument** measures each fluorescence detector's efficiency **Q**
 (photoelectrons per unit of signal), optical background **B** and the beads'
 intrinsic CV from multi-level beads (8-peak rainbow, 6-peak and others) or an
@@ -469,6 +492,11 @@ spread of the negative population and the signal left unexplained, so you can
 see which choice resolves your dim populations best. **Residuals** shows where
 the reference set fails to explain the data, for example a missing dye or a
 degraded tandem.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/spectral-library-dark.webp">
+  <img alt="The spectral library: PE-Cy7 marked changed against the spectra of an earlier experiment, with the two spectra overlaid" src="docs/images/spectral-library-light.webp">
+</picture>
 
 **Library** keeps reference spectra across experiments, per instrument. Today's
 controls are compared with the library's latest spectra, so a dye that
@@ -837,6 +865,15 @@ used for diagnosis.
 - FlowJo evaluates gates at its display resolution; CytoWeave evaluates them
   exactly, so a few events near gate boundaries can differ from FlowJo's
   counts (the migration report shows how many).
+- FlowJo workspaces written by CytoWeave are checked by importing them back
+  and with FlowKit, but have not yet been opened in FlowJo itself.
+- Adapting gates is conservative by design: a boundary that sits in sparse
+  events is kept even when a large shift has left it off-center, and gates of
+  three or more dimensions, Boolean and category gates are not adapted.
+- Q and B standard errors are somewhat optimistic (in simulation 87% of true
+  values lie within 2 SE), as in flowQB. The spectral library's threshold for
+  a changed spectrum (0.03) was calibrated on simulated controls; real
+  controls vary more, and a laboratory may need its own.
 - Event data in CSV are not imported, only annotations.
 - Imaging flow data (CellView, Amnis) are not supported.
 - Spectral unmixing needs the raw detector channels; files that hold only

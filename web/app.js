@@ -31,7 +31,7 @@ import {
   updateSample,
 } from './lib/workspace.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 const MODES = [
   { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
@@ -416,7 +416,8 @@ async function start() {
     }
   };
 
-  app.openExample = async (id) => {
+  // options: generation options (seed, scale, tandemDegradation; see examples.js), for scripts.
+  app.openExample = async (id, options = {}) => {
     const { EXAMPLES } = await import('./lib/examples.js');
     const example = EXAMPLES.find((e) => e.id === id);
     if (!example) return;
@@ -426,7 +427,7 @@ async function start() {
     const progress = progressToast(`Generating ${example.title}…`);
     try {
       const worker = app.worker('simulate');
-      const result = await worker.call('generateExample', { id, options: {} }, { onProgress: (f, message) => progress.update(f * 0.6, message) });
+      const result = await worker.call('generateExample', { id, options }, { onProgress: (f, message) => progress.update(f * 0.6, message) });
       await loadWorkspace(createWorkspace(example.title));
       const items = result.files.map((file, order) => ({ name: file.name, bytes: new Uint8Array(file.bytes), order, folder: null }));
       progress.update(0.65, 'Reading the generated files…');

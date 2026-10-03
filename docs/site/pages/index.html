@@ -5,10 +5,10 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
 ---
     <section class="hero">
       <div class="container hero-grid">
-        <a class="eyebrow" href="{{github}}/releases/tag/v{{version}}"><span class="pill">v{{version}}</span> AI agents that propose, Boolean populations, index sorting and ten-million-event samples</a>
+        <a class="eyebrow" href="{{github}}/releases/tag/v{{version}}"><span class="pill">v{{version}}</span> Gates adapted to each sample, Q and B of your cytometer, FlowJo export and figures that carry their analysis</a>
         <h1>Flow cytometry analysis <span class="accent">you can check</span></h1>
         <p class="lede">CytoWeave is an analysis workbench for conventional, spectral and mass cytometry. It runs on your own computer as one self-contained program, installed with a single command: no licence server, no account, no Python, R or plugins. Files are read and analyzed in your browser and never leave your machine.</p>
-        <shot name="gate" alt="The Gate view of CytoWeave: the gating path of T cells in a 14-colour PBMC experiment, with CD4 against CD8 and CD45RA against CCR7 plots, the population tree and the T-cell statistics" window eager>The gating path of T cells in the bundled 14-colour PBMC experiment, one of nine example experiments.</shot>
+        <shot name="gate" alt="The Gate view of CytoWeave: the gating path of T cells in a 14-colour PBMC experiment, with CD4 against CD8 and CD45RA against CCR7 plots, the population tree and the T-cell statistics" window eager>The gating path of T cells in the bundled 14-colour PBMC experiment, one of ten example experiments.</shot>
         <div class="btn-row">
           <a class="btn btn-primary" href="install.html">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
@@ -129,6 +129,21 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
 
         <article class="feature">
           <div class="feature-text">
+            <span class="kicker">Instrument</span>
+            <h3>Know your cytometer: Q, B and every run since</h3>
+            <p>Measure every detector's efficiency Q and optical background B from multi-level beads or an LED pulser, with the weighted quadratic fit of Parks et al. that flowQB uses, and get flowQB's answers. Keep the runs in the instrument's record and follow them on Levey–Jennings charts: a failing PMT, a dirty flow cell or a weak laser shows on the day it happens.</p>
+            <ul class="checklist">
+              <li>Westgard rules against a baseline of runs</li>
+              <li>A spectral library that catches a degraded tandem</li>
+              <li>Library spectra for dyes you have no control for</li>
+            </ul>
+            <a class="more-link" href="docs/qc.html#instrument">Q, B and Levey–Jennings</a>
+          </div>
+          <shot name="levey-jennings" alt="A Levey–Jennings chart of one detector's Q over 30 daily bead runs: in control for 20 baseline runs, then falling out of control">An ageing violet detector: its Q leaves the control limits the second day it fails.</shot>
+        </article>
+
+        <article class="feature reverse">
+          <div class="feature-text">
             <span class="kicker">Clustering and maps</span>
             <h3>Maps that say how far to trust them</h3>
             <p>FlowSOM, Leiden, Louvain or k-means clustering, and UMAP, t-SNE or PCA across samples. Clusters are named from their marker enrichment and become gateable populations. Every map reports its trustworthiness, continuity, neighbour preservation, sample mixing and seed stability.</p>
@@ -142,7 +157,7 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
           <shot name="explore" alt="The Explore view: a UMAP of 60,000 live cells from 12 samples colored by 12 FlowSOM clusters, with trustworthiness and continuity of 0.99">FlowSOM clusters on a UMAP of 12 samples, with the map's faithfulness and a plain-language reading.</shot>
         </article>
 
-        <article class="feature reverse">
+        <article class="feature">
           <div class="feature-text">
             <span class="kicker">Review</span>
             <h3>Every sample's result for a gate, outliers first</h3>
@@ -155,6 +170,21 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
             <a class="more-link" href="docs/gating.html#review">Review across samples</a>
           </div>
           <shot name="review" alt="Review Lymphocytes across samples: 12 samples with their percentage of parent, event counts, robust z-scores, and typical frequency and robust boundary ratings">The lymphocyte gate on 12 samples: every frequency typical, every boundary robust.</shot>
+        </article>
+
+        <article class="feature reverse">
+          <div class="feature-text">
+            <span class="kicker">Autogating</span>
+            <h3>Gates that follow drifting samples, and say when they can't</h3>
+            <p>Adapt a gate to every sample: CytoWeave learns from the samples you drew, adjusted or confirmed it on, carries it across by the density peaks of the parent population, and gives each sample a confidence. Confident adjustments are ticked for you to apply; uncertain samples come first, with the reason. A gate that sits in a valley stays, because populations also move for biological reasons.</p>
+            <ul class="checklist">
+              <li>One gate per donor for stimulation assays</li>
+              <li>Checked against an expert's own gates in a real cytokine study</li>
+              <li>Membership probabilities for every event, as CLR</li>
+            </ul>
+            <a class="more-link" href="docs/gating.html#adapt">Adapting a gate to each sample</a>
+          </div>
+          <shot name="autogate" alt="Adapt Monocytes to each sample: six confident adjustments ticked, four samples that already fit and one sent to review, each with its confidence and reason">The monocyte gate adapted to samples acquired with drifting detector gains: six adjustments, four that fit, one to check.</shot>
         </article>
 
         <article class="feature">
@@ -195,6 +225,7 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
             <ul class="checklist">
               <li>FlowJo's biexponential reproduced from its own algorithm</li>
               <li>Workspaces exported back to FlowJo, one gating tree per sample</li>
+              <li>De-identified FCS files for sharing, with the events untouched</li>
               <li>Gating-ML 2.0 in and out: all 190 compliance gates exact</li>
               <li>Archival Cytometry Standard containers and CLR</li>
             </ul>
@@ -209,6 +240,7 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
             <h3>Figures, methods and checkpoints</h3>
             <p>Build the gating strategy of a population in one click, or lay out plots across samples; they stay live until you export SVG, PNG or a 300 dpi PDF. The Report view writes a methods paragraph with numbered references from what the workspace actually did, and checkpoints compare two versions of an analysis in plain language.</p>
             <ul class="checklist">
+              <li>Exported figures carry the analysis that made them; open one to see what changed</li>
               <li>Every algorithm with its parameters and seed</li>
               <li>BibTeX for the references, and a MIFlowCyt checklist</li>
               <li>"The Live gate moved by 3% of the axis", with its effect on every frequency</li>
@@ -278,6 +310,8 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
               <tr><td><strong>Spectral</strong></td><td>True abundances of 25 fluorochromes</td><td class="agree">median r = 0.988</td></tr>
               <tr><td><strong>Gating-ML</strong></td><td>ISAC's compliance suite</td><td class="agree">190 of 190 gates exact</td></tr>
               <tr><td><strong>FlowJo</strong></td><td>FlowJo's saved counts in 14 workspaces</td><td class="agree">as close as FlowKit or closer</td></tr>
+              <tr><td><strong>Autogating</strong></td><td>An expert's per-donor gates in a real cytokine study</td><td class="agree">no adjustment moved away from the expert</td></tr>
+              <tr><td><strong>Q and B</strong></td><td>flowQB on its own LSR II data</td><td class="agree">equal within 6e-9</td></tr>
               <tr><td><strong>R packages</strong></td><td>flowCore, PeacoQC, FlowSOM and CytoNorm</td><td class="agree">within 1e-7 to 1e-5</td></tr>
             </tbody>
           </table>

@@ -27,7 +27,7 @@ The foundations and most of the workbench:
 - MCP server and remote control.
 - Nine simulated examples with ground truth, and a validation suite.
 
-## Next (0.2): trust and scale
+## 0.2.0: trust and scale (released 2026-10-02)
 
 Four slices, in this order: the comparisons first, so that the later work on
 large files is checked against them.
@@ -106,10 +106,10 @@ slowly. QC takes about 70 s, mostly PeacoQC's per-bin density estimates
 (about 5 s a channel). They could run in parallel across channels on the
 shared columns.
 
-## Then (0.3): beyond a single tool
+## 0.3.0: beyond a single tool (released 2026-10-03)
 
-Two waves. Wave 3 builds what no single tool combines, each part checked against a reference;
-wave 4 completes the release.
+Wave 3 builds what no single tool combines, each part checked against a reference. It was
+released as 0.3.0; wave 4 follows in 0.4.
 
 ### Wave 3
 
@@ -191,6 +191,8 @@ wave 4 completes the release.
      controls of the simulated instrument agree within 0.01, so 0.03 flags a change; a stale
      PE-Cy7 spectrum cost PE nearly a third of its correlation with the truth (0.68 → 0.48). Real controls will vary
      more than simulated ones; the threshold may need to be per laboratory.
+
+## Next (0.4)
 
 ### Wave 4
 
