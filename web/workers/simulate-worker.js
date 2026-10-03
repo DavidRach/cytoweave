@@ -3,7 +3,7 @@
 // Protocol (cytoweave-spec/conventions.md): the page posts { id, type, payload }; the worker
 // replies { id, progress: [fraction, message] } zero or more times, then { id, result } or
 // { id, error }. Requests:
-//   generateExample  payload { id, options: { seed, scale, samples, truth, tandemDegradation, instrumentShift } }
+//   generateExample  payload { id, options: { seed, scale, samples, truth, tandemDegradation, instrumentShift, laserCV } }
 //                    → { files: [{ name, bytes, meta }], workspaceHints }
 //   listExamples     → catalog summaries
 //   getExample       payload { id } → the catalog entry
@@ -48,7 +48,7 @@ self.addEventListener('message', async (event) => {
         const signal = { aborted: false };
         running.set(id, signal);
         try {
-          const { seed, scale, samples, truth, tandemDegradation, instrumentShift } = payload.options ?? {};
+          const { seed, scale, samples, truth, tandemDegradation, instrumentShift, laserCV } = payload.options ?? {};
           const result = await generateExampleAsync(payload.id, {
             seed,
             scale,
@@ -56,6 +56,7 @@ self.addEventListener('message', async (event) => {
             truth,
             tandemDegradation,
             instrumentShift,
+            laserCV,
             signal,
             onProgress: (fraction, message) => self.postMessage({ id, progress: [fraction, message] }),
           });

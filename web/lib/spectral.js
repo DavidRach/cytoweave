@@ -11,7 +11,7 @@
 // where a residual is ‖r − â S‖₂ / ‖r‖₂, the part of the event's signal the model leaves
 // unexplained.
 
-import { median, robustSD, splitControl } from './compensation.js';
+import { median, robustSD, robustVarianceSE, splitControl } from './compensation.js';
 import {
   choleskyInPlace,
   choleskySolveInPlace,
@@ -133,6 +133,12 @@ function weightedGram(matrix, F, D, weights) {
 
 // The D × F operator P with â = r P for (weighted) least squares: P = W Sᵀ (S W Sᵀ)⁻¹, computed
 // from the SVD of S W^½ for accuracy. Throws a plain-language error for a rank-deficient panel.
+// The D × F unmixing operator of a reference set (abundances = signal · operator): the
+// pseudo-inverse of the F × D reference matrix, optionally with per-detector weights (WLS).
+export function unmixingOperator(spectra, options = {}) {
+  return linearOperator(referenceMatrix(spectra, options.detectors), options.weights ?? null);
+}
+
 function linearOperator(ref, weights = null) {
   const { F, D, matrix } = ref;
   if (F > D) throw new Error(`The panel has ${F} signatures but only ${D} detectors; unmixing needs at least as many detectors as signatures.`);
@@ -1139,6 +1145,7 @@ export function spectralSpreading(controls, names, options = {}) {
   const F = names.length;
   const matrix = new Float64Array(F * F).fill(Number.NaN);
   const report = [];
+  const observations = [];
   for (const control of controls) {
     const i = typeof control.fluorochrome === 'number' ? control.fluorochrome : names.indexOf(control.fluorochrome);
     if (i < 0 || i >= F) throw new Error(`Control "${control.fluorochrome}" is not among the unmixed channels.`);
@@ -1160,6 +1167,8 @@ export function spectralSpreading(controls, names, options = {}) {
       entry.warnings.push('The positive population is not brighter than the negative.');
       continue;
     }
+    const rows = [];
+    const negCount = negIdx ? negIdx.length : negSource[i].length;
     for (let j = 0; j < F; j += 1) {
       if (j === i) {
         matrix[i * F + j] = 0;
@@ -1169,9 +1178,11 @@ export function spectralSpreading(controls, names, options = {}) {
       const sNeg = robustSD(valuesAt(negSource[j], negIdx));
       const spread = sPos * sPos - sNeg * sNeg;
       matrix[i * F + j] = spread > 0 ? Math.sqrt(spread) / Math.sqrt(deltaF) : 0;
+      rows.push({ j, variance: spread, se: robustVarianceSE(sPos, positive.length, sNeg, negCount) });
     }
+    observations.push({ i, deltaF, positiveEvents: positive.length, rows });
   }
-  return { names: Array.from(names), matrix, n: F, report };
+  return { names: Array.from(names), matrix, n: F, report, observations };
 }
 
 // Per-detector residuals of an unmixing over a population. A correct, complete reference set
@@ -1460,6 +1471,8 @@ function laserFromWavelength(nm) {
 // Parses a raw spectral detector name into { laser, index, measurement, wavelength? }, or null for
 // scatter, time and conventional channels. Recognized forms:
 // - Cytek Aurora / Northern Lights: 'UV1-A', 'V7-A', 'B14-H', 'YG3-W', 'R8-A' (suffix optional);
+// - BD FACSDiscover and FACSymphony spectral: 'UV1 (375)-A', 'B12 (725)-A' (the detector's centre
+//   wavelength in parentheses, kept as `emission`);
 // - a detector code in parentheses after a dye or filter label: 'BV421 (V1)', 'PE (YG1)-A';
 // - laser wavelength and channel number: '405-3-A', '488nm-12', '561_4' (laser from wavelength).
 export function parseDetectorName(name) {
@@ -1468,6 +1481,8 @@ export function parseDetectorName(name) {
   const measurementOf = (m) => (m ? m.toUpperCase() : null);
   let match = /^(UV|V|B|YG|R|IR)(\d{1,2})(?:-([AHW]))?$/i.exec(text);
   if (match) return { laser: match[1].toUpperCase(), index: Number(match[2]), measurement: measurementOf(match[3]) };
+  match = /^(UV|V|B|YG|R|IR)(\d{1,2})\s*\((\d{3})\)(?:-([AHW]))?$/i.exec(text);
+  if (match) return { laser: match[1].toUpperCase(), index: Number(match[2]), measurement: measurementOf(match[4]), emission: Number(match[3]) };
   match = /\((UV|V|B|YG|R|IR)(\d{1,2})\)/i.exec(text);
   if (match) {
     const suffix = /-([AHW])\s*$/i.exec(text) ?? /-([AHW])\s*\(/i.exec(text);

@@ -553,6 +553,9 @@ test('detector names: parsing, recognition and laser ordering', () => {
   assert.deepEqual(parseDetectorName('UV16'), { laser: 'UV', index: 16, measurement: null });
   assert.deepEqual(parseDetectorName('BV421 (V1)'), { laser: 'V', index: 1, measurement: null });
   assert.deepEqual(parseDetectorName('PE (YG1)-A'), { laser: 'YG', index: 1, measurement: 'A' });
+  assert.deepEqual(parseDetectorName('UV1 (375)-A'), { laser: 'UV', index: 1, measurement: 'A', emission: 375 });
+  assert.deepEqual(parseDetectorName('YG12 (845)-H'), { laser: 'YG', index: 12, measurement: 'H', emission: 845 });
+  assert.equal(parseDetectorName('ImgB1 (535)-A'), null, 'imaging bands are not spectral detectors');
   assert.deepEqual(parseDetectorName('405-3-A'), { laser: 'V', index: 3, measurement: 'A', wavelength: 405 });
   assert.equal(parseDetectorName('FSC-A'), null);
   assert.equal(parseDetectorName('SSC-B-A'), null);

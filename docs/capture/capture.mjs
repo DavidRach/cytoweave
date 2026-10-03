@@ -364,6 +364,18 @@ const scenes = {
     await click('Panel quality');
     await sleep(3000);
   },
+  // Spectral: Panel design, with the noise fitted to the controls and BV711 left out.
+  async 'spectral-design'() {
+    await scenes.spectral();
+    await click('Panel quality');
+    await sleep(1000);
+    await click('Compute');
+    await waitFor(`window.cytoweave.store.ws.derived.some((d) => d.kind === 'spectral-setup' && d.spreading?.noise) && !document.querySelector('.progress-toast')`, 400000);
+    await click('Panel design');
+    await sleep(1000);
+    await click('BV711', '.spectral-legend .chip');
+    await sleep(2500);
+  },
   // Explore: the cluster heatmap with marker-enrichment names.
   async 'explore-clusters'() {
     await scenes.explore();

@@ -67,7 +67,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | S3 | OLS, WLS (fixed and per-event weights) and NNLS unmixing; residual channel | done |
 | S4 | Complexity index, similarity and spreading matrices | done |
 | S5 | Comparison of unmixing models on the user's own sample | done |
-| S6 | Predicted spread for panel design from the user's own references | planned |
+| S6 | Predicted spread for panel design from the user's own references | done: photon and laser noise fitted to the controls, kept per instrument or from bead runs; validated on simulated and real (LSRFortessa) controls |
 | S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
 
 ## Quality control and normalization

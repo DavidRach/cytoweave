@@ -10,7 +10,9 @@
 //   noise    photon counting noise with variance proportional to the signal (Poisson
 //            photoelectron statistics, the source of spillover spreading error; Nguyen et al.
 //            2013) plus Gaussian electronic noise around a subtracted baseline, so dim events
-//            go negative as on BD FACSDiva; values clip at $PnR − 1;
+//            go negative as on BD FACSDiva; values clip at $PnR − 1; optionally, each laser's
+//            intensity fluctuates from event to event (config.laserCV), which spreads a dye
+//            excited by several lasers into other channels in proportion to its brightness;
 //   pulses   scatter area/height/width from a pulse-width model: singlets have H ≈ A / w,
 //            doublets add areas and lengthen the pulse, so A/H rises;
 //   events   debris, dead cells, doublets, an acquisition clock with Poisson arrivals, and
@@ -680,7 +682,9 @@ const SPECIAL = ['Dead cells', 'Debris', 'Doublets', 'Junk'];
 //   mix: { dead, debris, doublets }, viability: marker name or null,
 //   dead, debris (overrides of DEFAULT_DEAD/DEBRIS), rate (events/s), anomalies, drift:
 //   { fluorescence, scatter } (relative change by the end), markerFactors: { marker: factor },
-//   detectorOffsets: Float64Array, scatterWidth (record -W), keepAbundances, recordState.
+//   detectorOffsets: Float64Array, scatterWidth (record -W), keepAbundances, recordState,
+//   laserCV: a coefficient of variation of every laser's intensity from event to event (a
+//   number, or { [laser]: cv }), lognormal and independent between lasers (default none).
 export function simulateEvents(config, random, options = {}) {
   const { count, instrument, panel, populations } = config;
   const nPop = populations.length;
@@ -709,6 +713,16 @@ export function simulateEvents(config, random, options = {}) {
   for (let j = 0; j < nDet; j += 1) {
     kq[j] = panel.detectors[j].k;
     sig[j] = panel.detectors[j].sigma;
+  }
+  // Laser intensity fluctuations: one lognormal factor per laser and event.
+  let laserOf = null;
+  let laserCVs = null;
+  let laserFactor = null;
+  if (config.laserCV) {
+    const lasers = [...new Set(panel.detectors.map((dt) => dt.laser))];
+    laserOf = Int32Array.from(panel.detectors, (dt) => lasers.indexOf(dt.laser));
+    laserCVs = Float64Array.from(lasers, (l) => (typeof config.laserCV === 'number' ? config.laserCV : config.laserCV[l] ?? 0));
+    laserFactor = new Float64Array(lasers.length);
   }
   // Truth abundances are reported in signal units at each emitter's brightest detector, which is
   // what unmixing with peak-normalized signatures should recover.
@@ -908,6 +922,10 @@ export function simulateEvents(config, random, options = {}) {
       const a = amt[k];
       if (a === 0) continue;
       for (let r = rowStart[k], end = rowStart[k + 1]; r < end; r += 1) raw[cols[r]] += a * vals[r];
+    }
+    if (laserCVs) {
+      for (let l = 0; l < laserCVs.length; l += 1) laserFactor[l] = laserCVs[l] ? Math.exp(laserCVs[l] * g() - 0.5 * laserCVs[l] * laserCVs[l]) : 1;
+      for (let j = 0; j < nDet; j += 1) raw[j] *= laserFactor[laserOf[j]];
     }
     for (let j = 0; j < nDet; j += 1) {
       const r = raw[j] * fluorGain + offsets[j];

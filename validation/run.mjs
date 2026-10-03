@@ -6,9 +6,9 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, compensation, gating, qc, spectral, cellcycle, proliferation, clustering,
+// Suites: fcs, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
-// experts, flowqb, gatingml, flowkit, fcsparser, diva, bioconductor
+// experts, flowqb, gatingml, flowkit, fcsparser, diva, fortessa, bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -16,7 +16,7 @@
 
 import { generateExample } from '../web/lib/examples.js';
 import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
-import { compensate, computeSpillover, controlResiduals, leanCheck } from '../web/lib/compensation.js';
+import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
 import { SampleView, countOf, population } from '../web/lib/engine.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
 import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs';
@@ -32,7 +32,9 @@ import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '..
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, flowRateCheck } from '../web/lib/qc.js';
-import { autoGateControl, referenceSpectrum, extractAutofluorescence, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
+import { autoGateControl, referenceSpectrum, extractAutofluorescence, spectralSpreading, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
+import { agreement, crossValidate, fitNoise, predictedSpreading, spreadModel } from '../web/lib/spread.js';
+import { INSTRUMENTS } from '../web/lib/simulate.js';
 import { dnaHistogram, fitDeanJettFox, fitWatsonPragmatic } from '../web/lib/cellcycle.js';
 import { fitProliferation } from '../web/lib/proliferation.js';
 import { flowsom, mapToSOM, hclust, cutTree, distanceMatrix } from '../web/lib/flowsom.js';
@@ -466,6 +468,63 @@ const suites = {
     const staleResult = unmixWithAutofluorescence(dCols, stale, dAF.signatures, { detectors });
     check('spectral', 'degraded PE-Cy7 unmixed with its stale library spectrum vs its own control: Pearson r of PE (whose detectors the donor emission reaches) and PE-Cy7', `PE ${fmt(rOf(staleResult, 'PE'), 3)} vs ${fmt(rOf(fresh, 'PE'), 3)}; PE-Cy7 ${fmt(rOf(staleResult, 'PE-Cy7'), 3)} vs ${fmt(rOf(fresh, 'PE-Cy7'), 3)}`, rOf(staleResult, 'PE') < rOf(fresh, 'PE'), 'the stale spectrum is worse for PE');
   },
+  // Predicted spread (S6) on the spectral example with known noise: every detector's photon noise
+  // (c1 = k) and each laser's intensity CV. The noise is fitted to the controls, each control's
+  // spread is predicted from the others, and a panel that was never fitted (15 of the 25 dyes) is
+  // predicted and compared with its controls unmixed with its own spectra.
+  spread() {
+    const laserCV = { UV: 0.03, V: 0.02, B: 0.015, YG: 0.025, R: 0.02 };
+    const fluorochromes = ['BUV395', 'BUV496', 'BUV563', 'BUV615', 'BUV661', 'BUV737', 'BUV805', 'BV421', 'BV480', 'Aqua', 'BV570', 'BV605', 'BV650', 'BV711', 'BV750', 'BV786', 'FITC', 'PerCP-Cy5.5', 'PE', 'PE-CF594', 'PE-Cy5', 'PE-Cy7', 'APC', 'Alexa Fluor 700', 'APC-Cy7'];
+    const generated = generateExample('spectral-25color', { laserCV, samples: fluorochromes.map((f) => `Ref_${f}.fcs`) });
+    const detectors = generated.workspaceHints.spectral.detectors;
+    const controls = generated.files.filter((f) => f.meta.role === 'single-stain').map((file) => {
+      const cols = columnsOf(load(file));
+      const gate = autoGateControl(cols, detectors, {});
+      const ref = referenceSpectrum(cols, detectors, gate.positive, gate.negative, {});
+      return { name: file.meta.stain, cols, gate, spectrum: ref.spectrum };
+    });
+    const observe = (list) => {
+      const spectra = list.map((c) => ({ name: c.name, spectrum: c.spectrum, detectors }));
+      const unmixed = list.map((c, i) => ({ fluorochrome: i, abundances: unmixOLS(c.cols, spectra, { residuals: false }), positive: c.gate.positive, negative: c.gate.negative }));
+      return spectralSpreading(unmixed, list.map((c) => c.name));
+    };
+    const modelOf = (list) => spreadModel({ names: list.map((c) => c.name), detectors, spectra: list.map((c) => c.spectrum) });
+    const compare = (predicted, observed, F) => {
+      const rows = [];
+      for (let i = 0; i < F; i += 1) {
+        const o = observed.observations.find((x) => x.i === i);
+        for (const r of o?.rows ?? []) if (r.variance > 4 * r.se) rows.push({ observed: Math.sqrt(r.variance / o.deltaF), predicted: predicted.matrix[i * F + r.j] });
+      }
+      const a = agreement(rows);
+      return { n: rows.length, median: a.medianRatio, within2x: a.within2x, r: a.correlation };
+    };
+    const full = observe(controls);
+    const model = modelOf(controls);
+    const brightness = (obs, F) => Array.from({ length: F }, (_, i) => obs.observations.find((o) => o.i === i)?.deltaF ?? Number.NaN);
+
+    // The model itself: the true noise predicts the observed spread.
+    const truth = { c1: Float64Array.from(detectors, (d) => INSTRUMENTS.aurora.detectors.find((x) => x.name === d).k), laserCV: Float64Array.from(model.lasers, (l) => laserCV[l]) };
+    const exact = compare(predictedSpreading(model, truth, brightness(full, model.F)), full, model.F);
+    check('spread', `spread predicted from the true noise vs the 25 unmixed controls (${exact.n} entries measured to 4 SE, median factor)`, `×${fmt(exact.median, 3)}, ${fmt(100 * exact.within2x, 0)}% within 2×, r = ${fmt(exact.r, 3)}`, exact.median < 1.15 && exact.within2x > 0.95, '< ×1.15, > 95% within 2×');
+
+    const noise = fitNoise(model, full.observations);
+    const ratios = Array.from(noise.c1).filter((_, d) => noise.identified[d]).map((v) => v / truth.c1[0]).sort((a, b) => a - b);
+    check('spread', `photon noise fitted to the controls vs the truth (${ratios.length} of ${detectors.length} detectors identified, median ratio)`, `${fmt(ratios[Math.floor(ratios.length / 2)], 3)} (IQR ${fmt(ratios[Math.floor(ratios.length / 4)], 2)}–${fmt(ratios[Math.floor((3 * ratios.length) / 4)], 2)})`, Math.abs(ratios[Math.floor(ratios.length / 2)] - 1) < 0.15, 'within 15%');
+
+    const loo = crossValidate(model, full.observations);
+    check('spread', `each control's spread predicted from the other 24 (${loo.measurable} entries measured to 4 SE)`, `×${fmt(loo.medianRatio, 3)}, ${fmt(100 * loo.within2x, 0)}% within 2×, r = ${fmt(loo.correlation, 3)}`, loo.within2x > 0.9 && loo.correlation > 0.9, '> 90% within 2×, r > 0.9');
+
+    // A panel never fitted: 15 of the 25 dyes, unmixed with only their spectra.
+    const keep = ['BUV395', 'BUV496', 'BUV661', 'BUV805', 'BV421', 'BV480', 'BV605', 'BV711', 'BV786', 'FITC', 'PE', 'PE-Cy5', 'PE-Cy7', 'APC', 'APC-Cy7'];
+    const sub = controls.filter((c) => keep.includes(c.name));
+    const subObserved = observe(sub);
+    const subModel = modelOf(sub);
+    const whatIf = compare(predictedSpreading(subModel, noise, brightness(subObserved, subModel.F)), subObserved, subModel.F);
+    check('spread', `a ${sub.length}-dye panel predicted with the noise of the 25-dye controls vs its own unmixed controls (${whatIf.n} entries)`, `×${fmt(whatIf.median, 3)}, ${fmt(100 * whatIf.within2x, 0)}% within 2×, r = ${fmt(whatIf.r, 3)}`, whatIf.within2x > 0.9, '> 90% within 2×');
+    const photonOnly = compare(predictedSpreading(subModel, { c1: noise.c1, laserCV: new Float64Array(model.lasers.length) }, brightness(subObserved, subModel.F)), subObserved, subModel.F);
+    check('spread', 'the same without laser fluctuations (photon noise only)', `×${fmt(photonOnly.median, 3)}, ${fmt(100 * photonOnly.within2x, 0)}% within 2×, r = ${fmt(photonOnly.r, 3)}`, true, 'reported');
+  },
+
 
   cellcycle() {
     const { files } = generateExample('cell-cycle', {});
@@ -1254,6 +1313,44 @@ const suites = {
       }
       check('diva', `spillover from ${inputs.length} real single-stain controls (${method}, no manual gating) vs BD FACSDiva's matrix (${n * (n - 1)} entries)`, `largest difference ${fmt(worst, 4)} (${where})`, inputs.length === 15 && worst < tolerance, `< ${tolerance}`);
     }
+  },
+  // External data: the 15 single-stain bead controls of a BD LSRFortessa (Zenodo 22808501), each
+  // gated on bead singlets and compensated with FACSDiva's matrix. Each control's spreading is
+  // predicted from a noise model fitted to the other 14, and off-scale events are left out.
+  fortessa() {
+    const data = dataset('zenodo-skull');
+    const sample = parseFCS(data.read('Skull BM Broad_Tube_017.fcs')).datasets[0];
+    const spill = readSpillover(sample.keywords, sample.parameters);
+    const detectors = spill.channels;
+    const controls = data.files.filter((f) => f.startsWith('Compensation Controls_')).map((f) => {
+      const d = parseFCS(data.read(f)).datasets[0];
+      const [laser, filter] = f.replace('Compensation Controls_', '').split(' ');
+      const [wavelength, , width] = filter.split(',');
+      const columns = columnsOf(d);
+      // Bead singlets: within 4 robust SDs of the median FSC-A and SSC-A.
+      const centre = (values) => {
+        const sorted = Float64Array.from(values).sort();
+        return [sorted[Math.floor(sorted.length / 2)], (sorted[Math.floor(sorted.length * 0.75)] - sorted[Math.floor(sorted.length * 0.25)]) / 1.349];
+      };
+      const [fm, fs] = centre(columns['FSC-A']);
+      const [sm, ss] = centre(columns['SSC-A']);
+      const keep = [];
+      for (let e = 0; e < d.eventCount; e += 1) if (Math.abs(columns['FSC-A'][e] - fm) < 4 * fs && Math.abs(columns['SSC-A'][e] - sm) < 4 * ss) keep.push(e);
+      const use = keep.length >= 500 ? keep : null;
+      const raw = Object.fromEntries(detectors.map((name) => [name, use ? Float32Array.from(use, (e) => columns[name][e]) : columns[name]]));
+      return { channel: detectors.find((c) => c.startsWith(`${laser} ${wavelength}/${width}`)), raw, columns: compensate(raw, spill) };
+    });
+    const clipped = spilloverSpreading(controls.map(({ channel, columns }) => ({ channel, columns })), detectors);
+    const observed = spilloverSpreading(controls, detectors, { range: 262144 });
+    const at = (m, a, b) => m.matrix[detectors.indexOf(a) * detectors.length + detectors.indexOf(b)];
+    check('fortessa', 'off-scale events left out of the spreading matrix (B 710/50 → V 710/50, a sixth of its positives clipped)', `${fmt(at(observed, 'B 710/50-A', 'V 710/50-A'), 2)} (with them ${fmt(at(clipped, 'B 710/50-A', 'V 710/50-A'), 1)})`, at(observed, 'B 710/50-A', 'V 710/50-A') < 5, '< 5');
+    const model = spreadModel({ names: detectors, detectors, spectra: spill.matrix });
+    const noise = fitNoise(model, observed.observations);
+    check('fortessa', `photon noise fitted to the controls is physical in every detector (c1, units per photoelectron)`, `${fmt(Math.min(...noise.c1), 2)}–${fmt(Math.max(...noise.c1), 2)}`, noise.c1.every((v) => v > 0), '> 0');
+    const loo = crossValidate(model, observed.observations);
+    check('fortessa', `each control's spread predicted from the other 14 (${loo.measurable} entries measured to 4 SE)`, `×${fmt(loo.medianRatio, 3)}, ${fmt(100 * loo.within2x, 0)}% within 2×, r = ${fmt(loo.correlation, 3)}`, loo.within2x > 0.7 && loo.correlation > 0.8, '> 70% within 2×, r > 0.8');
+    const photon = crossValidate(model, observed.observations, { laser: false });
+    check('fortessa', 'the same without laser fluctuations (photon noise only)', `×${fmt(photon.medianRatio, 3)}, ${fmt(100 * photon.within2x, 0)}% within 2×, r = ${fmt(photon.correlation, 3)}`, true, 'reported');
   },
   // External data: the Bioconductor packages flowCore, PeacoQC, FlowSOM and CytoNorm, run by
   // reference/generate_r.R on their own example files, a FACSDiva file, a FlowKit file and the

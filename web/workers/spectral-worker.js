@@ -25,6 +25,8 @@
 //   'residualCheck'         { columns, model, options } → { report, names, medianResidual }
 //   'spreadingFromControls' { controls: [{ fluorochrome, columns, peakDetector?, negative? }],
 //                           unstained?, detectors, spectra, options } → spectralSpreading()
+//   'spreadNoise'           { names, detectors, spectra, observations } → { noise (noiseRecord),
+//                           check (crossValidate summary and rows) } (spread.js)
 //   'cancel'                                { id }                     → cancels a waiting job
 // A running job can be stopped through payload.abort, an Int32Array on a SharedArrayBuffer whose
 // first element the page sets to 1 (needs cross-origin isolation), or by terminating the worker.
@@ -46,6 +48,7 @@ import {
   unmixWithAutofluorescence,
   unmixWLS,
 } from '../lib/spectral.js';
+import { crossValidate, fitNoise, noiseRecord, spreadModel } from '../lib/spread.js';
 
 const cancelledIds = new Set();
 
@@ -105,6 +108,12 @@ const handlers = {
     return { report, names: result.names, medianResidual: result.residuals ? median(result.residuals) : Number.NaN };
   },
   spreadingFromControls: spreadingFromControls,
+  spreadNoise: ({ names, detectors, spectra, observations }) => {
+    const model = spreadModel({ names, detectors, spectra });
+    const noise = fitNoise(model, observations);
+    const check = crossValidate(model, observations);
+    return { noise: noiseRecord(model, noise, { controls: observations.length }), check };
+  },
 };
 
 function gateOptions(options, unstained) {

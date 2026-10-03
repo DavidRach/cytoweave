@@ -39,8 +39,8 @@ export async function spilloverFromControls(data, ws, { gateId = null, unstained
     unstained = { columns: Object.fromEntries(detectors.filter((d) => view.raw.has(d)).map((d) => [d, pick(view, indices ?? null, d)])) };
   }
   const result = computeSpillover(inputs, detectors, { method, unstained, range: 262144, ranges });
-  const compensatedControls = inputs.map((input) => ({ channel: input.channel, columns: compensate(input.columns, { channels: detectors, matrix: result.matrix }) }));
-  const spreading = spilloverSpreading(compensatedControls, detectors);
+  const compensatedControls = inputs.map((input) => ({ channel: input.channel, raw: input.columns, columns: compensate(input.columns, { channels: detectors, matrix: result.matrix }) }));
+  const spreading = spilloverSpreading(compensatedControls, detectors, { range: 262144, ranges });
   const report = result.report.map((r, k) => ({ ...r, control: inputs[k]?.name }));
   return { detectors, matrix: result.matrix, report, spreading, controls: usable };
 }

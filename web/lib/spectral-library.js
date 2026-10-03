@@ -72,13 +72,13 @@ export function withEntries(record, entries) {
   return { ...record, entries: all, modified: new Date().toISOString() };
 }
 
-// The latest entries of each fluorochrome that cover the detectors (optionally acquired before
-// a date): Map normalized name → entry.
+// The latest entries of each fluorochrome that cover the detectors (any, when null; optionally
+// acquired before a date): Map normalized name → entry.
 export function latestEntries(record, detectors, before = null) {
   const out = new Map();
   for (const e of record?.entries ?? []) {
     if (before && e.date && e.date >= before) continue;
-    if (!spectrumOn(e, detectors)) continue;
+    if (detectors && !spectrumOn(e, detectors)) continue;
     out.set(norm(e.fluorochrome), e);
   }
   return out;

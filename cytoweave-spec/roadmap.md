@@ -196,14 +196,45 @@ released as 0.3.0; wave 4 follows in 0.4.
 
 ### Wave 4
 
-1. **Predicted spread for panel design (S6)** from the library of wave 3 and the noise model,
-   validated against observed spread.
-2. **Acquisition-time QC (Q4):** the host watches the instrument's export folder; PeacoQC runs its
-   channels in parallel on the shared columns.
-3. **Counterfactual preprocessing:** whether a comparison's conclusion survives alternative scales,
-   matrices, QC thresholds and gate variants.
-4. **Accessibility (V4):** keyboard-only operation, labels on every control, colour maps checked
-   for colour-vision deficiency.
+1. **Predicted spread for panel design (S6): done.** A dye at brightness ΔF reaching detector d
+   adds photon noise c1_d·ΔF·s_id (c1 = 1/Q); unmixing or compensation (U) carries it into channel
+   j. Real controls showed a second source the plan left out: each laser's intensity fluctuates
+   independently of the others, so a dye excited by two lasers spreads by ΔF²·Σ_L cv_L²(Σ_{d∈L}
+   U_dj s_id)², in proportion to its brightness (only the sum of the two lasers' variances is
+   identifiable from such a dye, which is all a prediction needs). Both are fitted to the
+   controls' variance differences (weighted by their standard errors, shrunk towards a common
+   c1 where a detector gets too little light), kept per instrument in the library, or c1 comes
+   from bead runs (Q5). Spectral → Panel design predicts the matrix, complexity and the spread
+   each channel receives for an edited panel, or for one built from the library with no files.
+   - Validation: on simulated controls the photon noise is recovered within 1%, each control is
+     predicted from the other 24 within 2× for 98% of well-measured pairs, and a 15-dye panel is
+     predicted from the 25-dye fit within 2× for all pairs. On a BD LSRFortessa's 15 bead
+     controls (leave one out) 79% are within 2× (67% with photon noise alone).
+   - No public spectral data set with single-stain controls was found: the BD FACSDiscover
+     cell-line data on Zenodo (19221995) stain every tube with calcein and DRAQ5, have no
+     unstained control, and BD's unmixing in them is not linear, so they could not separate
+     noise from spectral error.
+   - Found on the way: the compensation spreading matrix counted off-scale events (an entry of
+     53 instead of 4 on a real control), and BD FACSDiscover detector names (`UV1 (375)-A`)
+     were not recognized as spectral (both fixed).
+2. **Acquisition-time QC (Q4).** The host polls a folder (`--watch`, or from the app when local)
+   and hands over each FCS file once complete (size stable, the header's data end within the
+   file); it never writes there. A live queue runs acquisition QC as files land, and bead files are
+   characterized and added to the instrument's Levey–Jennings charts. PeacoQC's per-channel work
+   runs in parallel on the shared columns, with results identical to the serial run.
+3. **Counterfactual preprocessing.** Whether a comparison's conclusion survives other reasonable
+   choices: gate boundaries (shifted, adapted per sample), QC (none, thresholds, classic or
+   refined), compensation or unmixing, and scales where an algorithm sees them. Each choice is
+   varied alone, plus a random sample of combinations; a specification curve (Steegen et al.
+   2016; Simonsohn et al. 2020) shows the effect under each, with a verdict and a sentence for the
+   methods. The declared analysis stays primary. Validated on simulated cohorts with a real effect,
+   with artefacts that one choice removes (a confounded instrument shift, a clog, a stale tandem
+   spectrum) and with no effect, and on the cytokine study.
+4. **Accessibility (V4).** Labels on every control, keyboard operation, focus kept in dialogs,
+   accessible names and text summaries for plots, status never shown by colour alone, and an
+   axe-core check of every screenshot scene in CI. Palettes and contrast are checked for
+   colour-vision deficiency (Machado et al. 2009) and WCAG AA, and changed only where they fail
+   (with before-and-after screenshots). A screen-reader walkthrough is left to a person.
 
 ## Later
 - Branches of an analysis, three-way merge of non-conflicting edits, and

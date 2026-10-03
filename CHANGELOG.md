@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Panel design: predicted spread.** Spectral → Panel design predicts a panel's spreading matrix from its spectra and the instrument's noise, so you can try a change before running it. Leave a dye out or add one from the spectral library and the matrix, the complexity index and the spread each channel receives update at once; channels that receive the least spread suit dim markers. The noise has two parts, photon counting in every detector (1/Q) and intensity fluctuations of each laser, which make a dye excited by two lasers spread in proportion to its brightness. It comes from this experiment's controls (fitted when the spreading matrix is computed, with each control's spread predicted from the others as a check), from a model kept for the instrument in the library, or from its bead runs. With no files open, Spectral → Design a panel from the spectral library does the same from an instrument's library alone.
+
+### Fixed
+
+- **Off-scale events in the compensation spreading matrix.** Clipped events in a single-stain control looked like spread in every detector: on a real LSRFortessa control with a sixth of its positives off scale, one entry read 53 instead of 4. They are now left out, as they already were for the spillover values.
+- **BD FACSDiscover and FACSymphony spectral detectors.** Detector names such as `UV1 (375)-A` are recognized, so these instruments' raw files open in the Spectral view.
+
+### Validation
+
+- **Predicted spread** (new `spread` and `fortessa` suites):
+  - On simulated controls with known photon noise and laser fluctuations, the fitted photon noise is within 1% of the truth (median over 64 detectors). Each control's spread predicted from the other 24 is within 2× of the observed value for 98% of the pairs measured to 4 standard errors. A 15-dye panel predicted with the noise of the 25-dye controls matches its own unmixed controls within 2× for every pair.
+  - On the 15 bead controls of a BD LSRFortessa (Zenodo 22808501), each control's spread predicted from the other 14 is within 2× for 79% of the pairs measured to 4 standard errors (median ×1.32; with photon noise alone, 67% and ×1.47). The largest misses are BV711 and BV786 into their donor's channel, which a noise model should not absorb. No public spectral data set with single-stain reference controls was found for the same check on a spectral instrument.
+
 ## 0.3.0 (2026-10-03)
 
 CytoWeave 0.3 works with the rest of the lab: it writes FlowJo workspaces and de-identified FCS files, its figures carry the analysis that made them, it adapts gates to each sample with a confidence for each, and it follows the instrument itself, from detector efficiency to the spectra of its dyes, across experiments.

@@ -16,8 +16,9 @@ import { showMenu, showDialog, toast, progressToast, promptDialog } from './over
 import { population } from '../lib/engine.js';
 import { ROOT, addDerived, gatePath, updateSample } from '../lib/workspace.js';
 import { complexityIndex, similarityMatrix } from '../lib/spectral.js';
-import { LIBRARY_TOLERANCE, SPECTRA_RECORDS, compareWithLibrary, libraryEntry, missingFromPanel, spectrumOn, withEntries } from '../lib/spectral-library.js';
-import { acquisitionDate, instrumentOf } from '../lib/instrument-record.js';
+import { LIBRARY_TOLERANCE, SPECTRA_RECORDS, compareWithLibrary, latestEntries, libraryEntry, missingFromPanel, spectrumOn, withEntries } from '../lib/spectral-library.js';
+import { INSTRUMENT_RECORDS, acquisitionDate, instrumentOf } from '../lib/instrument-record.js';
+import { c1FromRuns, noiseOn, predictedSpreading, spreadModel, spreadReceived } from '../lib/spread.js';
 import { applyTransform, axisTicks, createTransform, defaultTransform } from '../lib/transforms.js';
 import { categoricalColor, colormapLUT, luminance } from '../lib/colormaps.js';
 import {
@@ -54,6 +55,7 @@ const FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-s
 const TABS = [
   { id: 'spectra', label: 'Spectra', icon: 'spectral' },
   { id: 'quality', label: 'Panel quality', icon: 'qc' },
+  { id: 'design', label: 'Panel design', icon: 'layers' },
   { id: 'compare', label: 'Compare models', icon: 'compare' },
   { id: 'residuals', label: 'Residuals', icon: 'target' },
   { id: 'ribbon', label: 'Signature', icon: 'density' },
@@ -147,7 +149,7 @@ export function mountSpectralMode(app, container) {
     // Library spectra added for fluorochromes without a control: a stand-in sample, no events.
     const fromLibrary = (setup()?.libraryReferences ?? []).map((e) => {
       const id = `lib:${e.id}`;
-      const ref = { spectrum: e.spectrum, peakDetector: e.peakDetector, computed: e.added, fromLibrary: true, entry: e, separation: e.quality?.separation ?? null, stainIndex: e.quality?.stainIndex ?? null, heterogeneity: e.quality?.heterogeneity ?? null, warnings: [], positiveEvents: null, negativeEvents: null };
+      const ref = { spectrum: e.spectrum, peakDetector: e.peakDetector, computed: e.added, fromLibrary: true, entry: e, brightness: e.quality?.brightness ?? null, separation: e.quality?.separation ?? null, stainIndex: e.quality?.stainIndex ?? null, heterogeneity: e.quality?.heterogeneity ?? null, warnings: [], positiveEvents: null, negativeEvents: null };
       return { sample: { id, name: `Library · ${(e.date ?? e.added ?? '').slice(0, 10)} · ${e.file ?? ''}`, library: true, role: 'library', meta: {} }, ref, name: e.fluorochrome, marker: e.marker ?? '', excluded: Boolean(controlSettings(id).excluded) };
     });
     return [...fromControls, ...fromLibrary];
@@ -582,6 +584,7 @@ export function mountSpectralMode(app, container) {
       const F = names.length;
       const spectra = panelSpectra();
       const matrix = new Array(F * F).fill(null);
+      const observations = [];
       for (let i = 0; i < F && !cancelled; i += 1) {
         const r = refs[i];
         // A library spectrum has no control events to unmix: its row stays empty.
@@ -611,10 +614,32 @@ export function mountSpectralMode(app, container) {
           const v = result.matrix[i * F + j];
           matrix[i * F + j] = Number.isFinite(v) ? +v.toFixed(4) : null;
         }
+        // The variance differences behind the row, for fitting the instrument's noise (spread.js).
+        for (const o of result.observations ?? []) {
+          observations.push({ i: o.i, deltaF: +o.deltaF.toPrecision(6), positiveEvents: o.positiveEvents, rows: o.rows.map((r) => ({ j: r.j, variance: +r.variance.toPrecision(5), se: +r.se.toPrecision(4) })) });
+        }
       }
       if (cancelled) {
         progress.done('Cancelled; the spreading matrix was not changed.', 'info');
         return;
+      }
+      // The instrument's photon and laser noise, fitted to the controls' spread, and each
+      // control's spread predicted from the others as a check.
+      let noise = null;
+      let check = null;
+      if (observations.length >= 3) {
+        progress.update(0.98, 'Fitting the instrument\'s noise to the spread');
+        try {
+          current = worker.run('spreadNoise', { names, detectors, spectra: spectra.map((sp) => Array.from(sp.spectrum)), observations });
+          jobs.add(current);
+          const fitted = await current.promise;
+          noise = fitted.noise;
+          check = { measurable: fitted.check.measurable, medianRatio: fitted.check.medianRatio, within2x: fitted.check.within2x, correlation: fitted.check.correlation };
+        } catch (error) {
+          if (!error.cancelled) toast(`The noise of the instrument could not be fitted: ${error.message}`, { kind: 'warn' });
+        } finally {
+          jobs.delete(current);
+        }
       }
       saveSetup({
         spreading: {
@@ -623,6 +648,9 @@ export function mountSpectralMode(app, container) {
           matrix,
           method: 'Spillover spreading matrix of the OLS-unmixed controls (Nguyen et al. 2013): SS = √(σ²pos − σ²neg) / √ΔF, σ the robust SD; controls gated as for their reference spectra.',
           computed: new Date().toISOString(),
+          observations,
+          noise,
+          check,
         },
       }, 'Spectral spreading matrix');
       progress.done('Spreading matrix computed.', 'ok');
@@ -1006,7 +1034,7 @@ export function mountSpectralMode(app, container) {
   function renderTab() {
     disposeBoxes(tabHost);
     clear(tabHost);
-    const renderers = { spectra: renderSpectraTab, quality: renderQualityTab, compare: renderCompareTab, residuals: renderResidualTab, ribbon: renderRibbonTab, library: renderLibraryTab };
+    const renderers = { spectra: renderSpectraTab, quality: renderQualityTab, design: renderDesignTab, compare: renderCompareTab, residuals: renderResidualTab, ribbon: renderRibbonTab, library: renderLibraryTab };
     try {
       renderers[ui.tab]();
     } catch (error) {
@@ -1136,6 +1164,303 @@ export function mountSpectralMode(app, container) {
         h('p.muted.small-print', `SS = √(σ²pos − σ²neg) / √ΔF with σ the robust SD, in √(peak-detector units). A dim marker on a channel that receives much spread from a bright, co-expressed dye will be hard to resolve. Computed ${new Date(spreading.computed).toLocaleString()}.`));
     }
     tabHost.append(ssmPane);
+  }
+
+  // --- Panel design: predicted spread (lib/spread.js) -----------------------------------------
+  //
+  // The panel's spreading predicted from its spectra and the instrument's noise (photon noise per
+  // detector, intensity fluctuations per laser), fitted to this experiment's controls, kept for
+  // the instrument in the library, or taken from its bead runs. Dyes can be left out and library
+  // spectra added, to see what a changed panel would do before it is run. Without samples, a
+  // panel is designed from an instrument's spectral library alone (renderLibraryDesign).
+
+  function designState() {
+    ui.design ??= { drop: new Set(), add: [], source: null };
+    return ui.design;
+  }
+
+  // Bead runs of the instrument (QC → Instrument), read once.
+  function loadInstrumentRuns(id, onLoad) {
+    if (!id || !app.library?.getRecord || ui.runsFor === id) return;
+    ui.runsFor = id;
+    ui.instrumentRuns = null;
+    app.library.getRecord(INSTRUMENT_RECORDS, id).then((record) => {
+      if (ui.runsFor !== id) return;
+      ui.instrumentRuns = record?.runs ?? [];
+      onLoad();
+    }).catch(() => { ui.instrumentRuns = []; });
+  }
+
+  // Library entries as design dyes, on the given detectors.
+  function libraryDyes(entries, detectors) {
+    return entries.map((e) => ({ name: e.fluorochrome, spectrum: Array.from(spectrumOn(e, detectors) ?? []), brightness: e.quality?.brightness ?? null, source: 'library', entry: e.id }))
+      .filter((d) => d.spectrum.length === detectors.length);
+  }
+
+  // The noise sources available for a model: [{ id, label, noise, note }]. ctx.fitted: the noise
+  // fitted to this experiment's controls ({ record, check, computed }), ctx.library: the
+  // instrument's spectral library record (its kept noise), ctx.runs: its bead runs.
+  function noiseSources(model, ctx) {
+    const out = [];
+    const fromControls = noiseOn(model, ctx.fitted?.record);
+    if (fromControls) {
+      const c = ctx.fitted.check;
+      out.push({
+        id: 'controls',
+        label: 'This experiment\'s controls',
+        noise: fromControls,
+        note: `Fitted to the spread of ${ctx.fitted.record.controls ?? '?'} controls (${new Date(ctx.fitted.computed).toLocaleDateString()}).${c && c.measurable ? ` Check: each control's spread predicted from the others is within a factor ${c.medianRatio.toFixed(2)} of the observed (median), and within 2× for ${Math.round(100 * c.within2x)}% of ${c.measurable} clearly measured pairs.` : ''}`,
+      });
+    }
+    const kept = ctx.library?.noise;
+    const saved = noiseOn(model, kept);
+    if (saved) out.push({ id: 'library', label: `Kept for ${ctx.instrumentName ?? 'the instrument'}`, noise: saved, note: `Fitted ${new Date(kept.fitted).toLocaleDateString()}${kept.workspace ? ` in ${kept.workspace}` : ''} and kept in the library for this instrument.` });
+    const beads = c1FromRuns(model, ctx.runs ?? []);
+    if (beads) {
+      const lasers = (fromControls ?? saved)?.laserCV ?? new Float64Array(model.lasers.length);
+      const found = beads.found.reduce((a, b) => a + b, 0);
+      out.push({ id: 'beads', label: 'Bead runs', noise: { c1: beads.c1, laserCV: lasers, source: 'beads' }, note: `Photon noise (1/Q) of ${found} of ${model.D} detectors from the instrument's bead runs (median of ${(ctx.runs ?? []).length}); the others take the median. ${fromControls || saved ? 'Laser fluctuations from the controls.' : 'Without controls, laser fluctuations are left out, so dyes excited by several lasers are predicted to spread less than they will.'} Q depends on detector gains: use runs at this experiment's settings.` });
+    }
+    return out;
+  }
+
+  async function keepNoise(record) {
+    const inst = instrument();
+    try {
+      let doc = (await app.library.getRecord(SPECTRA_RECORDS, inst.id)) ?? { name: inst.name, instrument: inst, entries: [] };
+      doc = { ...doc, noise: { ...record, workspace: ws().name, kept: new Date().toISOString() }, modified: new Date().toISOString() };
+      await app.library.putRecord(SPECTRA_RECORDS, inst.id, doc);
+      ui.library = doc;
+      toast(`Kept the noise model for ${inst.name}: panels designed later on this instrument can use it without controls.`, { kind: 'ok' });
+      renderTab();
+    } catch (error) {
+      toast(`The noise model could not be kept: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  function renderDesignTab() {
+    const empty = needReferences();
+    if (empty) {
+      tabHost.append(empty);
+      return;
+    }
+    loadLibrary();
+    const inst = instrument();
+    loadInstrumentRuns(inst?.id, () => { if (ui.tab === 'design') renderTab(); });
+    const detectors = setup()?.params?.detectors ?? panelDetectors();
+    const spreading = setup()?.spreading;
+    const observed = new Map((spreading?.observations ?? []).map((o) => [spreading.names[o.i], o.deltaF]));
+    const current = activeRefs().map((r) => ({
+      name: r.name,
+      spectrum: Array.from(r.ref.spectrum),
+      brightness: observed.get(r.name) ?? r.ref.brightness ?? null,
+      source: r.sample.library ? 'library' : 'control',
+    }));
+    renderDesign(tabHost, {
+      detectors,
+      current,
+      state: designState(),
+      library: ui.library,
+      runs: ui.instrumentRuns ?? [],
+      fitted: spreading?.noise ? { record: spreading.noise, check: spreading.check, computed: spreading.computed } : null,
+      instrumentName: inst?.name,
+      keep: app.library?.putRecord && inst && spreading?.noise ? () => keepNoise(spreading.noise) : null,
+      observedAt: (a, b) => {
+        if (!spreading) return null;
+        const i = spreading.names.indexOf(a);
+        const j = spreading.names.indexOf(b);
+        const v = i >= 0 && j >= 0 ? spreading.matrix[i * spreading.names.length + j] : null;
+        return Number.isFinite(v) ? v : null;
+      },
+      reference: { label: 'Back to this experiment\'s panel', complexity: panelComplexity() },
+      noNoise: 'No noise model yet. Compute the spreading matrix in Panel quality (it unmixes the controls and fits the photon noise of every detector and the intensity fluctuations of every laser to their spread), or characterize the instrument with multi-level beads in QC → Instrument.',
+      rerender: () => renderTab(),
+    });
+  }
+
+  // Without samples: design a panel from an instrument's spectral library, with the noise kept for
+  // it (or its bead runs). Every library dye starts left out; click to add.
+  async function renderLibraryDesign(host) {
+    const lib = ui.libraryDesign;
+    if (!lib.records) {
+      host.append(h('p.muted', 'Reading the spectral library…'));
+      try {
+        lib.records = (await app.library.listRecords(SPECTRA_RECORDS)) ?? [];
+      } catch {
+        lib.records = [];
+      }
+      renderBody();
+      return;
+    }
+    if (!lib.records.length) {
+      host.append(emptyState('library', 'The spectral library is empty', 'Spectra are added to the library from an experiment\'s reference controls (Spectral → Library). Open one, or the 25-colour example, first.'));
+      return;
+    }
+    lib.id ??= lib.records[0].id;
+    if (lib.recordFor !== lib.id) {
+      lib.recordFor = lib.id;
+      lib.record = undefined;
+      app.library.getRecord(SPECTRA_RECORDS, lib.id).then((record) => {
+        lib.record = record;
+        lib.state = { drop: new Set((record?.entries ?? []).map((e) => e.fluorochrome)), add: [], source: null };
+        renderBody();
+      });
+    }
+    loadInstrumentRuns(lib.id, () => renderBody());
+    host.append(h('div.pane',
+      h('h3', 'Design a panel', h('span.muted', { style: { fontWeight: 500 } }, 'from the spectral library'), h('span.spacer'),
+        h('button.btn.small.ghost', { type: 'button', onclick: () => { ui.libraryDesign = null; renderBody(); } }, icon('close'), 'Close')),
+      h('label.check', 'Instrument ',
+        h('select', { 'aria-label': 'Instrument', onchange: (e) => { lib.id = e.target.value; renderBody(); } },
+          lib.records.map((r) => h('option', { value: r.id, selected: r.id === lib.id }, r.name || r.id)))),
+      h('p.muted.small-print', 'Pick the dyes of a planned panel: the spreading is predicted from their library spectra and the noise kept for the instrument (Panel design → Keep, in an experiment with controls) or its bead runs, before any control is run.')));
+    if (lib.record === undefined) return;
+    const entries = [...latestEntries(lib.record, null).values()];
+    const detectors = commonDetectorsOf(entries);
+    renderDesign(host, {
+      detectors,
+      current: libraryDyes(entries, detectors),
+      state: lib.state,
+      library: lib.record,
+      runs: ui.instrumentRuns ?? [],
+      fitted: null,
+      instrumentName: lib.record?.name,
+      keep: null,
+      observedAt: () => null,
+      reference: null,
+      noNoise: 'No noise is kept for this instrument yet. In an experiment with reference controls, compute the spreading matrix (Panel quality) and keep its noise model (Panel design), or characterize the instrument with multi-level beads (QC → Instrument).',
+      rerender: () => renderBody(),
+    });
+  }
+
+  // The detectors most library entries share (all of them on one instrument, normally).
+  function commonDetectorsOf(entries) {
+    const counts = new Map();
+    for (const e of entries) {
+      const key = e.detectors.join('\u0000');
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+    return best ? best[0].split('\u0000') : [];
+  }
+
+  // The design view: noise source, panel editor, predicted matrix and spread per channel.
+  // ctx: { detectors, current (dyes), state, library, runs, fitted, instrumentName, keep,
+  // observedAt, reference: { label, complexity } | null, noNoise, rerender }.
+  function renderDesign(host, ctx) {
+    const { state, detectors, current } = ctx;
+    const added = libraryDyes(state.add.map((id) => (ctx.library?.entries ?? []).find((e) => e.id === id)).filter(Boolean), detectors).map((d) => ({ ...d, added: d.entry }));
+    const design = [...current.filter((d) => !state.drop.has(d.name)), ...added];
+    let model = null;
+    let modelError = null;
+    try {
+      if (design.length >= 2) model = spreadModel({ names: design.map((d) => d.name), detectors, spectra: design.map((d) => d.spectrum) });
+    } catch (error) {
+      modelError = error.message;
+    }
+    const sources = model ? noiseSources(model, ctx) : [];
+    const chosen = sources.find((x) => x.id === state.source) ?? sources[0] ?? null;
+
+    // Noise of the instrument.
+    if (model) {
+      const noisePane = h('div.pane', h('h3', 'Noise of the instrument'));
+      if (!sources.length) noisePane.append(h('div.callout.warn', icon('info'), h('span', ctx.noNoise)));
+      else {
+        noisePane.append(h('div.segmented', { role: 'group', 'aria-label': 'Noise source' }, sources.map((x) => h(`button${x === chosen ? '.active' : ''}`, { type: 'button', 'aria-pressed': String(x === chosen), onclick: () => { state.source = x.id; ctx.rerender(); } }, x.label))),
+          h('p.muted', { style: { margin: '8px 0 0' } }, chosen.note));
+        if (chosen.id === 'controls' && ctx.keep) noisePane.append(h('div', { style: { marginTop: '8px' } }, h('button.btn.small', { type: 'button', onclick: ctx.keep }, icon('library'), `Keep for ${ctx.instrumentName}`)));
+      }
+      host.append(noisePane);
+    }
+
+    // The panel being designed.
+    const libraryChoices = [...latestEntries(ctx.library, detectors).values()].filter((e) => !design.some((d) => d.name.toLowerCase() === e.fluorochrome.toLowerCase()) && !current.some((d) => d.name.toLowerCase() === e.fluorochrome.toLowerCase()));
+    const edited = ctx.reference && (state.drop.size || state.add.length);
+    host.append(h('div.pane',
+      h('h3', 'Panel', h('span.muted', { style: { fontWeight: 500 } }, `${design.length} dyes`), h('span.spacer'),
+        edited ? h('button.btn.small.ghost', { type: 'button', onclick: () => { state.drop.clear(); state.add = []; ctx.rerender(); } }, icon('undo'), ctx.reference.label) : null),
+      h('div.spectral-legend', { role: 'group', 'aria-label': 'Dyes in the designed panel' },
+        current.map((d) => {
+          const off = state.drop.has(d.name);
+          return h(`button.chip${off ? '.off' : ''}`, {
+            type: 'button',
+            'aria-pressed': String(!off),
+            title: `${off ? 'Left out: click to include' : 'Click to leave out'}. Brightness ${d.brightness ? formatCount(Math.round(d.brightness)) : 'unknown'}${d.source === 'library' ? ' (library spectrum)' : ''}.`,
+            onclick: () => { if (off) state.drop.delete(d.name); else state.drop.add(d.name); ctx.rerender(); },
+          }, d.name);
+        }),
+        added.map((d) => h('button.chip.active', { type: 'button', title: 'From the library: click to remove', onclick: () => { state.add = state.add.filter((id) => id !== d.added); ctx.rerender(); } }, icon('plus'), d.name))),
+      libraryChoices.length
+        ? h('label.check', { style: { marginTop: '8px' } }, 'Add from the library ',
+          h('select', { 'aria-label': 'Add a fluorochrome from the spectral library', onchange: (e) => { if (e.target.value) { state.add.push(e.target.value); ctx.rerender(); } } },
+            h('option', { value: '' }, 'Choose a fluorochrome…'),
+            libraryChoices.map((e) => h('option', { value: e.id }, `${e.fluorochrome}${e.date ? ` (${e.date.slice(0, 10)})` : ''}`))))
+        : ctx.reference ? h('p.muted.small-print', ctx.library?.entries?.length ? 'Every library spectrum of this instrument is in the panel.' : 'Spectra saved to the library (Library tab) can be added here to try them in the panel.') : null));
+    if (modelError) {
+      host.append(h('div.callout.danger', icon('warning'), h('span', modelError)));
+      return;
+    }
+    if (!model) {
+      host.append(h('div.pane', h('div.empty', icon('layers'), h('h3', 'Two or more dyes are needed'), h('p', 'Include dyes, or add spectra from the library, to predict their spread.'))));
+      return;
+    }
+    if (!chosen) return;
+
+    // Brightness: each dye's control (or library entry), else the median of the others.
+    const known = design.map((d) => d.brightness).filter((v) => v > 0).sort((a, b) => a - b);
+    const fallback = known.length ? known[Math.floor(known.length / 2)] : 1;
+    const brightness = design.map((d) => (d.brightness > 0 ? d.brightness : fallback));
+    const predicted = predictedSpreading(model, chosen.noise, brightness);
+    const ci = complexityIndex(design.map((d) => ({ name: d.name, spectrum: d.spectrum })));
+    const n = predicted.n;
+    const pairs = [];
+    for (let i = 0; i < n; i += 1) for (let j = 0; j < n; j += 1) if (i !== j) pairs.push([predicted.matrix[i * n + j], design[i].name, design[j].name]);
+    pairs.sort((a, b) => b[0] - a[0]);
+    let max = 0;
+    for (const v of predicted.matrix) if (Number.isFinite(v)) max = Math.max(max, v);
+    const missingBrightness = design.filter((d) => !(d.brightness > 0)).map((d) => d.name);
+    const now = ctx.reference?.complexity;
+    host.append(h('div.pane',
+      h('h3', 'Predicted spreading matrix', h('span.muted', { style: { fontWeight: 500 } }, 'at each dye\'s brightness')),
+      h('div.stat-grid',
+        h('div.stat-tile', h('div.k', 'Complexity index'), h('div.v', Number.isFinite(ci) ? ci.toFixed(1) : '∞', edited && Number.isFinite(now) ? h('span.muted', { style: { fontSize: '11px', fontWeight: 500 } }, ` now ${now.toFixed(1)}`) : null)),
+        h('div.stat-tile', h('div.k', 'Largest spread'), h('div.v', pairs[0] ? pairs[0][0].toFixed(1) : '—', pairs[0] ? h('span.muted', { style: { fontSize: '11px', fontWeight: 500 } }, ` ${pairs[0][1]} → ${pairs[0][2]}`) : null)),
+        h('div.stat-tile', h('div.k', 'Noise'), h('div.v', { style: { fontSize: '13px' } }, chosen.label))),
+      matrixBox({
+        names: model.names,
+        matrix: predicted.matrix,
+        format: (v) => (v >= 10 ? v.toFixed(0) : v.toFixed(1)),
+        color: (v, i, j) => (i === j || !Number.isFinite(v) ? null : seqColor('magma', max ? Math.sqrt(v / max) : 0, true)),
+        tip: (v, i, j) => {
+          const seen = ctx.observedAt(model.names[i], model.names[j]);
+          return `${model.names[i]} spreads into ${model.names[j]}: ${Number.isFinite(v) ? v.toFixed(2) : '—'} predicted${seen !== null ? `, ${seen.toFixed(2)} observed` : ''}`;
+        },
+      }),
+      h('div.spectral-pairs', h('span.muted', 'Largest predicted spreading: '), pairs.slice(0, 8).map(([v, a, b]) => h('span.badge', `${a} → ${b} ${v.toFixed(1)}`))),
+      missingBrightness.length ? h('div.callout.warn', { style: { marginTop: '8px' } }, icon('info'), h('span', `No brightness is known for ${missingBrightness.join(', ')}; the median of the other dyes is used.`)) : null,
+      h('p.muted.small-print', 'SS = √(Δσ²/ΔF) as in Panel quality, predicted rather than measured: photon noise in every detector the dye reaches, carried into each channel by the unmixing, plus the intensity fluctuations of the lasers for dyes excited by more than one (this part grows with brightness, so the matrix is stated at each dye\'s control brightness). Spread from heterogeneous dyes (degraded tandems) and from autofluorescence differences between positive and negative cells is not predicted.')));
+
+    // Spread received by each channel.
+    const received = spreadReceived(predicted);
+    const order = received.map((v, j) => j).sort((a, b) => received[a] - received[b]);
+    const top = Math.max(...received, 1e-12);
+    host.append(h('div.pane',
+      h('h3', 'Spread received by each channel', h('span.muted', { style: { fontWeight: 500 } }, 'if every other dye is on the same cell')),
+      h('div', { style: { overflow: 'auto', maxHeight: '420px' } }, h('table.data.spectral-bars',
+        h('thead', h('tr', h('th', 'Channel'), h('th', 'Spread received'), h('th', 'From (largest)'))),
+        h('tbody', order.map((j) => {
+          let from = -1;
+          let most = 0;
+          for (let i = 0; i < n; i += 1) {
+            const v = i === j ? 0 : predicted.matrix[i * n + j] ** 2 * brightness[i];
+            if (v > most) { most = v; from = i; }
+          }
+          return h('tr',
+            h('td', model.names[j]),
+            h('td', h('div.spectral-bar', h('span', { style: { width: `${Math.max(2, (100 * received[j]) / top)}%`, background: css('--accent') } })), h('div.spectral-bar-label', formatCount(Math.round(received[j])))),
+            h('td.muted', from >= 0 ? model.names[from] : '—'));
+        })))),
+      h('p.muted.small-print', 'The SD added to each channel\'s negative population when every other dye is on the cell at its brightness: √(Σ SS² · ΔF). Channels at the top receive the least spread and suit dim or critical markers; markers co-expressed with the dye in "From" are hardest to resolve in that channel.')));
   }
 
   function renderCompareTab() {
@@ -1431,7 +1756,7 @@ export function mountSpectralMode(app, container) {
         sha256: r.sample.sha256,
         workspace: ws().name,
         carrier: r.sample.meta?.carrier ?? null,
-        quality: { separation: r.ref.separation, stainIndex: r.ref.stainIndex, heterogeneity: r.ref.heterogeneity },
+        quality: { separation: r.ref.separation, stainIndex: r.ref.stainIndex, heterogeneity: r.ref.heterogeneity, brightness: r.ref.brightness ?? null },
       }));
       record = withEntries(record, entries);
       await app.library.putRecord(SPECTRA_RECORDS, inst.id, record);
@@ -1596,10 +1921,17 @@ export function mountSpectralMode(app, container) {
     disposeBoxes(body);
     clear(body);
     const samples = ws().samples;
+    if (!samples.length && ui.libraryDesign) {
+      const host = h('div.spectral-library-design');
+      body.append(host);
+      renderLibraryDesign(host);
+      return;
+    }
     if (!samples.length) {
       body.append(emptyState('spectral', 'Spectral unmixing', 'Load raw spectral files (with detectors such as UV1-A … R8-A): a single-stain reference control for each fluorochrome, an unstained control and your samples. CytoWeave computes reference spectra with quality checks, finds autofluorescence signatures, checks the panel and unmixes into channels you can gate.',
         h('button.btn.primary', { type: 'button', onclick: () => (app.openExample ? app.openExample('spectral-25color') : app.showExamples?.()) }, icon('sparkles'), 'Open the 25-colour spectral example'),
-        app.showExamples ? h('button.btn', { type: 'button', onclick: () => app.showExamples() }, 'All examples') : null));
+        app.showExamples ? h('button.btn', { type: 'button', onclick: () => app.showExamples() }, 'All examples') : null,
+        app.library?.listRecords ? h('button.btn', { type: 'button', onclick: () => { ui.libraryDesign = {}; renderBody(); } }, icon('layers'), 'Design a panel from the spectral library') : null));
       return;
     }
     if (!panelDetectors().length) {

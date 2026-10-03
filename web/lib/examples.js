@@ -247,6 +247,8 @@ function createContext(entry, options) {
     // (PBMC example): log-uniform within ±strength per fluorescence detector, a quarter of that
     // for scatter; the first sample is left as it is.
     shift: options.instrumentShift ?? null,
+    // Laser intensity CV from event to event (a number or { laser: cv }; spectral example).
+    laserCV: options.laserCV ?? null,
     random: (...parts) => createRandom(deriveSeed(seed, entry.id, ...parts)),
     // Acquisition start times follow the file's place in the full design, so a file generated
     // on its own is byte-identical to the same file generated with the whole example.
@@ -332,12 +334,12 @@ const BEAD_MIX = { dead: 0, debris: 0.02, doublets: 0.03 };
 const BEAD_DEBRIS = { fscMin: 3000, fscMean: 6000, ssc: [3000, 0.8], viabilityBright: 0 };
 
 // Positive beads are made `targetSignal` bright in the fluorochrome's peak detector.
-function simulateBeads(ctx, sample, instrument, panel, marker, targetSignal, rate) {
+function simulateBeads(ctx, sample, instrument, panel, marker, targetSignal, rate, extra = {}) {
   let peak = 0;
   const row = 2 + panel.markers.indexOf(marker);
   for (let j = 0; j < panel.detectors.length; j += 1) peak = Math.max(peak, panel.emitters[row * panel.detectors.length + j]);
   const populations = compilePopulations(beadSpecs(marker, targetSignal / peak), panel.markers, { stained: new Set([marker]) });
-  return simulateEvents({ count: sample.events, instrument, panel, populations, weights: Float64Array.from([1, 1]), mix: BEAD_MIX, debris: BEAD_DEBRIS, viability: null, rate }, ctx.random(sample.name), { signal: ctx.signal });
+  return simulateEvents({ count: sample.events, instrument, panel, populations, weights: Float64Array.from([1, 1]), mix: BEAD_MIX, debris: BEAD_DEBRIS, viability: null, rate, ...extra }, ctx.random(sample.name), { signal: ctx.signal });
 }
 
 // --- 1. PBMC immunophenotyping (conventional, BD LSRFortessa-like) ------------------------------
@@ -749,19 +751,19 @@ function* generateSpectral(ctx, samples, all) {
     let sim;
     let truth = {};
     if (sample.role === 'single-stain' && sample.carrier === 'beads') {
-      sim = simulateBeads(ctx, sample, instrument, panel, sample.marker, 1.2e6, 3000);
+      sim = simulateBeads(ctx, sample, instrument, panel, sample.marker, 1.2e6, 3000, { laserCV: ctx.laserCV });
       truth = { signature: signatures[sample.stain], fluorochrome: sample.stain };
     } else if (sample.role !== 'sample') {
       const { specs, weights } = pbmcComposition(ctx, sample.subject);
       const stained = new Set(sample.role === 'unstained' ? [] : [sample.marker]);
       const populations = compilePopulations(specs, panel.markers, { stained });
       const mix = sample.role === 'unstained' ? PBMC_MIX : { dead: 0.45, debris: 0.08, doublets: 0.03 };
-      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix, viability: sample.role === 'unstained' ? null : 'Viability', rate, scatterWidth: false }, ctx.random(sample.name), { signal: ctx.signal });
+      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix, viability: sample.role === 'unstained' ? null : 'Viability', rate, scatterWidth: false, laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
       if (sample.role === 'single-stain') truth = { signature: signatures[sample.stain], fluorochrome: sample.stain };
     } else {
       const { specs, weights } = pbmcComposition(ctx, sample.subject);
       const populations = compilePopulations(specs, panel.markers);
-      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: PBMC_MIX, viability: 'Viability', rate, keepAbundances: ctx.truth, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers) }, ctx.random(sample.name), { signal: ctx.signal });
+      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: PBMC_MIX, viability: 'Viability', rate, keepAbundances: ctx.truth, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers), laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
       if (sim.abundances) {
         truth = {
           abundances: sim.abundances,
@@ -1750,7 +1752,8 @@ function startGeneration(id, options) {
 // Generates an example's files. options: { seed, scale (event-count multiplier, default 1),
 // samples (file names to generate; default all), truth (default true), tandemDegradation
 // ({ fluorochrome: fraction of its emission from its donor }, spectral example), instrumentShift
-// (strength of per-sample detector gains, PBMC example), onProgress, signal }.
+// (strength of per-sample detector gains, PBMC example), laserCV (laser intensity CV from event
+// to event, a number or { laser: cv }, spectral example), onProgress, signal }.
 // Returns { files: [{ name, bytes (Uint8Array, FCS 3.1), meta }], workspaceHints }.
 export function generateExample(id, options = {}) {
   const { ctx, steps } = startGeneration(id, options);
