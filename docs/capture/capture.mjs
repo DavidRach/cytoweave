@@ -84,8 +84,8 @@ async function click(text, scope = 'button') {
   await sleep(400);
 }
 
-async function example(id, { gates = true } = {}) {
-  await app(`await app.openExample(${JSON.stringify(id)});`);
+async function example(id, { gates = true, options = {} } = {}) {
+  await app(`await app.openExample(${JSON.stringify(id)}, ${JSON.stringify(options)});`);
   await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`, 240000);
   await sleep(1500);
   if (gates) {
@@ -387,6 +387,86 @@ const scenes = {
     await click('Place', '.dialog-foot button');
     await waitFor(`/With the placed samples/.test(${mainText}) && !document.querySelector('.progress-toast')`, 180000);
     await sleep(2500);
+  },
+  // Autogating: the PBMC example acquired with drifting detector gains (up to about 2× between
+  // samples); the monocyte gate drawn on D01_Unstim, adapted to every other sample.
+  async autogate() {
+    await example('pbmc-immunophenotyping', { options: { instrumentShift: 0.8 } });
+    await app(`const W = await import('/lib/workspace.js'); const g = app.store.ws.gates.find((x) => x.name === 'Monocytes'); app.store.commit(W.updateGate(app.store.ws, g.id, { meta: { ...g.meta, drawnOn: ${sampleId('D01_Unstim')} } }), 'Drawn on D01_Unstim');`);
+    await mode('gate');
+    await selectSample('D02_Stim');
+    await selectGate('Monocytes');
+    await app(`app.adaptGate(${gateId('Monocytes')});`);
+    await waitFor(`/Adapt .* to each sample/.test(document.querySelector('.dialog')?.innerText ?? '') && !document.querySelector('.progress-toast')`, 180000);
+    await sleep(1500);
+  },
+  // QC → Instrument: Q and B of every detector on the last of 30 daily bead runs.
+  async instrument() {
+    await example('bead-qc', { gates: false });
+    await mode('qc');
+    await click('Instrument');
+    await click('Measure 30');
+    await waitFor(`window.cytoweave.store.ws.derived.some((d) => d.kind === 'instrument-qc') && !document.querySelector('.progress-toast')`, 180000);
+    await sleep(1500);
+    await js(`[...document.querySelectorAll('main table.data tbody tr')].find((tr) => tr.firstChild?.textContent === 'BV421-A')?.click()`);
+    await sleep(1500);
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /Beads_2026/.test(e.textContent))?.scrollIntoView({ block: 'start' })`);
+    await sleep(1200);
+  },
+  // The Levey–Jennings chart of the ageing detector's Q across the 30 runs.
+  async 'levey-jennings'() {
+    await scenes.instrument();
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /Levey–Jennings/.test(e.textContent))?.closest('.pane')?.scrollIntoView({ block: 'end' })`);
+    await sleep(1200);
+  },
+  // The spectral library: a later experiment whose PE-Cy7 has degraded, against the spectra saved
+  // from the first.
+  async 'spectral-library'() {
+    await scenes.spectral();
+    await click('Library');
+    await sleep(1500);
+    await click('Save 25 spectra');
+    await sleep(2000);
+    await app(`await app.openExample('spectral-25color', { seed: 20260601, tandemDegradation: { 'PE-Cy7': 0.1 } });`);
+    await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`, 240000);
+    await sleep(1500);
+    await mode('spectral');
+    await waitFor(`/Gate all controls/.test(${mainText})`, 60000);
+    await click('Gate all controls');
+    await waitFor(`/Extract signatures/.test(${mainText})`, 300000);
+    await sleep(1500);
+    await click('Library');
+    await waitFor(`Boolean(document.querySelector('main .badge.danger'))`, 30000);
+    await sleep(1500);
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /against the library/.test(e.textContent))?.closest('.pane')?.scrollIntoView({ block: 'end' })`);
+    await sleep(1200);
+  },
+  // An exported figure opened again after a gate moved: where it came from, and what changed.
+  async 'figure-provenance'() {
+    await scenes.figures();
+    await app(`
+      const lib = await import('/lib/figure-provenance.js');
+      const W = await import('/lib/workspace.js');
+      const G = await import('/lib/gates.js');
+      const fig = app.store.ws.figures.at(-1);
+      const views = new Map();
+      for (const item of fig.items) if (item.kind === 'plot' && !views.has(item.sampleId)) views.set(item.sampleId, await app.data.ensure(item.sampleId));
+      const record = lib.buildProvenance(app.store.ws, fig, { views, version: app.version });
+      const bytes = new TextEncoder().encode(lib.embedSVG('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>', record));
+      const g = app.store.ws.gates.find((x) => x.name === 'T cells');
+      app.store.commit(W.setGateGeometry(app.store.ws, g.id, G.offsetGeometry(g.type, g.geometry, 0.03)), 'Widen T cells');
+      await app.openFigureFile({ name: 'T cells gating strategy.svg', bytes });
+    `);
+    await waitFor(`/would look the same/.test(document.querySelector('.dialog')?.innerText ?? '')`, 60000);
+    await sleep(1500);
+  },
+  // Export as a FlowJo workspace: the fidelity report and the options.
+  async 'flowjo-export'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await app(`await app.exportFlowJo();`);
+    await waitFor(`/FlowJo workspace/.test(document.querySelector('.dialog')?.innerText ?? '')`, 60000);
+    await sleep(1200);
   },
   // The Report view: methods paragraph and MIFlowCyt checklist.
   async report() {

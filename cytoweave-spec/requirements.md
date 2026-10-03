@@ -1,6 +1,6 @@
 # CytoWeave requirements
 
-What CytoWeave must do, and the status of each requirement in 0.2.0.
+What CytoWeave must do, and the status of each requirement in 0.3.0.
 - `research.md` explains why each requirement is here: the methods and
   standards of §3–4 and the design implications of §8.
 - `design.md` explains how the requirements are met.
@@ -39,7 +39,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | D4 | Annotate samples (condition, subject, batch, …), from file names or a CSV table | done |
 | D5 | Content-addressed library: workspaces refer to files by SHA-256 and survive moves | done |
 | D6 | Large data: 10 million events per sample at interactive speed | done: files read in parts (never whole), bitset populations, lazy compensation, statistics by selection, shared memory with workers; at 10M events a gate drag draws in about 8 ms and dropping it re-evaluates every population in about 0.4 s (`validation/bench.mjs`) |
-| D7 | FCS de-identification on export | planned |
+| D7 | FCS de-identification on export | done: an allowlist of technical keywords, the rest removed and reported; the TEXT segment rewritten and the events copied byte for byte (checked on every example and corpus file); for population exports, the FlowJo export, a ZIP of the files and an ACS archive |
 
 ## Gating and statistics
 
@@ -53,7 +53,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | G6 | Statistics of FlowJo's set plus confidence intervals for frequencies | done |
 | G7 | Batch tables, CSV/TSV export, heat maps | done |
 | G8 | Review a gate across samples; boundary robustness | done |
-| G9 | Learned per-sample gate adjustment with abstention (uncertainty-aware autogating) | planned |
+| G9 | Learned per-sample gate adjustment with abstention (uncertainty-aware autogating) | done: landmark registration from the gate's exemplars with an ensemble confidence; confident adjustments proposed, uncertain samples sent to review; one gate per donor or subject; CLR probabilities; validated on simulated shifts (validation `autogating`) and against an expert's per-donor gates in a real ICS study (`experts`) |
 
 ## Compensation and spectral
 
@@ -68,7 +68,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | S4 | Complexity index, similarity and spreading matrices | done |
 | S5 | Comparison of unmixing models on the user's own sample | done |
 | S6 | Predicted spread for panel design from the user's own references | planned |
-| S7 | Spectral reference library across experiments | planned |
+| S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
 
 ## Quality control and normalization
 
@@ -78,7 +78,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | Q2 | Cohort QC overview with scores | done |
 | Q3 | CytoNorm with a confounding check; bead normalization; debarcoding | done |
 | Q4 | QC of files as they are acquired (folder watching) | planned |
-| Q5 | Instrument characterization (Q and B, Levey–Jennings) | planned |
+| Q5 | Instrument characterization (Q and B, Levey–Jennings) | done: Q, B and CV0 from multi-level beads or LED series as flowQB computes them (validation `flowqb`: equal within 6e-9), runs kept per instrument and followed on Levey–Jennings charts with Westgard rules (validation `instrument`) |
 
 ## High-dimensional analysis
 
@@ -115,7 +115,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R2 | Checkpoints with a semantic diff and the effect on frequencies | done |
 | R3 | Methods paragraph with references, from what the workspace did; MIFlowCyt checklist | done |
 | R4 | Publication figures (SVG, PNG, PDF) that stay live until export | done |
-| R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | planned |
+| R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | done: SVG, PNG and PDF exports carry the record; opening one reports what changed since and rebuilds it from the same files (validation `figures`) |
 | R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned |
 
 ## Interchange
@@ -125,7 +125,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | I1 | FlowJo 10 workspaces imported with a per-population fidelity report and count comparison | done (on real workspaces, FlowJo's saved counts reproduced at least as often as FlowKit does; FlowJo's display-resolution gating moves 0.1–0.3% of large populations) |
 | I2 | Gating-ML 2.0 import and export, including spectrum (unmixing) matrices, ratio dimensions and per-dimension compensation | done |
 | I3 | CLR export; ACS containers | done |
-| I4 | FlowJo workspace export | planned |
+| I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Not yet opened in FlowJo itself |
 
 ## Automation
 

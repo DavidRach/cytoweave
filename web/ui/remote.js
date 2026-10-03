@@ -8,7 +8,7 @@ import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
 import { densityGateAt, suggestSinglets, valleyThreshold } from '../lib/autogate.js';
 import { ROOT, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
-import { describeProposal, openProposals, proposalHistory, proposeCompensation, proposeGateEdit, proposeGateRemoval, proposeGates } from '../lib/proposals.js';
+import { describeProposal, openProposals, proposalHistory, proposeCompensation, proposeGateAdjustments, proposeGateEdit, proposeGateRemoval, proposeGates } from '../lib/proposals.js';
 import { spilloverFromControls } from './controls.js';
 import { describe } from '../lib/stats.js';
 import { toast } from './overlays.js';
@@ -361,6 +361,53 @@ export function installRemote(app) {
       rows.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
       const outliers = rows.filter((r) => Math.abs(r.z) > 3).map((r) => r.sample);
       return { message: `${gate.name}: median ${median.toFixed(2)}% of parent across ${rows.length} samples${outliers.length ? `; outliers: ${outliers.join(', ')}` : '; no outliers'}.`, data: { population: gatePath(ws(), id), median: round(median), rows } };
+    },
+
+    async adapt_gate(args) {
+      const { adaptAcrossSamples, autogatingRecord, cannotAdapt } = await import('../lib/autogating.js');
+      const id = resolvePopulation(args.population);
+      if (id === ROOT) throw new ActionError('Name a gated population.');
+      let gate = gateById(ws(), id);
+      // Quadrants and splits move as a family: adapt their first member.
+      if (gate.linkId) gate = ws().gates.find((g) => g.linkId === gate.linkId) ?? gate;
+      const reason = cannotAdapt(gate);
+      if (reason) throw new ActionError(`${gate.name}: ${reason}.`);
+      const views = new Map();
+      for (const sample of ws().samples.filter((s) => s.role === 'sample' || s.role === 'reference' || gate.overrides?.[s.id] || gate.meta?.drawnOn === s.id)) {
+        const view = await loadedView(sample).catch(() => null);
+        if (view) views.set(sample.id, view);
+      }
+      let run;
+      try {
+        run = adaptAcrossSamples(ws(), gate.id, views, { groupBy: args.groupBy || undefined });
+      } catch (error) {
+        throw new ActionError(`${gate.name}: ${error.message}`);
+      }
+      const name = (sampleId) => ws().samples.find((s) => s.id === sampleId)?.name ?? sampleId;
+      const confident = run.results.filter((r) => r.status === 'adjust');
+      if (confident.length) {
+        const record = { ...autogatingRecord(ws(), gate, run, confident.map((r) => r.sampleId), app.version), proposedBy: author };
+        const result = proposeGateAdjustments(ws(), author, gate.id, Object.fromEntries(confident.map((r) => [r.sampleId, r.geometry])), Object.fromEntries(confident.map((r) => [r.sampleId, round(r.confidence, 3)])), record);
+        store.commit(result.ws, `${author} ${result.held ? 'proposed adapting' : 'adapted'} ${gate.name} to ${confident.length} sample${confident.length === 1 ? '' : 's'}`);
+        if (result.held) toast(`${author} proposes adjusting ${gate.name} for ${confident.length} sample${confident.length === 1 ? '' : 's'}. Review the proposal to accept or reject it.`);
+      }
+      const order = { review: 0, adjust: 1, keep: 2 };
+      const rows = run.results.slice().sort((a, b) => order[a.status] - order[b.status] || a.confidence - b.confidence).map((r) => ({
+        sample: name(r.sampleId),
+        group: r.group ?? undefined,
+        status: r.status,
+        confidence: round(r.confidence, 3),
+        percentOfParentNow: round(100 * r.frequencies.current),
+        percentOfParentAdapted: round(100 * r.frequencies.adapted),
+        reason: r.reason,
+      }));
+      const counts = { adjust: 0, keep: 0, review: 0 };
+      for (const r of run.results) counts[r.status] += 1;
+      const review = rows.filter((r) => r.status === 'review').map((r) => r.sample);
+      return {
+        message: `${gate.name}, learned from ${run.exemplars.map((e) => `${name(e.sampleId)} (${e.kind})`).join(', ')}: ${counts.keep} sample${counts.keep === 1 ? '' : 's'} already fit; ${counts.adjust ? `proposed adjustments for ${counts.adjust}, which apply when the user accepts your proposal` : 'nothing to adjust'}; ${review.length ? `${review.length} uncertain, for the user to check by hand: ${review.join(', ')}` : 'none uncertain'}.${run.skipped.length ? ` Not adapted: ${run.skipped.map((s) => `${name(s.sampleId)} (${s.reason})`).join('; ')}.` : ''}`,
+        data: { population: gatePath(ws(), gate.id), learnedFrom: run.exemplars.map((e) => ({ sample: name(e.sampleId), kind: e.kind })), rows, skipped: run.skipped.map((s) => ({ sample: name(s.sampleId), reason: s.reason })), proposal: proposalSummary() },
+      };
     },
 
     async propose_compensation(args) {

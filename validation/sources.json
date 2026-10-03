@@ -1449,6 +1449,440 @@
      "sha256": "0e491d186ddcc8c208099d2466bbba616bffc30ae064b673e597af88beaa0d86"
     }
    ]
+  },
+  "als-ics": {
+   "title": "ALS C9orf72 intracellular cytokine staining, screens 3 and 4 (Zenodo 16754591, 16754609)",
+   "description": "Four FlowJo 10 workspaces (ALS patients and healthy controls, two screens) of 12 LSRFortessa wells each: four donors, each in a negative, a peptide-stimulated and a PMA/ionomycin well, with the expert's gates adjusted per donor. From \"Autoimmune response to C9orf72 protein in amyotrophic lateral sclerosis\" (Michaelis, Johansson, Sulzer, Sette). The FCS files are stored under the names the workspaces use.",
+   "source": "https://zenodo.org/records/16754591 (doi:10.5281/zenodo.16754591) and https://zenodo.org/records/16754609 (doi:10.5281/zenodo.16754609)",
+   "licence": "CC BY 4.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "screen3/ALS/ALS.wsp",
+     "url": "https://zenodo.org/api/records/16754591/files/Screen%20%233%20ALS%20ICS.wsp/content",
+     "size": 1402039,
+     "sha256": "f482d2830c9af9d9dba9e57e2c3b38d2cfcc57fa6be7d018149fdab87372d298"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C10_C10.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C10_C10%20Negative.fcs/content",
+     "size": 3240540,
+     "sha256": "9b0292ea602d6783bbeba7506a37368ae1f3731f050103f8442aed3a495ea94d"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C11_C11.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C11_C11%20Peptide.fcs/content",
+     "size": 3036302,
+     "sha256": "7f1acfc07c97be371e8871fc235c778b52faafa0916726605b52a527da55b389"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C12_C12.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C12_C12%20Positive.fcs/content",
+     "size": 2967301,
+     "sha256": "740791bf308e772250a5a91bb85a0d6c1b99a07d9f6e379761b7fb0181cfa7e8"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C1_C01.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C1_C01%20Negative.fcs/content",
+     "size": 1142939,
+     "sha256": "8ae50aca822fdcf589e18cf76bc7a86f2ce9a8d6e21b8c908a192583bee9b26c"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C2_C02.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C2_C02%20Peptide.fcs/content",
+     "size": 1581778,
+     "sha256": "b5e6085ca01cef9742b0b614f3c6a227955ef12dfed3be48f16c23d35ec7a04f"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C3_C03.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C3_C03%20Positive.fcs/content",
+     "size": 1537619,
+     "sha256": "bc74eefdb7724a84202c08611727c77293259a857bd9121056a98dad4c09384b"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C4_C04.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C4_C04%20Negative.fcs/content",
+     "size": 973198,
+     "sha256": "97f5d5b7956f75217a3e5d810b2a9497703ea3db65fe4ff890733a3435552312"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C5_C05.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C5_C05%20Peptide.fcs/content",
+     "size": 1051857,
+     "sha256": "4e3ca0386421341c199c517f7d5d232c22c3c60bcc4c597a2c930421a16848c1"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C6_C06.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C6_C06%20Positive.fcs/content",
+     "size": 1340279,
+     "sha256": "ff304060615d5b12fca9272e2e633a322e183390e350d5c75e70509e69d2144d"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C7_C07.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C7_C07%20Negative.fcs/content",
+     "size": 1240918,
+     "sha256": "7a572ff216c5a66b266e5b0100da15de1740b268a4e141b3d5189bf754cfcee5"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C8_C08.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C8_C08%20Peptide.fcs/content",
+     "size": 1202277,
+     "sha256": "91bce0d5f2a4975308e0ae7ce74759b9c00f97620a1cc2ed0b5b621bbaa318a0"
+    },
+    {
+     "path": "screen3/ALS/Specimen_001_C9_C09.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/ALS%20Specimen_001_C9_C09%20Positive.fcs/content",
+     "size": 1155601,
+     "sha256": "beb502191d12bfeb540f1a176e15c2d64c6b45c82d438a94e4fff3bd3b2c71b9"
+    },
+    {
+     "path": "screen3/HC/HC.wsp",
+     "url": "https://zenodo.org/api/records/16754591/files/Screen%20%233%20HC%20ICS%20.wsp/content",
+     "size": 1401715,
+     "sha256": "94800cf3fbcfc4c6613db3df6271ca9abfc527c7bd61f5d4c6a55983a39f84cc"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C10_C10.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C10_C10%20Negative.fcs/content",
+     "size": 1746719,
+     "sha256": "a5fdbdec8467df8b6bc43f0fbd531ddb1b0d246b440b77e6b53de143bb247eb2"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C11_C11.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C11_C11%20Peptide.fcs/content",
+     "size": 1725297,
+     "sha256": "1b2385d0bde05d3a28e566ffdcc3193ea88585098910e09838552be340ac8044"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C12_C12.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C12_C12%20Positive.fcs/content",
+     "size": 1878476,
+     "sha256": "d4e985aed455ffcd621ae3d7df103b2a7870807a322d1bfcd550c65e1e287432"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C1_C01.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C1_C01%20Negative.fcs/content",
+     "size": 2545017,
+     "sha256": "0bd511bd6e05480e16883f5ce4c476defccef14e097c611335a92adaa010d5dc"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C2_C02.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C2_C02%20Peptide.fcs/content",
+     "size": 2840333,
+     "sha256": "9945a10b8904878524c3edc388d5b63e7b5cd1ecb775dc7690421a918522a7f6"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C3_C03.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C3_C03%20Positive.fcs/content",
+     "size": 2620913,
+     "sha256": "667ed7fd92cef586f89db708209f448148a04f80a9bb12f0a29518290b3004da"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C4_C04.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C4_C04%20Negative.fcs/content",
+     "size": 5982598,
+     "sha256": "303f1f1d3e4873ed8c25497ca566e756fd3ccffca556f87915f33d6a3ed55677"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C5_C05.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C5_C05%20Peptide.fcs/content",
+     "size": 5327094,
+     "sha256": "0266d3a5df6d63300b56b4dd9fa277e7a54e645256d06000243329415669be79"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C6_C06.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C6_C06%20Positive.fcs/content",
+     "size": 3468234,
+     "sha256": "3f688c6d483aac00197bac461aea204e9ab61bd63c75dcde17b36a2b057ef61a"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C7_C07.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C7_C07%20Negative.fcs/content",
+     "size": 2008194,
+     "sha256": "693743e73a8c03f77da8ef6291c6f80712fd919a13e7289010e94edfdc8e2104"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C8_C08.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C8_C08%20Peptide.fcs/content",
+     "size": 2117215,
+     "sha256": "66ecc97256858bb26b67ea69fe1fd4a72ff6aa741ec8d3d1e7dc254e2c4be762"
+    },
+    {
+     "path": "screen3/HC/Specimen_001_C9_C09.fcs",
+     "url": "https://zenodo.org/api/records/16754591/files/HC%20Specimen_001_C9_C09%20Positive.fcs/content",
+     "size": 2085473,
+     "sha256": "121d70cee8235c86aec6b2bff0d51da4c5240ae45d9ffe6055b1c3e863e94dcf"
+    },
+    {
+     "path": "screen4/ALS/ALS.wsp",
+     "url": "https://zenodo.org/api/records/16754609/files/Screen%20%234%20ALS%20ICS.wsp/content",
+     "size": 1388778,
+     "sha256": "f1a674871620193875b10f93d978811e602104af6c673f7c69972a98cfac9fd4"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C10_C10.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C10_C10%20Negative.fcs/content",
+     "size": 482895,
+     "sha256": "db658d1e0158dcbbfbf500fa5f8339057196a333755076d09c79753632d9da59"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C11_C11.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C11_C11%20Peptide.fcs/content",
+     "size": 410055,
+     "sha256": "35ed20ecd153fc1605fd004306b03d4413c2c746c68217f7d48e1e859cbce7a6"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C12_C12.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C12_C12%20Positive.fcs/content",
+     "size": 796395,
+     "sha256": "4fbe278b80a0571abde7ce9b69a81144327a7b0fc294ba671476db4ac1437847"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C1_C01.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C1_C01%20Negative.fcs/content",
+     "size": 3207373,
+     "sha256": "f1f861756a3a360b26971d194f449601b99d2d4c6570fe76e57cadfe6f1c6354"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C2_C02.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C2_C02%20Peptide.fcs/content",
+     "size": 5452633,
+     "sha256": "14ad2a20af6be5590c8b5d8a8209e9ec6952aea795e8d45f1cec0a43f6e779bf"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C3_C03.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C3_C03%20Positive.fcs/content",
+     "size": 6026714,
+     "sha256": "ab75dc190099ad9f9c1ac69918abe487f18de76571829d970484dff57f7d3d36"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C4_C04.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C4_C04%20Negative.fcs/content",
+     "size": 8353394,
+     "sha256": "9fdfa48d2d17da786c5172c1a52b36a31d1c30542385462ea54346e7087e36ea"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C5_C05.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C5_C05%20Peptide.fcs/content",
+     "size": 8683214,
+     "sha256": "4a701c0811065702e02225ed8d6532fb3856724502afc12a89c30fda00af58ec"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C6_C06.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C6_C06%20Positive.fcs/content",
+     "size": 5607192,
+     "sha256": "f762ed7e7136214398f921448917f2c56489abf5129eda555db44fed57e3a8d7"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C7_C07.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C7_C07%20Negative.fcs/content",
+     "size": 3951192,
+     "sha256": "999f038eb7f0a12145d2972b460448437c1d73a40cb6d75b20bc00c8c9fc4506"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C8_C08.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C8_C08%20Peptide.fcs/content",
+     "size": 3633793,
+     "sha256": "1c5f4e0eae659a081b6ea77e248ae499fda1b5f35cfbc2800ec2841d92db29e9"
+    },
+    {
+     "path": "screen4/ALS/Specimen_001_C9_C09.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/ALS%20Specimen_001_C9_C09%20Positive.fcs/content",
+     "size": 2982434,
+     "sha256": "d66af44c91f870b46e1c45a2168c71843e675c435be4b03ee5964fca3b1050f2"
+    },
+    {
+     "path": "screen4/HC/HC.wsp",
+     "url": "https://zenodo.org/api/records/16754609/files/Screen%20%234%20HC%20ICS.wsp/content",
+     "size": 1400761,
+     "sha256": "92dd8f79f15ba66965dac6655f76dff7c651e2aaa83aa022255ecfa199cb4e6d"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C10_C10.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C10_C10%20Negative.fcs/content",
+     "size": 1543093,
+     "sha256": "f69e7c608b4ec5b19096acd6d676093da0cfa650c3d9ad96259b97166ac3b4a6"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C11_C11.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C11_C11%20Peptide.fcs/content",
+     "size": 1596550,
+     "sha256": "0ffb1b951a8e20a838b4f3e4430ee9cc234bf8f2eaee55990cee59ed6ded6bab"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C12_C12.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C12_C12%20Positive.fcs/content",
+     "size": 1638070,
+     "sha256": "095c47b4d8b061ce79107ec9ee13b9416af8b457cd560d92239f5cb9440ee5af"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C1_C01.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C1_C01%20Negative.fcs/content",
+     "size": 9657492,
+     "sha256": "40d82cca0f3c1d1cd03a36e7125252a0e2d071f6063ab5ca158a1b9889323444"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C2_C02.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C2_C02%20Peptide.fcs/content",
+     "size": 10253651,
+     "sha256": "24f237575bce6c4ba6402e1234f6b655857ecc58a20ad398680ccc7f6c0287ca"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C3_C03.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C3_C03%20Positive.fcs/content",
+     "size": 5448490,
+     "sha256": "d2469557cc28cf8bcb0db7ad58e01bbcadae6bca856ebbae5c0d82bbdae2fbb2"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C4_C04.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C4_C04%20Negative.fcs/content",
+     "size": 10444089,
+     "sha256": "25cb11750ef10d522542dfdd07b621e7ecf824d786d6cf525f97eb8a6b451a28"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C5_C05.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C5_C05%20Peptide.fcs/content",
+     "size": 9864489,
+     "sha256": "69de5f0719e17d21fbf10634bb464ae74326f3c2328050a391046281fdf9e583"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C6_C06.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C6_C06%20Positive.fcs/content",
+     "size": 7377731,
+     "sha256": "065110c0a3bc96bb683dc8f96fe2cafc46884a09d9ff4a72d2cfc6ad1fbc4be7"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C7_C07.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C7_C07%20Negative.fcs/content",
+     "size": 11683329,
+     "sha256": "c2e8ca5f207e78315a8e8d2ab1c50e048a5ebbe14c26c22a489ec51410f07abd"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C8_C08.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C8_C08%20Peptide.fcs/content",
+     "size": 9921067,
+     "sha256": "9a35d70d6d2d3aa6e8770dd7d7cac4beeff6f08ae48bc3380b36b0d5b72ec923"
+    },
+    {
+     "path": "screen4/HC/Specimen_001_C9_C09.fcs",
+     "url": "https://zenodo.org/api/records/16754609/files/HC%20Specimen_001_C9_C09%20Positive.fcs/content",
+     "size": 7249390,
+     "sha256": "da50bcc50ecca7a16ce11023d9c6d891e8bea4110dce8f9c5c63ced141799cc8"
+    }
+   ]
+  },
+  "flowqbdata": {
+   "title": "flowQB test data: an LSR II's LED pulser series and multi-level beads",
+   "description": "From the Bioconductor package flowQBData (Spidlen, El Khettabi, Moore, Parks, Brinkman), measured at Stanford's Shared FACS Facility: 19 files of an LED pulser at increasing intensities, a Spherotech 8-peak (Sph8) and a Thermo Fisher 6-peak (TF6) bead file, all on one BD LSR II.",
+   "source": "https://bioconductor.org/packages/flowQBData (mirror: https://github.com/bioc/flowQBData)",
+   "licence": "Artistic License 2.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "base": "https://raw.githubusercontent.com/bioc/flowQBData/d2fe2443179da536fdd91401b9bc9d722b5d2b36/inst/extdata/SSFF_LSRII/",
+   "files": [
+    {
+     "path": "LED_Series/935281.fcs",
+     "size": 3446408,
+     "sha256": "fc926bf50c32e19c20ee3d3b866e277731c95cbb67e06b517d000c8bf6d3ec51"
+    },
+    {
+     "path": "LED_Series/935283.fcs",
+     "size": 3446408,
+     "sha256": "7765d953070696603c297c8743f875f52d1bcb655fa7314eb5c71cd03487dd08"
+    },
+    {
+     "path": "LED_Series/935285.fcs",
+     "size": 3446408,
+     "sha256": "2aa1cc501b37d349b85d16348ee8d50c3d4de2ac16065c73d00f1116b02d8755"
+    },
+    {
+     "path": "LED_Series/935287.fcs",
+     "size": 3446408,
+     "sha256": "dcebb0d3d0f77ab8b563a093abfaab6397e5a401f1502c349ed524f20e570145"
+    },
+    {
+     "path": "LED_Series/935289.fcs",
+     "size": 3446408,
+     "sha256": "fd2c726efea31d9dc78ab4ad4ed295ea95e0fb6f1c7183096e4b2a2c34bccd76"
+    },
+    {
+     "path": "LED_Series/935291.fcs",
+     "size": 3446408,
+     "sha256": "26a4c9c33f3afa8a3020d295a12939f29b17126f06affc1edfa9f8bb380aa46a"
+    },
+    {
+     "path": "LED_Series/935293.fcs",
+     "size": 3446408,
+     "sha256": "52b4e4e366b2b90baa933953377df5847876b24c0124ec4b1fa25f525577ee81"
+    },
+    {
+     "path": "LED_Series/935295.fcs",
+     "size": 3446408,
+     "sha256": "09a1193793c550f42e0aa50571db9d34c3f46fcad5889fc49961ad85d573b397"
+    },
+    {
+     "path": "LED_Series/935297.fcs",
+     "size": 3446408,
+     "sha256": "5ee365f127fa9a57e968bdbb65961a5aa4d9273d06f3020d1d83e9b54f73fa04"
+    },
+    {
+     "path": "LED_Series/935299.fcs",
+     "size": 3446408,
+     "sha256": "9e1a7f4b4cc3bcd784253cd773046dab013a65b9694f2e589f6b726f4d1ff38b"
+    },
+    {
+     "path": "LED_Series/935301.fcs",
+     "size": 3446408,
+     "sha256": "0144c245ebc286bb6fefbe1911ad51a56f676ab69e494e12b49f98330585223c"
+    },
+    {
+     "path": "LED_Series/935303.fcs",
+     "size": 3446408,
+     "sha256": "02b41fa879c4015cdbba1e076d1cbeb8ce280f617e0f4ae565a0bd708a430996"
+    },
+    {
+     "path": "LED_Series/935305.fcs",
+     "size": 3446408,
+     "sha256": "aa097b9c2d08d858d0fd18b2164143d02c7b4494d483b03020f646ac4a39a25f"
+    },
+    {
+     "path": "LED_Series/935307.fcs",
+     "size": 3446408,
+     "sha256": "63cefb921088068a814f6ba628e6f4a27096c7ea5ac52fe27d90c7fa13b49280"
+    },
+    {
+     "path": "LED_Series/935309.fcs",
+     "size": 3446408,
+     "sha256": "0305db9133ee11a8c3acf774e5e4091e1dc31cd03220d2192f87dd413160a464"
+    },
+    {
+     "path": "LED_Series/935311.fcs",
+     "size": 3446408,
+     "sha256": "f794d26918da1646e362400d5752133ff3bfd18ee3a15a3d1032d20520b34afd"
+    },
+    {
+     "path": "LED_Series/935313.fcs",
+     "size": 3446408,
+     "sha256": "94a7423ed46a2d7e3ed6b92f7d5d67ee66eb58aeceaecc3dba4d9fa4f9d4c84f"
+    },
+    {
+     "path": "LED_Series/935315.fcs",
+     "size": 3446408,
+     "sha256": "bd7dd66c2a5c21ff5c31159e3ec5b6a79ad524cfb042a3c5b7205b98ea0381a6"
+    },
+    {
+     "path": "LED_Series/935317.fcs",
+     "size": 3446408,
+     "sha256": "c6646d545f873b2907033c15389bf7775e4ac0de0eb7cff28239cc8f7ce1d9d9"
+    },
+    {
+     "path": "Other_Tests/933745.fcs",
+     "size": 17206408,
+     "sha256": "d81fb427857059324a2e1f2362984c1de38e556ab261f16fc445e24b70e152c6"
+    },
+    {
+     "path": "Other_Tests/933747.fcs",
+     "size": 17206408,
+     "sha256": "b919eb9056b6a1998bd71d580cae937ec537fc58ad4010ae07ac6b310cf2c2ab"
+    }
+   ]
   }
  }
 }

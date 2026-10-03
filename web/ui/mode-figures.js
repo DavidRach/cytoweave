@@ -8,6 +8,7 @@ import { drawScene, sceneToSVG } from '../lib/plot.js';
 import { newId } from '../lib/gates.js';
 import { ROOT, channelLabel, gateAncestors, gateById, gatePath, plotsOf, setCollection } from '../lib/workspace.js';
 import { rgbaToRgb, writePDF } from '../lib/pdf.js';
+import { prefs } from './storage.js';
 
 const PAGES = [
   { id: 'slide', label: 'Slide 16:9', width: 1600, height: 900 },
@@ -410,6 +411,20 @@ export function mountFiguresMode(app, container) {
     ctx.fill();
   }
 
+  // The analysis behind a figure, embedded in its exports (figure-provenance.js), unless turned off.
+  const embedding = () => prefs.get('figureProvenance', true) !== false;
+  async function provenanceFor(fig) {
+    if (!embedding()) return null;
+    const { buildProvenance } = await import('../lib/figure-provenance.js');
+    const views = new Map();
+    for (const item of fig.items) {
+      if (item.kind !== 'plot' || views.has(item.sampleId)) continue;
+      const view = data.view(item.sampleId) ?? await data.ensure(item.sampleId).catch(() => null);
+      if (view) views.set(item.sampleId, view);
+    }
+    return buildProvenance(store.ws, fig, { views, version: app.version });
+  }
+
   async function exportSVG(fig) {
     const scenes = await scenesFor(fig);
     const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${fig.width}" height="${fig.height}" viewBox="0 0 ${fig.width} ${fig.height}">`, `<rect width="${fig.width}" height="${fig.height}" fill="${fig.background ?? '#ffffff'}"/>`];
@@ -427,7 +442,10 @@ export function mountFiguresMode(app, container) {
       }
     }
     parts.push('</svg>');
-    downloadBlob(new Blob([parts.join('')], { type: 'image/svg+xml' }), `${fig.name.replace(/[^\w.-]+/g, '_')}.svg`);
+    let svg = parts.join('');
+    const record = await provenanceFor(fig);
+    if (record) svg = (await import('../lib/figure-provenance.js')).embedSVG(svg, record);
+    downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${fig.name.replace(/[^\w.-]+/g, '_')}.svg`);
   }
 
   async function exportRaster(fig, format) {
@@ -435,14 +453,18 @@ export function mountFiguresMode(app, container) {
     try {
       if (format === 'png') {
         const canvas = await renderToCanvas(fig, 3);
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        let blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        const record = await provenanceFor(fig);
+        if (record) blob = new Blob([(await import('../lib/figure-provenance.js')).embedPNG(new Uint8Array(await blob.arrayBuffer()), record)], { type: 'image/png' });
         downloadBlob(blob, `${fig.name.replace(/[^\w.-]+/g, '_')}.png`);
       } else {
         // 300 dots per inch at 96 CSS pixels per inch.
         const scale = 300 / 96;
         const canvas = await renderToCanvas(fig, scale);
         const rgba = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
-        const pdf = await writePDF([{ width: fig.width * 0.75, height: fig.height * 0.75, image: { width: canvas.width, height: canvas.height, rgb: rgbaToRgb(rgba) } }], { title: fig.name });
+        const record = await provenanceFor(fig);
+        const attachments = record ? [(await import('../lib/figure-provenance.js')).pdfAttachment(record)] : [];
+        const pdf = await writePDF([{ width: fig.width * 0.75, height: fig.height * 0.75, image: { width: canvas.width, height: canvas.height, rgb: rgbaToRgb(rgba) } }], { title: fig.name, attachments });
         downloadBlob(new Blob([pdf], { type: 'application/pdf' }), `${fig.name.replace(/[^\w.-]+/g, '_')}.pdf`);
       }
       progress.done();
@@ -458,7 +480,9 @@ export function mountFiguresMode(app, container) {
     headActions.append(
       h('button.btn.small', { type: 'button', onclick: () => exportSVG(fig) }, icon('download'), 'SVG'),
       h('button.btn.small', { type: 'button', onclick: () => exportRaster(fig, 'png') }, icon('download'), 'PNG'),
-      h('button.btn.small', { type: 'button', onclick: () => exportRaster(fig, 'pdf') }, icon('download'), 'PDF (300 dpi)'));
+      h('button.btn.small', { type: 'button', onclick: () => exportRaster(fig, 'pdf') }, icon('download'), 'PDF (300 dpi)'),
+      h('label.check', { title: 'Exports carry the gates, scales, compensation, sample names and file checksums behind each plot, so the figure can be traced to its analysis and rebuilt. Open an exported figure in CytoWeave to check it.' },
+        h('input', { type: 'checkbox', checked: embedding(), onchange: (event) => prefs.set('figureProvenance', event.target.checked) }), 'Embed the analysis'));
   }
 
   function renderList() {

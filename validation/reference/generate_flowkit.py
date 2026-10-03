@@ -3,7 +3,11 @@
 # needed only to regenerate the file, not to run the validation.
 #
 #   node validation/fetch.mjs flowkit fcsparser rpackages
+#   node validation/reference/write_flowjo_exports.mjs
 #   uv run --python 3.12 --with flowkit==1.3.2 python validation/reference/generate_flowkit.py
+#
+# write_flowjo_exports.mjs writes CytoWeave's FlowJo exports of the validation cases; FlowKit's
+# counts on them are kept under "exports".
 
 import json
 import math
@@ -186,6 +190,14 @@ workspaces = {wsp_path: analyze(DATA, wsp_path, fcs_dir) for wsp_path, fcs_dir i
 # FlowSOM's example workspace (the "rpackages" data set), compared in the bioconductor suite.
 other_workspaces = {'rpackages/FlowSOM/gating.wsp': analyze(os.path.join(HERE, '..', 'cache', 'rpackages'), 'FlowSOM/gating.wsp', 'FlowSOM')}
 
+# CytoWeave's FlowJo exports (validation/flowjo-export-cases.mjs), when they have been written.
+EXPORTS = os.path.join(HERE, '..', 'cache', 'exports')
+exports = {}
+if os.path.exists(os.path.join(EXPORTS, 'manifest.json')):
+    with open(os.path.join(EXPORTS, 'manifest.json')) as f:
+        for case in json.load(f):
+            exports[case['name']] = {**analyze(EXPORTS, os.path.join(case['dir'], 'export.wsp'), case['dir']), 'kind': case['kind'], 'source': case['source']}
+
 out = {
     'about': 'FlowKit results on the "flowkit" data set; written by validation/reference/generate_flowkit.py.',
     'versions': {'flowkit': fk.__version__, 'flowio': flowio.__version__, 'flowutils': flowutils.__version__, 'numpy': np.__version__},
@@ -196,6 +208,7 @@ out = {
     'transforms': transforms,
     'workspaces': workspaces,
     'otherWorkspaces': other_workspaces,
+    'exports': exports,
 }
 
 

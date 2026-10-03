@@ -173,10 +173,33 @@ export function planCompensations(matches) {
   return plans;
 }
 
+// FlowJo writes some characters of parameter names as "_" ("LIVE/DEAD Aqua-A" becomes
+// "LIVE_DEAD Aqua-A"). A FlowJo sample's channel names (its compensation, scales and gate
+// dimensions) are mapped back to those of its matched file where that is unambiguous.
+export function alignChannelNames(flowJo, sample) {
+  const names = (sample?.channels ?? []).map((c) => c.name);
+  const plain = (text) => text.replace(/[^A-Za-z0-9]/g, '_');
+  let renamed = false;
+  const nameOf = (channel) => {
+    if (!channel || !names.length || names.includes(channel)) return channel;
+    const found = names.filter((n) => plain(n) === plain(channel));
+    if (found.length !== 1) return channel;
+    renamed = true;
+    return found[0];
+  };
+  const compensation = flowJo.compensation && { ...flowJo.compensation, channels: flowJo.compensation.channels.map(nameOf) };
+  const transforms = Object.fromEntries(Object.entries(flowJo.transforms ?? {}).map(([channel, spec]) => [nameOf(channel), spec]));
+  const gates = (flowJo.gates ?? []).map((g) => (g.dims?.length ? { ...g, dims: g.dims.map((d) => ({ ...d, channel: nameOf(d.channel) })) } : g));
+  return renamed ? { ...flowJo, compensation, transforms, gates } : flowJo;
+}
+
 // Builds the whole import as one new workspace. options: { fileName, scales: 'all' | 'missing' |
 // 'none', compensation (default true), now }. Returns { ws, migration, gates, fidelity, scales,
 // compensations, groups, warnings }.
 export function buildFlowJoMigration(ws, result, matches, options = {}) {
+  const aligned = new Map(matches.map((m) => [m.flowJo, alignChannelNames(m.flowJo, m.sample)]));
+  result = { ...result, samples: result.samples.map((s) => aligned.get(s) ?? s) };
+  matches = matches.map((m) => ({ ...m, flowJo: aligned.get(m.flowJo) }));
   const fileName = options.fileName ?? 'FlowJo workspace';
   const time = options.now ?? new Date().toISOString();
   const warnings = [];

@@ -1,6 +1,7 @@
 // User actions shared by the views: importing and exporting, menus and dialogs about gates and
 // samples, plot export and the cohort review of a gate.
 
+import { prefs } from './storage.js';
 import { h, icon, clear, downloadBlob, formatCount, formatPercent } from './dom.js';
 import { showMenu, showDialog, promptDialog, confirmDialog, toast, progressToast } from './overlays.js';
 import { buildPlotScene, drawScene, sceneToSVG } from '../lib/plot.js';
@@ -126,9 +127,18 @@ export function installActions(app) {
     const scene = buildExportScene(ws, view, spec, { width: options.width ?? 480, height: options.height ?? 440, theme: options.theme ?? 'light', title: options.title });
     const sample = ws.samples.find((s) => s.id === plotView.sampleId);
     const base = `${sample?.name ?? 'plot'}-${gateById(ws, spec.populationId)?.name ?? 'all'}`.replace(/[^\w.-]+/g, '_');
+    // The plot's analysis, embedded as in figure exports (a one-plot figure).
+    const provenance = async () => {
+      if (prefs.get('figureProvenance', true) === false) return null;
+      const { buildProvenance } = await import('../lib/figure-provenance.js');
+      const figure = { id: null, name: base, width: scene.width, height: scene.height, items: [{ id: 'plot', kind: 'plot', x: 0, y: 0, w: scene.width, h: scene.height, sampleId: plotView.sampleId, spec: { populationId: spec.populationId, x: spec.x, y: spec.y, type: spec.type, options: spec.options ?? {} } }] };
+      return buildProvenance(ws, figure, { views: new Map([[plotView.sampleId, view]]), version: app.version });
+    };
     if (format === 'svg') {
       const href = scene.raster ? await rasterDataURL(scene.raster) : null;
-      const svg = sceneToSVG(scene, { rasterHref: href });
+      let svg = sceneToSVG(scene, { rasterHref: href });
+      const record = await provenance();
+      if (record) svg = (await import('../lib/figure-provenance.js')).embedSVG(svg, record);
       downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${base}.svg`);
       return;
     }
@@ -150,7 +160,8 @@ export function installActions(app) {
       }
       return;
     }
-    downloadBlob(blob, `${base}.png`);
+    const record = await provenance();
+    downloadBlob(record ? new Blob([(await import('../lib/figure-provenance.js')).embedPNG(new Uint8Array(await blob.arrayBuffer()), record)], { type: 'image/png' }) : blob, `${base}.png`);
   };
 
   // A complete scene (events, gates with labels) for export or figures.
@@ -201,6 +212,7 @@ export function installActions(app) {
         '-',
         gate.type === 'boolean' ? { label: 'Edit Boolean population…', icon: 'edit', onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { gateId: gate.id })) } : null,
         { label: 'Review across samples…', icon: 'target', onSelect: () => app.reviewGate(gate.id) },
+        ['range', 'split', 'rectangle', 'polygon', 'ellipse', 'quadrant'].includes(gate.type) && gate.dims.length <= 2 ? { label: 'Adapt to each sample…', icon: 'sparkles', onSelect: () => app.adaptGate(gate.id) } : null,
         { label: 'Copy to another population…', icon: 'copy', onSelect: () => copyGateMenu(anchor, gate) },
         { label: 'Applies to', icon: 'layers', onSelect: () => scopeMenu(anchor, gate) },
         gate.overrides?.[sampleId] ? { label: 'Use the shared gate for this sample', icon: 'undo', onSelect: () => store.commit(clearOverride(store.ws, gate.id, sampleId), 'Reset gate for sample') } : null,
@@ -210,6 +222,7 @@ export function installActions(app) {
     items.push(
       { label: 'New Boolean population…', icon: 'layers', disabled: !ws.gates.length, onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { operands: gate ? [gate.id] : [] })) },
       { label: 'Export events as FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs') },
+      { label: 'Export events as de-identified FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs', { deidentify: true }) },
       { label: 'Export events as CSV…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'csv') },
       { label: 'Add statistics to a table', icon: 'table', onSelect: () => { app.setMode('tables'); setTimeout(() => app.addPopulationToTable?.(gateId), 50); } },
       '-',
@@ -257,7 +270,7 @@ export function installActions(app) {
     ]);
   }
 
-  async function exportPopulation(gateId, sampleId, format) {
+  async function exportPopulation(gateId, sampleId, format, { deidentify = false } = {}) {
     const view = await data.ensure(sampleId);
     const ws = store.ws;
     const indices = population(view, ws, gateId ?? ROOT);
@@ -292,9 +305,14 @@ export function installActions(app) {
     keywords.$FIL = `${base}.fcs`;
     keywords.$ORIGINALITY = 'DataModified';
     keywords['CYTOWEAVE POPULATION'] = gate ? gatePath(ws, gate.id) : 'All events';
-    const bytes = writeFCS({ parameters: view.parameters.map((p) => ({ name: p.name, label: p.label, range: p.range })), data: view.parameters.map((p) => pick(view.raw.get(p.name))), keywords });
+    let written = keywords;
+    if (deidentify) {
+      const { deidentifyKeywords } = await import('../lib/deidentify.js');
+      written = deidentifyKeywords(keywords, { fileName: `${base}.fcs` }).keywords;
+    }
+    const bytes = writeFCS({ parameters: view.parameters.map((p) => ({ name: p.name, label: p.label, range: p.range })), data: view.parameters.map((p) => pick(view.raw.get(p.name))), keywords: written });
     downloadBlob(new Blob([bytes], { type: 'application/octet-stream' }), `${base}.fcs`);
-    toast(`Exported ${formatCount(n)} events.`, { kind: 'ok' });
+    toast(`Exported ${formatCount(n)} events${deidentify ? ' without identifying keywords' : ''}.`, { kind: 'ok' });
   }
 
   // --- Cohort review of a gate ---------------------------------------------------------------
@@ -357,9 +375,14 @@ export function installActions(app) {
       h('td', row.error ? h('span.muted', row.error) : flag),
       h('td', robust)));
     }
+    const adaptable = ['range', 'split', 'rectangle', 'polygon', 'ellipse', 'quadrant'].includes(gate.type) && gate.dims.length <= 2;
     const dialog = showDialog({
       title: `Review ${gate.name} across samples`,
       width: 'wide',
+      buttons: [
+        ...(adaptable ? [{ label: 'Adapt to each sample…', onClick: () => { app.adaptGate(gate.id); } }] : []),
+        { label: 'Close', primary: true },
+      ],
       content: [
         h('p', `Median ${formatPercent(median)} of parent across ${freqs.length} samples. Samples are ranked for review: frequency outliers (robust z-score against the cohort), boundaries that cut through dense events, and low counts come first. Click a sample to adjust the gate for it alone.`),
         h('div', { style: { maxHeight: '58vh', overflow: 'auto' } }, h('table.data', h('thead', h('tr', h('th', 'Sample'), h('th.r', '% of parent'), h('th.r', 'Events'), h('th.r', 'z'), h('th', 'Frequency'), h('th', 'Boundary'))), body)),

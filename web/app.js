@@ -8,6 +8,9 @@ import { createLibrary, detectBackend, prefs } from './ui/storage.js';
 import { mountSidebar } from './ui/sidebar.js';
 import { mountInspector } from './ui/inspector.js';
 import { installActions } from './ui/actions.js';
+import { installExportDialogs } from './ui/export-dialogs.js';
+import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
+import { installAutogating } from './ui/autogate-dialog.js';
 import { openPalette } from './ui/palette.js';
 import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
 import { WorkerClient } from './ui/workers.js';
@@ -28,7 +31,7 @@ import {
   updateSample,
 } from './lib/workspace.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 const MODES = [
   { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
@@ -82,6 +85,9 @@ async function start() {
   };
 
   installActions(app);
+  installExportDialogs(app);
+  installFigureProvenance(app);
+  installAutogating(app);
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
   app.exportCLR = () => import('./ui/import-flowjo.js').then((m) => m.exportCLRDialog(app));
   app.compareColumn = (table, column) => {
@@ -240,13 +246,15 @@ async function start() {
     const gatingml = items.filter((item) => /\.xml$/i.test(item.name));
     const tables = items.filter((item) => /\.(csv|tsv)$/i.test(item.name));
     const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
+    const figures = items.filter((item) => /\.(svg|png|pdf)$/i.test(item.name));
     for (const item of workspaces) await openWorkspaceFile(item);
     if (fcs.length) await importFCSItems(fcs);
     for (const item of archives) await importArchive(item);
     for (const item of flowjo) await importFlowJo(item);
     for (const item of gatingml) await importGatingML(item);
     for (const item of tables) await importMetadataTable(item);
-    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml) and sample annotation tables (.csv, .tsv).', { kind: 'error' });
+    for (const item of figures) await app.openFigureFile(item);
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv) and figures it exported (.svg, .png, .pdf).', { kind: 'error' });
   };
 
   async function readBytes(item) {
@@ -408,7 +416,8 @@ async function start() {
     }
   };
 
-  app.openExample = async (id) => {
+  // options: generation options (seed, scale, tandemDegradation; see examples.js), for scripts.
+  app.openExample = async (id, options = {}) => {
     const { EXAMPLES } = await import('./lib/examples.js');
     const example = EXAMPLES.find((e) => e.id === id);
     if (!example) return;
@@ -418,7 +427,7 @@ async function start() {
     const progress = progressToast(`Generating ${example.title}…`);
     try {
       const worker = app.worker('simulate');
-      const result = await worker.call('generateExample', { id, options: {} }, { onProgress: (f, message) => progress.update(f * 0.6, message) });
+      const result = await worker.call('generateExample', { id, options }, { onProgress: (f, message) => progress.update(f * 0.6, message) });
       await loadWorkspace(createWorkspace(example.title));
       const items = result.files.map((file, order) => ({ name: file.name, bytes: new Uint8Array(file.bytes), order, folder: null }));
       progress.update(0.65, 'Reading the generated files…');
@@ -623,6 +632,8 @@ async function start() {
       { label: 'Workspace with FCS files (ACS archive)', icon: 'download', onSelect: exportBundle },
       { label: 'Gates as Gating-ML 2.0', icon: 'download', onSelect: exportGatingML },
       { label: 'Population memberships (CLR)…', icon: 'download', onSelect: () => app.exportCLR() },
+      { label: 'FlowJo workspace (.wsp)…', icon: 'download', onSelect: () => app.exportFlowJo() },
+      { label: 'De-identified FCS files…', icon: 'download', onSelect: () => app.exportDeidentified() },
       ...(store.ws.migrations?.length ? [{ label: 'FlowJo migration report…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
       '-',
       { section: 'Import' },
@@ -647,9 +658,12 @@ async function start() {
     { label: 'Save workspace now', icon: 'save', hint: `${modKey}S`, run: saveNow },
     { label: 'Export workspace file', icon: 'download', run: exportWorkspaceFile },
     { label: 'Export gates as Gating-ML', icon: 'download', run: exportGatingML },
+    { label: 'Export as a FlowJo workspace', icon: 'download', run: () => app.exportFlowJo(), keywords: 'wsp flowjo' },
+    { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymise privacy keywords' },
     { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
+    { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },
     { label: 'Toggle dark theme', icon: 'moon', run: () => toggleTheme() },
     { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: showHelp },
     { label: 'Load every sample', icon: 'download', run: () => app.loadAll() },
@@ -935,7 +949,7 @@ async function start() {
   app.openStartupFiles = async (files) => {
     const opened = new Set(prefs.get(`opened:${info.session}`, []));
     const known = new Set(store.ws.samples.map((s) => s.fileName));
-    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
+    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table', 'figure'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
     for (const file of files) opened.add(file.url);
     prefs.set(`opened:${info.session}`, [...opened]);
     if (!pending.length) return;

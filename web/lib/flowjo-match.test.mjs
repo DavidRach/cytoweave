@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  alignChannelNames,
   buildFlowJoMigration,
   consensusTransforms,
   explainCountRows,
@@ -245,4 +246,20 @@ test('report rows rank and explain differences', () => {
   // A few events on a small population: boundary events, not a setup problem.
   const few = explainCountRows(migrationCountRows(migration, { w1: { P: 1000, 'P/C': 500, 'P/D': 200, Q: 44 } }), migration);
   assert.match(few.find((r) => r.path === 'Q').causes.join(' '), /only 6 events differ: events on the gate boundary/);
+});
+
+test('channel names FlowJo rewrote ("LIVE/DEAD" as "LIVE_DEAD") are mapped back to the file\'s', () => {
+  const flowJo = {
+    compensation: { channels: ['FITC-A', 'LIVE_DEAD Aqua-A'], matrix: [1, 0, 0, 1] },
+    transforms: { 'LIVE_DEAD Aqua-A': { type: 'biex' }, 'FITC-A': { type: 'biex' } },
+    gates: [{ dims: [{ channel: 'LIVE_DEAD Aqua-A' }, { channel: 'SSC-A' }] }, { dims: [] }],
+  };
+  const sample = { channels: [{ name: 'SSC-A' }, { name: 'FITC-A' }, { name: 'LIVE/DEAD Aqua-A' }] };
+  const aligned = alignChannelNames(flowJo, sample);
+  assert.deepEqual(aligned.compensation.channels, ['FITC-A', 'LIVE/DEAD Aqua-A']);
+  assert.deepEqual(Object.keys(aligned.transforms).sort(), ['FITC-A', 'LIVE/DEAD Aqua-A']);
+  assert.equal(aligned.gates[0].dims[0].channel, 'LIVE/DEAD Aqua-A');
+  // Nothing to map, or an ambiguous name: unchanged.
+  assert.equal(alignChannelNames(flowJo, { channels: [{ name: 'SSC-A' }] }), flowJo);
+  assert.equal(alignChannelNames(flowJo, { channels: [{ name: 'LIVE/DEAD Aqua-A' }, { name: 'LIVE:DEAD Aqua-A' }] }), flowJo);
 });

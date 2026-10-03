@@ -138,6 +138,43 @@ func TestWorkspaceLibraryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRecordsRoundTripByKind(t *testing.T) {
+	_, handler := testApp(t)
+	if empty := request(t, handler, http.MethodGet, "/api/library/records/instrument-qc", nil, nil); !strings.Contains(empty.Body.String(), `"records":[]`) {
+		t.Fatalf("empty list: %s", empty.Body)
+	}
+	doc := `{"name":"LSRFortessa SIM-1","modified":"2026-10-03T08:00:00Z","runs":[]}`
+	if put := request(t, handler, http.MethodPut, "/api/library/records/instrument-qc/i1", strings.NewReader(doc), nil); put.Code != http.StatusOK {
+		t.Fatalf("put %d %s", put.Code, put.Body)
+	}
+	list := request(t, handler, http.MethodGet, "/api/library/records/instrument-qc", nil, nil)
+	var listed struct {
+		Records []recordSummary `json:"records"`
+	}
+	json.NewDecoder(list.Body).Decode(&listed)
+	if len(listed.Records) != 1 || listed.Records[0].ID != "i1" || listed.Records[0].Name != "LSRFortessa SIM-1" {
+		t.Fatalf("unexpected list %+v", listed)
+	}
+	if get := request(t, handler, http.MethodGet, "/api/library/records/instrument-qc/i1", nil, nil); get.Body.String() != doc {
+		t.Fatalf("round trip changed the record: %s", get.Body)
+	}
+	if other := request(t, handler, http.MethodGet, "/api/library/records/spectra/i1", nil, nil); other.Code != http.StatusNotFound {
+		t.Fatalf("records leak across kinds: %d", other.Code)
+	}
+	if bad := request(t, handler, http.MethodPut, "/api/library/records/Bad_Kind/i1", strings.NewReader("{}"), nil); bad.Code != http.StatusBadRequest {
+		t.Fatalf("invalid kind accepted: %d", bad.Code)
+	}
+	if bad := request(t, handler, http.MethodPut, "/api/library/records/spectra/x", strings.NewReader("{oops"), nil); bad.Code != http.StatusBadRequest {
+		t.Fatalf("invalid JSON accepted: %d", bad.Code)
+	}
+	if del := request(t, handler, http.MethodDelete, "/api/library/records/instrument-qc/i1", nil, nil); del.Code != http.StatusOK {
+		t.Fatalf("delete %d", del.Code)
+	}
+	if gone := request(t, handler, http.MethodGet, "/api/library/records/instrument-qc/i1", nil, nil); gone.Code != http.StatusNotFound {
+		t.Fatalf("deleted record still served: %d", gone.Code)
+	}
+}
+
 func TestFilesAreStoredUnderTheirHash(t *testing.T) {
 	a, handler := testApp(t)
 	content := []byte("FCS3.1    pretend event data")
@@ -292,7 +329,7 @@ func TestParseConfig(t *testing.T) {
 }
 
 func TestFileKinds(t *testing.T) {
-	cases := map[string]string{"a.FCS": "fcs", "b.lmd": "fcs", "w.cwz": "workspace", "x.wsp": "flowjo", "g.xml": "gatingml", "t.csv": "table", "p.acs": "archive", "r.txt": ""}
+	cases := map[string]string{"a.FCS": "fcs", "b.lmd": "fcs", "w.cwz": "workspace", "x.wsp": "flowjo", "g.xml": "gatingml", "t.csv": "table", "p.acs": "archive", "f.svg": "figure", "f.PNG": "figure", "f.pdf": "figure", "r.txt": ""}
 	for name, want := range cases {
 		if got := fileKind(name); got != want {
 			t.Errorf("%s: %q, want %q", name, got, want)

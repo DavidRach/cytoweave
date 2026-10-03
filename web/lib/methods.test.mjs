@@ -81,3 +81,34 @@ test('methods describe clustering and embedding of one result, samples placed on
   assert.match(text, /1 gate\(s\) were proposed by an AI agent \(Claude Code\) and reviewed and accepted by the analyst/);
   for (const key of ['kmeans', 'kmeansPlusPlus', 'hamerly', 'umap', 'louvain', 'phenograph']) assert.ok(references.some((r) => r.key === key), key);
 });
+
+test('methods describe an autogating run: what was applied and what was left for review', () => {
+  let ws = workspace();
+  ws = { ...ws, derived: [{ kind: 'autogating', name: 'Autogating of T cells', gateId: 'g2', params: { confident: 0.8 }, results: { s1: { status: 'adjust', confidence: 0.93, applied: true }, s3: { status: 'review', confidence: 0.41, applied: false }, s4: { status: 'keep', confidence: 0.97, applied: false } } }] };
+  const { paragraphs, references } = writeMethods(ws, { version: '0.3.0' });
+  const text = paragraphs.join(' ');
+  assert.match(text, /T cells was adapted to each sample by landmark registration/);
+  assert.match(text, /confidence of at least 0.8 were applied after review by the analyst \(1 sample-gate adjustment\); 1 sample-gate pair was flagged as uncertain/);
+  assert.ok(references.some((r) => r.key === 'gaussNorm'));
+});
+
+test('methods describe instrument characterization runs', () => {
+  let ws = workspace();
+  ws = { ...ws, derived: [{ kind: 'instrument-qc', instrument: { name: 'LSR II (H1)' }, runs: [
+    { method: 'beads', product: 'Spherotech 8-peak (Rainbow)', peaks: 8, date: '2026-03-02T00:00:00.000Z' },
+    { method: 'beads', product: 'Spherotech 8-peak (Rainbow)', peaks: 8, date: '2026-03-03T00:00:00.000Z' },
+    { method: 'beads', product: 'Spherotech 8-peak (Rainbow)', peaks: 8, date: '2026-03-04T00:00:00.000Z' },
+  ] }] };
+  const { paragraphs, references } = writeMethods(ws, { version: '0.3.0' });
+  const text = paragraphs.join(' ');
+  assert.match(text, /efficiency \(Q\) and optical background \(B\) of each fluorescence detector of LSR II \(H1\) were measured from 3 runs of Spherotech 8-peak \(Rainbow\) beads between 2026-03-02 and 2026-03-04/);
+  assert.match(text, /Levey–Jennings charts with Westgard rules/);
+  assert.ok(references.some((r) => r.key === 'parksQB') && references.some((r) => r.key === 'westgard'));
+});
+
+test('methods say which reference spectra came from the spectral library', () => {
+  let ws = workspace();
+  ws = { ...ws, derived: [{ kind: 'unmixing', method: 'Ordinary least squares', params: { references: [{ fluorochrome: 'PE', sampleId: 's9' }, { fluorochrome: 'PE-Cy7', sampleId: null, library: { date: '2026-05-20T00:00:00.000Z', file: 'Ref_PE-Cy7.fcs' } }] } }] };
+  const text = writeMethods(ws, { version: '0.3.0' }).paragraphs.join(' ');
+  assert.match(text, /reference spectra of PE-Cy7 \(acquired 2026-05-20\) came from the instrument's spectral library/);
+});

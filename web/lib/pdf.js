@@ -1,6 +1,8 @@
 // A minimal PDF writer for figures: one page per image, each image an RGB raster compressed
 // with Flate (zlib), placed to fill a page of the given size in points (1/72 inch). Metadata
-// (title, creator) goes in the document information dictionary.
+// (title, creator) goes in the document information dictionary; attachments (info.attachments:
+// [{ name, mime, description, data }]) are embedded files that PDF readers list, uncompressed so
+// that CytoWeave can read them back (figure-provenance.js).
 
 const encoder = new TextEncoder();
 
@@ -48,7 +50,15 @@ export async function writePDF(pages, info = {}) {
     const pageId = add(encoder.encode(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${page.width.toFixed(3)} ${page.height.toFixed(3)}] /Resources << /XObject << /Im0 ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`));
     pageIds.push(pageId);
   }
-  objects[catalogId - 1] = encoder.encode(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
+  const specs = [];
+  for (const attachment of info.attachments ?? []) {
+    const mime = String(attachment.mime ?? 'application/octet-stream').replace(/\//g, '#2F');
+    const fileId = add(concat([encoder.encode(`<< /Type /EmbeddedFile /Subtype /${mime} /Length ${attachment.data.length} /Params << /Size ${attachment.data.length} >> >>\nstream\n`), attachment.data, encoder.encode('\nendstream')]));
+    const specId = add(encoder.encode(`<< /Type /Filespec /F ${pdfString(attachment.name)} /UF ${pdfString(attachment.name)} /Desc ${pdfString(attachment.description ?? attachment.name)} /AFRelationship /Source /EF << /F ${fileId} 0 R /UF ${fileId} 0 R >> >>`));
+    specs.push({ name: attachment.name, id: specId });
+  }
+  const names = specs.length ? ` /Names << /EmbeddedFiles << /Names [${specs.map((s) => `${pdfString(s.name)} ${s.id} 0 R`).join(' ')}] >> >> /AF [${specs.map((s) => `${s.id} 0 R`).join(' ')}]` : '';
+  objects[catalogId - 1] = encoder.encode(`<< /Type /Catalog /Pages ${pagesId} 0 R${names} >>`);
   objects[pagesId - 1] = encoder.encode(`<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`);
   const date = new Date();
   const stamp = `D:${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}${String(date.getUTCDate()).padStart(2, '0')}${String(date.getUTCHours()).padStart(2, '0')}${String(date.getUTCMinutes()).padStart(2, '0')}${String(date.getUTCSeconds()).padStart(2, '0')}Z`;

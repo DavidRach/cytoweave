@@ -27,7 +27,7 @@ The foundations and most of the workbench:
 - MCP server and remote control.
 - Nine simulated examples with ground truth, and a validation suite.
 
-## Next (0.2): trust and scale
+## 0.2.0: trust and scale (released 2026-10-02)
 
 Four slices, in this order: the comparisons first, so that the later work on
 large files is checked against them.
@@ -106,28 +106,104 @@ slowly. QC takes about 70 s, mostly PeacoQC's per-bin density estimates
 (about 5 s a channel). They could run in parallel across channels on the
 shared columns.
 
-## Then (0.3): beyond a single tool
+## 0.3.0: beyond a single tool (released 2026-10-03)
 
-1. **Uncertainty-aware autogating (G9).** Learn per-sample adjustments of a
-   template from the user's own gated examples. Each sample gets a confidence
-   value; low-confidence samples go to the review queue instead of being
-   moved silently. Per-event probabilities export as CLR.
-2. **Provenance in figures (R5).** SVG and PDF exports embed the gates,
-   scales, matrices and file checksums they show, so a figure can be traced
-   to, and rebuilt from, its analysis.
-3. **Predicted spread for panel design (S6).** Compute the unmixed covariance
-   U Σ Uᵀ from the user's own reference library and the instrument's noise
-   model, and compare candidate panels before staining. This needs a
-   **spectral reference library (S7)** kept across experiments, and
-   **instrument characterization (Q5)**: Q and B, and Levey–Jennings charts
-   from bead files.
-4. **Acquisition-time QC (Q4).** The host watches the instrument's export
-   folder and runs QC on each file as it lands.
-5. **Counterfactual preprocessing.** Generalize the comparison of unmixing
-   models to every analysis choice: logicle width or cofactor, matrix, QC
-   thresholds, gate variants. Report whether the conclusion of a comparison
-   survives them.
-6. **FlowJo workspace export (I4)** and **FCS de-identification (D7).**
+Wave 3 builds what no single tool combines, each part checked against a reference. It was
+released as 0.3.0; wave 4 follows in 0.4.
+
+### Wave 3
+
+1. **FlowJo workspace export (I4) and FCS de-identification (D7): done.**
+   - A workspace exports as a FlowJo 10 workspace: one gating tree per sample with its own
+     overrides and group scopes, compensation, scales, groups and, optionally, CytoWeave's counts
+     and the FCS files. Gates drawn on another scale than the one exported are traced with enough
+     vertices to follow their outline; populations FlowJo cannot evaluate (category gates, gates on
+     computed channels, gates of three or more dimensions) are reported and left out.
+   - Checked three ways: every case (the bundled example, ten FlowKit test workspaces and a
+     workspace built in CytoWeave with splits, quadrants on mixed scales, Booleans, overrides and
+     scopes) imports back with every count unchanged; FlowKit 1.3.2 reads every export and counts
+     what CytoWeave counts (ellipse boundaries aside, as on the originals); and FlowKit's counts on
+     an export equal its counts on the original workspace, or come closer to FlowJo's saved counts
+     (time gates, which the export writes in `$TIMESTEP` units).
+   - De-identification keeps an allowlist of technical keywords and removes everything else
+     (operator, specimen and patient fields, free text, file names, dates, serial numbers, vendor
+     keywords). Only the TEXT segment is rewritten; the events are copied byte for byte, checked on
+     every example and corpus file. It applies to population exports, the FlowJo export, a ZIP of
+     the files and an ACS archive whose workspace keeps none of the removed keywords.
+   - **To do:** open an export in FlowJo itself (no FlowJo licence was available while building
+     it): check that FlowJo 10 and 11 open it, find its FCS files, and show the same counts.
+2. **Provenance in figures (R5): done.** Exported figures and plots (SVG metadata, a PNG iTXt
+   chunk, a PDF attachment) embed the samples with their files' checksums, every gate the plots
+   depend on with per-sample adjustments, the scales, the compensation each sample was drawn with,
+   and each plot's event count; no keywords or events. Opening one reports, plot by plot, what
+   changed since (gates, scales, compensation, counts), matching another workspace by checksum and
+   population path; it rebuilds the figure in a new workspace from the library's files, or adds it
+   back. The `figures` suite reads a 60-plot record back intact from all three formats, rebuilds
+   every plot from the same events, and checks that a moved gate flags exactly the plots it
+   affects; pypdf lists the PDF attachment.
+3. **Uncertainty-aware autogating (G9): done.** A shared gate is carried to each sample by
+   landmark registration of its parent population's density along each axis (after gaussNorm),
+   from its exemplars: the samples it was drawn, adjusted or confirmed on, the most similar first.
+   An ensemble over exemplars, smoothing bandwidths, halves of the events and left-out landmarks
+   gives each sample a confidence and each event a membership probability (exported as CLR).
+   Confident adjustments are ticked in a review dialog (or held in a proposal, for agents); the
+   uncertain are listed first with the reason; "Looks right" adds an exemplar.
+   - Real expert gates changed the design. On four FlowJo workspaces of an intracellular cytokine
+     study (four donors × negative, peptide and PMA wells, gates adjusted per donor), the first
+     version made agreement with the expert worse: it followed populations that moved for
+     biological reasons (PMA down-regulates CD3 and CD4; one CD4 gate fell from F1 1.00 to 0.37).
+     Now a gate is moved only where its boundary cuts into a population (it is not robust there)
+     and the adaptation finds sparser events; landmarks are matched only within 0.16 of the axis;
+     and "keep one gate per" a metadata field adapts a donor's wells together, as the expert did,
+     sending a well unlike the rest of its donor to review. With one gate per donor no adjustment
+     lowers agreement with the expert and the mean is unchanged (0.9876 → 0.9877); wells the
+     expert gated differently go to review three times as often (45% vs 14%).
+   - On a simulated cohort with up to fivefold gains, the gates' mean F1 against the true cell
+     types rises (T cells 0.954 → 0.994, monocytes 0.752 → 0.803), no adjustment lowers a
+     population's, nothing is sent to review without a shift, and an expert reviewing the 4 of 66
+     flagged pairs brings the gates' mean F1 to 0.969 (0.982 on the sample they were drawn on). Robust boundaries left
+     off-center by large shifts are kept by design; offering those moves as optional adjustments
+     was tried and rejected (on the expert data they lowered agreement four times as often as
+     they raised it).
+   - Found on the way: FlowJo writes "LIVE/DEAD" as "LIVE_DEAD", and those channels were missing
+     on import (fixed); FlowJo appears to evaluate gates at its display resolution, so cytokine
+     gates whose edges sit in dense negative events differ by a few events (to investigate).
+4. **Instrument characterization (Q5) and a spectral reference library (S7): done.**
+   - Q, B and the beads' CV per detector from multi-level beads or an LED series, as flowQB
+     computes them (Parks et al. 2017): a scatter gate and k-means on the logicle-scaled detectors
+     find the levels, a normal fitted to each level's central 80% gives its mean and SD, and the
+     weighted quadratic fit is re-weighted until it settles. On flowQB's own LSR II data (an LED
+     series, 8-peak and 6-peak beads) the peaks, coefficients and standard errors equal flowQB's
+     within 6e-9 in all 36 detectors. flowQB is deprecated in Bioconductor and needs a one-line
+     fix to run on R 4 (in `generate_flowqb.R`).
+   - The simulator now knows every detector's Q and B (its noise model is the same quadratic), and
+     a new example has 30 daily bead runs with a PMT ageing, a dirty flow cell and a weaker laser:
+     Q within 2% and B within 6% (median), every problem flagged at once on the Levey–Jennings
+     charts (Westgard rules against the first 20 runs), nothing in the baseline, 0.8% false flags
+     after. The standard errors are somewhat optimistic (87% of the truths within 2 SE): the robust
+     peak statistics are less efficient than the weights assume, as in flowQB.
+   - Bead-level charts follow one level that is in the linear range in every run: following "the
+     brightest kept level" made a weaker laser look like a brighter one when the top level came
+     back into range.
+   - The library now keeps records across workspaces (instrument runs, spectra). Reference spectra
+     are compared peak-normalized, detector by detector: cosine similarity hardly moves when a
+     tandem loses 5% of its emission (0.9988), the donor's detector moves by 0.05. Independent
+     controls of the simulated instrument agree within 0.01, so 0.03 flags a change; a stale
+     PE-Cy7 spectrum cost PE nearly a third of its correlation with the truth (0.68 → 0.48). Real controls will vary
+     more than simulated ones; the threshold may need to be per laboratory.
+
+## Next (0.4)
+
+### Wave 4
+
+1. **Predicted spread for panel design (S6)** from the library of wave 3 and the noise model,
+   validated against observed spread.
+2. **Acquisition-time QC (Q4):** the host watches the instrument's export folder; PeacoQC runs its
+   channels in parallel on the shared columns.
+3. **Counterfactual preprocessing:** whether a comparison's conclusion survives alternative scales,
+   matrices, QC thresholds and gate variants.
+4. **Accessibility (V4):** keyboard-only operation, labels on every control, colour maps checked
+   for colour-vision deficiency.
 
 ## Later
 - Branches of an analysis, three-way merge of non-conflicting edits, and

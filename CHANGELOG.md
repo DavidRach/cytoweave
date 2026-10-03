@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.3.0 (2026-10-03)
+
+CytoWeave 0.3 works with the rest of the lab: it writes FlowJo workspaces and de-identified FCS files, its figures carry the analysis that made them, it adapts gates to each sample with a confidence for each, and it follows the instrument itself, from detector efficiency to the spectra of its dyes, across experiments.
+
+### Added
+
+- **FlowJo workspace export.** Workspace → Export → FlowJo workspace writes a FlowJo 10 workspace: one gating tree per sample, with its own adjustments and group scopes, its compensation, the scales, the sample groups and, optionally, CytoWeave's population counts and the FCS files in a ZIP. A report lists every population as exact, traced (a gate drawn on another scale than the one written, with enough vertices to follow its outline) or not exported (category gates, gates on channels CytoWeave computed, gates of three or more dimensions).
+- **De-identified FCS files.** Workspace → Export → De-identified FCS files writes the files (a ZIP, or an ACS archive with the workspace) keeping only technical keywords: operator, specimen and patient fields, free-text comments, file names, dates (unless kept), serial numbers and vendor keywords are removed and listed. The events are copied byte for byte. Population exports and the FlowJo export can de-identify too.
+- **Figures carry their analysis.** Exported figures and plots (SVG, PNG and PDF) embed the samples (with their files' SHA-256 checksums), the gates, scales and compensation behind every plot, and each plot's event count. Opening an exported figure in CytoWeave (or `cytoweave figure.svg`) shows where it came from and, plot by plot, what has changed since; it can rebuild the figure in a new workspace from the same files (found in the library by checksum) or add it back to the open one. "Embed the analysis" in the Figures view turns it off.
+- **Adapt a gate to each sample.** A gate's menu → Adapt to each sample… carries a shared gate from the samples it is known to be right on (where it was drawn, adjusted or confirmed) to every other sample, by registering the density landmarks of its parent population along its axes. Each sample gets a confidence and a status: the gate already fits, a confident adjustment (ticked, applied in one undoable step), or uncertain and listed first for review, with the reason.
+  - A gate is moved only where it cuts into a population and the adaptation finds sparser events, since populations also move for biological reasons (a stimulation down-regulates CD3 and CD4).
+  - "Keep one gate per" a metadata field (a donor, a subject) adapts each group's samples together, as assays with stimulated and unstimulated wells need; a sample unlike the rest of its group goes to review.
+  - "Looks right" teaches CytoWeave a sample; per-event membership probabilities export as CLR files; the methods paragraph describes the adaptation.
+  - Agents can adapt gates too (`adapt_gate`): confident adjustments wait in a proposal, and uncertain samples are listed for the user to check.
+- **Q, B and Levey–Jennings.** QC → Instrument measures every fluorescence detector's efficiency Q, optical background B and the beads' intrinsic CV from multi-level beads or an LED pulser series, with Parks et al.'s weighted quadratic fit as flowQB computes it, with standard errors and a plot of peak variance against mean. Runs are saved to the instrument's record in the library and followed across experiments on Levey–Jennings charts flagged by the Westgard rules. The methods paragraph describes them.
+- **Spectral library.** The Spectral view's Library tab keeps reference spectra across experiments, per instrument, flags a control whose spectrum differs from the library's (a degraded tandem, a new lot), and adds a library spectrum for a fluorochrome without a control. The methods paragraph says which spectra came from the library.
+- A new example, **Daily bead QC**: 30 runs of 8-peak beads with every detector's true Q and B, a PMT that ages, a flow cell that gets dirty and a laser that weakens.
+- The library keeps records besides workspaces and files (`/api/library/records/{kind}/{id}`; in the browser, IndexedDB).
+- Scripts can generate examples with options (`app.openExample(id, { seed, tandemDegradation, instrumentShift })`): a degraded tandem in the spectral example, drifting detector gains in the PBMC example.
+
+### Fixed
+
+- **FlowJo import.** FlowJo writes some characters of parameter names as "_" ("LIVE/DEAD Aqua-A" becomes "LIVE_DEAD Aqua-A"); such channels were not found and every population gated on them was missing. They are now mapped back to the file's names.
+
+### Documentation
+
+- The user guide covers the new features, with new screenshots of adapting a gate, Q and B, Levey–Jennings charts, the spectral library, an exported figure opened again and the FlowJo export; every screenshot is retaken for 0.3.0.
+
+### Validation
+
+- **Against real experts' gates** (new `experts` suite, external data `als-ics`): in four FlowJo workspaces of a real intracellular cytokine study (48 wells), adapting with one gate per donor leaves agreement with the expert's per-donor gates unchanged (F1 0.9876 → 0.9877) with no adjustment lowering it, and sends wells the expert gated differently to review three times as often as the others. These data changed the design: the first version followed populations that moved for biological reasons.
+- **Against flowQB** (new `flowqb` suite, external data `flowqbdata`): on flowQB's own LSR II data (an LED series, 8-peak and 6-peak beads), CytoWeave finds the same peaks and the same Q, B and standard errors in all 36 detectors, within 6e-9.
+- Autogating on a simulated cohort with instrument shifts (gains up to fivefold) raises every shifted gate's accuracy against the true cell types (T cells F1 0.954 → 0.994) without lowering any population's, sends the 4 least accurate of 66 gate-sample pairs to review, and sends nothing to review when nothing shifted (`autogating` suite).
+- Q and B of 18 simulated detectors over 30 runs within 2% (Q) and 6% (B) of the truth; every planted instrument problem is flagged on the Levey–Jennings charts at once, and nothing in the baseline runs (new `instrument` suite).
+- The spectral library flags a PE-Cy7 that lost 5% of its emission to PE and nothing else, matches a second experiment's independent controls, and a library spectrum unmixes as accurately as the dye's own control (`spectral` suite).
+- A 60-plot figure is read back intact from SVG, PNG and PDF, rebuilt with every plot drawn from the same events, and a moved gate flags exactly the plots it affects (new `figures` suite).
+- Each FlowJo export is imported back with every count unchanged: the bundled example, ten FlowKit test workspaces and a workspace built in CytoWeave. FlowKit reads every export and counts what CytoWeave counts, and its counts on an export equal those on the original workspace or come closer to FlowJo's saved counts.
+- De-identified copies of every example and corpus FCS file hold the same events, bit for bit.
+- The suite now has 191 checks in 23 suites; the public test data it downloads grew to about 450 MB.
+
 ## 0.2.0 (2026-10-02)
 
 ### Fixed

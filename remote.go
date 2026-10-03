@@ -79,7 +79,7 @@ type remoteResult struct {
 }
 
 // Actions that can run for a long time (analyses over many samples).
-var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "compare": true, "propose_compensation": true}
+var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "propose_compensation": true}
 
 func newRemoteHub() *remoteHub {
 	return &remoteHub{
