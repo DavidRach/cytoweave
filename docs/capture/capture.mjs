@@ -349,6 +349,20 @@ const scenes = {
     await waitFor(`/p = /.test(${mainText})`, 60000);
     await sleep(1500);
   },
+  // Compare: robustness of "monocytes do not change with stimulation" to analysis choices.
+  async 'compare-robustness'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await mode('compare');
+    await choose('Population', 'Monocytes$');
+    await choose('Statistic', 'parent');
+    await waitFor(`/p = /.test(${mainText})`, 60000);
+    await sleep(1000);
+    await js(`[...document.querySelectorAll('.pane')].find((p) => /Robustness/.test(p.querySelector('h3')?.textContent))?.querySelector('h3 button')?.click()`);
+    await waitFor(`Boolean([...document.querySelectorAll('.pane')].find((p) => /Robustness/.test(p.querySelector('h3')?.textContent))?.querySelector('.callout'))`, 300000);
+    await js(`[...document.querySelectorAll('.pane')].find((p) => /Robustness/.test(p.querySelector('h3')?.textContent)).scrollIntoView({ block: 'start' })`);
+    await sleep(1500);
+  },
   // Figures: a publication figure assembled from live plots.
   async figures() {
     await example('pbmc-immunophenotyping');

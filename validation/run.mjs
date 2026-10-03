@@ -8,7 +8,8 @@
 //
 // Suites: fcs, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
-// experts, flowqb, gatingml, flowkit, fcsparser, diva, fortessa, bioconductor
+// multiverse, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, diva, fortessa,
+// bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -26,6 +27,8 @@ import { writePDF } from '../web/lib/pdf.js';
 import { characterize, findBeadPeaks, REJECT_RULES } from '../web/lib/qb.js';
 import { beadRun, runFlags, seriesRun } from '../web/lib/instrument-record.js';
 import { compareWithLibrary, latestEntries, libraryEntry, spectrumOn, withEntries as withSpectra } from '../web/lib/spectral-library.js';
+import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositive, withQCGate } from './multiverse-cases.mjs';
+import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
 import { EXPERT_GATES, ORDER, TRUTH, adaptTopDown, againstExperts, buildCohort, expertCorrection, expertWorkspace, f1 as truthF1, randomGains } from './autogating-cases.mjs';
 import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
@@ -900,6 +903,119 @@ const suites = {
   // Instrument characterization: 30 daily runs of 8-peak beads whose detectors' true Q, B and
   // CV0 are known, with three planted problems (a PMT ageing from run 21, a dirty flow cell on
   // run 25, a weaker violet laser from run 27) against a baseline of the first 20 runs.
+  // Counterfactual preprocessing (web/lib/multiverse.js) on the PBMC example, six donors
+  // unstimulated and stimulated, with known answers: a real effect that must hold, a null, and
+  // artefacts that one choice removes (a detector gain in one batch, clogs in one group, one batch
+  // compensated with the wrong matrix), which must be named; then how often a chance difference
+  // passes as robust.
+  multiverse() {
+    const describe = (s) => `${s.declared.conclusion}, ${s.agree}/${s.total} specifications agree (${s.verdict})`;
+    const depends = (s) => s.dependsOn.map((d) => `${d.choice}: ${d.option} → ${d.conclusion}`).join('; ') || 'nothing alone';
+    const plain = buildCohort({ scale: 0.25, gainOf: () => null });
+    plain.ws = withCD25(plain.ws, plain.views, 'D01_Unstim');
+    // 1. Stimulation activates 20–50% of each T subset (CD25 ×8): a real, large effect.
+    const real = multiverseOf(plain, byDonor(plain.ws), 'paired-two', 'CD25+').summary;
+    check('multiverse', 'real effect: CD25+ of T cells, stimulated vs unstimulated (paired, 6 donors)', describe(real), real.declared.conclusion === 'higher' && real.verdict === 'holds', 'higher, holds (≥ 90%)');
+    // 2. Monocytes do not change with stimulation; activated T cells (larger, blasts) enter a
+    // monocyte gate drawn wider.
+    const none = multiverseOf(plain, byDonor(plain.ws), 'paired-two', 'Monocytes').summary;
+    check('multiverse', 'null: monocytes, stimulated vs unstimulated', `${describe(none)}; depends on ${depends(none)}`, none.declared.conclusion === 'none' && none.share >= 0.7, 'none, ≥ 70% agree');
+
+    // 3. Batch B (D04–D06) acquired with PE ×1.6, no true difference; the CD25+ gate cuts into the
+    // CD25-dim tail. Adapting the gates to each sample removes the spurious difference.
+    const batchB = (name) => ['D04', 'D05', 'D06'].includes(name.slice(0, 3));
+    const shifted = buildCohort({ scale: 0.25, gainOf: (name, p) => (p.name === 'PE-A' && batchB(name) ? 1.6 : null) });
+    shifted.ws = withCD25(shifted.ws, shifted.views, 'D01_Unstim', 0.9);
+    const batches = shifted.ws.samples.filter((s) => /Unstim/.test(s.name)).map((s) => ({ id: s.id, group: batchB(s.name) ? 1 : 0, pair: null }));
+    const gain = multiverseOf(shifted, batches, 'two', 'CD25+').summary;
+    const adaptedRow = gain.dependsOn.find((d) => d.choice === 'Gates per sample' && /adapted/.test(d.option));
+    check('multiverse', 'detector gain in one batch (PE ×1.6, unstimulated, 3 vs 3): spurious CD25+ difference, named', `${describe(gain)}; ${adaptedRow ? `adapted gates → ${adaptedRow.conclusion} (${fmt(adaptedRow.estimate, 2)} points, p = ${fmt(adaptedRow.p, 2)})` : 'adaptation not named'}`, gain.declared.conclusion === 'higher' && gain.verdict !== 'holds' && adaptedRow?.conclusion === 'none', 'flagged; adapted gates remove it');
+
+    // 4. Clogs in every stimulated sample, QC applied (refined PeacoQC and flow rate; re-run with
+    // MAD 4 and 8 as alternatives). Without QC, clog events (debris-like) make fewer cells.
+    const clogged = buildCohort({ scale: 0.25, gainOf: () => null, example: { clogs: ['D01', 'D02', 'D03', 'D04', 'D05', 'D06'].map((d) => `${d}_Stim.fcs`) } });
+    setChannel(clogged.views, qcMasks(clogged.ws, clogged.views), 'QC pass');
+    setChannel(clogged.views, qcMasks(clogged.ws, clogged.views, { mad: 4 }), 'QC pass · MAD 4');
+    setChannel(clogged.views, qcMasks(clogged.ws, clogged.views, { mad: 8 }), 'QC pass · MAD 8');
+    clogged.ws = withQCGate(clogged.ws);
+    const qcVariants = [{ id: 'mad4', label: 'stricter (MAD 4)', channel: 'QC pass · MAD 4' }, { id: 'mad8', label: 'looser (MAD 8)', channel: 'QC pass · MAD 8' }];
+    const clog = multiverseOf(clogged, byDonor(clogged.ws), 'paired-two', 'Cells', { qcVariants }).summary;
+    const qcRow = clog.dependsOn.find((d) => d.choice === 'Acquisition QC' && d.option === 'not applied');
+    check('multiverse', 'clogs in the stimulated samples, QC applied: cells', `${describe(clog)}; ${qcRow ? `without QC → ${qcRow.conclusion} (p = ${qcRow.p < 0.001 ? qcRow.p.toExponential(1) : fmt(qcRow.p, 2)})` : 'QC not named'}; stricter and looser QC agree: ${clog.dependsOn.some((d) => /MAD/.test(d.option)) ? 'no' : 'yes'}`, clog.declared.conclusion === 'none' && qcRow?.conclusion === 'lower' && !clog.dependsOn.some((d) => /MAD/.test(d.option)), 'none; without QC lower; QC settings agree');
+
+    // 5. Batch B compensated with the files' matrix (APC → Alexa Fluor 700 under-compensated),
+    // batch A with the true one: CD8 T cells look CD4+. With the true matrix for every sample the
+    // difference shrinks to what the donors really differ by.
+    const comp = buildCohort({ scale: 0.25, gainOf: () => null });
+    const matrices = (view) => {
+      const spill = readSpillover(view.dataset.keywords, view.parameters);
+      const n = spill.channels.length;
+      const truth = Array.from(spill.matrix);
+      truth[spill.channels.indexOf('APC-A') * n + spill.channels.indexOf('Alexa Fluor 700-A')] /= 0.7;
+      return { channels: spill.channels, file: Array.from(spill.matrix), truth };
+    };
+    const nameOf = (id) => comp.ws.samples.find((s) => s.id === id).name;
+    const setCompensation = (views, id) => {
+      for (const [sampleId, view] of views) {
+        const m = matrices(view);
+        const file = id === 'declared' && batchB(nameOf(sampleId));
+        view.setCompensation({ id: file ? 'file' : 'controls', channels: m.channels, matrix: file ? m.file : m.truth });
+      }
+    };
+    setCompensation(comp.views, 'declared');
+    comp.ws = withDoublePositive(comp.ws, comp.views, 'D01_Unstim');
+    const compGroups = comp.ws.samples.map((s) => ({ id: s.id, group: batchB(s.name) ? 1 : 0, pair: null }));
+    const wrong = multiverseOf(comp, compGroups, 'two', 'CD4+CD8+', { compensations: [{ id: 'controls', label: 'the controls\' matrix for every sample' }], setCompensation }).summary;
+    const compRow = [...wrong.sizeDependsOn, ...wrong.dependsOn].find((d) => d.choice === 'Compensation');
+    check('multiverse', 'one batch compensated with the files\' matrix: CD4+CD8+ T cells (12 samples, 6 vs 6)', `${describe(wrong)}; ${compRow ? `with the controls' matrix ${fmt(wrong.declared.result.estimate, 3)} → ${fmt(compRow.estimate, 2)} points` : 'compensation not named'}`, Boolean(compRow) && Math.abs(compRow.estimate) < 0.1 * Math.abs(wrong.declared.result.estimate), 'named; difference shrinks > 10×');
+
+    // 6. No effect: the labels swapped within donors in every distinct way (32), T cells and
+    // lymphocytes; how often the declared test is significant, and how often that passes as robust.
+    let significant = 0;
+    let robust = 0;
+    let runs = 0;
+    for (const name of ['T cells', 'Lymphocytes']) {
+      const gate = plain.ws.gates.find((g) => g.name === name);
+      const adapted = adaptPath(plain.ws, pathOf(plain.ws, gate.id, gate.parentId), plain.views);
+      const choices = choicesFor({ ws: plain.ws, gateId: gate.id, ancestorId: gate.parentId, design: 'paired-two', adapted, counts: [6] });
+      const specs = specifications(choices, { max: 32 });
+      for (let mask = 0; mask < 32; mask += 1) {
+        const flipped = (name6) => Boolean(mask & (1 << ['D01', 'D02', 'D03', 'D04', 'D05'].indexOf(name6.slice(0, 3)))) && name6.slice(0, 3) !== 'D06';
+        const samples = plain.ws.samples.filter((s) => /^D0/.test(s.name)).map((s) => ({ id: s.id, group: (/_Stim/.test(s.name) !== flipped(s.name)) ? 1 : 0, pair: s.name.slice(0, 3) }));
+        const sum = summarizeMultiverse(runMultiverse({ ws: plain.ws, views: plain.views, samples, design: 'paired-two', statistic: { stat: 'freqParent', gateId: gate.id }, choices, specs, gateId: gate.id, ancestorId: gate.parentId, adapted }), choices);
+        runs += 1;
+        if (sum.declared.conclusion !== 'none') {
+          significant += 1;
+          if (sum.verdict === 'holds') robust += 1;
+        }
+      }
+    }
+    check('multiverse', `no effect, labels swapped within donors (${runs} analyses): significant by chance, and of those holding in ≥ 90% of specifications`, `${significant} (${pct(significant / runs)}); ${robust} hold`, significant / runs <= 0.1 && robust <= significant, '≤ 10%; no more than significant');
+  },
+  // External data: the intracellular cytokine study (als-ics), four donors × negative, peptide
+  // and PMA/ionomycin wells, the expert's gates adjusted per donor. Each comparison is checked
+  // against boundaries, the per-donor adjustments (removed, or adapted) and the test.
+  'multiverse-ics'() {
+    const data = dataset('als-ics');
+    const rows = [];
+    for (const screen of ['screen3', 'screen4']) {
+      for (const set of ['ALS', 'HC']) {
+        const c = expertWorkspace((name) => data.read(`${screen}/${set}/${name === 'workspace' ? `${set}.wsp` : name}`), 'workspace');
+        const cd4 = c.ws.gates.find((g) => g.name === 'CD4 Single Positive');
+        for (const [cytokine, well] of [['IFNy FITC +', 'PMA'], ['IFNy FITC +', 'peptide'], ['IL-4 BV421 +', 'peptide']]) {
+          const gate = c.ws.gates.find((g) => g.name === cytokine && g.parentId === cd4.id);
+          const samples = c.ws.samples.filter((s) => s.meta.well === 'negative' || s.meta.well === well).map((s) => ({ id: s.id, group: s.meta.well === well ? 1 : 0, pair: s.meta.donor }));
+          const ws = { ...c.ws, gates: [gate, ...c.ws.gates.filter((g) => g !== gate)] };
+          const { summary } = multiverseOf({ ws, views: c.views }, samples, 'paired-two', cytokine);
+          rows.push({ label: `${screen} ${set} CD4 ${cytokine.split(' ')[0]} ${well}`, well, summary });
+        }
+      }
+    }
+    const pma = rows.filter((r) => r.well === 'PMA');
+    check('multiverse-ics', `IFNγ+ CD4 T cells, PMA vs negative (4 workspaces): every specification agrees`, pma.map((r) => `${r.label.split(' CD4')[0]}: ${r.summary.declared.conclusion} ${r.summary.agree}/${r.summary.total}`).join('; '), pma.every((r) => r.summary.share === 1), 'all agree');
+    const fragile = rows.filter((r) => r.summary.verdict !== 'holds');
+    check('multiverse-ics', `peptide vs negative (8 comparisons): fragile conclusions and what they depend on`, fragile.length ? fragile.map((r) => `${r.label}: ${r.summary.declared.conclusion} in ${r.summary.agree}/${r.summary.total}, depends on ${r.summary.dependsOn.slice(0, 2).map((d) => `${d.choice.toLowerCase()} ${d.option}`).join(', ')}`).join('; ') : 'none', true, 'reported');
+  },
   instrument() {
     const { files } = generateExample('bead-qc');
     const runs = files.map((file) => {

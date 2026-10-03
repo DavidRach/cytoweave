@@ -249,6 +249,8 @@ function createContext(entry, options) {
     shift: options.instrumentShift ?? null,
     // Laser intensity CV from event to event (a number or { laser: cv }; spectral example).
     laserCV: options.laserCV ?? null,
+    // The files with a clog (PBMC example; default: D05_Unstim only).
+    clogs: options.clogs ?? null,
     random: (...parts) => createRandom(deriveSeed(seed, entry.id, ...parts)),
     // Acquisition start times follow the file's place in the full design, so a file generated
     // on its own is byte-identical to the same file generated with the whole example.
@@ -469,7 +471,7 @@ function* generatePBMC(ctx, samples, all) {
         mix: PBMC_MIX,
         viability: 'Viability',
         rate,
-        anomalies: sample.anomaly === 'clog' ? CLOG : [],
+        anomalies: (ctx.clogs ? ctx.clogs.includes(sample.name) : sample.anomaly === 'clog') ? CLOG : [],
         markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers),
         recordState: true,
       }, ctx.random(sample.name), { signal: ctx.signal });
@@ -1753,7 +1755,8 @@ function startGeneration(id, options) {
 // samples (file names to generate; default all), truth (default true), tandemDegradation
 // ({ fluorochrome: fraction of its emission from its donor }, spectral example), instrumentShift
 // (strength of per-sample detector gains, PBMC example), laserCV (laser intensity CV from event
-// to event, a number or { laser: cv }, spectral example), onProgress, signal }.
+// to event, a number or { laser: cv }, spectral example), clogs (file names of the PBMC example
+// with a clog, instead of D05_Unstim), onProgress, signal }.
 // Returns { files: [{ name, bytes (Uint8Array, FCS 3.1), meta }], workspaceHints }.
 export function generateExample(id, options = {}) {
   const { ctx, steps } = startGeneration(id, options);

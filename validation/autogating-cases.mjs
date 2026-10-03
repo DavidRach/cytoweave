@@ -24,9 +24,10 @@ export const TRUTH = {
 };
 export const ORDER = ['Cells', 'Single cells', 'Live', 'Lymphocytes', 'Monocytes', 'T cells'];
 
-// shift(name, parameter) → gain, or null for none. Returns { ws, views, truth }.
-export function buildCohort({ scale = 0.25, gainOf }) {
-  const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', { scale });
+// shift(name, parameter) → gain, or null for none; modify(name, dataset), when given, may change
+// a sample's events before its view is made (an injected clog). Returns { ws, views, truth }.
+export function buildCohort({ scale = 0.25, gainOf, modify = null, staleSpill = false, example = {} }) {
+  const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', { scale, ...example });
   let ws = createWorkspace('autogating validation');
   const views = new Map();
   const truth = new Map();
@@ -40,9 +41,12 @@ export function buildCohort({ scale = 0.25, gainOf }) {
       const g = gains.get(p.name);
       if (g !== 1) { const col = d.data[p.index]; for (let e = 0; e < col.length; e += 1) col[e] *= g; }
     }
+    modify?.(record.name, d);
     const n = spill.channels.length;
     const matrix = Array.from(spill.matrix);
-    for (let i = 0; i < n; i += 1) for (let j = 0; j < n; j += 1) matrix[i * n + j] *= gains.get(spill.channels[j]) / gains.get(spill.channels[i]);
+    // The matrix follows the gains, as one recomputed from controls at the new voltages would;
+    // with staleSpill, the samples keep the matrix of the original voltages.
+    if (!staleSpill) for (let i = 0; i < n; i += 1) for (let j = 0; j < n; j += 1) matrix[i * n + j] *= gains.get(spill.channels[j]) / gains.get(spill.channels[i]);
     const view = new SampleView(record, d);
     view.setCompensation({ id: 'file', channels: spill.channels, matrix });
     views.set(record.id, view);

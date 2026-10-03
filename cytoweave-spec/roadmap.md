@@ -231,14 +231,27 @@ released as 0.3.0; wave 4 follows in 0.4.
    - Found on the way: names with underscores ("Beads_…", "Comp_FITC") were not given their
      roles, so a watched bead file would have been QC'd as a sample (fixed).
    - Not done: an agent tool to start a watch, and system notifications outside the window.
-3. **Counterfactual preprocessing.** Whether a comparison's conclusion survives other reasonable
-   choices: gate boundaries (shifted, adapted per sample), QC (none, thresholds, classic or
-   refined), compensation or unmixing, and scales where an algorithm sees them. Each choice is
-   varied alone, plus a random sample of combinations; a specification curve (Steegen et al.
-   2016; Simonsohn et al. 2020) shows the effect under each, with a verdict and a sentence for the
-   methods. The declared analysis stays primary. Validated on simulated cohorts with a real effect,
-   with artefacts that one choice removes (a confounded instrument shift, a clog, a stale tandem
-   spectrum) and with no effect, and on the cytokine study.
+3. **Counterfactual preprocessing: done.** Compare → Robustness to analysis choices repeats a
+   two-group comparison with each gate on the path moved 1% and 2% of the axis, the gates adapted
+   to each sample (as autogating would put them, confident or not; one gate per subject when
+   paired) or without per-sample adjustments, without the QC gate or with QC re-run (MAD 4 and
+   8), with other compensation matrices, and with the rank test when it can reach significance
+   (with 3 + 3 samples or 4 pairs it cannot, and is left out). Each alternative is tried alone,
+   then in seeded random combinations (64 analyses). The verdict comes from the conclusion
+   (holds ≥ 90%, mostly ≥ 70%, fragile); single changes that alter it are named, and so are those
+   that keep a significant difference but move it outside its confidence interval. Scales are not
+   varied (a hand-drawn gate follows its population on any scale). The agent tool
+   `check_robustness` runs the same check.
+   - What the validation changed: boundary moves alone cannot reveal a detector gain that differs
+     between groups (a shared gate moves equally in both), so adapted gates had to be a choice;
+     a stale matrix's effect showed that agreement on the conclusion can hide a 75-fold change
+     in the difference, hence the effect-size check; and an outward monocyte gate in stimulated
+     samples takes in activated T-cell blasts, a real fragility the check reports.
+   - Validation: real effect holds 64/64; gain, clog and compensation artefacts each named; under
+     the null 6% significant by chance, half of them robust; on the cytokine study every PMA
+     comparison holds and one IL-4 peptide response is fragile.
+   - Not done: designs of more than two groups, and cluster abundances (re-clustering each
+     variant).
 4. **Accessibility (V4).** Labels on every control, keyboard operation, focus kept in dialogs,
    accessible names and text summaries for plots, status never shown by colour alone, and an
    axe-core check of every screenshot scene in CI. Palettes and contrast are checked for

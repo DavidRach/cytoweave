@@ -32,7 +32,7 @@ between stimulated and unstimulated samples.</code></pre></div>
     }
   }
 }</code></pre></div>
-      <p>Options go after <code>mcp</code>: <code>--port</code> (default 8770; the next free one is used), <code>--data-dir</code> (the workspace library) and <code>--window app|browser|none</code> (how the window opens when a tool needs it). Proposals and the <code>propose_compensation</code> and <code>proposals</code> tools need CytoWeave 0.2.0 or later, and <code>adapt_gate</code> 0.3.0.</p>
+      <p>Options go after <code>mcp</code>: <code>--port</code> (default 8770; the next free one is used), <code>--data-dir</code> (the workspace library) and <code>--window app|browser|none</code> (how the window opens when a tool needs it). Proposals and the <code>propose_compensation</code> and <code>proposals</code> tools need CytoWeave 0.2.0 or later, <code>adapt_gate</code> 0.3.0, and <code>check_robustness</code> 0.4.0.</p>
 
       <h2 id="proposals">Reviewing proposals</h2>
       <shot name="agents" alt="The Gate view while Claude Code's proposal waits: a strip above the population tree says Claude Code proposes 4 changes, with Review, Accept all and Reject all; the proposed gates are in italics and dotted on the plots">An agent's proposal waiting: the strip above the tree, proposed gates dotted and in italics.</shot>
@@ -65,6 +65,7 @@ between stimulated and unstimulated samples.</code></pre></div>
             <tr><td><code>review_gate</code></td><td>A gate's frequency on every sample with a robust z-score and boundary robustness, outliers first</td></tr>
             <tr><td><code>adapt_gate</code></td><td>Adapts a gate to every sample with a confidence for each: confident adjustments are proposed, uncertain samples listed for you to check; <code>groupBy</code> keeps one gate per donor or subject</td></tr>
             <tr><td><code>compare</code></td><td>Tests a statistic between groups of samples defined by annotations, optionally paired</td></tr>
+            <tr><td><code>check_robustness</code></td><td>Repeats a two-group comparison under other reasonable analysis choices (gate boundaries, adapted gates, QC, compensation, test) and reports whether the conclusion holds, mostly holds or is fragile, and which choices change it</td></tr>
             <tr><td><code>methods</code></td><td>A methods paragraph with numbered references</td></tr>
             <tr><td><code>export_gating_ml</code></td><td>The gating strategy as Gating-ML 2.0</td></tr>
           </tbody>

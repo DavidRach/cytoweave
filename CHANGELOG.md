@@ -9,6 +9,8 @@
 - **QC as files are acquired.** QC → Live (or `cytoweave --watch <folder>`) watches the folder an instrument exports to. Each FCS file is added to the workspace once the instrument has finished writing it (its size is steady and its header says all its data are there) and checked at once: acquisition QC for samples and controls, Q and B for bead files, added to the instrument's record and checked against the Levey–Jennings rules. A low score or a detector out of control raises a notice, the Live table lists every file with its result, and the status bar shows the watch from any view. The folder is only read; files already there are opened only on request.
 - **Faster acquisition QC of large files.** PeacoQC's per-channel work, nearly all of its time, runs on up to four workers reading the events from shared memory, with exactly the serial result: 3.4 s instead of 10.5 s for two million events in 20 channels.
 
+- **Robustness to analysis choices.** Compare → Robustness to analysis choices checks whether a two-group comparison's conclusion would change had the data been processed differently in ways another analyst might reasonably have chosen. It moves each gate on the population's path 1% and 2% of the axis, adapts the gates to each sample (one per subject when paired) or removes per-sample adjustments, takes acquisition QC away (or re-runs it stricter and looser), tries the files' and the workspace's other compensation matrices and the rank test, each alone and in random combinations (64 analyses). It says whether the conclusion holds (≥ 90%), mostly holds (≥ 70%) or is fragile, names the choices that change it and those that move the size of a difference found beyond its confidence interval, and draws the specification curve. The methods text and saved comparisons include a sentence on it, and agents have `check_robustness`.
+
 ### Fixed
 
 - **Roles from file names with underscores.** "Beads_2026-03-31", "Comp_FITC" and "Unstained_01" were not recognized as bead, single-stain and unstained files, because the underscore joined the words.
@@ -17,6 +19,13 @@
 
 ### Validation
 
+- **Robustness to analysis choices** (new `multiverse` and `multiverse-ics` suites), on comparisons with known answers in the PBMC example:
+  - a real effect (CD25+ T cells after stimulation) holds in 64 of 64 analyses;
+  - a detector gain in one batch, with a gate drawn close to the negative cells, makes a spurious difference: called fragile, with the adapted gates named as removing it;
+  - clogs in one group: QC named as the choice the conclusion depends on, and stricter and looser QC agree;
+  - one batch compensated with an under-compensating matrix: the compensation named, with which the false CD4+CD8+ difference shrinks from 38.7 to 0.5 points;
+  - with no effect, 6% of comparisons were significant by chance, and half of those held in at least 90% of analyses.
+  On an intracellular cytokine study (4 donors, 4 workspaces), every PMA comparison holds in all analyses; one small peptide response (IL-4, 0.27 points) is fragile.
 - **Folder watching** (Go tests): a file stopped mid-write for several checks is not handed over until it is finished, also when the modification time does not change (network shares); hidden and temporary names are ignored until renamed; files already in the folder wait to be asked for; offsets kept in TEXT (large files) are read; only this computer may start or stop a watch.
 - **Parallel PeacoQC:** each channel computed apart and combined removes exactly the events of the serial run, refined and classic, on the 6 simulated QC files and on PeacoQC's own 7 files (`qc` and `bioconductor` suites); the benchmark checks the same at 2 million events.
 - **Predicted spread** (new `spread` and `fortessa` suites):

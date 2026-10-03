@@ -15,6 +15,9 @@ import { ROOT, META_FIELDS, channelCatalog, channelLabel, gateById, gatePath, se
 import { newId } from '../lib/gates.js';
 import { categoricalColor } from '../lib/colormaps.js';
 import { quantileSorted } from '../lib/stats.js';
+import { denominatorOf, methodsSentence, pathGates, qcGateOf } from '../lib/multiverse.js';
+import { QC_CHANNEL } from './qc-run.js';
+import { checkRobustness } from './robustness.js';
 import {
   adjustPValues,
   blockAnova,
@@ -153,6 +156,11 @@ function clusterName(record, k) {
 export function mountCompareMode(app, container) {
   const { store, data } = app;
   let screenResult = null; // { kind, rows, stale, ... }
+  // The robustness check of the single comparison (lib/multiverse.js), kept while the view is open:
+  // { key, status: 'running' | 'done' | 'error', progress, message, summary, results, choices,
+  // error, cancel }.
+  let robust = null;
+  const robustOptions = { qcReruns: false };
   let loading = null;
   const attempted = new Set();
 
@@ -805,11 +813,159 @@ export function mountCompareMode(app, container) {
     chartPane.append(chart.el, h('p.muted', { style: { fontSize: '11px', margin: '6px 0 0' } }, `Each dot is a sample; bars show the ${cfg().center === 'mean' ? 'mean with its 95% t confidence interval' : 'median with a 95% bootstrap confidence interval'}.${analysis.design.startsWith('paired') ? ' Lines join samples of the same subject.' : ''} Click a dot to see the sample's gating.`));
     requestAnimationFrame(() => chart?.redraw());
 
-    right.append(resultsPane(analysis), notesPane(analysis));
+    right.append(resultsPane(analysis), notesPane(analysis), robustnessPane(analysis));
     headActions.append(
       h('button.btn.small', { type: 'button', onclick: () => exportOne(analysis) }, icon('download'), 'CSV'),
       h('button.btn.small', { type: 'button', onclick: () => copyMethods(methodsOne(analysis)) }, icon('copy'), 'Methods text'),
       h('button.btn.small.primary', { type: 'button', onclick: () => saveComparison(recordOne(analysis)) }, icon('save'), 'Save for report'));
+  }
+
+  // --- Robustness to analysis choices (lib/multiverse.js) -------------------------------------------
+
+  function robustKey(analysis) {
+    const c = cfg();
+    return JSON.stringify({ spec: analysis.spec, levels: analysis.levels.map((l) => [l.key, l.points.map((p) => p.sample.id)]), pairBy: c.pairBy, modified: store.ws.modified });
+  }
+
+  // Why a comparison cannot be checked, or null.
+  function robustBlocker(analysis) {
+    if (analysis.spec.kind !== 'statistic') return 'The check varies how populations are gated, so it applies to population statistics, not to cluster shares.';
+    if (!analysis.spec.gateId || analysis.spec.gateId === ROOT) return 'Choose a gated population: the check varies its gates.';
+    if (analysis.design !== 'two' && analysis.design !== 'paired-two') return 'The check compares two groups: choose two levels in the Design panel.';
+    if (analysis.unloaded.length) return 'Load every sample first.';
+    return null;
+  }
+
+  async function runRobustness(analysis) {
+    const key = robustKey(analysis);
+    const c = cfg();
+    const spec = analysis.spec;
+    const signal = { aborted: false };
+    robust = { key, status: 'running', progress: 0, message: 'Preparing', cancel: () => { signal.aborted = true; } };
+    render();
+    try {
+      const done = await checkRobustness(app, {
+        statistic: { stat: spec.stat, gateId: spec.gateId, channel: spec.channel, ancestorId: spec.ancestorId, value: spec.value },
+        samples: analysis.levels.flatMap((level, g) => level.points.map((p) => ({ id: p.sample.id, group: g, pair: p.pair }))),
+        design: analysis.design,
+        pairField: c.pairBy ? c.pairBy.slice(5) : undefined,
+        labels: analysis.levels.map((l) => l.label),
+        qcReruns: robustOptions.qcReruns,
+        signal,
+        onProgress: (message, progress) => {
+          if (robust?.key !== key) return;
+          robust.message = message;
+          robust.progress = progress;
+          const note = right.querySelector('[data-robust-progress]');
+          if (note) note.textContent = `${message} (${Math.round(100 * progress)}%)`;
+        },
+      });
+      if (robust?.key === key) robust = { key, status: 'done', ...done };
+    } catch (error) {
+      if (robust?.key === key) robust = error.name === 'AbortError' ? null : { key, status: 'error', error: error.message };
+    } finally {
+      render();
+    }
+  }
+
+  function robustnessPane(analysis) {
+    const pane = h('div.pane', h('h3', icon('layers'), 'Robustness to analysis choices'));
+    const blocker = robustBlocker(analysis);
+    if (blocker) {
+      pane.append(h('p.muted', { style: { margin: 0 } }, blocker));
+      return pane;
+    }
+    const key = robustKey(analysis);
+    const current = robust && (robust.key === key || robust.status === 'running') ? robust : null;
+    const stale = robust && robust.status === 'done' && robust.key !== key;
+    const qcGate = qcGateOf(pathGates(store.ws, analysis.spec.gateId, denominatorOf(store.ws, analysis.spec)), QC_CHANNEL);
+    const runButton = h('button.btn.small.primary', { type: 'button', disabled: current?.status === 'running', onclick: () => runRobustness(analysis) }, icon('play'), current?.status === 'done' ? 'Check again' : 'Check');
+    pane.querySelector('h3').append(h('span.spacer'), current?.status === 'running' ? h('button.btn.small', { type: 'button', onclick: () => current.cancel() }, icon('stop'), 'Stop') : runButton);
+    if (!current || current.status === 'error') {
+      pane.append(h('p.muted', { style: { margin: 0 } }, 'Would the conclusion change had the data been processed differently, in ways another analyst might reasonably have chosen? The comparison is repeated with each gate on the population\'s path moved 1% and 2% of the axis, with the gates adapted to each sample (or without per-sample adjustments), without acquisition QC, with other compensation matrices and with a rank test, each alone and in random combinations (64 analyses).'));
+      if (qcGate) pane.append(h('label.check', { style: { marginTop: '8px' } }, h('input', { type: 'checkbox', checked: robustOptions.qcReruns, onchange: (e) => { robustOptions.qcReruns = e.target.checked; } }), 'Also re-run QC with stricter and looser settings (MAD 4 and 8), which takes longer'));
+      if (stale) pane.append(h('div.callout.warn', { style: { marginTop: '8px' } }, icon('warning'), h('span', 'The comparison or the workspace changed since the last check; check again.')));
+      if (current?.status === 'error') pane.append(h('div.callout.danger', { style: { marginTop: '8px' } }, icon('warning'), h('span', current.error)));
+      return pane;
+    }
+    if (current.status === 'running') {
+      pane.append(h('p.muted', { 'data-robust-progress': '', style: { margin: 0 } }, `${current.message} (${Math.round(100 * current.progress)}%)`));
+      return pane;
+    }
+    const { summary, results, choices } = current;
+    const kind = { holds: 'ok', mostly: 'warn', fragile: 'danger' }[summary.verdict] ?? 'warn';
+    const verdict = { holds: 'The conclusion holds', mostly: 'The conclusion mostly holds', fragile: 'The conclusion is fragile', undetermined: 'Undetermined' }[summary.verdict];
+    pane.append(h(`div.callout.${kind}`, icon(kind === 'ok' ? 'check' : 'warning'), h('span', h('b', `${verdict}. `), summary.text)));
+    const curve = mountChart({
+      height: 150 + 18 * choices.filter((c) => c.options.length > 1).length,
+      build: (width, height, colors) => buildCurve(width, height, colors, current, analysis),
+      tooltip: (hit) => [h('b', hit.kind === 'declared' ? 'The declared analysis' : `Specification ${hit.rank}`), h('div', `Difference ${formatValue(hit.result.estimate)} (95% CI ${formatValue(hit.result.ci[0])} to ${formatValue(hit.result.ci[1])}), p ${formatP(hit.result.p)}`),
+        ...hit.changes.map((text) => h('div.muted', text))],
+      name: () => `robustness-${analysis.spec.label}`,
+    });
+    pane.append(curve.el);
+    requestAnimationFrame(() => curve.redraw());
+    const singles = results.filter((r) => r.kind === 'single' && r.result);
+    const declared = summary.declared;
+    const badge = (r) => (r.conclusion === declared.conclusion ? h('span.badge.ok', 'same') : h('span.badge.danger', r.conclusion === 'none' ? 'not significant' : `significantly ${r.conclusion}`));
+    pane.append(h('div', { style: { overflow: 'auto', maxHeight: '320px', marginTop: '8px' } }, h('table.data',
+      h('thead', h('tr', h('th', 'Choice'), h('th', 'Alternative'), h('th.r', 'Difference'), h('th.r', '95% CI'), h('th.r', 'p'), h('th', 'Conclusion'))),
+      h('tbody',
+        h('tr', h('td', h('b', 'Declared analysis')), h('td.muted', 'as in the workspace'), h('td.r', formatValue(declared.result.estimate)), h('td.r.muted', `${formatValue(declared.result.ci[0])} to ${formatValue(declared.result.ci[1])}`), h('td.r', formatP(declared.result.p)), h('td', h('span.badge.accent', declared.conclusion === 'none' ? 'not significant' : `significantly ${declared.conclusion}`))),
+        singles.map((r) => {
+          const c = r.picks.findIndex((x) => x > 0);
+          return h('tr', h('td', choices[c].label), h('td', choices[c].options[r.picks[c]].label), h('td.r', formatValue(r.result.estimate)), h('td.r.muted', `${formatValue(r.result.ci[0])} to ${formatValue(r.result.ci[1])}`), h('td.r', formatP(r.result.p)), h('td', badge(r)));
+        })))));
+    const omitted = choices.find((c) => c.omitted)?.omitted;
+    pane.append(h('p.muted.small-print', `${summary.total} analyses, sorted by the difference they find (95% CI): the declared one (purple), each alternative alone, and random combinations; red ones reach a different conclusion. The marks below show which choices each analysis changed, coloured by the alternative (point at an analysis for details). The declared analysis stays the result; this shows how much it depends on choices that could reasonably have been made otherwise (a specification-curve analysis, Simonsohn et al. 2020). Gates adapted to each sample include those the adaptation was unsure of.${omitted ? ` ${omitted}, so it is not among the alternatives.` : ''} Scales are not varied: a gate drawn by hand follows its population on any scale, and the boundary moves cover where it was drawn.`),
+      h('div.btn-row', h('button.btn.small', { type: 'button', onclick: () => copyMethods(methodsSentence(summary, choices)) }, icon('copy'), 'Copy the methods sentence')));
+    return pane;
+  }
+
+  // The specification curve: every analysis's difference and 95% CI, sorted, the declared one
+  // marked, and below it which choices each analysis changed.
+  function buildCurve(width, height, colors, run, analysis) {
+    const { results, choices, summary } = run;
+    const varied = choices.map((c, i) => ({ c, i })).filter(({ c }) => c.options.length > 1);
+    const rows = varied.length;
+    const rowH = 18;
+    // A column wide enough for the choices' names under the curve.
+    const left = 128;
+    const rect = { x: left, y: 18, w: width - left - 16, h: height - 18 - 16 - rows * rowH - 8 };
+    const valid = results.filter((r) => r.result).sort((a, b) => a.result.estimate - b.result.estimate);
+    const items = [];
+    const hits = [];
+    let lo = Math.min(0, ...valid.map((r) => r.result.ci[0]));
+    let hi = Math.max(0, ...valid.map((r) => r.result.ci[1]));
+    const pad = (hi - lo) * 0.06 || 1;
+    lo -= pad;
+    hi += pad;
+    const y = valueScale(lo, hi, rect.y + rect.h, rect.y, { target: 4 });
+    leftAxis(items, y, rect, colors, 'Difference');
+    items.push({ t: 'text', x: rect.x + 4, y: rect.y + 2, text: `${analysis.levels[1].label} − ${analysis.levels[0].label}`, fill: colors.text3, size: 10, baseline: 'top' });
+    items.push({ t: 'line', x1: rect.x, y1: y.map(0), x2: rect.x + rect.w, y2: y.map(0), stroke: colors.line, width: 1, dash: [4, 3] });
+    const step = rect.w / Math.max(1, valid.length);
+    const declared = summary.declared;
+    valid.forEach((r, k) => {
+      const x = rect.x + step * (k + 0.5);
+      const same = r.conclusion === declared.conclusion;
+      const color = r.kind === 'declared' ? colors.accent : same ? colors.text2 : colors.danger;
+      items.push({ t: 'line', x1: x, y1: y.map(r.result.ci[0]), x2: x, y2: y.map(r.result.ci[1]), stroke: withAlpha(color, 0.45), width: 1.2 });
+      items.push({ t: 'circle', x, y: y.map(r.result.estimate), r: r.kind === 'declared' ? 4.5 : 2.8, fill: color });
+      const changes = choices.map((c, i) => (r.picks[i] > 0 ? `${c.label}: ${c.options[r.picks[i]].label}` : null)).filter(Boolean);
+      hits.push({ x, y: y.map(r.result.estimate), r: Math.max(4, step / 2), data: { ...r, rank: k + 1, changes } });
+      varied.forEach(({ c, i }, row) => {
+        if (r.picks[i] === 0) return;
+        const cy = rect.y + rect.h + 22 + row * rowH;
+        items.push({ t: 'rect', x: x - Math.min(3, step / 2.5), y: cy - 4, w: Math.min(6, step / 1.25), h: 8, fill: withAlpha(categoricalColor(r.picks[i] - 1), 0.85), radius: 1 });
+      });
+    });
+    varied.forEach(({ c }, row) => {
+      const cy = rect.y + rect.h + 22 + row * rowH;
+      items.push({ t: 'line', x1: rect.x, y1: cy, x2: rect.x + rect.w, y2: cy, stroke: colors.grid, width: 1 });
+      items.push({ t: 'text', x: rect.x - 6, y: cy, text: c.label.length > 22 ? `${c.label.slice(0, 21)}…` : c.label, fill: colors.text3, size: 9.5, align: 'end', baseline: 'middle' });
+    });
+    return { items, hits };
   }
 
   function traceToEvidence(sampleId, spec) {
@@ -995,7 +1151,8 @@ export function mountCompareMode(app, container) {
     const effects = analysis.design === 'two' ? "; effect sizes are the difference and ratio of means, Hedges' g and the Hodges–Lehmann shift with 95% confidence intervals"
       : analysis.design === 'paired-two' ? '; effect sizes are the mean paired difference and the geometric mean ratio with 95% confidence intervals'
         : '; groups were then compared with the reference with Holm-adjusted pairwise tests';
-    return `${analysis.spec.label} was computed per sample (the sample is the unit of analysis; ${unit}) and compared between ${levels.map((l) => l.label).join(', ')} (grouped by ${groupingLabel()}) with ${TESTS[primary.id].describe} (two-sided)${effects}, in CytoWeave ${app.version ?? ''}.`.replace(/ ,/g, ',');
+    const checked = robust?.status === 'done' && robust.key === robustKey(analysis) ? ` ${methodsSentence(robust.summary, robust.choices)}` : '';
+    return `${analysis.spec.label} was computed per sample (the sample is the unit of analysis; ${unit}) and compared between ${levels.map((l) => l.label).join(', ')} (grouped by ${groupingLabel()}) with ${TESTS[primary.id].describe} (two-sided)${effects}, in CytoWeave ${app.version ?? ''}.${checked}`.replace(/ ,/g, ',');
   }
 
   function recordOne(analysis) {
@@ -1018,6 +1175,7 @@ export function mountCompareMode(app, container) {
         values: levels.flatMap((l) => l.points.map((p) => ({ sampleId: p.sample.id, sample: p.sample.name, group: l.label, pair: p.pair, value: p.value }))),
       },
       methods: methodsOne(analysis),
+      robustness: robust?.status === 'done' && robust.key === robustKey(analysis) ? { verdict: robust.summary.verdict, analyses: robust.summary.total, agree: robust.summary.agree, text: robust.summary.text, dependsOn: robust.summary.dependsOn, sizeDependsOn: robust.summary.sizeDependsOn } : null,
       created: new Date().toISOString(),
     };
   }

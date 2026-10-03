@@ -106,6 +106,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | T1 | Group comparisons with tests chosen from the design, nonparametric counterparts, effect sizes and confidence intervals | done |
 | T2 | Screens of every population or cluster with multiple-testing correction | done |
 | T3 | Numbers agree with R | done (validation `reference`) |
+| T4 | Robustness of a comparison to preprocessing choices (counterfactual preprocessing, specification curve) | done: gate boundaries, adapted or shared per-sample gates, QC (removed, re-run), compensation and test, alone and combined; verdict, the choices it depends on, a methods sentence; agent tool `check_robustness`; validation `multiverse` (known artefacts) and `multiverse-ics` (real study) |
 
 ## Output, provenance and reporting
 
