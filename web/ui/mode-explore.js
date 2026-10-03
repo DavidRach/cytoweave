@@ -21,7 +21,7 @@ const EMBEDDINGS = [
 ];
 const CLUSTERINGS = [
   { id: 'flowsom', label: 'FlowSOM', channel: 'FlowSOM cluster' },
-  { id: 'phenograph', label: 'Leiden (PhenoGraph)', channel: 'Leiden cluster' },
+  { id: 'phenograph', label: 'Leiden (PhenoGraph)', short: 'Leiden', channel: 'Leiden cluster' },
   { id: 'louvain', label: 'Louvain', channel: 'Louvain cluster' },
   { id: 'kmeans', label: 'k-means', channel: 'k-means cluster' },
   { id: 'none', label: 'None', channel: '' },
@@ -107,7 +107,7 @@ export function mountExploreMode(app, container) {
     }
     const countLabel = h('span.muted', `${settings.markers?.size ?? 0} selected`);
     const embeddingSeg = h('div.segmented', ...EMBEDDINGS.map((m) => h(`button${settings.embedding === m.id ? '.active' : ''}`, { type: 'button', onclick: () => { settings.embedding = m.id; renderSetup(); } }, m.label)));
-    const clusterSeg = h('div.segmented', ...CLUSTERINGS.map((m) => h(`button${settings.clustering === m.id ? '.active' : ''}`, { type: 'button', onclick: () => { settings.clustering = m.id; renderSetup(); } }, m.label)));
+    const clusterSeg = h('div.segmented', ...CLUSTERINGS.map((m) => h(`button${settings.clustering === m.id ? '.active' : ''}`, { type: 'button', title: m.label, onclick: () => { settings.clustering = m.id; renderSetup(); } }, m.short ?? m.label)));
     const embeddingParams = settings.embedding === 'umap'
       ? h('div.row', field('Neighbours', number('nNeighbors', 1, 2, 200), 'UMAP n_neighbors (default 15): larger values favor global structure.'), field('Minimum distance', number('minDist', 0.05, 0, 1), 'UMAP min_dist (default 0.1): how tightly points pack.'))
       : settings.embedding === 'tsne' ? h('div.row', field('Perplexity', number('perplexity', 5, 5, 200), 'Effective number of neighbours (default 30). The learning rate follows opt-SNE (n/12).')) : null;

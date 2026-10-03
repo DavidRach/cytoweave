@@ -1,0 +1,64 @@
+---
+title: Workspaces and large files
+description: How CytoWeave saves workspaces to a local library, keeps FCS files by checksum, undoes any change, exports workspaces, ACS archives, Gating-ML and CLR, and handles samples of ten million events.
+lede: Where your analysis lives, how to send it to someone, and how CytoWeave stays fast with very large samples.
+---
+      <h2 id="workspace">What a workspace holds</h2>
+      <ul>
+        <li>the samples, their roles and annotations, and the groups;</li>
+        <li>gates, compensation matrices and channel scales;</li>
+        <li>derived results: QC masks, unmixed and normalized channels, clusters and maps, model fits;</li>
+        <li>figures, tables, saved comparisons, checkpoints, notes and the change log.</li>
+      </ul>
+      <p>Every edit can be undone (<kbd>⌘Z</kbd>) and redone (<kbd>⇧⌘Z</kbd>), including what an <a href="agents.html">AI agent</a> did.</p>
+
+      <h2 id="library">The library</h2>
+      <p>Workspaces save themselves as you work, to the <strong>library</strong>, a folder in your user configuration directory:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>System</th><th>Library</th></tr></thead>
+          <tbody>
+            <tr><td>macOS</td><td><code>~/Library/Application Support/CytoWeave</code></td></tr>
+            <tr><td>Linux</td><td><code>~/.config/CytoWeave</code> (or <code>$XDG_CONFIG_HOME/CytoWeave</code>)</td></tr>
+            <tr><td>Windows</td><td><code>%AppData%\CytoWeave</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The dot beside the workspace name shows its state: green when saved, amber while changes wait to be saved, red if saving failed (point at it for the reason). <kbd>⌘S</kbd> saves at once. The status bar shows where the library is; <code>--data-dir</code> moves it.</p>
+      <p>The library keeps each FCS file once, under its SHA-256 checksum, and workspaces refer to files by checksum. A workspace therefore keeps working when the original files are moved, renamed or deleted, and adding the same file twice stores it once.</p>
+      <p>The workspace menu (click the workspace name) has <strong>New workspace</strong>, <strong>Open…</strong> (<kbd>⇧⌘O</kbd>, every saved workspace with its sample count and date), <strong>Rename…</strong> and <strong>Save now</strong>. Deleted workspaces go to the library's <code>trash</code> folder rather than disappearing. The start page lists recent workspaces.</p>
+      <p>With <code>--no-library</code>, workspaces are kept in the browser's own storage instead.</p>
+
+      <h2 id="export">Exporting and sharing</h2>
+      <p><strong>Workspace → Export</strong> writes:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Export</th><th>For</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Workspace file (.cwz)</strong></td><td>The analysis without the data, for a colleague who has the same FCS files</td></tr>
+            <tr><td><strong>Workspace with FCS files (ACS archive)</strong></td><td>Everything, in an Archival Cytometry Standard container: to send to a colleague, or to archive with a paper</td></tr>
+            <tr><td><strong>Gates as Gating-ML 2.0</strong></td><td>Other tools that read Gating-ML 2.0, such as FlowKit. See <a href="flowjo.html#gating-ml">Gating-ML</a>.</td></tr>
+            <tr><td><strong>Population memberships (CLR)…</strong></td><td>Classification results: a column per population or cluster for every event</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The population menu exports one population's events as FCS (raw values and the original keywords) or CSV, and tables export as CSV. Opening a <code>.cwz</code> or ACS file restores the workspace.</p>
+
+      <h2 id="large-files">Large files</h2>
+      <p>Samples of ten million events open in seconds and stay responsive:</p>
+      <ul>
+        <li>Files are read in parts, as they arrive, and never held whole: only the columns of event values are kept.</li>
+        <li>Compensated channels are computed when first used, not when the file opens.</li>
+        <li>Populations are kept as bitsets, one bit per event, so a gating tree of a ten-million-event sample takes a few megabytes.</li>
+        <li>QC, unmixing, clustering and maps run in background workers that share the events with the window rather than copying them.</li>
+        <li>Moving a gate re-evaluates every population below it in a fraction of a second.</li>
+      </ul>
+      <p>Memory is the limit. Plan on about 4 bytes per event per parameter of every loaded sample, plus as much again for the compensated channels in use: ten million events with 21 parameters is 0.8 GB, about 1.5 GB in use. Samples load when first shown (<strong>Load every sample</strong> in the sample list loads them all), and the least recently used are dropped beyond 1.6 GB, or 3 GB on computers with 8 GB of memory or more. The status bar shows how much is loaded.</p>
+      <div class="callout"><p><strong>Measured.</strong> On a ten-million-event, 801 MB file, reading takes 0.75 s, moving the top gate 0.43 s, and a statistics table of 14 channels of 6.7 million events 0.78 s; acquisition QC runs in about 70 s with the window responsive throughout. See <a href="../science.html#performance">performance</a>.</p></div>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="flowjo.html"><h3>FlowJo and Gating-ML</h3><p>Interchange with other tools.</p></a>
+        <a class="card" href="scripting.html"><h3>Command line</h3><p><code>--data-dir</code>, <code>--no-library</code> and the other options.</p></a>
+        <a class="card" href="troubleshooting.html#memory"><h3>Memory</h3><p>When a browser runs short.</p></a>
+      </div>

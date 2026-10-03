@@ -1,0 +1,75 @@
+---
+title: Opening data
+description: Open FCS files and folders in CytoWeave, organize samples into groups, annotate them by condition, subject and batch, and mark compensation and spectral controls.
+lede: Bring FCS files into a workspace, organize them into groups, describe the experimental design, and mark the controls.
+---
+      <h2 id="files">What CytoWeave opens</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Opens as</th></tr></thead>
+          <tbody>
+            <tr><td><code>.fcs</code>, <code>.lmd</code></td><td>Samples. FCS 2.0, 3.0, 3.1 and 3.2; integer, float, double and ASCII data. A file with several data sets becomes one sample per data set.</td></tr>
+            <tr><td>A folder</td><td>Its FCS files, as a sample group named after the folder</td></tr>
+            <tr><td><code>.cwz</code></td><td>A CytoWeave workspace</td></tr>
+            <tr><td><code>.acs</code>, <code>.zip</code></td><td>An Archival Cytometry Standard container: a workspace with its FCS files</td></tr>
+            <tr><td><code>.wsp</code></td><td>A FlowJo 10 workspace; see <a href="flowjo.html">FlowJo and Gating-ML</a></td></tr>
+            <tr><td><code>.xml</code></td><td>Gating-ML 2.0 gates and compensation</td></tr>
+            <tr><td><code>.csv</code>, <code>.tsv</code></td><td>Sample annotations: the first column names the sample or file, the other columns become fields</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Drag files onto the window, use the <strong>+</strong> button of the sample list (<strong>Add FCS files…</strong>, <strong>Add a folder of FCS files…</strong>), press <kbd>⌘O</kbd>, or name them on the command line. Event data in CSV are not imported, only annotations.</p>
+      <p>The program keeps one copy of each FCS file in your library, under its SHA-256 checksum, so the workspace keeps working when the originals are moved or renamed. See <a href="workspaces.html">Workspaces</a>.</p>
+
+      <h2 id="repairs">Files that bend the standard</h2>
+      <p>FCS files from real instruments often bend the standard, and CytoWeave reads them anyway. Every repair is listed in the <strong>Sample</strong> section of the inspector, so nothing is silently changed:</p>
+      <ul>
+        <li>text that is neither UTF-8 nor Latin-1;</li>
+        <li>offsets that disagree or are off by one;</li>
+        <li>truncated data or a missing event count;</li>
+        <li>log-amplified integer data.</li>
+      </ul>
+      <p>Files that cannot be read are refused with a message saying why. Spillover is read from <code>$SPILLOVER</code>, <code>SPILL</code>, <code>$SPILL</code> or <code>$COMP</code>. <strong>All keywords</strong> in the inspector shows every keyword of the file.</p>
+
+      <h2 id="samples">Selecting and grouping samples</h2>
+      <p>Click a sample to show it. <kbd>⌘</kbd>-click adds samples to a selection and <kbd>⇧</kbd>-click selects a range; the <strong>⋯</strong> menu of the sample list then acts on the selection:</p>
+      <ul>
+        <li><strong>New group from selection…</strong> and <strong>Add selection to group</strong>. Groups appear as chips above the list; click a chip to show only its samples, and right-click it to rename, recolor or delete the group.</li>
+        <li><strong>Annotate selection…</strong> opens the annotation table (below).</li>
+        <li><strong>Set role</strong> marks samples as Sample, Unstained, Single stain, FMO, Isotype, Beads or Reference.</li>
+        <li><strong>Compensation</strong> chooses the matrix the samples use: the file's own, none, or one of the workspace's matrices.</li>
+        <li><strong>Load every sample</strong> reads all samples into memory now rather than when first shown.</li>
+        <li><strong>Remove selection from workspace</strong>. The FCS files stay in the library, and you can undo it.</li>
+      </ul>
+
+      <h2 id="annotate">Annotating the design</h2>
+      <p>Annotations describe the experimental design, and CytoWeave uses them everywhere: comparisons group samples by them and pair them by subject, CytoNorm reads the batch from them, and the methods paragraph describes them.</p>
+      <ol>
+        <li>Select the samples, then choose <strong>Annotate selection…</strong> from the sample list's menu.</li>
+        <li>Click <strong>Suggest from file names</strong>. Each part of the names that differs between samples becomes a field (condition, subject, batch, timepoint…) filled with its values. Check and correct them.</li>
+        <li>Type into any cell, or click <strong>Add field</strong> for your own (donor, dose, tissue…), then <strong>Save</strong>.</li>
+      </ol>
+      <p>The suggested fields are condition, subject, batch, timepoint, tissue, treatment, replicate, plate and well. To annotate many samples at once from a spreadsheet, save it as CSV or TSV with the sample or file name in the first column and open it like any other file (or <strong>Workspace → Sample annotations (CSV)…</strong>).</p>
+      <div class="callout"><p><strong>Use <code>subject</code> for paired designs.</strong> When the same donor appears in each group, <a href="statistics.html#compare">Compare</a> pairs samples by the subject field and chooses a paired test.</p></div>
+
+      <h2 id="controls">Marking controls</h2>
+      <p>Every sample has a role. Controls (unstained, single stain, FMO, isotype, beads) are listed under their own chips, left out of QC, tables and comparisons unless you include them, and used where they belong. <em>Reference</em> samples are analyzed like samples and also anchor batch normalization:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Role</th><th>Used by</th></tr></thead>
+          <tbody>
+            <tr><td>Single stain, Beads</td><td><a href="compensation.html#compute">Compensation from controls</a> and <a href="spectral.html">reference spectra</a></td></tr>
+            <tr><td>Unstained</td><td>The negative reference of compensation, and autofluorescence in spectral unmixing</td></tr>
+            <tr><td>FMO, Isotype</td><td>Setting gates: overlay them on a sample's plot</td></tr>
+            <tr><td>Reference</td><td>Anchor samples for <a href="cohorts.html#normalize">batch normalization</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The examples come with their roles set. With your own files, select the controls and use <strong>Set role</strong>; the Compensate and Spectral views then let you choose each single-stain control's stained channel.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Draw gates that apply to every sample.</p></a>
+        <a class="card" href="compensation.html"><h3>Compensation</h3><p>Compute and check the spillover matrix.</p></a>
+        <a class="card" href="qc.html"><h3>Acquisition QC</h3><p>Find clogs and bubbles before you gate.</p></a>
+      </div>

@@ -1,0 +1,49 @@
+---
+title: Normalization and debarcoding
+description: Remove batch effects with CytoNorm and reference samples, correct mass cytometry signal drift with EQ beads, and debarcode a pooled, palladium-barcoded plate into one sample per well in CytoWeave.
+lede: Make batches comparable with reference samples or beads, and split a barcoded pool back into its samples. Both live in the QC view, next to Clean.
+---
+      <p>Neither changes your data: normalization writes new channels named "<em>channel</em> (norm)", and debarcoding writes a "Barcode" channel, gates or new samples. Plot, gate and compare them like any other channel.</p>
+
+      <h2 id="normalize">Batch normalization with CytoNorm</h2>
+      <shot name="normalize" alt="The Normalize result for a two-batch mass cytometry cohort: the distance of each batch to the pooled distribution before (grey) and after (colored) for 33 channels, with the change in percent">A two-batch mass cytometry cohort after CytoNorm: each channel's distance of each batch to the pooled data, before and after.</shot>
+      <p>CytoNorm (Van Gassen et al. 2020) learns, for each batch and channel, a monotone spline that maps the batch's quantiles onto a shared target, from a reference sample acquired in every batch (the same control, such as an aliquot of one donor's cells). The splines are then applied to every sample of that batch.</p>
+      <ol>
+        <li><strong>Annotate the batches.</strong> Give every sample a <strong>batch</strong> field: the day or run it was acquired. See <a href="opening-data.html#annotate">Annotating the design</a>.</li>
+        <li><strong>Mark the references.</strong> Set the role of each batch's anchor sample to <strong>Reference</strong>. At least two batches need one.</li>
+        <li>Open <strong>QC → Normalize</strong>, and choose the <strong>Markers</strong> to normalize.</li>
+        <li>Choose the <strong>Clustering</strong>: <strong>None: one global model</strong>, or a clustering channel (from <a href="explore.html">Explore</a>, run on all samples) to correct batch effects that differ between cell types, one model per cluster.</li>
+        <li>Choose the <strong>Target distribution</strong> (the mean of the batches, CytoNorm's default, or their median) and the number of <strong>Quantiles</strong> (99, CytoNorm's default).</li>
+        <li>Click <strong>Train and normalize</strong>.</li>
+      </ol>
+      <div class="callout warn"><p><strong>Confounding check.</strong> Before training, CytoWeave checks the batch design. If batch and condition are confounded (all cases in one batch, all controls in the other), normalization would remove the biology along with the batch effect, so it stops and says so. You can still go ahead with <strong>I understand; normalize anyway</strong>.</p></div>
+      <p>The <strong>Result</strong> shows, for every channel, the earth mover's distance of each batch to all batches pooled, before (grey) and after (coloured), and <strong>Reference samples before and after</strong> overlays the references, which should overlap once normalized. In the validation suite, CytoNorm agrees with the R package to 1e-5 and reduces the distance between same-donor anchors 25-fold.</p>
+
+      <h3 id="beads">Bead normalization (mass cytometry)</h3>
+      <p>Mass cytometers lose sensitivity during a run. EQ beads (Ce140, Eu151, Eu153, Ho165, Lu175) spiked into the sample trace that drift. <strong>Bead normalization…</strong> (Finck et al. 2013) takes a running median of the bead channels over time and scales each moment's signal back to a baseline: the mean bead medians of all the files (a shared baseline, which also puts the files on one scale) or each file's own (which removes only the drift within each file). The result reports the range of the correction over the run.</p>
+
+      <h2 id="debarcode">Debarcoding a pooled plate</h2>
+      <shot name="debarcode" alt="The Debarcode result for a barcoded plate: 89.6% of events assigned to 20 of 20 codes at a separation cutoff of 0.30, the yield curves of every code against the cutoff, and the events per code with their palladium channels">A 20-sample palladium-barcoded plate: 89.6% of events assigned at cutoff 0.30, about 5% per well.</shot>
+      <p>Barcoding labels each sample with a unique combination of <em>k</em> positive channels out of <em>n</em> (for example 3 of 6 palladium isotopes), so samples can be pooled, stained and acquired together. CytoWeave uses single-cell debarcoding (Zunder et al. 2015):</p>
+      <ol>
+        <li>Open <strong>QC → Debarcode</strong> with the pooled file selected.</li>
+        <li>Choose the barcode channels and <strong>Positive channels (k)</strong>, how many are positive in every code. The <strong>Arcsinh cofactor</strong> sets the scale the intensities are compared on (10, the CATALYST default).</li>
+        <li>Paste the barcode key (<strong>Paste a key</strong>) as CSV: a header row of <code>code</code> and the barcode masses (<code>code,102,104,105,106,108,110</code>), then one row per code with its name and a 0 or 1 for each channel (<code>A1,1,1,1,0,0,0</code>). Name codes after the samples they hold. Without a key, every <em>k</em>-of-<em>n</em> combination is a code, numbered in order.</li>
+        <li>Click <strong>Debarcode</strong>. Each event goes to the code of its <em>k</em> brightest barcode channels, after scaling each population.</li>
+        <li>Set the <strong>separation cutoff</strong> on the yield plot. Each thin line is one code, the fraction of its events whose separation (the gap between its dimmest positive and brightest negative barcode channel) exceeds the cutoff; the thick line is all codes. A good cutoff sits where the curves flatten, past the doublets and debris but before real events are lost. Drag it; the assignments update when you let go.</li>
+        <li>Events far from their code's population (squared Mahalanobis distance above the <strong>Mahalanobis cutoff</strong>, 30 by default) are left unassigned.</li>
+      </ol>
+      <p>Then use the result in one of three ways:</p>
+      <ul>
+        <li><strong>Save the "Barcode" channel</strong>, to gate or colour by.</li>
+        <li><strong>Add a gate per code</strong>: one category gate per code at the top of the gating tree.</li>
+        <li><strong>Split into samples</strong>: one new sample per code, named after it (or after the sample the key gives it), which you can then <a href="opening-data.html#annotate">annotate with Suggest from file names</a> and compare like any other samples.</li>
+      </ul>
+      <p>On the validation suite's simulated plate, every assigned cell lands in its true well and 98.7% of cells are assigned.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="explore.html"><h3>Clustering and maps</h3><p>Cluster across the normalized batches.</p></a>
+        <a class="card" href="statistics.html#screens"><h3>Screens</h3><p>Differential abundance of every cluster.</p></a>
+        <a class="card" href="qc.html"><h3>Acquisition QC</h3><p>The Clean tab.</p></a>
+      </div>

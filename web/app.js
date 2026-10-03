@@ -28,7 +28,7 @@ import {
   updateSample,
 } from './lib/workspace.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 const MODES = [
   { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
@@ -718,7 +718,7 @@ async function start() {
     statusbar.append(...[
       h('span.item', h(`span.dot${busy.length ? '.busy' : ''}`), busy.length ? busy[0] : 'Ready'),
       h('span.item', icon('library'), library.kind === 'desktop' ? `Library: ${library.location}` : 'Library: this browser'),
-      h('span.item', `${store.ws.samples.length} samples · ${store.ws.gates.length} gates`),
+      h('span.item', `${store.ws.samples.length} sample${store.ws.samples.length === 1 ? '' : 's'} · ${store.ws.gates.length} gate${store.ws.gates.length === 1 ? '' : 's'}`),
       h('span.item', `${data.views.size} loaded · ${formatBytes(data.totalBytes())}`),
       h('span.spacer'),
       store.ui.editScope === 'sample' ? h('span.item', h('span.badge.warn', 'Editing this sample only')) : null,

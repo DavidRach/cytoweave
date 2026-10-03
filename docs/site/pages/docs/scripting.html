@@ -1,0 +1,71 @@
+---
+title: Scripting and command line
+description: CytoWeave's command-line options, and remote control from Python, Jupyter or shell scripts: open files, gate, compute statistics tables and write methods from a program, with the changes shown as proposals in the window.
+lede: Start CytoWeave the way a pipeline needs, and drive it from Python, Jupyter or a shell script with the same actions an AI agent uses.
+---
+      <h2 id="command-line">Command line</h2>
+      <div class="code" data-no-copy><span class="code-label">usage</span><pre><code>cytoweave [flags] [FCS files, folders, workspaces (.cwz), Gating-ML or FlowJo .wsp files...]
+cytoweave mcp [flags]</code></pre></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>--window app|browser|none</code></td><td><code>app</code></td><td>Open an app window (Chrome, Edge, Brave or Chromium, with its own profile), the default browser, or nothing</td></tr>
+            <tr><td><code>--no-open</code></td><td></td><td>Same as <code>--window none</code></td></tr>
+            <tr><td><code>--keep-running</code></td><td></td><td>Keep serving after the window is closed</td></tr>
+            <tr><td><code>--port</code></td><td><code>8770</code></td><td>Preferred port; the next free one is used if it is taken</td></tr>
+            <tr><td><code>--host</code></td><td><code>127.0.0.1</code></td><td>Interface to bind. Keep the default unless you mean to serve other machines (for example <code>0.0.0.0</code> on a trusted network), which turns off the DNS-rebinding check</td></tr>
+            <tr><td><code>--data-dir</code></td><td>user config dir</td><td>Folder of the workspace library</td></tr>
+            <tr><td><code>--no-library</code></td><td></td><td>Keep workspaces in the browser's own storage instead</td></tr>
+            <tr><td><code>--remote-control</code></td><td></td><td>Accept actions from programs on this computer (below)</td></tr>
+            <tr><td><code>--dev</code></td><td></td><td>Serve <code>web/</code> from the working directory (for development)</td></tr>
+            <tr><td><code>--version</code></td><td></td><td>Print the version</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>CytoWeave prints the address it serves, for example <code>http://127.0.0.1:8770</code>. With <code>--window none</code>, open that address in any browser yourself. Files named when CytoWeave is already running are handed to the open window.</p>
+
+      <h2 id="remote">Remote control from your programs</h2>
+      <p><code>cytoweave --remote-control</code> accepts the actions of the <a href="agents.html#tools">MCP tools</a> from programs on this computer, as JSON posted to <code>/api/remote/action</code>. The window must be open: it performs each action with the same code as the user interface, so you watch the script work.</p>
+      <div class="code"><pre><code><span class="prompt">$ </span>cytoweave --remote-control</code></pre></div>
+      <div class="code"><span class="code-label">python</span><pre><code>import requests
+
+URL = "http://127.0.0.1:8770/api/remote/action"
+
+def act(action, client="Plate pipeline", **args):
+    reply = requests.post(URL, json={"action": action, "args": args, "client": client}).json()
+    if not reply.get("ok"):
+        raise RuntimeError(reply.get("message") or reply.get("error"))
+    return reply
+
+act("open_example", id="pbmc-immunophenotyping")
+act("auto_gate", method="singlets", x="FSC-A", y="FSC-H", name="Single cells")
+print(act("list_populations")["message"])
+for row in act("statistics_table", statistic="freqParent")["data"]["rows"]:
+    print(row["sample"], row["meta"].get("condition"), row["values"])</code></pre></div>
+      <p>Every reply has <code>ok</code>, a plain-language <code>message</code> and the <code>data</code>. Each request is <code>{"action": …, "args": {…}, "client": …}</code>. A script's changes are proposals too, shown in the window under the name it gives in <code>client</code>, for you to accept or reject. Actions reach the window one at a time.</p>
+
+      <h3 id="token">Opening files by path</h3>
+      <p><code>open_files</code> makes the program read files from disk, so it also needs the <code>X-CytoWeave-Token</code> header with the token CytoWeave prints when it starts:</p>
+      <div class="code"><span class="code-label">python</span><pre><code>TOKEN = "…"  # printed by cytoweave --remote-control
+requests.post(URL, headers={"X-CytoWeave-Token": TOKEN},
+              json={"action": "open_files", "args": {"paths": ["/data/2026-09-30_panel1/"]}})</code></pre></div>
+      <p>Paths must be absolute. Each folder becomes a sample group.</p>
+
+      <h3 id="examples">What scripts are good for</h3>
+      <ul>
+        <li><strong>Batch runs:</strong> open each day's plate, apply the lab's gating strategy, review the gates across samples, and write the statistics table to a file.</li>
+        <li><strong>Notebooks:</strong> pull <code>statistics_table</code> results into pandas, next to the plots CytoWeave renders with <code>render_plot</code>.</li>
+        <li><strong>Pipelines:</strong> keep the analysis visible and reviewable in the window while a program does the repetitive part.</li>
+      </ul>
+      <p>The arguments of every action are those of the MCP tools; <a href="{{github}}/blob/main/docs/MCP.md">docs/MCP.md</a> lists them, with the coordinate conventions for each gate type.</p>
+
+      <h2 id="security">Security</h2>
+      <p>Remote control is off unless you start CytoWeave with <code>--remote-control</code> (<code>cytoweave mcp</code> turns it on for its own session). The server accepts actions only from this computer, and actions that read files from disk need the per-session token. Leave <code>--host</code> at its default while remote control is on.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="agents.html"><h3>AI agents</h3><p>The same actions, driven by Claude Code.</p></a>
+        <a class="card" href="workspaces.html"><h3>Workspaces</h3><p>Where scripted analyses are saved.</p></a>
+        <a class="card" href="troubleshooting.html"><h3>Troubleshooting</h3><p>Ports, windows and tokens.</p></a>
+      </div>

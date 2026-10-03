@@ -46,6 +46,11 @@
 - Gates of three or more dimensions are evaluated in all of them; the inspector shows their axes and any compensation a gate keeps.
 - The migration report explains differences of a few events as boundary events.
 
+### Documentation
+
+- A website with a user guide, https://robert-mcdermott.github.io/cytoweave/: getting started, every view, the common tasks step by step, AI agents, scripting and troubleshooting. Its source is in `docs/site`.
+- Screenshots in the light and dark themes. The README and the website show the one that matches the reader's theme. `docs/capture` captures them from the example experiments, so they can be redone for each release.
+
 ### Validation
 
 - New suites against public data, which `node validation/fetch.mjs` downloads and checksums:

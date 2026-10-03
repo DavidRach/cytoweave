@@ -1,0 +1,49 @@
+---
+title: Acquisition QC
+description: Find clogs, bubbles, bursts, drifting signal and saturated events in flow cytometry files with CytoWeave's acquisition QC (PeacoQC, flow rate, margin events and drift), and gate on the result without changing your data.
+lede: Find the events recorded while the fluidics misbehaved, and gate them out, without touching the data or removing events from files that were fine.
+---
+      <h2 id="run">Running QC</h2>
+      <shot name="qc" alt="The QC view of the four-well QC plate: A01 scored 100 with no problems, A02 scored 79 with a signal surge and flow-rate drop, A03 scored 80 with drift, A04 scored 49 with a signal drop and burst; the PeacoQC traces of A02 are open on the right">The acquisition QC showcase: a clean well, a clog, gradual drift and a burst. Only the anomalous stretches are flagged.</shot>
+      <ol>
+        <li>Open the <strong>QC</strong> view. <strong>Clean</strong> is selected.</li>
+        <li>Choose the <strong>Samples</strong> and <strong>Channels</strong>: scatter and fluorescence (marker channels only, for mass cytometry), all scatter and fluorescence channels, or scatter and channels with a marker. Controls are left out unless you tick <strong>Include controls</strong>.</li>
+        <li>Choose the <strong>Methods</strong> (all four by default):
+          <ul>
+            <li><strong>PeacoQC:</strong> follows the density peaks of every channel in bins of consecutive events, and flags bins whose peaks jump (isolation tree) or drift away (more than 6 MADs from the median).</li>
+            <li><strong>Flow rate:</strong> events per 0.1 s, with a generalized ESD test for slices with an abnormal rate, as flowAI does. It needs a time channel.</li>
+            <li><strong>Margin events:</strong> events saturated at the top of a detector's range or piled up at its lowest value.</li>
+            <li><strong>Drift:</strong> the median of each channel per time bin, and its change from start to end. Drift is reported, not removed.</li>
+          </ul>
+        </li>
+        <li>Click <strong>Run QC on <em>n</em> samples</strong>. Large samples run in a background worker, and the window stays responsive.</li>
+      </ol>
+
+      <h2 id="results">Reading the results</h2>
+      <p>Each sample gets a card with its <strong>score</strong>, the share of events removed, a trace of its signal over the acquisition, and its findings in plain language: "The flow rate dropped at 8–11 s (possible clog or bubble); 7.6% of events removed", "BV510-A drifted −35% from the start to the end of acquisition". The <strong>Cohort overview</strong> lists the samples to review first.</p>
+      <p>The score is 100, minus 2 per percent of events removed (at most 60), 3 per flow-rate episode (at most 15) and 5 per drifting channel (at most 20). Samples below 70 deserve a look.</p>
+      <p>Click a card to open its detail: what each method removed, and the peak trajectory of every channel over time, with the removed bins shaded by the method that flagged them. <strong>Gate</strong> opens the sample in the Gate view, and <strong>Re-run</strong> checks it again.</p>
+
+      <h2 id="gate">Using the result</h2>
+      <p>QC never deletes or changes events. Its result is a new channel, <strong>QC pass</strong> (1 = keep, 0 = removed), for each sample checked. To use it:</p>
+      <ul>
+        <li>Click <strong>Add a "QC pass" gate at the top</strong>. A gate on QC pass = 1 becomes the root of the gating tree, and every existing population moves beneath it, so all statistics use only events that passed QC. Undo restores the tree as it was.</li>
+        <li>Or gate on the QC pass channel yourself, wherever in the tree you want it.</li>
+      </ul>
+
+      <h2 id="refined">Refined and classic PeacoQC</h2>
+      <p>As published, PeacoQC removes events from clean files and cuts the ends of files whose signal drifts slowly. CytoWeave's default, <strong>refined</strong>, adds three safeguards:</p>
+      <ul>
+        <li>a bin's peak joins a trajectory only when it is nearer to it than to the neighbouring one;</li>
+        <li>MAD flags are narrowed to the bins whose own value deviates, by more than the signal's noise and by at least 1.5% of the axis, instead of spreading a short clog over ±25 bins;</li>
+        <li>the isolation tree only isolates bins that are contiguous in time.</li>
+      </ul>
+      <p>On the validation suite's simulated wells, refined QC removes 99.8–100% of the anomalous events and none from the clean or drifting files. <strong>Classic</strong>, a port of PeacoQC 1.22, removes the same events as PeacoQC in R.</p>
+      <p>Under <strong>Sensitivity</strong>, choose the variant and PeacoQC's parameters (MAD threshold, isolation-tree limit, consecutive bins), then <strong>Re-run and compare</strong> to see how much the result depends on them, side by side.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="cohorts.html"><h3>Normalization and debarcoding</h3><p>The other tabs of the QC view.</p></a>
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Gate under the QC pass gate.</p></a>
+        <a class="card" href="workspaces.html#large-files"><h3>Large files</h3><p>QC of ten million events.</p></a>
+      </div>

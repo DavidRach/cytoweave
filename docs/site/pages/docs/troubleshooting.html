@@ -1,0 +1,58 @@
+---
+title: Troubleshooting
+description: Solutions for common CytoWeave problems: the program or window not starting, ports, unsigned downloads, files that will not open, saving, memory with very large samples, and AI agents that cannot connect.
+lede: What to do when something does not work, and how to report a problem.
+---
+      <h2 id="start">Starting CytoWeave</h2>
+      <h3 id="not-found">"command not found"</h3>
+      <p>The installer does not change your <code>PATH</code> on macOS and Linux. If <code>~/.local/bin</code> is not on it, run the full path, <code>~/.local/bin/cytoweave</code>, or add the folder to your shell's <code>PATH</code>. On Windows, the installer adds the program to your user <code>PATH</code>, but terminals that were already open keep the old one: open a new terminal.</p>
+
+      <h3 id="unsigned">"cannot be opened" or "Windows protected your PC"</h3>
+      <p>The programs are not signed with an Apple or Microsoft certificate, so a file saved from a browser is flagged on its first start. The installers download without a browser and avoid this. Otherwise, see <a href="../install.html#unsigned">files downloaded in a browser</a>.</p>
+
+      <h3 id="window">The window does not appear</h3>
+      <ul>
+        <li>CytoWeave opens a desktop app window when Chrome, Edge, Brave or Chromium is installed, and your default browser otherwise. Either way it prints its address, such as <code>http://127.0.0.1:8770</code>: open it in a browser yourself.</li>
+        <li><code>--window browser</code> uses the default browser instead of an app window.</li>
+        <li>Closing the window stops the program. <code>--keep-running</code> keeps it serving so you can reopen the address.</li>
+      </ul>
+
+      <h3 id="port">Another program uses the port</h3>
+      <p>If port 8770 is taken, CytoWeave uses the next free one and prints it. To choose another, use <code>--port</code>. Running <code>cytoweave</code> while it is already open hands any files to the open window instead of starting a second copy.</p>
+
+      <h3 id="browsers">Firefox and Safari</h3>
+      <p>CytoWeave is developed and tested in Chrome, Edge and Brave. It uses standard web features only, so current Firefox and Safari should work when you open the address in them, but they are not tested regularly. If something looks wrong in one of them, try a Chromium-based browser before reporting it.</p>
+
+      <h2 id="files">Files</h2>
+      <h3 id="wont-open">A file will not open</h3>
+      <ul>
+        <li>CytoWeave reads FCS 2.0 to 3.2, and repairs common deviations from the standard (offsets, text encodings, truncated data). Each repair is listed in the <strong>Sample</strong> section of the inspector. A file that cannot be read is refused with a message saying why: please report it.</li>
+        <li>Event data in CSV, imaging flow data (Amnis, CellView) and FlowJo 9 or <code>.flowjo</code> workspaces are not supported. Export FCS, or <code>.wsp</code> from FlowJo 10 or 11.</li>
+        <li>Spectral unmixing needs the raw detector channels; files that hold only unmixed channels can be gated but not unmixed again.</li>
+      </ul>
+
+      <h3 id="compensation">Populations lean or look smeared</h3>
+      <p>A population that leans diagonally on a plot of two fluorescence channels usually means a wrong spillover value. Check the matrix the sample uses (inspector, <strong>Compensation</strong>) and run <a href="compensation.html#check">Check against the controls</a>.</p>
+
+      <h3 id="saving">The workspace is not saved</h3>
+      <p>The dot beside the workspace name turns red when saving fails; point at it for the reason. The library must be a folder you can write to, with free space: see <a href="workspaces.html#library">the library</a>, or start CytoWeave with <code>--data-dir</code> pointing elsewhere.</p>
+
+      <h2 id="memory">Memory and very large samples</h2>
+      <p>Very large experiments are limited by browser memory: about 4 bytes per event per parameter of every loaded sample, plus as much again for the compensated channels in use. Samples load on demand, and the least recently used are dropped beyond 1.6 GB (3 GB on computers with 8 GB of memory or more). If the window becomes slow:</p>
+      <ul>
+        <li>close other heavy browser tabs;</li>
+        <li>avoid <strong>Load every sample</strong> on very large cohorts, and let samples load as you show them;</li>
+        <li>for clustering and maps, embed fewer events per sample.</li>
+      </ul>
+      <p>When the page is served by the CytoWeave program, background analyses share the events with the window instead of copying them. Served as a plain web site, the page is only able to do that if the site sends <code>Cross-Origin-Opener-Policy: same-origin</code> and <code>Cross-Origin-Embedder-Policy: require-corp</code>; without them, analyses of very large samples (QC of ten million events) can fail.</p>
+
+      <h2 id="agents">AI agents</h2>
+      <ul>
+        <li><strong>The agent cannot start CytoWeave.</strong> Give the full path to the program in the MCP configuration (<code>~/.local/bin/cytoweave</code>, or <code>%LOCALAPPDATA%\Programs\CytoWeave\cytoweave.exe</code>): agents often start programs without your shell's <code>PATH</code>.</li>
+        <li><strong>Proposals or <code>propose_compensation</code> are missing.</strong> They need CytoWeave 0.2.0 or later: check <code>cytoweave --version</code>.</li>
+        <li><strong>"The CytoWeave page did not answer in time."</strong> Actions run in the window: make sure it is open and not waiting in a dialog.</li>
+        <li><strong>A script gets "Opening files needs the X-CytoWeave-Token header".</strong> <code>open_files</code> reads from disk, so scripts need the token CytoWeave printed at startup; see <a href="scripting.html#token">Opening files by path</a>.</li>
+      </ul>
+
+      <h2 id="help">Getting help</h2>
+      <p>Report problems and ask questions on <a href="{{github}}/issues">GitHub Issues</a>. Include the CytoWeave version (<code>cytoweave --version</code>, also in the status bar), your operating system and browser, what you did, and what you expected. For a file that does not read correctly, the notes in the inspector's <strong>Sample</strong> section help most. Do not attach data from patients or anything you are not allowed to share; one of the <a href="getting-started.html#examples">example experiments</a> often reproduces a problem.</p>

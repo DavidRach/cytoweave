@@ -1,6 +1,9 @@
 # CytoWeave
 
-![CytoWeave's Gate view: the gating path of T cells in a 14-colour PBMC experiment](docs/images/gate.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/gate-dark.webp">
+  <img alt="CytoWeave's Gate view: the gating path of T cells in a 14-colour PBMC experiment" src="docs/images/gate-light.webp">
+</picture>
 
 CytoWeave is a flow cytometry analysis workbench for conventional, spectral
 and mass cytometry. It runs on your own computer as one self-contained
@@ -27,6 +30,9 @@ It reads FlowJo workspaces and Gating-ML, and reproduces FlowJo's scales
 exactly.
 
 CytoWeave is free and open source (Apache 2.0).
+
+**[Website and user guide](https://robert-mcdermott.github.io/cytoweave/)**: step-by-step
+guides to every view, with screenshots.
 
 - [Highlights](#highlights)
 - [Install](#install)
@@ -307,12 +313,22 @@ Right-click a population for more:
   populations, with a live count;
 - the **cell cycle** and **proliferation** models.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/review-dark.webp">
+  <img alt="Review Lymphocytes across samples: every sample ranked by a robust z-score of its frequency, with a rating of its boundary" src="docs/images/review-light.webp">
+</picture>
+
 An **index-sorted** sample shows its plate below the plots. Wells come from
 BD FACSDiva's `INDEX SORTING LOCATIONS` keyword or from well parameters such
 as "Index X" and "Index Y". Each well is colored by the population its cell
 falls in, or by a channel's value; selecting a population colors its wells.
 Clicking a well marks its cell on the plots, and the wells export as CSV with
 their populations and values.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/indexsort-dark.webp">
+  <img alt="An index-sorted 96-well plate coloured by population, with well C3 marked and its cell circled on the plots" src="docs/images/indexsort-light.webp">
+</picture>
 
 The **cell cycle** model fits Dean–Jett–Fox or Watson to the DNA content and
 suggests a singlet gate. The **proliferation** model fits generations of dye
@@ -321,7 +337,10 @@ indices.
 
 ### QC
 
-![The QC view: a cohort of four wells with a clog, a drift and a bubble found](docs/images/qc.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/qc-dark.webp">
+  <img alt="The QC view: four wells with a clog, a drift and a burst found" src="docs/images/qc-light.webp">
+</picture>
 
 **Clean** runs acquisition QC on any set of samples:
 - PeacoQC on every scatter and fluorescence channel;
@@ -357,7 +376,10 @@ codes after the samples they hold.
 
 ### Compensate
 
-![The Compensate view: the file's matrix checked against 14 single-stain controls](docs/images/compensate.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/compensate-dark.webp">
+  <img alt="The Compensate view: the file's matrix checked against 14 single-stain controls" src="docs/images/compensate-light.webp">
+</picture>
 
 - **Compute from controls.** Pick each control's stained channel, the events
   to use and the negative reference (each control's dim events, or an
@@ -381,7 +403,10 @@ codes after the samples they hold.
 
 ### Spectral
 
-![The Spectral view: 25 reference spectra with two autofluorescence signatures](docs/images/spectral.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/spectral-dark.webp">
+  <img alt="The Spectral view: 25 reference spectra with two autofluorescence signatures" src="docs/images/spectral-light.webp">
+</picture>
 
 For raw data from spectral cytometers (Cytek Aurora and Northern Lights, Sony
 ID7000, BD FACSDiscover and others), a five-step workflow:
@@ -409,7 +434,10 @@ degraded tandem.
 
 ### Explore
 
-![The Explore view: FlowSOM clusters on a UMAP of 60,000 events from 12 samples, with the map's faithfulness](docs/images/explore.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/explore-dark.webp">
+  <img alt="The Explore view: FlowSOM clusters on a UMAP of 60,000 events from 12 samples, with the map's faithfulness" src="docs/images/explore-light.webp">
+</picture>
 
 Pick a population, the samples (an equal number of events from each) and the
 markers. Then run:
@@ -474,10 +502,15 @@ nonparametric counterpart:
 
 Several groups are followed by Holm-adjusted comparisons with the reference.
 Results show:
-- effect sizes: differences and ratios of means, Hedges' g, the
-  Hodges–Lehmann shift;
-- 95% bootstrap confidence intervals;
+- effect sizes with 95% confidence intervals: differences and ratios of
+  means, Hedges' g, the Hodges–Lehmann shift;
+- each group's mean with a t interval, or median with a bootstrap interval;
 - a note on assumptions.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-dark.webp">
+  <img alt="The Compare view: median CD25 of T cells in stimulated and unstimulated samples, paired by donor, with the paired t-test and effect sizes" src="docs/images/compare-light.webp">
+</picture>
 
 **Screen populations** and **Screen clusters** test every population or
 cluster at once. Results are corrected for multiple testing
@@ -493,9 +526,17 @@ plots, text and arrows. Plots stay live, following gate and compensation
 changes, until you export the page as SVG, PNG or a 300 dpi PDF. Pages come
 in slide (16:9), Letter, A4, landscape and square sizes.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/figures-dark.webp">
+  <img alt="The Figures view: the gating strategy of T cells laid out on a page" src="docs/images/figures-light.webp">
+</picture>
+
 ### Report
 
-![The Report view: a methods paragraph written from the workspace](docs/images/report.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/report-dark.webp">
+  <img alt="The Report view: a methods paragraph written from the workspace" src="docs/images/report-light.webp">
+</picture>
 
 - **Methods.** A paragraph written from what the workspace contains, with
   numbered references and DOIs:
@@ -541,6 +582,11 @@ moved or renamed. Deleted workspaces go to the library's `trash` folder.
 - population memberships as CLR.
 
 ## Working with FlowJo and other tools
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/flowjo-dark.webp">
+  <img alt="The FlowJo migration report: 56 of 56 population counts agree exactly with FlowJo" src="docs/images/flowjo-light.webp">
+</picture>
 
 **FlowJo workspaces** (FlowJo 10 `.wsp`) import their samples, gates,
 compensation matrices and scales. The import dialog lists every population as
@@ -618,6 +664,11 @@ claude mcp add cytoweave -- ~/.local/bin/cytoweave mcp
 > Open the PBMC example, gate cells, singlets, live cells and CD3+ T cells,
 > then CD4 and CD8 T cells, and tell me how the CD4:CD8 ratio differs between
 > stimulated and unstimulated samples.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/agents-review-dark.webp">
+  <img alt="Reviewing an agent's proposal: three gates proposed by Claude Code with their frequencies, and a compensation matrix, to accept or reject" src="docs/images/agents-review-light.webp">
+</picture>
 
 The agent works through the same actions as you do, and its changes are
 proposals. Its gates appear at once, marked as proposed, with real counts;
@@ -738,9 +789,28 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-`fetch.mjs` downloads the public test data the validation uses (about 140 MB,
+`fetch.mjs` downloads the public test data the validation uses (about 150 MB,
 into the git-ignored `validation/cache/`); without it those suites are
 skipped.
+
+### Documentation
+
+The screenshots in `docs/images` are captured from the example experiments,
+in the light and dark themes, by a script that drives headless Chrome (or
+Chromium, Edge or Brave; set `CHROME` to choose):
+
+```sh
+node docs/capture/capture.mjs
+node docs/capture/capture.mjs gate compensate --theme dark
+```
+
+The [website](https://robert-mcdermott.github.io/cytoweave/) is built from
+`docs/site` into a checkout of the `gh-pages` branch. The build checks every
+link, anchor and screenshot:
+
+```sh
+node docs/site/build.mjs ../cytoweave-site
+```
 
 ### Code layout
 
@@ -754,7 +824,7 @@ web/lib/                                       analysis modules, each with a *.t
 web/workers/                                   module workers for heavy work
 validation/                                    end-to-end checks against known answers
 cytoweave-spec/                                design, conventions, requirements, roadmap, research
-docs/                                          installing, AI agents, screenshots
+docs/                                          installing, AI agents, screenshots, website source
 ```
 
 The design is described in [cytoweave-spec/design.md](cytoweave-spec/design.md),

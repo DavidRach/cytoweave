@@ -170,7 +170,7 @@ export function installRemote(app) {
     async list_populations(args) {
       const sample = resolveSample(args.sample);
       const view = await loadedView(sample);
-      return { message: `${ws().gates.length} populations in ${sample.name} (${view.eventCount} events).`, data: { sample: sample.name, events: view.eventCount, populations: populationRows(view) } };
+      return { message: `${ws().gates.length} population${ws().gates.length === 1 ? '' : 's'} in ${sample.name} (${view.eventCount} events).`, data: { sample: sample.name, events: view.eventCount, populations: populationRows(view) } };
     },
 
     async population_statistics(args) {

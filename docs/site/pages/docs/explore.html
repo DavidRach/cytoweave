@@ -1,0 +1,59 @@
+---
+title: Clustering and maps
+description: Cluster cytometry data across samples with FlowSOM, Leiden (PhenoGraph), Louvain or k-means, make UMAP, t-SNE or PCA maps, check how faithful a map is, name clusters by marker enrichment, place new samples on a finished UMAP, and turn clusters into populations.
+lede: Cluster a population across samples, look at it as a map, and find out how far the map can be trusted before you read anything into it.
+---
+      <h2 id="run">Running an analysis</h2>
+      <shot name="explore" alt="The Explore view: settings on the left, a UMAP of 60,000 live cells from 12 samples coloured by 12 FlowSOM clusters in the middle, and the faithfulness panel with trustworthiness 0.99, continuity 0.99 and kNN kept 13.6% on the right">Live cells of 12 samples: FlowSOM clusters on a UMAP, with the map's faithfulness and a plain-language reading.</shot>
+      <ol>
+        <li><strong>Cells.</strong> Choose the <strong>Population</strong> (usually live single cells, or a lineage such as T cells), the <strong>Samples</strong> (all samples except controls, a group, or the current sample), the <strong>Events per sample</strong> to embed and the <strong>Seed</strong>. The map embeds an equal number of events from each sample, so no sample dominates; clustering uses every event of the population.</li>
+        <li><strong>Markers.</strong> Lineage and phenotype markers are chosen for you; viability, DNA, dump and bead channels are left out. Values use each channel's scale (logicle, arcsinh) as in the plots.</li>
+        <li><strong>Methods.</strong> Choose a clustering, an embedding, or both:
+          <ul>
+            <li><strong>FlowSOM:</strong> a self-organizing map of grid × grid nodes (10 × 10 by default), metaclustered by consensus clustering into the number of <strong>Metaclusters</strong> you choose.</li>
+            <li><strong>Leiden</strong> (as in PhenoGraph) or <strong>Louvain:</strong> community detection on a nearest-neighbour graph; <strong>Resolution</strong> sets how finely it splits.</li>
+            <li><strong>k-means</strong> (k-means++ seeding, Hamerly's algorithm).</li>
+            <li><strong>UMAP</strong> (<strong>Neighbours</strong>, 15 by default, favours global structure as it grows; <strong>Minimum distance</strong>, 0.1, sets how tightly points pack), <strong>t-SNE</strong> (<strong>Perplexity</strong>, 30 by default, with opt-SNE's learning rate), or <strong>PCA</strong>.</li>
+          </ul>
+        </li>
+        <li>Click <strong>Run</strong>. Large analyses run in background workers; the same seed always gives the same result.</li>
+      </ol>
+      <p>Colour the map by cluster, density, sample, any annotation or any marker, and click a legend entry to highlight it (<kbd>⌥</kbd>-click hides it). In the examples, <strong>Simulated truth</strong> colours by each event's true cell type.</p>
+
+      <h2 id="faithful">How faithful is the map?</h2>
+      <p>A UMAP or t-SNE map always looks convincing. The panel on the right measures what the picture cannot show:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Measure</th><th>Question</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Trustworthiness</strong></td><td>Are neighbours on the map true neighbours in marker space? (Venna and Kaski; 1 is perfect)</td></tr>
+            <tr><td><strong>Continuity</strong></td><td>Do true neighbours stay together on the map?</td></tr>
+            <tr><td><strong>kNN kept</strong></td><td>The share of each event's 15 nearest neighbours that stay among its nearest on the map. A strict test: t-SNE and UMAP usually keep a minority, because among similar cells the very nearest are largely noise.</td></tr>
+            <tr><td><strong>Sample mixing</strong> on the map and in the data</td><td>LISI (Korsunsky et al.), as a fraction of perfect mixing. If samples mix less on the map than in the data, the map is separating samples that the data do not.</td></tr>
+            <tr><td><strong>Compare with another seed</strong></td><td>The share of neighbours shared between two runs, and how much the arrangement changed (Procrustes)</td></tr>
+            <tr><td><strong>Shade unreliable regions</strong></td><td>Dims events whose map neighbours mostly come from elsewhere in the data</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Each result comes with a plain-language reading, such as "Islands are meaningful, the arrangement of events within them is not."</p>
+
+      <h2 id="clusters">Clusters</h2>
+      <shot name="explore-clusters" alt="The cluster heatmap: the median of every marker per FlowSOM cluster, scaled per marker, with marker enrichment names such as CD3+ CD4+ CD127+">Each cluster's median of every marker, with names from marker enrichment.</shot>
+      <ul>
+        <li>The <strong>heatmap</strong> shows each cluster's median of every marker, scaled from the 1st to the 99th percentile, with rows and columns ordered by similarity. Click a cluster to find it on the map.</li>
+        <li>Clusters are <strong>named from their marker enrichment</strong> (MEM, Diggins et al.): "C3 CD3+ CD4+ CD127+".</li>
+        <li><strong>Cluster frequencies per sample</strong> lists each cluster as a percentage of the population in every sample. <strong>Test differences</strong> takes them to <a href="statistics.html#screens">Compare</a>.</li>
+        <li><strong>Make populations of the clusters</strong> adds one gate per cluster under the population, so clusters get plots, statistics and figures like gated populations. <strong>CSV</strong> exports the cluster table.</li>
+        <li><strong>Lasso a population</strong> draws around cells on the map to make a population of them.</li>
+      </ul>
+
+      <h2 id="place">Placing new samples on a map</h2>
+      <shot name="explore-placed" alt="A UMAP made from D01_Unstim, with D01_Stim and D02_Stim placed on it, coloured by sample: the three samples overlap in every island">A map made from one sample, with two more placed on it afterwards.</shot>
+      <p>A UMAP changes every time it is recomputed, which makes it hard to compare samples acquired later. <strong>Place samples on this map</strong> positions other samples' events on a finished UMAP without changing it (the UMAP transform). Choose the samples, click <strong>Place</strong>, and select <strong>With the placed samples</strong> to see them with the original ones. A placed sample whose cells land outside the islands holds cells the map was not built from.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="statistics.html#screens"><h3>Screen clusters</h3><p>Differential abundance of every cluster.</p></a>
+        <a class="card" href="cohorts.html#normalize"><h3>Per-cluster normalization</h3><p>CytoNorm per cluster.</p></a>
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Once clusters are populations, plot, gate and backgate them.</p></a>
+      </div>

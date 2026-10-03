@@ -1,0 +1,77 @@
+---
+title: Documentation
+description: The CytoWeave user guide: gating, compensation, spectral unmixing, QC, normalization, clustering, statistics, figures, FlowJo migration, AI agents and scripting.
+lede: How to analyze flow, spectral and mass cytometry data with CytoWeave, from a first example experiment to a methods paragraph. New here? Start with <a href="getting-started.html">Getting started</a>.
+---
+      <h2 id="quick-start">Quick start</h2>
+      <ol>
+        <li><a href="../install.html">Install CytoWeave</a> with one command.</li>
+        <li>Run <code>cytoweave</code> in a terminal. It opens its own window.</li>
+        <li>Open an <strong>example experiment</strong> from the start page and click <strong>Add suggested gates</strong>, or drop your own FCS files or a folder on the window.</li>
+        <li>Work through the views in the bar at the top: <strong>Gate</strong>, <strong>QC</strong>, <strong>Compensate</strong>, <strong>Spectral</strong>, <strong>Explore</strong>, <strong>Tables</strong>, <strong>Compare</strong>, <strong>Figures</strong> and <strong>Report</strong>.</li>
+        <li>Press <kbd>⌘K</kbd> (<kbd>Ctrl</kbd>+<kbd>K</kbd>) to find any sample, population, channel or command, and <kbd>?</kbd> for every keyboard shortcut.</li>
+      </ol>
+
+      <h2 id="tasks">How do I…</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Task</th><th>Where</th></tr></thead>
+          <tbody>
+            <tr><td>Open my FCS files and annotate them by condition, donor and batch</td><td><a href="opening-data.html#annotate">Opening data</a></td></tr>
+            <tr><td>Gate the same way on every sample, and fix the gate on one</td><td><a href="gating.html#one-sample">Gating</a></td></tr>
+            <tr><td>Find the samples where a gate does not fit</td><td><a href="gating.html#review">Review across samples</a></td></tr>
+            <tr><td>Compute a spillover matrix from single-stain controls</td><td><a href="compensation.html#compute">Compensation</a></td></tr>
+            <tr><td>Check whether a matrix from the cytometer is right</td><td><a href="compensation.html#check">Check against the controls</a></td></tr>
+            <tr><td>Unmix a spectral experiment and choose the unmixing model</td><td><a href="spectral.html">Spectral unmixing</a></td></tr>
+            <tr><td>Remove clogs and bubbles before gating</td><td><a href="qc.html">Acquisition QC</a></td></tr>
+            <tr><td>Remove a batch effect, or debarcode a pooled plate</td><td><a href="cohorts.html">Normalization and debarcoding</a></td></tr>
+            <tr><td>Cluster, make a UMAP and know whether to trust it</td><td><a href="explore.html">Clustering and maps</a></td></tr>
+            <tr><td>Get a frequency table of every population for every sample</td><td><a href="statistics.html#tables">Tables</a></td></tr>
+            <tr><td>Test a difference between stimulated and unstimulated samples</td><td><a href="statistics.html#compare">Comparisons</a></td></tr>
+            <tr><td>Fit the cell cycle or proliferation, or read an index-sorted plate</td><td><a href="assays.html">Cell cycle, proliferation and index sorting</a></td></tr>
+            <tr><td>Make a gating-strategy figure and write the methods</td><td><a href="figures.html">Figures, methods and checkpoints</a></td></tr>
+            <tr><td>Move an analysis over from FlowJo</td><td><a href="flowjo.html">FlowJo and Gating-ML</a></td></tr>
+            <tr><td>Send an analysis to a colleague with its FCS files</td><td><a href="workspaces.html#export">Workspaces</a></td></tr>
+            <tr><td>Let Claude Code or another agent do the gating</td><td><a href="agents.html">AI agents (MCP)</a></td></tr>
+            <tr><td>Run CytoWeave from a Python script or a pipeline</td><td><a href="scripting.html">Scripting and command line</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="start">Start</h2>
+      <div class="card-grid">
+        <a class="card" href="getting-started.html"><h3>Getting started</h3><p>Start CytoWeave, the window, the nine example experiments, and the workflow with your own data.</p></a>
+        <a class="card" href="opening-data.html"><h3>Opening data</h3><p>FCS files and folders, groups, annotations, controls, and the repairs CytoWeave makes to unusual files.</p></a>
+      </div>
+
+      <h2 id="analysis">Analysis</h2>
+      <div class="card-grid">
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Plots, gate tools, the magic wand, scales, per-sample adjustments, Boolean populations, review and robustness.</p></a>
+        <a class="card" href="compensation.html"><h3>Compensation</h3><p>Spillover from controls, editing a matrix, checking it against the controls, spreading and pair plots.</p></a>
+        <a class="card" href="spectral.html"><h3>Spectral unmixing</h3><p>Reference spectra, autofluorescence, panel quality, unmixing methods and the comparison of models.</p></a>
+        <a class="card" href="qc.html"><h3>Acquisition QC</h3><p>PeacoQC, flow rate, margin events and drift, scores, and the "QC pass" gate.</p></a>
+        <a class="card" href="cohorts.html"><h3>Normalization and debarcoding</h3><p>CytoNorm with a confounding check, bead normalization, and splitting a barcoded plate into samples.</p></a>
+        <a class="card" href="explore.html"><h3>Clustering and maps</h3><p>FlowSOM, Leiden, Louvain and k-means; UMAP, t-SNE and PCA; faithfulness, and placing new samples.</p></a>
+      </div>
+
+      <h2 id="results">Results</h2>
+      <div class="card-grid">
+        <a class="card" href="statistics.html"><h3>Tables and comparisons</h3><p>Statistics across samples, group comparisons with the right test, and screens of every population.</p></a>
+        <a class="card" href="assays.html"><h3>Cell cycle, proliferation and index sorting</h3><p>DNA content models, dye dilution generations, and the plate of an index sort.</p></a>
+        <a class="card" href="figures.html"><h3>Figures, methods and checkpoints</h3><p>Publication pages, the methods paragraph, MIFlowCyt, checkpoints and the change log.</p></a>
+      </div>
+
+      <h2 id="share">Share and automate</h2>
+      <div class="card-grid">
+        <a class="card" href="workspaces.html"><h3>Workspaces and large files</h3><p>The library, undo, exports, archives, and samples of ten million events.</p></a>
+        <a class="card" href="flowjo.html"><h3>FlowJo and Gating-ML</h3><p>Importing FlowJo workspaces, the migration report, Gating-ML 2.0 and CLR.</p></a>
+        <a class="card" href="agents.html"><h3>AI agents (MCP)</h3><p>Let Claude Code or another agent gate and analyze in your window, with proposals you accept or reject.</p></a>
+        <a class="card" href="scripting.html"><h3>Scripting and command line</h3><p>Command-line options and remote control from Python, Jupyter or shell scripts.</p></a>
+      </div>
+
+      <h2 id="reference">Reference</h2>
+      <div class="card-grid">
+        <a class="card" href="troubleshooting.html"><h3>Troubleshooting</h3><p>Window, port, file, memory and agent problems, and where to get help.</p></a>
+        <a class="card" href="{{github}}#readme"><h3>README</h3><p>The whole manual on one page, in the repository.</p></a>
+        <a class="card" href="{{github}}/blob/main/CHANGELOG.md"><h3>Changelog</h3><p>What changed in each release.</p></a>
+      </div>
