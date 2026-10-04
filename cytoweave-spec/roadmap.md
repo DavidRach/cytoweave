@@ -130,8 +130,14 @@ released as 0.3.0; wave 4 follows in 0.4.
      keywords). Only the TEXT segment is rewritten; the events are copied byte for byte, checked on
      every example and corpus file. It applies to population exports, the FlowJo export, a ZIP of
      the files and an ACS archive whose workspace keeps none of the removed keywords.
-   - **To do:** open an export in FlowJo itself (no FlowJo license was available while building
-     it): check that FlowJo 10 and 11 open it, find its FCS files, and show the same counts.
+   - Compatibility tested with FlowJo 11.2.0 (build 11.2.0.210156) during a trial (2026-10-03).
+     The exports first crashed it; fixed in 0.4 (full Graph elements, every rectangle bound
+     written, one-dimensional gates written as rectangles, logicle and arcsinh scales written as
+     FlowJo biex, which FlowJo 11 alone reads correctly). Three exports then open with every
+     population within 0.6 percentage points, most within 0.1 (`reference/flowjo11.json`).
+     CytoML 2.24 reads every export (`reference/cytoml.json`). FlowJo 11 needs the files
+     reconnected once and drops Boolean populations, on FlowJo 10's own workspaces too.
+     **To do:** FlowJo 10 has not been tried.
 2. **Provenance in figures (R5): done.** Exported figures and plots (SVG metadata, a PNG iTXt
    chunk, a PDF attachment) embed the samples with their files' checksums, every gate the plots
    depend on with per-sample adjustments, the scales, the compensation each sample was drawn with,

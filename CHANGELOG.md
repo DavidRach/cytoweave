@@ -16,10 +16,13 @@
 
 ### Changed
 
+- **FlowJo export scales.** Logicle and arcsinh scales are written as FlowJo's biexponential, the closest FlowJo scale: FlowJo 11 misplaces gates on logicle and arcsinh channels (a Live gate read 4.6% instead of 94%, on FlowJo 10's own workspaces too) but reads the biexponential correctly. Rectangles, ranges, quadrants and splits stay exact; polygons and ellipses on those channels are traced to follow their outline (within 0.5%) and marked as traced in the export report. CytoML now counts exactly what CytoWeave counts on these gates.
+
 - **Contrast.** Muted text, status text and the dark theme's primary buttons are slightly darker or lighter so that every text color reaches 4.5:1 on every surface it is used on (WCAG AA): muted gray #7b8496 → #636c7e (light) and #808a9d → #8a94a7 (dark); primary buttons in the dark theme #8d7dff → #6b5ae8; status text a shade darker in the light theme and red status text a shade lighter in the dark theme; heat-map cells in Tables switch to dark or white text where the shading would leave too little contrast; hidden entries in plot legends are struck through in muted gray instead of faded. The theme button opens an Appearance menu (light, dark, match the system, color-vision-friendly colors) instead of switching the theme in one click.
 
 ### Fixed
 
+- **FlowJo workspace export in FlowJo 11.** Opened in FlowJo 11.2.0 (build 11.2.0.210156) for the first time, CytoWeave's exports crashed it. Each node's plot is now written in full, as FlowJo writes it; rectangles carry both bounds (FlowJo 11 does not import one open on a side); ranges and splits are written as rectangles with an unbounded second dimension (FlowJo 11 counts one-dimensional gates as empty), and import back as ranges; a sample opens on its first gate's plot.
 - **A failed save stayed hidden.** The red dot of a workspace that could not be saved turned back to "unsaved" at the next edit.
 - **Roles from file names with underscores.** "Beads_2026-03-31", "Comp_FITC" and "Unstained_01" were not recognized as bead, single-stain and unstained files, because the underscore joined the words.
 - **Off-scale events in the compensation spreading matrix.** Clipped events in a single-stain control looked like spread in every detector: on a real LSRFortessa control with a sixth of its positives off scale, one entry read 53 instead of 4. They are now left out, as they already were for the spillover values.
@@ -27,6 +30,7 @@
 
 ### Validation
 
+- **FlowJo 11 and CytoML** (`flowjo` and `flowkit` suites; `reference/flowjo11.json`, `reference/cytoml.json` with `generate_cytoml.R`): compatibility testing used FlowJo 11.2.0 (build 11.2.0.210156) during a trial; the percentages it showed for three exports (the bundled example, the workspace built in CytoWeave, FlowKit's 8-color workspace) are kept, and every population of CytoWeave's is within 0.6 percentage points, most within 0.1. CytoML 2.24 (Bioconductor) reads every export, with 306 of 313 counts equal to CytoWeave's; the others are ellipses, which CytoML reads differently from FlowJo (FlowJo 11 shows 87.2% for the built case's ellipse, CytoWeave 87.1%, CytoML 80.4%).
 - **Accessibility** (new `accessibility` suite and `capture.mjs --audit`): every text color reaches 4.5:1 on every surface in both themes with color-vision-friendly colors off and on; the friendly palette's colors differ by at least 11 (first eight) and 7 (all twenty) in CIEDE2000 with simulated protanopia, deuteranopia and tritanopia (Machado et al. 2009); its status colors by at least 9; viridis gets lighter steadily in every kind of vision (the classic rainbow reverses 10–12 times). axe-core 4.13 (WCAG 2.1 A and AA rules) finds no violations in any of the 33 documentation scenes in either theme (66 pages).
 - **Robustness to analysis choices** (new `multiverse` and `multiverse-ics` suites), on comparisons with known answers in the PBMC example:
   - a real effect (CD25+ T cells after stimulation) holds in 64 of 64 analyses;

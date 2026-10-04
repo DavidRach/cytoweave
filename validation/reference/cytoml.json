@@ -1,0 +1,2581 @@
+{
+ "versions": {
+  "R": "4.6.1",
+  "CytoML": "2.24.0",
+  "flowWorkspace": "4.24.0"
+ },
+ "exports": {
+  "bundled FlowJo example": {
+   "populations": [
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells",
+     "count": 11733
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells",
+     "count": 11273
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live",
+     "count": 10584
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Monocytes",
+     "count": 2098
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes",
+     "count": 8103
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells",
+     "count": 4482
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q1: CD4- , CD8+",
+     "count": 1766
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q2: CD4+ , CD8+",
+     "count": 0
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-",
+     "count": 2606
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-/Tregs",
+     "count": 169
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q4: CD4- , CD8-",
+     "count": 110
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/CD4 or CD8 T cells",
+     "count": 4372
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/B cells",
+     "count": 1203
+    },
+    {
+     "sample": "D01_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/NK cells",
+     "count": 1386
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells",
+     "count": 11686
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells",
+     "count": 11226
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live",
+     "count": 10635
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Monocytes",
+     "count": 2129
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes",
+     "count": 8130
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells",
+     "count": 4501
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q1: CD4- , CD8+",
+     "count": 1842
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q2: CD4+ , CD8+",
+     "count": 0
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-",
+     "count": 2535
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-/Tregs",
+     "count": 283
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q4: CD4- , CD8-",
+     "count": 124
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/CD4 or CD8 T cells",
+     "count": 4377
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/B cells",
+     "count": 1166
+    },
+    {
+     "sample": "D01_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/NK cells",
+     "count": 1399
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells",
+     "count": 11700
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells",
+     "count": 11232
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live",
+     "count": 10595
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Monocytes",
+     "count": 2574
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes",
+     "count": 7575
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells",
+     "count": 4417
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q1: CD4- , CD8+",
+     "count": 1296
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q2: CD4+ , CD8+",
+     "count": 0
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-",
+     "count": 2965
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-/Tregs",
+     "count": 215
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q4: CD4- , CD8-",
+     "count": 156
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/CD4 or CD8 T cells",
+     "count": 4261
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/B cells",
+     "count": 903
+    },
+    {
+     "sample": "D02_Unstim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/NK cells",
+     "count": 1190
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells",
+     "count": 11649
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells",
+     "count": 11163
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live",
+     "count": 10514
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Monocytes",
+     "count": 2508
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes",
+     "count": 7549
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells",
+     "count": 4371
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q1: CD4- , CD8+",
+     "count": 1349
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q2: CD4+ , CD8+",
+     "count": 0
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-",
+     "count": 2898
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-/Tregs",
+     "count": 284
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/Q4: CD4- , CD8-",
+     "count": 124
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/T cells/CD4 or CD8 T cells",
+     "count": 4247
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/B cells",
+     "count": 918
+    },
+    {
+     "sample": "D02_Stim.fcs_12500",
+     "path": "Cells/Single Cells/Live/Lymphocytes/NK cells",
+     "count": 1188
+    }
+   ],
+   "source": {}
+  },
+  "workspace built in CytoWeave": {
+   "populations": [
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells",
+     "count": 18703
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells",
+     "count": 17957
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live",
+     "count": 16934
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes",
+     "count": 13489
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells",
+     "count": 7864
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 low",
+     "count": 6992
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 high",
+     "count": 872
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q UL",
+     "count": 2081
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q UR",
+     "count": 366
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q LR",
+     "count": 5222
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q LL",
+     "count": 195
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Polygon on arcsinh",
+     "count": 416
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD4 or CD8",
+     "count": 7303
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 high and CD4",
+     "count": 872
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Not CD25 high",
+     "count": 6992
+    },
+    {
+     "sample": "D01_Unstim.fcs_20000",
+     "path": "Cells/Single cells/Live/Monocytes",
+     "count": 2947
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells",
+     "count": 18713
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells",
+     "count": 17951
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live",
+     "count": 16869
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes",
+     "count": 13460
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells",
+     "count": 7918
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 low",
+     "count": 4868
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 high",
+     "count": 3050
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q UL",
+     "count": 2070
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q UR",
+     "count": 419
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q LR",
+     "count": 5226
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q LL",
+     "count": 203
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Polygon on arcsinh",
+     "count": 442
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD4 or CD8",
+     "count": 7296
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 high and CD4",
+     "count": 2312
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Not CD25 high",
+     "count": 4868
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/Ellipse",
+     "count": 10810
+    },
+    {
+     "sample": "D01_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Monocytes",
+     "count": 2999
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells",
+     "count": 18709
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells",
+     "count": 17947
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live",
+     "count": 16935
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes",
+     "count": 13244
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells",
+     "count": 8496
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 low",
+     "count": 4951
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 high",
+     "count": 3545
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q UL",
+     "count": 1794
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q UR",
+     "count": 798
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q LR",
+     "count": 5746
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Q LL",
+     "count": 158
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Polygon on arcsinh",
+     "count": 529
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD4 or CD8",
+     "count": 7540
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/CD25 high and CD4",
+     "count": 2775
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/T cells/Not CD25 high",
+     "count": 4951
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Lymphocytes/Ellipse",
+     "count": 10654
+    },
+    {
+     "sample": "D02_Stim.fcs_20000",
+     "path": "Cells/Single cells/Live/Monocytes",
+     "count": 3204
+    }
+   ],
+   "source": {}
+  },
+  "8_color_ICS.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164659
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133674
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 82484
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 68
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 4
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 21
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 47169
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 73
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 2
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 10
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161823
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132200
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81855
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 59
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 598
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 64
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 288
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46965
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 814
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 1224
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 127
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 821
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81158
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 70
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 9
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 28
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46562
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 306
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 65
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 336
+    }
+   ],
+   "source": "8_color_data_set/8_color_ICS.wsp"
+  },
+  "8_color_ICS_simple.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164659
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133674
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161823
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132200
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131348
+    }
+   ],
+   "source": "8_color_data_set/8_color_ICS_simple.wsp"
+  },
+  "8_color_ICS_with_ellipse.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164659
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133674
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 82484
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 68
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 4
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 21
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 47169
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 73
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 2
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 10
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/ellipse1",
+     "count": 7023
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161823
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132200
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81855
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 59
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 598
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 64
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 288
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46965
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 814
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 1224
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 127
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 821
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/ellipse1",
+     "count": 5871
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81158
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 70
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 9
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 28
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46562
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 306
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 65
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 336
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/ellipse1",
+     "count": 6008
+    }
+   ],
+   "source": "8_color_data_set/8_color_ICS_with_ellipse.wsp"
+  },
+  "8_color_ICS_boolean_gate_testing.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164659
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133674
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 82484
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 68
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ or IFNg+",
+     "count": 72
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 4
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 21
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+-",
+     "count": 82478
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+-",
+     "count": 82463
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ & IFNg+",
+     "count": 0
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 47169
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 73
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 2
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 10
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-",
+     "count": 47161
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-/CD107a+",
+     "count": 70
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161823
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132200
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81855
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 59
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ or IFNg+",
+     "count": 651
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 598
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 64
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 288
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+-",
+     "count": 81791
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+-",
+     "count": 81567
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ & IFNg+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46965
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 814
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 1224
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 127
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 821
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-",
+     "count": 46144
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-/CD107a+",
+     "count": 198
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81158
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 70
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ or IFNg+",
+     "count": 79
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 9
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 28
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+-",
+     "count": 81150
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+-",
+     "count": 81130
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ & IFNg+",
+     "count": 0
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46562
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 306
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 65
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 336
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-",
+     "count": 46226
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-/CD107a+",
+     "count": 69
+    }
+   ],
+   "source": "8_color_data_set/8_color_ICS_boolean_gate_testing.wsp"
+  },
+  "reused_quad_gate_with_child.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells",
+     "count": 180693
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+",
+     "count": 116865
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q1: CD107a-, IL2+",
+     "count": 3317
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+",
+     "count": 3704
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 558
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q3: CD107a+, IL2-",
+     "count": 2605
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q4: CD107a-, IL2-",
+     "count": 107239
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+",
+     "count": 48231
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q1: CD107a-, IL2+",
+     "count": 440
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+",
+     "count": 1385
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 299
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q3: CD107a+, IL2-",
+     "count": 883
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q4: CD107a-, IL2-",
+     "count": 45523
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells",
+     "count": 178580
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd4+",
+     "count": 115361
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd4+/Q1: CD107a-, IL2+",
+     "count": 5318
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+",
+     "count": 3460
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 527
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd4+/Q3: CD107a+, IL2-",
+     "count": 2671
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd4+/Q4: CD107a-, IL2-",
+     "count": 103912
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd8+",
+     "count": 48729
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd8+/Q1: CD107a-, IL2+",
+     "count": 637
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+",
+     "count": 1260
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 268
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd8+/Q3: CD107a+, IL2-",
+     "count": 1721
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "good cells/cd8+/Q4: CD107a-, IL2-",
+     "count": 45111
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells",
+     "count": 180549
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd4+",
+     "count": 117311
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd4+/Q1: CD107a-, IL2+",
+     "count": 3210
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+",
+     "count": 3619
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 593
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd4+/Q3: CD107a+, IL2-",
+     "count": 3341
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd4+/Q4: CD107a-, IL2-",
+     "count": 107141
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd8+",
+     "count": 49075
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd8+/Q1: CD107a-, IL2+",
+     "count": 464
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+",
+     "count": 1335
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 309
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd8+/Q3: CD107a+, IL2-",
+     "count": 1230
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "good cells/cd8+/Q4: CD107a-, IL2-",
+     "count": 46046
+    }
+   ],
+   "source": "8_color_data_set/reused_quad_gate_with_child.wsp"
+  },
+  "simple_diamond_example_quad_gate.wsp": {
+   "populations": [
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q1: channel_A- , channel_B+",
+     "count": 49671
+    },
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q2: channel_A+ , channel_B+",
+     "count": 50596
+    },
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q3: channel_A+ , channel_B-",
+     "count": 50330
+    },
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q4: channel_A- , channel_B-",
+     "count": 49403
+    }
+   ],
+   "source": "simple_diamond_example/simple_diamond_example_quad_gate.wsp"
+  },
+  "test_data_diamond_biex_rect.wsp": {
+   "populations": [
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "upper_right",
+     "count": 50605
+    }
+   ],
+   "source": "simple_diamond_example/test_data_diamond_biex_rect.wsp"
+  },
+  "test_data_diamond_asinh_rect.wsp": {
+   "populations": [
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "upper_right",
+     "count": 50559
+    }
+   ],
+   "source": "simple_diamond_example/test_data_diamond_asinh_rect.wsp"
+  },
+  "simple_poly_and_rect.wsp": {
+   "populations": [
+    {
+     "sample": "data_set_simple_line_100.fcs_100",
+     "path": "poly1",
+     "count": 0
+    },
+    {
+     "sample": "data_set_simple_line_100.fcs_100",
+     "path": "rect1",
+     "count": 0
+    }
+   ],
+   "source": "simple_line_example/simple_poly_and_rect.wsp"
+  },
+  "single_ellipse_51_events.wsp": {
+   "populations": [
+    {
+     "sample": "data_set_simple_line_100.fcs_100",
+     "path": "ellipse1",
+     "count": 50
+    }
+   ],
+   "source": "simple_line_example/single_ellipse_51_events.wsp"
+  }
+ },
+ "originals": {
+  "8_color_data_set/8_color_ICS.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161822
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132208
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81851
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 59
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 597
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 64
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 287
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46969
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 814
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 1224
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 127
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 821
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161003
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131355
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81158
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 70
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 9
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 7
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 28
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46566
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 306
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 65
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 336
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164658
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133689
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 82490
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 68
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 4
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 21
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 47178
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 73
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 2
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 10
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 8
+    }
+   ]
+  },
+  "8_color_data_set/8_color_ICS_simple.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161822
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132208
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161003
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131355
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164658
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133689
+    }
+   ]
+  },
+  "8_color_data_set/8_color_ICS_with_ellipse.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161822
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132208
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81851
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 59
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 597
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 64
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 287
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46969
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 814
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 1224
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 127
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 821
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/ellipse1",
+     "count": 5448
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161003
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131355
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81158
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 70
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 9
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 7
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 28
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46566
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 306
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 65
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 336
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/ellipse1",
+     "count": 5610
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164658
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133689
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 82490
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 68
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 4
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 21
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 47178
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 73
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 2
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 10
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/ellipse1",
+     "count": 6295
+    }
+   ]
+  },
+  "8_color_data_set/8_color_ICS_boolean_gate_testing.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time",
+     "count": 283968
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets",
+     "count": 236780
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161822
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 132208
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81851
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 59
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ or IFNg+",
+     "count": 650
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 597
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 64
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 287
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+-",
+     "count": 81787
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+-",
+     "count": 81564
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ & IFNg+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46969
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 814
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 1224
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 127
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 821
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-",
+     "count": 46148
+    },
+    {
+     "sample": "101_DEN084Y5_15_E03_009_clean.fcs_283969",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-/CD107a+",
+     "count": 198
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time",
+     "count": 284933
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets",
+     "count": 235405
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-",
+     "count": 161003
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 131355
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 81158
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 70
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ or IFNg+",
+     "count": 79
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 9
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 7
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 28
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+-",
+     "count": 81151
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+-",
+     "count": 81130
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ & IFNg+",
+     "count": 0
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 46566
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 306
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 348
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 65
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 336
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-",
+     "count": 46230
+    },
+    {
+     "sample": "101_DEN084Y5_15_E05_010_clean.fcs_285290",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-/CD107a+",
+     "count": 69
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time",
+     "count": 290170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets",
+     "count": 239005
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-",
+     "count": 164658
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+",
+     "count": 133689
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+",
+     "count": 82490
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+",
+     "count": 68
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ or IFNg+",
+     "count": 72
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+",
+     "count": 4
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+",
+     "count": 6
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+",
+     "count": 21
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/IL2+-",
+     "count": 82484
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+-",
+     "count": 82469
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+ & IFNg+",
+     "count": 0
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+",
+     "count": 47178
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+",
+     "count": 73
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+",
+     "count": 2
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/IL2+",
+     "count": 10
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+",
+     "count": 8
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-",
+     "count": 47170
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+-/CD107a+",
+     "count": 70
+    }
+   ]
+  },
+  "8_color_data_set/reused_quad_gate_with_child.wsp": {
+   "populations": [
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells",
+     "count": 180693
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+",
+     "count": 116865
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q1: CD107a-, IL2+",
+     "count": 3317
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+",
+     "count": 3704
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 558
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q3: CD107a+, IL2-",
+     "count": 2605
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd4+/Q4: CD107a-, IL2-",
+     "count": 107239
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+",
+     "count": 48231
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q1: CD107a-, IL2+",
+     "count": 440
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+",
+     "count": 1385
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q2: CD107a+, IL2+/some_child_gate",
+     "count": 299
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q3: CD107a+, IL2-",
+     "count": 883
+    },
+    {
+     "sample": "101_DEN084Y5_15_E01_008_clean.fcs_290172",
+     "path": "good cells/cd8+/Q4: CD107a-, IL2-",
+     "count": 45523
+    }
+   ]
+  },
+  "simple_diamond_example/simple_diamond_example_quad_gate.wsp": {
+   "populations": [
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q1: channel_A- , channel_B+",
+     "count": 49671
+    },
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q2: channel_A+ , channel_B+",
+     "count": 50596
+    },
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q3: channel_A+ , channel_B-",
+     "count": 50330
+    },
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "Q4: channel_A- , channel_B-",
+     "count": 49403
+    }
+   ]
+  },
+  "simple_diamond_example/test_data_diamond_biex_rect.wsp": {
+   "populations": [
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "upper_right",
+     "count": 50605
+    }
+   ]
+  },
+  "simple_diamond_example/test_data_diamond_asinh_rect.wsp": {
+   "populations": [
+    {
+     "sample": "test_data_diamond_01.fcs_200000",
+     "path": "upper_right",
+     "count": 50559
+    }
+   ]
+  },
+  "simple_line_example/simple_poly_and_rect.wsp": {
+   "populations": [
+    {
+     "sample": "data_set_simple_line_100.fcs_100",
+     "path": "poly1",
+     "count": 0
+    },
+    {
+     "sample": "data_set_simple_line_100.fcs_100",
+     "path": "rect1",
+     "count": 0
+    }
+   ]
+  },
+  "simple_line_example/single_ellipse_51_events.wsp": {
+   "populations": [
+    {
+     "sample": "data_set_simple_line_100.fcs_100",
+     "path": "ellipse1",
+     "count": 50
+    }
+   ]
+  }
+ }
+}

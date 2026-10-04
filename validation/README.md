@@ -82,6 +82,22 @@ uv run --python 3.12 --with flowkit==1.3.2 python validation/reference/generate_
 
 Regenerate it when the FlowJo export changes.
 
+`reference/flowjo11.json` holds what FlowJo 11.2.0 (build 11.2.0.210156)
+showed for three exports (each population's percentage of its parent in one
+sample), read from FlowJo during a trial license, with notes on what FlowJo 11
+does with exports and with FlowJo 10's own workspaces. It cannot be
+regenerated without FlowJo; the `flowjo` and `flowkit` suites compare
+CytoWeave's counts with it.
+
+`reference/cytoml.json` holds CytoML's counts (Bioconductor's FlowJo reader)
+on the same exports and on the original FlowKit workspaces; regenerate it
+after `write_flowjo_exports.mjs` when the FlowJo export changes:
+
+```bash
+Rscript -e 'BiocManager::install("CytoML")'
+Rscript validation/reference/generate_cytoml.R
+```
+
 `reference/r.json` holds the results of flowCore 2.24, PeacoQC 1.22,
 FlowSOM 2.20 and CytoNorm 2.0.12 (R 4.6.1, Bioconductor 3.23; the versions are
 recorded in the file). `reference/generate_r.R` writes it; `write_simulated.mjs`

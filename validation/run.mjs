@@ -240,6 +240,62 @@ function flowKitExportChecks(c, ref, originals) {
   check('flowkit', `${c.name}: FlowKit's counts on the export vs on the original workspace`, `${unchanged} unchanged${closer ? `, ${closer} closer to FlowJo's saved counts (time gates, which the export writes in $TIMESTEP units)` : ''}${worse.length ? `; ${worse.slice(0, 2).join('; ')}` : ''}`, !worse.length && unchanged + closer === original.size, 'each unchanged or closer to FlowJo');
 }
 
+// FlowJo 11 itself on the exports (reference/flowjo11.json, read from FlowJo 11.2 during a trial):
+// each population's percentage of its parent against CytoWeave's, for the cases in `cases`.
+function flowJo11Checks(suite, cases) {
+  const fj11 = JSON.parse(readFileSync(new URL('./reference/flowjo11.json', import.meta.url), 'utf8'));
+  for (const ref of fj11.cases) {
+    const c = cases.find((x) => x.name === ref.case);
+    if (!c) continue;
+    const ours = new Map(c.rows.filter((r) => r.sampleName === ref.sample).map((r) => [r.path, r.cytoweave]));
+    const file = c.files.find((f) => f.name === ref.sample);
+    const total = file ? parseFCS(file.bytes).datasets[0].eventCount : null;
+    const gaps = Object.entries(ref.percentOfParent).map(([path, pct]) => {
+      const parent = path.includes('/') ? ours.get(path.slice(0, path.lastIndexOf('/'))) : total;
+      return { path, gap: parent ? Math.abs((100 * ours.get(path)) / parent - pct) : Number.NaN };
+    });
+    const worst = gaps.reduce((a, b) => (b.gap > a.gap || Number.isNaN(b.gap) ? b : a));
+    check(suite, `FlowJo ${fj11.flowjoVersion} (${fj11.flowjoBuild}) opens the export of ${ref.case}: populations of ${ref.sample} within ${ref.tolerance} percentage points of FlowJo's (FlowJo evaluates gates at its display resolution)`, `${gaps.filter((g) => g.gap <= ref.tolerance).length} of ${gaps.length}; largest ${worst.gap.toFixed(3)} (${worst.path.split('/').pop()})`, gaps.every((g) => g.gap <= ref.tolerance), 'all');
+  }
+}
+
+// CytoML's counts on the FlowJo exports (reference/cytoml.json, written by generate_cytoml.R):
+// Bioconductor's FlowJo reader against CytoWeave. CytoML reads FlowJo's ellipses differently from
+// FlowJo (on the built case FlowJo 11 shows 87.2% for the ellipse, CytoWeave 87.1%, CytoML 80.4%),
+// so ellipses are reported, not required.
+function cytomlChecks(cases) {
+  let ref;
+  try {
+    ref = JSON.parse(readFileSync(new URL('./reference/cytoml.json', import.meta.url), 'utf8'));
+  } catch {
+    check('flowkit', 'CytoML reads CytoWeave\'s FlowJo exports', 'not generated (run write_flowjo_exports.mjs and generate_cytoml.R)', false, 'read');
+    return;
+  }
+  const sample = (name) => name.replace(/_\d+$/, '').replace(/\.fcs$/i, '');
+  const failed = cases.filter((c) => !ref.exports[c.name] || ref.exports[c.name].error);
+  check('flowkit', `CytoML ${ref.versions.CytoML} (flowWorkspace ${ref.versions.flowWorkspace}) reads every CytoWeave FlowJo export`, failed.length ? failed.map((c) => `${c.name}: ${ref.exports[c.name]?.error ?? 'missing'}`).slice(0, 2).join('; ') : `${cases.length} of ${cases.length}`, !failed.length, 'all');
+  let same = 0;
+  let total = 0;
+  const ellipses = [];
+  const differ = [];
+  for (const c of cases) {
+    const counts = new Map((ref.exports[c.name]?.populations ?? []).map((p) => [`${sample(p.sample)}|${p.path}`, p.count]));
+    for (const r of c.rows) {
+      const n = counts.get(`${sample(r.sampleName)}|${r.path}`);
+      total += 1;
+      if (n === r.cytoweave) same += 1;
+      else if (n !== undefined && isEllipseGate(c, r.path)) ellipses.push(`${r.path.split('/').pop()} ${n} vs ${r.cytoweave}`);
+      else differ.push(`${c.name} ${r.sampleName} ${r.path}: CytoML ${n} vs CytoWeave ${r.cytoweave}`);
+    }
+  }
+  check('flowkit', `CytoML on CytoWeave's FlowJo exports: populations whose count equals CytoWeave's (${cases.length} workspaces)`, `${same} of ${total}${ellipses.length ? `; ${ellipses.length} ellipses differ (CytoML reads FlowJo ellipses differently; FlowJo 11 agrees with CytoWeave)` : ''}${differ.length ? `; ${differ.slice(0, 2).join('; ')}` : ''}`, !differ.length && same > 0, 'all (ellipses reported)');
+}
+
+// Whether a population of an export case is an ellipse in CytoWeave's workspace.
+function isEllipseGate(c, path) {
+  return (c.ellipses ?? []).includes(path.split('/').pop());
+}
+
 // De-identified files: the same events as the original, and only allowlisted keywords.
 function deidentifyChecks(suite, label, files) {
   let readable = 0;
@@ -715,7 +771,11 @@ const suites = {
 
     // FlowJo export: each workspace is exported with CytoWeave's counts and imported back, with
     // every population recomputed from the re-imported gates.
-    for (const c of [bundledCase(), builtCase()]) exportChecks('flowjo', c);
+    const bundled = bundledCase();
+    const built = builtCase();
+    for (const c of [bundled, built]) exportChecks('flowjo', c);
+
+    flowJo11Checks('flowjo', [bundled, built]);
   },
   // Figure provenance: a gating-strategy figure of every PBMC sample, exported, read back from
   // SVG, PNG and PDF, and rebuilt in a new workspace from the same files.
@@ -1334,11 +1394,15 @@ const suites = {
 
     // FlowJo export of FlowKit's workspaces and of the bundled and built cases: the round trip in
     // CytoWeave, and FlowKit's reading of each export.
-    for (const c of flowKitCases()) {
+    const kitCases = flowKitCases();
+    for (const c of kitCases) {
       exportChecks('flowkit', c);
       flowKitExportChecks(c, ref, c.original);
     }
-    for (const c of [bundledCase(), builtCase()]) flowKitExportChecks(c, ref, c.original ?? { rows: [] });
+    const ownCases = [bundledCase(), builtCase()];
+    for (const c of ownCases) flowKitExportChecks(c, ref, c.original ?? { rows: [] });
+    cytomlChecks([...ownCases, ...kitCases]);
+    flowJo11Checks('flowkit', kitCases);
     deidentifyChecks('flowkit', `${fcsFiles.size} FlowKit FCS files`, [...fcsFiles.values()]);
   },
   // External data: FCS files from several instruments and deliberately malformed files

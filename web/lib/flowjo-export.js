@@ -7,17 +7,18 @@
 // geometry, mapped back to data units through each gate's own transform.
 //
 // FlowJo draws polygon edges and ellipses on its display axes, which are the transforms this
-// export writes for the sample. Where a gate was drawn on the same transform, it is reproduced
-// exactly; where not, its outline is traced in its own scale with enough vertices that FlowJo's
-// straight edges follow it (reported as approximated). Rectangles, ranges, quadrants and splits
-// are exact under any monotone transform.
+// export writes for the sample: logicle and arcsinh scales are written as the closest FlowJo
+// biex, since FlowJo 11 misreads the others (flowJoScale). Where a gate was drawn on the same
+// transform, it is reproduced exactly; where not, its outline is traced in its own scale with
+// enough vertices that FlowJo's straight edges follow it (reported as approximated).
+// Rectangles, ranges, quadrants and splits are exact under any monotone transform.
 //
 // Populations FlowJo cannot evaluate are left out and reported: gates on channels the FCS file
 // does not have (QC pass, clusters, unmixed or normalized channels, ratios), category gates, and
 // gates of three or more dimensions.
 
 import { readSpillover } from './fcs.js';
-import { createTransform, defaultTransform, transformKey } from './transforms.js';
+import { createTransform, defaultTransform, logicleToBiex, transformKey } from './transforms.js';
 import { gateApplies, effectiveGeometry, gateById } from './workspace.js';
 import { sameTransformFunction } from './gatingml.js';
 
@@ -26,11 +27,51 @@ const PREFIX = 'Comp-';
 // Vertices per edge when an outline is traced on a different transform, and for an ellipse.
 const TRACE_STEPS = 24;
 const ELLIPSE_VERTICES = 96;
+// The open side of a rectangle, in data units: beyond any FCS range.
+const UNBOUNDED = 1e9;
 
 const esc = (text) => String(text)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
 const num = (value) => (Number.isFinite(value) ? String(+value.toPrecision(12)) : '0');
+
+// A node's plot as FlowJo writes it. FlowJo 11 crashes importing a population whose Graph lacks
+// GraphSettings and GraphEnvironment (FlowJo 10 and FlowKit do not need them), so every node
+// carries the full element, with empty axis names where the node has no plot of its own.
+const TEXT_TRAITS = [['Labels', 11], ['LayoutGates', 11], ['Numbers', 9], ['Legend', 9]]
+  .map(([name, size]) => `<TextTraits font="SansSerif" size="${size}" name="${name}" style="plain" color="#000000" background="#00ffffff" just="left"/>`).join('');
+function flowJoGraph(type = 'Pseudocolor', x = '', y = '') {
+  return `<Graph smoothing="0" backColor="#ffffff" foreColor="#000000" type="${type}" fast="1">`
+    + `<Axis dimension="x" name="${esc(x)}" label="" auto="auto"/><Axis dimension="y" name="${esc(y)}" label="" auto="auto"/>`
+    + '<GraphSettings level="5%" smoothingHighResolution="1" contourHighResolution="1" histogramSmoothingCount="0" graphResolution="256" showOutliers="0" drawLargeDots="0" dotsToDraw="0" tint="le.chartfill.tinted.40" lineWeight="le.lineweight.normal" lineStyle="le.linestyle.solid"/>'
+    + `<GraphEnvironment showGrid="0" showAxes="tnlTNL" showGates="1" showFreqOnPlots="1" showGateNameOnPlots="1" showMedians="0" showUncomped="0" addEventParam="0" lastYAxisName="">${TEXT_TRAITS}</GraphEnvironment>`
+    + '</Graph>';
+}
+
+// The scale a FlowJo workspace is written with. FlowJo 11 reads neither logicle nor arcsinh scales
+// (it misplaces gates on them, in FlowJo 10's own workspaces too) but reads FlowJo's biex, the
+// default scale of FlowJo 10 and 11, so those are written as the closest biex. Gates drawn on
+// them are then traced, like any gate drawn on another scale than the one written; rectangles,
+// ranges and quadrants stay exact. An arcsinh is a logicle of width 0 (Parks et al. 2006).
+export function flowJoScale(spec) {
+  let biex = null;
+  if (spec?.type === 'logicle') biex = logicleToBiex(spec);
+  else if (spec?.type === 'arcsinh') {
+    const c = spec.cofactor ?? 150;
+    const T = spec.max ?? 262144;
+    const min = spec.min ?? -c * Math.sinh(1);
+    biex = logicleToBiex({ T, W: 0, M: Math.log10((2 * T) / c), A: Math.asinh(-min / c) / LN10 });
+  } else if (spec?.type === 'fasinh') {
+    biex = logicleToBiex({ T: spec.T ?? 262144, W: 0, M: spec.M ?? 4.5, A: spec.A ?? 0 });
+  }
+  if (!biex) return spec;
+  try {
+    createTransform(biex);
+    return biex;
+  } catch {
+    return spec;
+  }
+}
 
 // A CytoWeave transform as a FlowJo transform element: { local, attrs } (attrs without prefix),
 // or { error }. `gain` is FlowJo units per stored unit (the time channel in seconds).
@@ -126,6 +167,13 @@ export function exportFlowJo(ws, options = {}) {
       if (missing.length) warnings.push(`${sample.name}: the matrix "${matrix.name}" names channels the file does not have (${missing.join(', ')}).`);
     }
     const compensated = new Set(matrix?.channels ?? []);
+    // FlowJo 11 evaluates a one-dimensional gate as empty, so ranges and splits are written as
+    // rectangles whose second dimension is unbounded, on a scatter channel when there is one.
+    const companionOf = (channel) => {
+      const names = (sample.channels ?? []).filter((c) => c.name !== channel && !isTimeChannel(c)).map((c) => c.name);
+      const pick = ['SSC-A', 'FSC-A'].find((n) => names.includes(n)) ?? names[0] ?? null;
+      return pick && compensated.has(pick) ? `${PREFIX}${pick}` : pick;
+    };
     const matrixId = matrix ? `${matrix.file ? 'file' : sample.compensationId}` : null;
     if (matrix && !matrices.has(matrixId)) matrices.set(matrixId, matrix);
     const timestep = Number.parseFloat(sample.keywords?.$TIMESTEP);
@@ -215,6 +263,7 @@ export function exportFlowJo(ws, options = {}) {
         let spec = null;
         if (used?.size) spec = JSON.parse([...used.entries()].sort((a, b) => b[1] - a[1])[0][0]);
         spec ??= ws.channelSettings?.[name]?.transform ?? defaultTransform(channel, sample.technology);
+        spec = flowJoScale(spec);
         if (flowJoTransformXML(spec).error) {
           warnings.push(`${sample.name}: ${parameter} is shown on a scale FlowJo does not have (${flowJoTransformXML(spec).error}); it is written as linear.`);
           spec = { type: 'linear', min: 0, max: channel.range || 262144 };
@@ -243,8 +292,12 @@ export function exportFlowJo(ws, options = {}) {
     const counts = options.counts?.(sample) ?? null;
     const quadIds = new Map();
 
-    const dimXML = (parameter, bounds = {}) => {
-      const attrs = [bounds.min !== undefined && bounds.min !== null ? ` gating:min="${num(bounds.min)}"` : '', bounds.max !== undefined && bounds.max !== null ? ` gating:max="${num(bounds.max)}"` : ''].join('');
+    // A rectangle's dimension. FlowJo writes both bounds, and FlowJo 11 evaluates a side left
+    // open as selecting nothing (or does not import the gate): open sides are written far beyond
+    // any data, which selects the same events. Polygon and ellipse dimensions have no bounds.
+    const dimXML = (parameter, bounds = null) => {
+      const side = (v, open) => ` gating:${open > 0 ? 'max' : 'min'}="${num(v === undefined || v === null ? open * UNBOUNDED : v)}"`;
+      const attrs = bounds ? `${side(bounds.min, -1)}${side(bounds.max, 1)}` : '';
       return `<gating:dimension${attrs}><data-type:fcs-dimension data-type:name="${esc(parameter)}"/></gating:dimension>`;
     };
     const vertexXML = (coords) => `<gating:vertex>${coords.map((c) => `<gating:coordinate data-type:value="${num(c)}"/>`).join('')}</gating:vertex>`;
@@ -269,12 +322,15 @@ export function exportFlowJo(ws, options = {}) {
         case 'rectangle':
           xml = `<gating:RectangleGate ${attrs}>${dimXML(dims[0].name, { min: bound(0, geometry.min?.[0]), max: bound(0, geometry.max?.[0]) })}${dimXML(dims[1].name, { min: bound(1, geometry.min?.[1]), max: bound(1, geometry.max?.[1]) })}</gating:RectangleGate>`;
           break;
-        case 'range':
-          xml = `<gating:RectangleGate ${attrs}>${dimXML(dims[0].name, { min: bound(0, geometry.min), max: bound(0, geometry.max) })}</gating:RectangleGate>`;
+        case 'range': {
+          const other = companionOf(dims[0].channel);
+          xml = `<gating:RectangleGate ${attrs}>${dimXML(dims[0].name, { min: bound(0, geometry.min), max: bound(0, geometry.max) })}${other ? dimXML(other, {}) : ''}</gating:RectangleGate>`;
           break;
+        }
         case 'split': {
           const t = dims[0].toData(geometry.threshold);
-          xml = `<gating:RectangleGate ${attrs}>${dimXML(dims[0].name, geometry.side === 'hi' ? { min: t } : { max: t })}</gating:RectangleGate>`;
+          const other = companionOf(dims[0].channel);
+          xml = `<gating:RectangleGate ${attrs}>${dimXML(dims[0].name, geometry.side === 'hi' ? { min: t } : { max: t })}${other ? dimXML(other, {}) : ''}</gating:RectangleGate>`;
           break;
         }
         case 'quadrant': {
@@ -338,12 +394,13 @@ export function exportFlowJo(ws, options = {}) {
     };
 
     const graphXML = (gate) => {
-      if (!gate || gate.type === 'boolean') return '<Graph smoothing="0" backColor="#ffffff" foreColor="#000000" type="Pseudocolor" fast="1"/>';
+      if (!gate || gate.type === 'boolean') return flowJoGraph();
       const axis = (k) => {
         const dim = gate.dims[k];
         return dim ? parameterOf(dim).name : '';
       };
-      return `<Graph smoothing="0" backColor="#ffffff" foreColor="#000000" type="${gate.dims.length === 1 ? 'Histogram' : 'Pseudocolor'}" fast="1"><Axis dimension="x" name="${esc(axis(0))}" label="" auto="auto"/><Axis dimension="y" name="${esc(axis(1))}" label="" auto="auto"/></Graph>`;
+      if (gate.dims.length === 1) return flowJoGraph('Pseudocolor', axis(0), companionOf(gate.dims[0].channel) ?? '');
+      return flowJoGraph('Pseudocolor', axis(0), axis(1));
     };
 
     const countAttr = (gateId) => {
@@ -435,6 +492,9 @@ export function exportFlowJo(ws, options = {}) {
       if (c.label) keywords[`$P${i + 1}S`] = c.label;
     });
     const keywordXML = Object.entries(keywords).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => `<Keyword name="${esc(k)}" value="${esc(v)}"/>`).join('');
+    // The sample's own plot shows its first gate, as FlowJo writes it (otherwise FlowJo 11 opens
+    // the sample on its first channel against itself, with no gate drawn).
+    const firstGate = (byParent.get(null) ?? []).find((g) => g.type !== 'boolean' && plan.get(g.id)?.exported);
     const sid = sampleIdOf.get(sample.id);
     // FlowJo names a sample after its file (as FlowKit expects); a renamed sample keeps its name.
     const stem = fileName.replace(/\.(fcs|lmd)$/i, '');
@@ -444,11 +504,11 @@ export function exportFlowJo(ws, options = {}) {
     ${matrix ? matrixXML(matrix, matrixId) : ''}
     <Transformations>${transforms}</Transformations>
     <Keywords>${keywordXML}</Keywords>
-    <SampleNode name="${esc(nodeName)}" annotation="" owningGroup="" expanded="1" sortPriority="10" count="${sample.eventCount ?? 0}" sampleID="${sid}"><Graph smoothing="0" backColor="#ffffff" foreColor="#000000" type="Pseudocolor" fast="1"/><Subpopulations>${tree}</Subpopulations></SampleNode>
+    <SampleNode name="${esc(nodeName)}" annotation="" owningGroup="" expanded="1" sortPriority="10" count="${sample.eventCount ?? 0}" sampleID="${sid}">${graphXML(firstGate)}<Subpopulations>${tree}</Subpopulations></SampleNode>
   </Sample>`;
   }).join('\n  ');
 
-  const groupXML = (name, ids, builtIn = false) => `<GroupNode name="${esc(name)}" annotation="" owningGroup="${esc(name)}" expanded="0" sortPriority="10" count="-1"><Graph smoothing="0" backColor="#ffffff" foreColor="#000000" type="Pseudocolor" fast="1"/><Group name="${esc(name)}"${builtIn ? ' builtIn="1"' : ''}><Criteria/><SampleRefs>${ids.map((id) => `<SampleRef sampleID="${id}"/>`).join('')}</SampleRefs></Group><Subpopulations/></GroupNode>`;
+  const groupXML = (name, ids, builtIn = false) => `<GroupNode name="${esc(name)}" annotation="" owningGroup="${esc(name)}" expanded="0" sortPriority="10" count="-1">${flowJoGraph()}<Group name="${esc(name)}"${builtIn ? ' builtIn="1"' : ''}><Criteria/><SampleRefs>${ids.map((id) => `<SampleRef sampleID="${id}"/>`).join('')}</SampleRefs></Group><Subpopulations/></GroupNode>`;
   const groups = [groupXML('All Samples', samples.map((s) => sampleIdOf.get(s.id)), true)];
   for (const group of ws.groups ?? []) {
     const ids = group.sampleIds.map((id) => sampleIdOf.get(id)).filter(Boolean);

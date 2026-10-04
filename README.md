@@ -716,14 +716,25 @@ population counts and the FCS files in a ZIP (de-identified if you choose). The
 dialog lists every population as:
 - **exact**;
 - **traced**: drawn on a different scale than the one written for its
-  channel, so its outline is written with enough vertices to follow it;
+  channel, so its outline is written with enough vertices to follow it.
+  Logicle and arcsinh scales are written as FlowJo's biexponential (the only
+  one of the three FlowJo 11 reads correctly), so polygons and ellipses on
+  those channels are traced; counts stay within 0.5%;
 - **not exported**: category gates (QC pass, barcodes, clusters), gates on
   channels CytoWeave computed (unmixed, normalized, ratios), and gates of three
   or more dimensions, with their children.
 
-Every validation case imports back with its counts unchanged, and FlowKit
-reads every export and counts what CytoWeave counts. The exports have not yet
-been opened in FlowJo itself.
+Every validation case imports back with its counts unchanged. FlowKit 1.3
+reads every export and counts what CytoWeave counts; CytoML 2.24 reads every
+export, with 306 of 313 counts equal to CytoWeave's (the others are ellipses,
+which CytoML reads differently from FlowJo). Compatibility testing used
+FlowJo 11.2.0 (build 11.2.0.210156): three exports open with their files,
+groups and compensation, and every population is within 0.6 percentage points
+of CytoWeave's, most within 0.1 (FlowJo evaluates gates at its display
+resolution). FlowJo 11 needs the files reconnected once (its "reconnect your
+missing files" link, pointed at the workspace's folder) and does not import
+Boolean populations, from FlowJo 10's own workspaces either. FlowJo 10 has not
+been tried.
 
 **Gating-ML 2.0** import and export covers:
 - rectangle, polygon, ellipsoid, quadrant and Boolean gates, including gates
@@ -867,8 +878,9 @@ used for diagnosis.
 - FlowJo evaluates gates at its display resolution; CytoWeave evaluates them
   exactly, so a few events near gate boundaries can differ from FlowJo's
   counts (the migration report shows how many).
-- FlowJo workspaces written by CytoWeave are checked by importing them back
-  and with FlowKit, but have not yet been opened in FlowJo itself.
+- In FlowJo 11 (tested with 11.2.0, build 11.2.0.210156), Boolean
+  populations of an exported workspace are not imported, as with workspaces
+  FlowJo 10 wrote. FlowJo 10 has not been tried.
 - Adapting gates is conservative by design: a boundary that sits in sparse
   events is kept even when a large shift has left it off-center, and gates of
   three or more dimensions, Boolean and category gates are not adapted.

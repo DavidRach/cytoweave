@@ -6,7 +6,7 @@ import { SampleView, countOf, population } from './engine.js';
 import { importFlowJo } from './flowjo.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from './flowjo-match.js';
 import { createWorkspace, addGates, addGroup, addSamples, sampleFromDataset, updateGate } from './workspace.js';
-import { exportFlowJo, flowJoTransformXML } from './flowjo-export.js';
+import { exportFlowJo, flowJoScale, flowJoTransformXML } from './flowjo-export.js';
 import { createTransform } from './transforms.js';
 import { parseXMLDocument, find } from './xml.js';
 
@@ -141,6 +141,24 @@ test('the exported XML has the structure FlowJo writes', () => {
   assert.match(xml, /<NotNode name="Not CD25 high"[^>]*>.*?<Dependent name="Cells\/Single cells\/Live\/Lymphocytes\/T cells\/CD25 high"\/>/s);
   assert.match(xml, /quadId="QUAD1"/);
   assert.match(xml, /<GroupNode name="Stimulated"/);
+  // FlowJo 11 crashes importing a node whose Graph lacks GraphSettings and GraphEnvironment.
+  const graphs = xml.match(/<Graph\b.*?<\/Graph>/gs);
+  const nodes = xml.match(/<(SampleNode|GroupNode|Population|AndNode|OrNode|NotNode)\b/g);
+  assert.equal(graphs.length, nodes.length, 'every node has a full Graph element');
+  for (const g of graphs) assert.match(g, /<GraphSettings [^>]*\/><GraphEnvironment [^>]*>.*<\/GraphEnvironment><\/Graph>$/s);
+  assert.doesNotMatch(xml, /<Graph [^>]*\/>/, 'no empty Graph elements');
+  // FlowJo 11 does not import a two-dimensional rectangle open on a side, unless it is a quadrant.
+  for (const [, wrapper, body] of xml.matchAll(/<Gate ([^>]*)><gating:RectangleGate [^>]*>(.*?)<\/gating:RectangleGate>/gs)) {
+    const dimensions = body.match(/<gating:dimension[^>]*>/g);
+    if (dimensions.length === 2 && !/quadId/.test(wrapper)) for (const d of dimensions) assert.match(d, /gating:min="[^"]+" gating:max="[^"]+"/);
+  }
+  // FlowJo 11 misreads logicle and arcsinh scales: they are written as FlowJo biex.
+  assert.doesNotMatch(xml, /<transforms:(logicle|fasinh)\b/);
+  assert.equal(flowJoScale({ type: 'logicle', T: 262144, W: 0.5, M: 4.5, A: 0 }).type, 'biex');
+  assert.equal(flowJoScale({ type: 'arcsinh', cofactor: 150, max: 262144 }).type, 'biex');
+  assert.deepEqual(flowJoScale({ type: 'linear', min: 0, max: 262144 }), { type: 'linear', min: 0, max: 262144 });
+  // A sample opens on its first gate's axes, as FlowJo writes it.
+  assert.match(xml, /<SampleNode [^>]*><Graph [^>]*><Axis dimension="x" name="FSC-A"[^>]*\/><Axis dimension="y" name="SSC-A"/);
 });
 
 test('FlowJo transforms are the same functions as CytoWeave scales', () => {
