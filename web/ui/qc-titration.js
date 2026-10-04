@@ -422,7 +422,7 @@ export function createTitrationSection(ctx) {
         h('td', x.estimated ? h('span.badge.warn', { title: 'Positive and negative cells overlap at this step' }, 'overlap') : voltage && x.inRange === false ? h('span.badge.danger', 'beyond linear range') : recommended ? h('span.badge.ok', 'recommended') : null));
     }));
     pane.append(h('div.qc-table-scroll', { tabIndex: 0, style: { maxHeight: '320px', marginTop: '10px' } }, h('table.data', h('thead', head), body)),
-      h('p.muted.qc-small', `Within ${r.populationName}, on linear values. Stain index = (median⁺ − median⁻) / (2 × rSD⁻); separation index = (median⁺ − median⁻) / ((P84⁻ − median⁻) / 0.995); rSD = (P84.13 − P15.87) / 2.`),
+      h('p.muted.qc-small', `Within ${r.populationName}, on linear values. Stain index = (median⁺ − median⁻) / (2 × rSD⁻); separation index = (median⁺ − median⁻) / ((P84⁻ − median⁻) / 0.995); rSD = (P84.13 − P15.87) / 2, FACSDiva's robust SD (FlowJo's Robust SD is 1.4826 × the median absolute deviation, which differs for skewed populations).`),
       h('div.btn-row', { style: { marginTop: '10px' } },
         h('button.btn', { type: 'button', onclick: save, title: 'Keep the result in the workspace; the methods describe it' }, icon('save'), 'Save in the workspace'),
         h('button.btn.ghost', { type: 'button', onclick: () => exportFigure('svg') }, icon('download'), 'Figure (SVG)'),

@@ -390,10 +390,11 @@ to be revised as each wave lands.
    - Validation: `titration` (stain index within 4.4% of the true cells'; the binding's
      recommended amount; exponent 7.38 of 7.4; rSD_EN 25.1 of 25; voltages within 1 V of the
      truth; a walk too high to see the noise asks for it); agent session (18 checks).
-   - Not done: the comparison with FlowJo 11 on the same files (medians and rSD of the positive
-     and negative populations) needs FlowJo's interface and waits for the user; the statistics
-     follow FlowJo's documented rSD. Titration plates with several antibodies in one file (by
-     well) and the dim-bead CV method of the voltage walk are left for later.
+   - FlowJo 11.2 on the same tubes (`reference/flowjo11-titration.json`): medians equal where the
+     populations hold the same events; FlowJo's "Robust SD" is 1.4826 × MAD, not FACSDiva's
+     percentile robust SD that CytoWeave uses (docs corrected: they had said FlowJo used it too).
+   - Not done: titration plates with several antibodies in one file (by well) and the dim-bead
+     CV method of the voltage walk are left for later.
 
 ## Then (0.6–0.8)
 

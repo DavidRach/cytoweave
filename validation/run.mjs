@@ -29,7 +29,7 @@ import { evaluate as evaluateOntology } from './ontology-cases.mjs';
 import { suggestForPopulation, termById } from '../web/lib/ontology.js';
 import { applyStrategy, pbmcCohort, placeOn } from './strategy-cases.mjs';
 import { STRATEGIES, strategyById } from '../web/lib/strategies.js';
-import { runTitration, runWalk, titrationExample, trueVoltageLimits } from './titration-cases.mjs';
+import { runTitration, runWalk, titrationExample, titrationTubes, trueVoltageLimits, tubeStatistics } from './titration-cases.mjs';
 import { TITRATION } from '../web/lib/examples.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
@@ -484,6 +484,23 @@ const suites = {
     const highExample = { ...example, ws: { ...example.ws, samples: [...example.ws.samples.filter((s) => !/Voltage walk/.test(s.name)), ...high] } };
     const highWalk = runWalk(highExample).analysis;
     const highGiven = runWalk(highExample, { rsdEN: truth.rsdEN }).analysis;
+    // FlowJo 11 on the same eleven tubes (reference/flowjo11-titration.json, saved while FlowJo
+    // was available): medians, its Robust SD (1.4826 × MAD), and the populations' events.
+    const fj = JSON.parse(readFileSync(new URL('./reference/flowjo11-titration.json', import.meta.url), 'utf8'));
+    const cw = tubeStatistics(titrationTubes());
+    const rows = [];
+    for (const [file, pops] of Object.entries(fj.samples)) {
+      for (const [pop, ref] of Object.entries(pops)) {
+        const c = cw[file][pop];
+        const freq = (100 * c.count) / cw[file]['All events'].count;
+        rows.push({ file, pop, same: Math.abs(freq - ref.freq) < 0.0026, freqDiff: Math.abs(freq - ref.freq), median: Math.abs(c.median / ref.median - 1), madSD: Math.abs((1.4826 * c.mad) / ref.robustSD - 1), percentile: c.rsd / ref.robustSD, negative: pop === 'CD4-' });
+      }
+    }
+    const same = rows.filter((r) => r.same);
+    const differ = rows.filter((r) => !r.same);
+    const worst = (xs, key) => Math.max(...xs.map((r) => r[key]));
+    const ratios = same.filter((r) => r.negative).map((r) => r.percentile);
+    check('titration', `FlowJo ${fj.flowjoVersion} on the same ${Object.keys(fj.samples).length} tubes (median and Robust SD of PE-A, ungated and in CD4+ and CD4- split at ${fj.split}): where a population holds the same events, FlowJo's median equals CytoWeave's and its Robust SD equals 1.4826 × the median absolute deviation; where FlowJo's display-resolution gating moves events across the split, the share moved`, `${same.length} of ${rows.length} populations hold the same events (all ${rows.filter((r) => r.pop === 'All events').length} ungated): median within ${worst(same, 'median').toExponential(1)}, Robust SD = 1.4826 × MAD within ${worst(same, 'madSD').toExponential(1)}; ${differ.length} split differently by at most ${worst(differ, 'freqDiff').toFixed(2)} points (the most at 1.95 ng, where CD4-dim monocytes straddle the split). CytoWeave's robust SD, FACSDiva's (P84.13 − P15.87) / 2, is ${Math.min(...ratios).toFixed(2)}–${Math.max(...ratios).toFixed(2)} × FlowJo's on the negative cells`, rows.filter((r) => r.pop === 'All events').every((r) => r.same) && worst(same, 'median') < 1e-5 && worst(same, 'madSD') < 1e-5 && worst(differ, 'freqDiff') <= 0.5, 'median and 1.4826 × MAD within 1e-5 (FlowJo shows four decimals); ≤ 0.5 points moved');
     check('titration', 'a walk from 500 V, too high to reach the noise floor: the noise is not estimated and the report asks for rSD_EN; given it, the minimum is extrapolated', `${highWalk.noise ? `estimated ${highWalk.noise.rsdEN.toFixed(1)}` : 'not estimated'}; given rSD_EN, minimum ${highGiven.minimum?.voltage.toFixed(1)} V (true ${truth.minimum.toFixed(1)} V)`, !highWalk.noise && highWalk.notes.some((n) => /baseline report/.test(n)) && Math.abs(highGiven.minimum.voltage - truth.minimum) <= 10, 'not estimated; within 10 V');
   },
   compensation() {

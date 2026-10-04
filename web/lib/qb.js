@@ -258,7 +258,7 @@ export function fitQB(rows, options = {}) {
   };
 }
 
-// Robust CV of a peak (FlowJo's rCV): half the central 68.27% range over the median.
+// Robust CV of a peak (as FlowJo documents its rCV): half the central 68.27% range over the median.
 export function robustCV(values) {
   const x = Float64Array.from(values).sort();
   const q = (p) => {

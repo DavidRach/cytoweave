@@ -4,7 +4,9 @@
 // Statistics per step, on linear values:
 //   stain index       (median+ − median−) / (2 × rSD−)                 Maecker et al. 2004
 //   separation index  (median+ − median−) / ((P84− − median−) / 0.995)  Bigos 2007
-//   with rSD = (P84.13 − P15.87) / 2, as FlowJo and FACSDiva define it.
+//   with rSD = (P84.13 − P15.87) / 2, BD FACSDiva's robust SD. (FlowJo 11's "Robust SD" is
+//   1.4826 × the median absolute deviation: the same for a symmetric population, not for a skewed
+//   one.)
 //
 // Titration (Bonilla et al. 2024): the stain index rises with the amount of antibody until the
 // antigen is saturated, then levels off or falls as unbound antibody raises the background. A
