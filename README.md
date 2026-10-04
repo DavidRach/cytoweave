@@ -920,6 +920,7 @@ pipelines, as the app does, against answers known in advance:
 | Area | Checked against | Result |
 | --- | --- | --- |
 | FCS | All 112 example files | Parsed without warnings; written and read back bit-exact |
+| FCS fuzzing | 20,000 mutations of files in every layout (offsets, keywords, delimiters, flipped bytes, truncation) | Every file read consistently or refused with a message; no crash, hang or outsized allocation |
 | Compensation | The true spillover of the PBMC example | Matrices within 0.02 of the truth; the planted error found first, corrected to 0.158 (true 0.157) |
 | Gating | True cell types | Precision 91–100%, recall 96–100% |
 | QC | Known clogs, bubbles and drift | 99.8–100% of anomalous events removed; ≤ 1.4% of clean events, none from clean or drifting files |
@@ -948,6 +949,7 @@ pipelines, as the app does, against answers known in advance:
 | De-identification | Every example and corpus FCS file | The same events, bit for bit |
 | Reference tools | FlowKit 1.3.2 and FlowIO | FCS decoding, compensation, spectral unmixing and transforms agree |
 | FCS files | 16 instrument and malformed test files | All readable files read and written back bit-exact; malformed ones refused with a clear message |
+| FCS files from 42 more instruments | 47 public files (CytoFLEX, NovoCyte, Aurora, Sony, FACSDiscover S8, FACSymphony, ZE5, Attune, Accuri, Helios and others), against FlowIO and fcsparser | Every file read; values within 4e-7 of both readers, and right where they are not (stale offsets, FCS 3.2 integer channels, log channels stored as decades) |
 | R packages | flowCore, PeacoQC 1.22, FlowSOM and CytoNorm in R, on their example data and other public files | Values read, compensated and logicle-scaled within 1e-7; PeacoQC (classic) removes the same events; FlowSOM maps every event alike and agrees with R as closely as R agrees with itself; CytoNorm within 1e-5 |
 | BD FACSDiva | Its spillover matrix from 15 real single-stain controls | Every entry within 0.015 (median method), with no manual gating |
 
@@ -1054,7 +1056,10 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-`fetch.mjs` downloads the public test data the validation uses (about 450 MB,
+`node validation/fuzz.mjs` fuzzes the FCS reader for longer than the suite
+does (`--cases 200000`), and `--replay <file> <seed>` repeats a failing case.
+
+`fetch.mjs` downloads the public test data the validation uses (about 540 MB,
 into the git-ignored `validation/cache/`); without it those suites are
 skipped.
 

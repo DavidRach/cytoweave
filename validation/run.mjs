@@ -6,10 +6,10 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
-// multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, diva, fortessa,
-// bioconductor
+// multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, fuzz-corpus, diva,
+// fortessa, bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -22,6 +22,7 @@ import { SampleView, countOf, population } from '../web/lib/engine.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
 import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs';
 import { deidentifyFCS } from '../web/lib/deidentify.js';
+import { CORPUS, corpusFiles, fuzz, seedFiles } from './fuzz-cases.mjs';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
 import { characterize, findBeadPeaks, REJECT_RULES } from '../web/lib/qb.js';
@@ -49,6 +50,8 @@ import { trainCytoNorm, applyCytoNorm, batchDiagnostics } from '../web/lib/norma
 import { combinationKey, debarcode } from '../web/lib/debarcode.js';
 import { welchTTest, studentTTest, pairedTTest, mannWhitneyU, adjustPValues, studentTQuantile } from '../web/lib/hypothesis.js';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createTransform, applyTransform, biexTable, estimateLogicleW } from '../web/lib/transforms.js';
 import { createRandom, sampleIndices } from '../web/lib/random.js';
 
@@ -117,13 +120,14 @@ function sameMask(a, b) {
 
 function dataset(name) {
   const set = sources.datasets[name];
-  const root = new URL(`./cache/${name}/`, import.meta.url);
+  // Paths, not URLs: file names may hold "%" or "#".
+  const root = join(fileURLToPath(new URL('./cache/', import.meta.url)), name);
   const missing = set.files.filter((f) => {
-    const path = new URL(f.path, root);
+    const path = join(root, f.path);
     return !existsSync(path) || statSync(path).size !== f.size;
   });
   if (missing.length) throw new MissingData(`${missing.length} of ${set.files.length} files of "${name}" are missing; run node validation/fetch.mjs ${name}`);
-  return { read: (path) => readFileSync(new URL(path, root)), text: (path) => readFileSync(new URL(path, root), 'utf8'), files: set.files.map((f) => f.path) };
+  return { read: (path) => readFileSync(join(root, path)), text: (path) => readFileSync(join(root, path), 'utf8'), files: set.files.map((f) => f.path) };
 }
 
 // A NumPy .npy array (little-endian float64 or int64, C order): { shape, values }.
@@ -352,6 +356,24 @@ const suites = {
     deidentifyChecks('fcs', `${all.length} example files`, all);
   },
 
+  // The reader against mutated files (fuzz-cases.mjs): every file opens with data that agree with
+  // its description, or is refused with a message; nothing crashes, hangs or allocates what the
+  // file cannot hold. Seeded, so a failure replays (node validation/fuzz.mjs --replay).
+  async fuzz() {
+    const seeds = seedFiles();
+    let exact = 0;
+    const wrong = [];
+    for (const file of seeds) {
+      const { datasets } = parseFCS(file.bytes);
+      const ok = datasets.length === file.expected.length && datasets.every((d, k) => d.diagnostics.every((x) => x.level === 'info') && file.expected[k].every((column, p) => column.length === d.eventCount && column.every((v, e) => Object.is(d.data[p][e], v))));
+      if (ok) exact += 1;
+      else wrong.push(file.name);
+    }
+    check('fuzz', `${seeds.length} seed files in every layout read (float, double, 8–64-bit integers in every byte order, packed, ASCII, mixed types, supplemental TEXT, $NEXTDATA chains) hold exactly the values written`, `${exact} exact${wrong.length ? `; wrong: ${wrong.join(', ')}` : ''}`, exact === seeds.length, 'all');
+    const summary = await fuzz({ seed: 1, count: 20000 });
+    check('fuzz', `20,000 mutated files (HEADER offsets, keyword values, deleted and duplicated keywords, delimiters, flipped bytes, version, truncation): read consistently or refused with an FCSError, by both readers alike`, `${summary.read} read, ${summary.refused} refused, ${summary.failures.length} failed${summary.failures.length ? `: ${summary.failures.slice(0, 2).map((f) => `${f.file} #${f.seed} ${f.problem}`).join('; ')}` : ''}`, summary.failures.length === 0, 'no crash, hang, outsized allocation or disagreement');
+    check('fuzz', 'no mutated file takes long to read or refuse', `slowest ${summary.slowest.toFixed(0)} ms (${summary.slowestCase})`, summary.slowest < 1000, '< 1 s');
+  },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});
     const controls = files.filter((f) => f.meta.role === 'single-stain' && f.meta.stain);
@@ -1493,6 +1515,158 @@ const suites = {
   },
   // External data: a BD LSRFortessa panel's 15 single-stain controls (Zenodo 22808501, CC BY 4.0)
   // and FACSDiva's own spillover matrix, computed from them and stored in the samples.
+  // External data: one or two files from each of 40 more instruments (cytoflow's, FlowIO's and
+  // FlowCal's test files, Zenodo records, RosettaX), against FlowIO and fcsparser
+  // (reference/instruments.json, written by reference/generate_instruments.py) and FlowIO's own
+  // published values. Where CytoWeave departs from a reference reader, the reason is checked too.
+  instruments() {
+    const ids = ['cytoflow-instruments', 'flowio', 'flowcal', 'zenodo-instruments', 'zenodo-nanofcm', 'rosettax'];
+    const sets = ids.map((id) => [id, dataset(id)]);
+    const reference = JSON.parse(readFileSync(new URL('./reference/instruments.json', import.meta.url), 'utf8')).files;
+    const relative = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
+    // Where a reference reader is wrong, and why (each reason is checked below).
+    const departures = {
+      'cytoflow-instruments/Accuri - C6.fcs': { flowio: 'stale $BEGINDATA inside the TEXT' },
+      'cytoflow-instruments/Beckman Coulter - Cyan.fcs': { flowio: 'stale keyword offsets; the HEADER places DATA after the TEXT' },
+      'cytoflow-instruments/Millipore - Guava.fcs': { flowioScaled: 'float log channels stored as decades' },
+      'zenodo-instruments/Guava easyCyte/2023-04-06_at_08-30-02am_026.FCS': { flowioScaled: '$PnG applied to log channels' },
+    };
+    const files = [];
+    const failures = [];
+    let datasets = 0;
+    let exactTrip = true;
+    for (const [id, data] of sets) {
+      for (const path of data.files) {
+        const key = `${id}/${path}`;
+        const bytes = data.read(path);
+        try {
+          const raw = parseFCS(bytes, { linearize: false });
+          const scaled = parseFCS(bytes);
+          files.push({ key, bytes, raw, scaled });
+          datasets += raw.datasets.length;
+          for (const d of scaled.datasets) {
+            const again = load({ bytes: writeFCS({ parameters: d.parameters.map((q) => ({ name: q.name, label: q.label, range: q.range })), data: d.data, keywords: d.keywords }) });
+            for (let q = 0; q < d.parameters.length && exactTrip; q += 1) for (let e = 0; e < d.eventCount; e += 1) if (!Object.is(d.data[q][e], again.data[q][e])) { exactTrip = false; break; }
+          }
+        } catch (error) {
+          failures.push(`${key}: ${error.constructor.name}: ${error.message}`);
+        }
+      }
+    }
+    const total = sets.reduce((n, [, data]) => n + data.files.length, 0);
+    const instruments = new Set(files.map((f) => String(f.raw.datasets[0].keywords.$CYT ?? '').split(/[:(,]/)[0].trim()));
+    check('instruments', `${total} files from ${instruments.size} instrument models (CytoFLEX, NovoCyte, Aurora, Sony, FACSDiscover S8, FACSymphony, ZE5, Attune, Accuri, Helios and more) read`, `${files.length} files, ${datasets} data sets${failures.length ? `; ${failures.slice(0, 2).join('; ')}` : ''}`, files.length === total, 'all');
+
+    // Stored values against each reference reader that reads the file.
+    const compare = (f, sets, kind, skip) => {
+      let worst = 0;
+      let where = '';
+      sets.forEach((set, k) => {
+        const expected = set[kind];
+        const d = (kind === 'raw' ? f.raw : f.scaled).datasets[k];
+        if (!d || d.eventCount !== expected.events) { worst = Infinity; where = `data set ${k}: ${d?.eventCount} events vs ${expected.events}`; return; }
+        const timestep = Number.parseFloat(d.keywords.$TIMESTEP) || 1;
+        expected.channels.forEach((channel, i) => {
+          const parameter = d.parameters[i];
+          if (skip?.(parameter)) return;
+          const unit = kind === 'scaled' && parameter.type === 'time' ? timestep : 1;
+          expected.picks.forEach((e, j) => {
+            const diff = relative(d.data[i][e] * unit, channel.values[j]);
+            if (diff > worst) { worst = diff; where = `${parameter.name}: ${d.data[i][e] * unit} vs ${channel.values[j]}`; }
+          });
+        });
+      });
+      return { worst, where };
+    };
+    // FCS 3.2 integer channels in a float file: FlowIO and fcsparser predate FCS 3.2 and read
+    // every channel with $DATATYPE.
+    const fcs32Integer = (d) => (q) => q.datatype && q.datatype !== String(d.keywords.$DATATYPE ?? '').trim().toUpperCase();
+    let worst = 0;
+    let worstWhere = '';
+    const compared = { flowio: 0, fcsparser: 0 };
+    const unread = [];
+    const departed = [];
+    for (const f of files) {
+      const r = reference[f.key];
+      const skip = fcs32Integer(f.raw.datasets[0]);
+      const readers = [['flowio', r?.flowio], ['fcsparser', r?.fcsparser && !r.fcsparser.error ? [{ raw: r.fcsparser }] : r?.fcsparser]];
+      if (readers.every(([, v]) => !v || v.error)) unread.push(f.key.split('/').pop());
+      for (const [name, value] of readers) {
+        if (!value || value.error) continue;
+        const { worst: w, where } = compare(f, value, 'raw', skip);
+        if (departures[f.key]?.[name]) { departed.push(`${f.key.split('/').pop()} (${name}: ${departures[f.key][name]}; differs by ${w.toExponential(1)})`); continue; }
+        compared[name] += 1;
+        if (w > worst) { worst = w; worstWhere = `${f.key}, ${name}, ${where}`; }
+      }
+      if (r?.flowio && !r.flowio.error && !departures[f.key]?.flowioScaled && !departures[f.key]?.flowio) {
+        const { worst: w, where } = compare(f, r.flowio, 'scaled', skip);
+        if (w > worst) { worst = w; worstWhere = `${f.key}, flowio scaled, ${where}`; }
+      }
+    }
+    check('instruments', `stored and scaled values agree with FlowIO (${compared.flowio} files) and fcsparser (${compared.fcsparser}); neither reads ${unread.join(', ')}`, `within ${worst.toExponential(1)}${worst > 1e-6 ? ` (${worstWhere})` : ''}`, worst < 1e-6 && compared.flowio >= 38 && compared.fcsparser >= 40, '< 1e-6 relative');
+    check('instruments', 'where CytoWeave departs from a reference reader, the reason is documented and checked below', departed.join('; ') || 'none', departed.length === 2, 'Accuri C6 and CyAn offsets');
+
+    const file = (key) => files.find((f) => f.key === key);
+    // Stale keyword offsets: the HEADER's DATA gives an event counter and a time that count up.
+    const cyan = file('cytoflow-instruments/Beckman Coulter - Cyan.fcs')?.raw.datasets[0];
+    const accuri = file('cytoflow-instruments/Accuri - C6.fcs')?.raw.datasets[0];
+    const column = (d, name) => d.data[d.parameters.findIndex((q) => q.name === name)];
+    const counter = cyan ? [...column(cyan, 'Event Count').slice(0, 3)] : [];
+    const time = accuri ? column(accuri, 'Time') : [];
+    let rising = true;
+    for (let e = 1; e < time.length; e += 1) if (time[e] < time[e - 1]) { rising = false; break; }
+    check('instruments', 'stale keyword offsets (Accuri C6: $BEGINDATA inside the TEXT; CyAn: 46 bytes past it): the HEADER\'s offsets give a counter and time that count up', `CyAn event counter ${counter.join(', ')}; Accuri time ${rising ? `rises ${time[0]} → ${time[time.length - 1]}` : 'not monotone'}`, counter.join() === '2,3,4' && rising && time.length > 0, 'counter 2, 3, 4; time never falls');
+
+    // Float log channels stored as decades (Millipore Guava PCA, as Guava Muse): each equals its
+    // linear twin. $PnG not applied to log channels (FCS 3.1; Guava easyCyte).
+    const guava = file('cytoflow-instruments/Millipore - Guava.fcs')?.scaled;
+    let pairWorst = 0;
+    let pairs = 0;
+    if (guava) {
+      const d = guava.datasets[0];
+      for (const [a, b] of [['GRN-HLog', 'GRN-HLin'], ['FSC-HLog', 'FSC-HLin'], ['SSC-HLog', 'SSC-HLin'], ['GRN-ALog', 'GRN-A']]) {
+        const x = column(d, a);
+        const y = column(d, b);
+        pairs += 1;
+        for (let e = 0; e < d.eventCount; e += 1) if (y[e] > 1) pairWorst = Math.max(pairWorst, relative(x[e], y[e]));
+      }
+    }
+    const easy = file('zenodo-instruments/Guava easyCyte/2023-04-06_at_08-30-02am_026.FCS')?.scaled.datasets[0];
+    const easyLog = easy?.parameters.find((q) => q.amp[0] > 0 && q.gain !== 1);
+    check('instruments', `float log channels stored as decades (Millipore Guava, ${guava?.datasets.length} data sets): each equals its linear twin (${pairs} pairs); $PnG left off log channels (Guava easyCyte)`, `within ${pairWorst.toExponential(1)}; ${easyLog ? `${easyLog.name} gain ${easyLog.gain} not applied: ${!easyLog.gainApplied}` : 'no log channel with a gain'}`, pairs === 4 && pairWorst < 1e-5 && guava?.datasets.length === 15 && easyLog && !easyLog.gainApplied, '< 1e-5; 15 data sets; gain not applied');
+
+    // FlowIO's own test of variable integer widths (16 and 32 bits, the 32-bit values masked to
+    // $PnR's bits): tests/test_flowdata.py, test_parse_var_int_data.
+    const published = [49135, 61373, 48575, 49135, 61373, 48575, 7523, 598, 49135, 61373, 48575, 49135, 61373, 48575, 28182, 61200, 48575, 49135, 32445, 30797, 19057, 49135, 61373, 48575, 5969, 8265081, 61266, 48575, 49135, 20925, 61265, 48575, 27961, 25200, 61287, 48575, 9795, 49135, 29117, 49135, 61373, 48575, 61228, 48575, 22, 21760, 49135, 20413, 49135, 23997, 19807, 15691602];
+    const variable = file('flowio/Stratedigm S1400EXi/variable_int_example.fcs')?.raw.datasets[0];
+    const decoded = variable ? Array.from({ length: variable.eventCount * variable.parameters.length }, (_, k) => variable.data[k % variable.parameters.length][Math.floor(k / variable.parameters.length)]) : [];
+    check('instruments', 'mixed 16- and 32-bit integers with masked high bits (Stratedigm) equal FlowIO\'s published test values (FlowIO 1.4 itself no longer reads the file)', `${decoded.filter((v, k) => v === published[k]).length} of ${published.length} equal`, decoded.length === published.length && decoded.every((v, k) => v === published[k]), 'all 52');
+
+    // TEXT oddities: supplemental TEXT without its leading delimiter (Bio-Rad S3) or holding
+    // something else (Apogee); empty values with a form-feed delimiter (NanoFCM); FCS 3.2 (S8).
+    const s3 = file('flowio/Bio-Rad S3/M0_WM278_S1.fcs')?.raw.datasets[0];
+    const apogee = file('rosettax/Apogee A60-Micro/apogee_rainbow_beads.fcs')?.raw.datasets[0];
+    const nano = file('zenodo-nanofcm/SP2 Uninfected with 1% Triton X-100.fcs')?.raw.datasets[0];
+    const s8 = file('zenodo-instruments/BD FACSDiscover S8/Zam36 YFP.fcs')?.raw.datasets[0];
+    const junk = (d) => Object.keys(d?.keywords ?? {}).filter((k) => /[\r\n\f]/.test(k) || k.length > 64).length;
+    const textOk = s3 && 'SORTSTATS' in s3.keywords && 'PROTOCOL' in s3.keywords && junk(s3) === 0
+      && apogee?.diagnostics.some((x) => x.code === 'stext-ignored') && junk(apogee) === 0
+      && nano?.keywords.$FIL && nano.keywords.$SYS && junk(nano) === 0
+      && s8?.parameters.length === 440 && s8.parameters.some((q) => q.datatype === 'I');
+    check('instruments', 'TEXT segments: Bio-Rad S3\'s supplemental keywords read, Apogee\'s settings block ignored, NanoFCM\'s empty values kept apart, the S8\'s 440 parameters with integer channels (FCS 3.2)', `S3 SORTSTATS ${s3 && 'SORTSTATS' in s3.keywords ? 'read' : 'missing'}; Apogee ${apogee?.diagnostics.some((x) => x.code === 'stext-ignored') ? 'ignored' : 'read'}; NanoFCM $FIL ${nano?.keywords.$FIL ? 'present' : 'missing'}; S8 ${s8?.parameters.length} parameters; junk keywords ${junk(s3) + junk(apogee) + junk(nano)}`, Boolean(textOk), 'all, no junk keywords');
+
+    const truncated = file('zenodo-instruments/DxFLEX/20210211_iDC_Gain3.fcs')?.raw.datasets[0];
+    check('instruments', 'a file cut short (DxFLEX, 10,000 events declared) opens with the events it holds and says so', `${truncated?.eventCount} events; ${truncated?.diagnostics.filter((x) => x.level !== 'info').map((x) => x.code).join(', ')}`, truncated?.eventCount === 466 && truncated.diagnostics.some((x) => x.code === 'truncated' && x.level === 'error'), '466 events, with an error-level diagnostic');
+    check('instruments', 'every data set is written and read back', exactTrip ? 'bit-exact' : 'differs', exactTrip, 'bit-exact');
+    deidentifyChecks('instruments', `${files.length} instrument files`, files.map((f) => ({ name: f.key, bytes: f.bytes })));
+  },
+  // External data: the same, with real instruments' files as the seeds.
+  async 'fuzz-corpus'() {
+    for (const id of CORPUS) dataset(id);
+    const corpus = corpusFiles();
+    const summary = await fuzz({ seed: 2, count: 10000, corpus });
+    check('fuzz-corpus', `10,000 mutations of ${corpus.length} instrument files (every FCS data set above, files up to 4 MB) and the seeds`, `${summary.read} read, ${summary.refused} refused, ${summary.failures.length} failed${summary.failures.length ? `: ${summary.failures.slice(0, 2).map((f) => `${f.file} #${f.seed} ${f.problem}`).join('; ')}` : ''}; slowest ${summary.slowest.toFixed(0)} ms`, summary.failures.length === 0, 'no crash, hang, outsized allocation, disagreement or case over 1 s');
+  },
   diva() {
     const data = dataset('zenodo-skull');
     const sample = parseFCS(data.read('Skull BM Broad_Tube_017.fcs')).datasets[0];

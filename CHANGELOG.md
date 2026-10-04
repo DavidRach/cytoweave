@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **FCS files that hung or crashed the reader.** A fuzzer that mutates FCS files (see Validation) found files that the reader looped on for hours or failed on with an internal error instead of a message. Each is now refused with a message that quotes the offending keyword, or read with what its data hold:
+  - a bit width beyond 64 (`$PnB` of 10^15 in packed data looped through 10^15 bits per value);
+  - a `$PAR` far larger than the TEXT segment could describe (10^15 parameters);
+  - a negative `$TOT` (now ignored, with the count inferred from the data) or a negative or reversed `$BEGINDATA`/`$ENDDATA` (the HEADER's offsets are used instead);
+  - ASCII and packed data whose `$TOT` is larger than the data can hold (2^31 events in a 1 KB file asked for 8 GB; now only the events present are read, with a warning);
+  - negative supplemental TEXT offsets, which made the in-memory reader read the wrong bytes and the streaming reader fail with an internal error;
+  - a missing `$TOT` together with a missing DATA end.
+- **Two instruments' files read at the wrong offset.** BD Accuri C6 and Beckman Coulter CyAn files whose `$BEGINDATA` was written before their TEXT segment grew (pointing inside it, or 46 bytes past it) were read from there, so every event was shifted; FlowIO reads them the same wrong way. When the HEADER and the keywords disagree, a range that cannot hold the data is now set aside, and the HEADER is used when only it places DATA directly after the TEXT. The CyAn's event counter now reads 2, 3, 4 and the Accuri's time rises.
+- **Supplemental TEXT read with the wrong delimiter.** It was split on its own first byte: a Bio-Rad S3 file, whose supplemental TEXT leaves out the leading delimiter, gained 192 junk keywords and lost its sort statistics and protocol. It is now read with the primary delimiter, and a supplemental segment that holds no keywords (Apogee's settings block, a CyFlow Cube's ZIP archive) is ignored with a note.
+- **Empty keyword values merged keywords.** A NanoFCM file writes empty values as two delimiters in a row; they were read as an escaped delimiter, joining `$PROJ` and `$FIL` (and `$OP` and `$SYS`) into one keyword. A keyword name that contains the delimiter now counts against that reading.
+- **A broken later data set no longer hides the earlier ones.** In a file with several data sets (`$NEXTDATA`), one that cannot be read is left out with a warning, and the data sets before it open.
+- **Long TEXT segments read 6× faster.** The keyword parser copies text between delimiters in one piece instead of a character at a time.
+
+### Validation
+
+- **Fuzzing** (new `fuzz` and `fuzz-corpus` suites; `fuzz-cases.mjs`, `fuzz.mjs`): 21 generated files in every layout the reader decodes hold exactly the values written; 20,000 seeded mutations of them (HEADER offsets, keyword values, deleted and duplicated keywords, delimiters, flipped bytes, the version line, truncation) and 10,000 of 73 real instruments' files each open with consistent data or are refused with a message, never crash, hang or allocate more than the file could hold, and the in-memory and streaming readers agree. `node validation/fuzz.mjs` runs longer campaigns (0 failures in 310,000 cases) and replays any case from its seed.
+- **FCS files from 42 more instrument models** (new `instruments` suite; external data `cytoflow-instruments`, `flowio`, `flowcal`, `zenodo-instruments`, `zenodo-nanofcm`, `rosettax`; `reference/instruments.json` with `generate_instruments.py`): 47 public files from BD (including the FACSDiscover S8 in FCS 3.2 and the FACSymphony A5 SE), Beckman Coulter (CytoFLEX, DxFLEX, CyAn, Gallios, MoFlo), Cytek (raw Aurora, Northern Lights), Sony, Agilent, Thermo Fisher, Bio-Rad, Millipore, Amnis, Partec, Stratedigm, Apogee, NanoFCM, BeamCyte and Helios all read; stored and scaled values within 3.7e-7 of FlowIO 1.4 (41 files) and fcsparser 0.2.8 (44); where CytoWeave departs from them, the reason is checked (offsets, FCS 3.2 integer channels, log channels stored as decades, gain not applied to log channels); three files neither reads are read, one checked against FlowIO's own published test values. The fuzzer uses all 73 instrument files of up to 4 MB as seeds. The public test data grew to about 540 MB.
+- The validation guide now describes the suites added in 0.4 (`spread`, `fortessa`, `multiverse`, `multiverse-ics`, `accessibility`).
+
 ## 0.4.0 (2026-10-03)
 
 CytoWeave 0.4 covers an experiment before, during and after acquisition: it predicts a panel's spread from the instrument's own noise before the panel is run, checks each file as the instrument writes it, and tells you whether a comparison's conclusion would survive the choices another analyst might have made. It can show its colors for every kind of color vision, works from the keyboard and with screen readers, and its FlowJo workspaces now open in FlowJo 11.

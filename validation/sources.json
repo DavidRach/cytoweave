@@ -1278,6 +1278,324 @@
     }
    ]
   },
+  "cytoflow-instruments": {
+   "title": "cytoflow instrument test files (FCS and LMD from 13 instruments)",
+   "description": "FCS 2.0 and 3.0 files and Beckman Coulter LMD files from many vendors, mostly bead runs, collected by Josef Spidlen for FCS reader developers and kept in cytoflow's tests: BD Accuri C6, Applied Biosystems Attune (first generation), Beckman Coulter CyAn, Gallios (LMD with a second data set), MoFlo Astrios (68 parameters) and MoFlo XDP, Cytek DxP10 and Northern Lights (the full file whose HEADER and TEXT fcsparser keeps as sample_header.fcs), Millipore Guava PCA (15 data sets chained by $NEXTDATA), Partec CyFlow (FCS 3.0) and PAS (FCS 2.0), Stratedigm S1400 (mixed 16- and 32-bit $PnB) and iCyt Eclipse. The System II, Cytomics FC500, FACSAria II, MACSQuant, Cytek xP5 and Guava Muse files of the same folder are left out (clinical panels, or instruments already covered).",
+   "source": "https://github.com/cytoflow/cytoflow (cytoflow/tests/data/instruments, commit c31a6f5); the folder's README.txt credits Josef Spidlen; the files trace back to FlowRepository public experiment 4",
+   "license": "Part of cytoflow's repository, GPL-2.0-or-later (https://github.com/cytoflow/cytoflow/blob/c31a6f5dfcecb471aad6386c97c30ac6dc39c5e8/LICENSE.txt). CytoWeave downloads them for testing and does not redistribute them.",
+   "base": "https://raw.githubusercontent.com/cytoflow/cytoflow/c31a6f5dfcecb471aad6386c97c30ac6dc39c5e8/cytoflow/tests/data/instruments/",
+   "files": [
+    {
+     "path": "Accuri - C6.fcs",
+     "size": 3399976,
+     "sha256": "3b901ec60e262073d8161e8c55dd2046ce16cb8346d6ac32fee3d4c701366531"
+    },
+    {
+     "path": "Applied Biosystems - Attune.fcs",
+     "size": 2309859,
+     "sha256": "d50121973030fe3aff3c605b5d20f841d86388dca949808099c0e70362d86bcb"
+    },
+    {
+     "path": "Beckman Coulter - Cyan.fcs",
+     "size": 143638,
+     "sha256": "b71fb0deaa0ada056a914c43d612cca7d47697d6fddf40cae3eecaad14c7a88c"
+    },
+    {
+     "path": "Beckman Coulter - Gallios.LMD",
+     "size": 884668,
+     "sha256": "0f68958a8b5913c31a24611e03ee809203381febbab3ef710224dfb944708011"
+    },
+    {
+     "path": "Beckman Coulter - MoFlo Astrios - linear settings.fcs",
+     "size": 2185400,
+     "sha256": "372670f5036a781d51f2accf4f7fe1ee1e3fe999b3c6620c1927597227dc0426"
+    },
+    {
+     "path": "Beckman Coulter - MoFlo XDP.fcs",
+     "size": 4046512,
+     "sha256": "bf5192b8fec52187527ed149121e102b9d55e5c3444f37885598e0a8ab729ffe"
+    },
+    {
+     "path": "Cytek DxP10.fcs",
+     "size": 1214716,
+     "sha256": "a8c1ffe25bdcd0e4d1ff189c3a49f63c7d45cea52691bd1c21597655de3bff8b"
+    },
+    {
+     "path": "Cytek NL-2000.fcs",
+     "size": 2165920,
+     "sha256": "35730b54465a972545031fa7b5ea1f0d93631e26fbb3e1bf70151aedf8512ab0"
+    },
+    {
+     "path": "Millipore - Guava.fcs",
+     "size": 4599712,
+     "sha256": "ce7c2fb38d6502978177f0ec9d22b086f15cfd11c714b67063b1d8207c31179c"
+    },
+    {
+     "path": "Partec - CyFlow v2.9.fcs",
+     "size": 586934,
+     "sha256": "f36e8958f51a13bc07ad9ff9f8daa7b5ae924a37cbb6232402972967c2d04eae"
+    },
+    {
+     "path": "Partec - PAS.FCS",
+     "size": 543163,
+     "sha256": "9a144fbca83da8f6f6ba94324a18c944186381bee7e036e445f4148e87019310"
+    },
+    {
+     "path": "Stratedigm - S1400.fcs",
+     "size": 787659,
+     "sha256": "c4ee3403ff55ddb6da79d6846be9f820499904d0c694998202a6218747168abc"
+    },
+    {
+     "path": "iCyt - Eclipse.lmd",
+     "size": 1393879,
+     "sha256": "adb8f97006f0dc5a79ca9c31a0fa48880aa14477efe071a8c98be5b70508a609"
+    }
+   ]
+  },
+  "flowio": {
+   "title": "FlowIO test files: Attune NxT, Accuri C6 Plus, Bio-Rad S3 and Stratedigm",
+   "description": "FCS 3.0 and 3.1 files from FlowIO's test data: a Thermo Fisher Attune NxT plate well (HEK cells), a BD Accuri C6 Plus file, a Bio-Rad S3 sorter file with zero gains and a supplemental TEXT segment after DATA, and a Stratedigm S1400EXi file with mixed 16- and 32-bit parameters and anonymized keywords. Ki67-117 tube 1.LMD of the same folder is left out: its file name and keywords point to a clinical sample.",
+   "source": "https://github.com/whitews/FlowIO (data/fcs_files, commit 83d28a2)",
+   "license": "Part of FlowIO's repository, BSD-3-Clause (https://github.com/whitews/FlowIO/blob/83d28a22d42235c10d17afb017250ee208afed95/LICENSE); the provenance of the files is not documented there. CytoWeave downloads them for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "Attune NxT/G11.fcs",
+     "url": "https://raw.githubusercontent.com/whitews/FlowIO/83d28a22d42235c10d17afb017250ee208afed95/data/fcs_files/G11.fcs",
+     "size": 285872,
+     "sha256": "40ed9f6d4293a87077cab07a34c68b2497d4d69988adcb64a5f718098f48b56f"
+    },
+    {
+     "path": "Accuri C6 Plus/B01 KC-A-W---91-US.fcs",
+     "url": "https://raw.githubusercontent.com/whitews/FlowIO/83d28a22d42235c10d17afb017250ee208afed95/data/fcs_files/B01%20KC-A-W---91-US.fcs",
+     "size": 93402,
+     "sha256": "33736fb7a40a4f571837c231d342df5fd4b20b5dd70439b74b3610f94b6c2a36"
+    },
+    {
+     "path": "Bio-Rad S3/M0_WM278_S1.fcs",
+     "url": "https://raw.githubusercontent.com/whitews/FlowIO/83d28a22d42235c10d17afb017250ee208afed95/data/fcs_files/zero_gain/M0_WM278_S1.fcs",
+     "size": 13499572,
+     "sha256": "f9e528334b63fe2f879f06164159a0e1ef5daa0c6e4e253f03c92ad030d6822f"
+    },
+    {
+     "path": "Stratedigm S1400EXi/variable_int_example.fcs",
+     "url": "https://raw.githubusercontent.com/whitews/FlowIO/83d28a22d42235c10d17afb017250ee208afed95/data/fcs_files/variable_int_example.fcs",
+     "size": 6189,
+     "sha256": "88d2933d52686b061f36d8596e0826c9d2e75eb3d654d570f4ad3f1153f9beb2"
+    }
+   ]
+  },
+  "flowcal": {
+   "title": "FlowCal test files: FACSCanto II FCS 2.0 export and Cytek xP3+ 24-bit data",
+   "description": "Two of FlowCal's test files: a BD FACSCanto II file written as FCS 2.0 by FACSDiva (16-bit integers, log amplification) and a Cytek xP3+ file written by FlowJo Collector's Edition with 24-bit big-endian integers ($PnB 24).",
+   "source": "https://github.com/taborlab/FlowCal (test, commit 0212f41)",
+   "license": "Part of FlowCal's repository, MIT (https://github.com/taborlab/FlowCal/blob/0212f417a53b2fc76658d83b751b892f2d05f175/license.txt). CytoWeave downloads them for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "FACSCanto II FCS2.0/Data002.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/test/Data002.fcs",
+     "size": 361665,
+     "sha256": "78324d3ecdb43f283b20e7844515b7895baef67aac73410e40c79276a7bf88e9"
+    },
+    {
+     "path": "Cytek xP3+/Data003.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/test/Data003.fcs",
+     "size": 604096,
+     "sha256": "f7612cfb4d97ca2a6cda9ed0cc9f93c8e31e96f8a90ddea74819cb9fc09cd636"
+    }
+   ]
+  },
+  "zenodo-instruments": {
+   "title": "Instrument variety from Zenodo: one or two files from each of 23 cytometers",
+   "description": "Small FCS files from CC BY 4.0 Zenodo records, chosen for instrument and writer variety: Beckman Coulter CytoFLEX (big-endian), CytoFLEX S (little-endian) and DxFLEX (one complete file and one whose DATA segment is truncated); Agilent NovoCyte (NovoExpress, $UNICODE) and NovoCyte Penteon; Cytek Aurora raw 5-laser files (71 and 74 parameters) and an Aurora Evo bead file (SpectroFlo 4, UTF-8 in CREATOR); Sony SA3800, MA900 and SH800; BD FACSDiscover S8 (FCS 3.2, 440 parameters, mixed $PnDATATYPE, a 720 kB TEXT segment), FACSymphony A5 SE, FACSLyric and FACSVerse (FACSuite), FACSMelody (FACSChorus) and Influx; Thermo Fisher Bigfoot; Cytek/Luminex CellStream (84 parameters); Amnis ImageStream (IDEAS export); Guava easyCyte (InCyte, FCS 2.0 big-endian); Bio-Rad ZE5 ($CYT YETI, Propel Labs' name for it); a raw CyTOF/Helios file; BeamCyte (TEXT in GBK).",
+   "source": "Zenodo records https://zenodo.org/records/5174952, https://zenodo.org/records/7659210, https://zenodo.org/records/7971252, https://zenodo.org/records/10639508, https://zenodo.org/records/13773748, https://zenodo.org/records/14246044, https://zenodo.org/records/14538019, https://zenodo.org/records/14791966, https://zenodo.org/records/14893440, https://zenodo.org/records/14989800, https://zenodo.org/records/15350040, https://zenodo.org/records/15726118, https://zenodo.org/records/17098564, https://zenodo.org/records/17222100, https://zenodo.org/records/17457137, https://zenodo.org/records/18439538, https://zenodo.org/records/18985327, https://zenodo.org/records/19221995, https://zenodo.org/records/20157668, https://zenodo.org/records/20559117, https://zenodo.org/records/21643327, https://zenodo.org/records/21824329, https://zenodo.org/records/22029676, https://zenodo.org/records/22937779",
+   "license": "CC BY 4.0, as each Zenodo record states (https://creativecommons.org/licenses/by/4.0/). CytoWeave downloads the files for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "CytoFLEX/M1.fcs",
+     "url": "https://zenodo.org/api/records/18439538/files/M1.fcs/content",
+     "size": 967488,
+     "sha256": "379580edecda52f33842020ed15b06b9efa2f825b5f8a7e0ebd210dbb9c0a102"
+    },
+    {
+     "path": "CytoFLEX S/X33_Age_M_CFDA_6_2.fcs",
+     "url": "https://zenodo.org/api/records/20157668/files/X33_Age_M_CFDA_6_2.fcs/content",
+     "size": 2590520,
+     "sha256": "25b191772a895d3b91e68769853c4ba86359eb50ca742173dce278a3da382707"
+    },
+    {
+     "path": "DxFLEX/90947109-7c5c-4a4a-bb5f-3051e84ec8fb_2.fcs",
+     "url": "https://zenodo.org/api/records/14246044/files/90947109-7c5c-4a4a-bb5f-3051e84ec8fb_2.fcs/content",
+     "size": 107568,
+     "sha256": "7036f8d200861a2ac9002c66df54e3fac898c2cef64c43d802892240289b834a"
+    },
+    {
+     "path": "DxFLEX/20210211_iDC_Gain3.fcs",
+     "url": "https://zenodo.org/api/records/14246044/files/20210211_iDC_Gain3.fcs/content",
+     "size": 71936,
+     "sha256": "5841d93bea2ef0a0ce5517338ae030d8fde8b99ff86ce7e60da3217e96a38c16"
+    },
+    {
+     "path": "NovoCyte/D5_Xylose_5.fcs",
+     "url": "https://zenodo.org/api/records/22029676/files/D5_Xylose_5.fcs/content",
+     "size": 1891579,
+     "sha256": "f1a78afb4fd405005cde1eb844f40195acfab92d7dbea55373061d13c8130adb"
+    },
+    {
+     "path": "NovoCyte Penteon/Compensation_B4_UV667_BUV661.fcs",
+     "url": "https://zenodo.org/api/records/15350040/files/Scenith_05062024_Compensation%20Specimen_B4_UV667%20BUV661%20-%20CRTh2_20240521.fcs/content",
+     "size": 114115,
+     "sha256": "5dfc447a33289c60532d1fd5109d05fed3d899421a61922bf8467a1a8bbad4d4"
+    },
+    {
+     "path": "Aurora 5L raw/Reference Group-B6 CD11c AF660 (Beads).fcs",
+     "url": "https://zenodo.org/api/records/17457137/files/Reference%20Group-B6%20CD11c%20AF660%20%28Beads%29.fcs/content",
+     "size": 475312,
+     "sha256": "ca7e9c324f6ea8b73f936aa66f145c591564c4184f1b9e01fdc3282ffae78e52"
+    },
+    {
+     "path": "Aurora 5L raw/Reference Group_AF-2 (Cells).fcs",
+     "url": "https://zenodo.org/api/records/17098564/files/Reference%20Group_AF-2%20%28Cells%29_2024_10_04_13_22_27.fcs/content",
+     "size": 182592,
+     "sha256": "84b1e0a59b662d6d2c9629637fcec8dda4cad445e64ffa84026363662ed37694"
+    },
+    {
+     "path": "Aurora Evo/Negative_1 (Beads).fcs",
+     "url": "https://zenodo.org/api/records/21643327/files/Negative_1%20%28Beads%29.fcs/content",
+     "size": 809729,
+     "sha256": "9f92f2c38d6a8fd93ca60b646ba6ff00cd4aadc110c9b0a89b41c1d61caabc84"
+    },
+    {
+     "path": "Sony SA3800/G07 Well - G07 WLSM.fcs",
+     "url": "https://zenodo.org/api/records/7971252/files/G07%20Well%20-%20G07%20WLSM.fcs/content",
+     "size": 401333,
+     "sha256": "a8d44a948564b0b3cf3bbc885b153c1838f3a24281edbe91014be5b08a69457a"
+    },
+    {
+     "path": "Sony MA900/Fig2_Control_US.fcs",
+     "url": "https://zenodo.org/api/records/21824329/files/Fig2_Control_US.fcs/content",
+     "size": 148060,
+     "sha256": "eb70839c9ec43235bf327f75c79235952b2ecd92d550b603a8df77ed1e5ef4be"
+    },
+    {
+     "path": "Sony SH800/figure 1A- 2nd-647-ncin_Data Source - 1.fcs",
+     "url": "https://zenodo.org/api/records/7659210/files/figure%201A-%202nd-647-ncin_Data%20Source%20-%201.fcs/content",
+     "size": 381908,
+     "sha256": "02034dde9634d4181494cb6ec0b2c3277938f3ed92b663526e414aeab15f1b05"
+    },
+    {
+     "path": "BD FACSDiscover S8/Zam36 YFP.fcs",
+     "url": "https://zenodo.org/api/records/19221995/files/Zam36%20YFP.fcs/content",
+     "size": 18319692,
+     "sha256": "13b1f5e7e90134f288c24339c3ef884e182755f54240fc16a3208316f2a2c218"
+    },
+    {
+     "path": "BD FACSymphony A5 SE/Comps_UNST.fcs",
+     "url": "https://zenodo.org/api/records/18985327/files/Comps_UNST.fcs/content",
+     "size": 1032440,
+     "sha256": "635e389961b6ebfc0ed4802b863d20b98f8d0f5e16b02cf498ed4ad0ec958ce2"
+    },
+    {
+     "path": "BD FACSLyric/20250409_Mock_4G2_340.fcs",
+     "url": "https://zenodo.org/api/records/17222100/files/20250409_Mock_4G2_340.fcs/content",
+     "size": 116372,
+     "sha256": "03be42bd73f8abf0735c57f7930dd19ff9390b2822950c2d9a5d2fd9c9edd411"
+    },
+    {
+     "path": "BD FACSVerse/kg-1_001.fcs",
+     "url": "https://zenodo.org/api/records/14791966/files/kg-1_001.fcs/content",
+     "size": 201708,
+     "sha256": "38def2934eb761c52f5822577ddfd772f70514d79f03f66a36dd9a7ae655b103"
+    },
+    {
+     "path": "BD FACSMelody/210324_PBS1.fcs",
+     "url": "https://zenodo.org/api/records/5174952/files/210324_PBS1.fcs/content",
+     "size": 446030,
+     "sha256": "151400b760cc854284db98313e3ad6ba38f2fa961d928fac9f947f0f37743f48"
+    },
+    {
+     "path": "BD Influx/unstained.fcs",
+     "url": "https://zenodo.org/api/records/14538019/files/unstained.fcs/content",
+     "size": 315353,
+     "sha256": "8ff53b98dfc7524e1a246ddaf742fb23fb1dd1fab442f49bf3fe827e6839ee8a"
+    },
+    {
+     "path": "Thermo Bigfoot/Buffer Run 1 20260213144125.fcs",
+     "url": "https://zenodo.org/api/records/20559117/files/Buffer%20Run%201%2020260213144125.fcs/content",
+     "size": 11554,
+     "sha256": "cf260243d8c65ccf3c52d1fe77298db281d944ab0881191aade8aa8ff527f30e"
+    },
+    {
+     "path": "CellStream/mixed20.fcs",
+     "url": "https://zenodo.org/api/records/14989800/files/mixed20.fcs/content",
+     "size": 6002473,
+     "sha256": "cce378b95244b4596955356b7fe73e2f4413ecc8c2aa9b791b5e23f0d3f18910"
+    },
+    {
+     "path": "Amnis ImageStream/No ab 2_3.fcs",
+     "url": "https://zenodo.org/api/records/15726118/files/No%20ab%202_3.fcs/content",
+     "size": 5144057,
+     "sha256": "7c64e345f67ccf329324e48362ed20bca2f584eff9321d0ca0c4b91fe51bcb33"
+    },
+    {
+     "path": "Guava easyCyte/2023-04-06_at_08-30-02am_026.FCS",
+     "url": "https://zenodo.org/api/records/22937779/files/2023-04-06_at_08-30-02am_026.FCS/content",
+     "size": 114418,
+     "sha256": "1ffb2e7891bfd48890fa09f893a885289074eac8e3c8a25457bf0919806e9c0d"
+    },
+    {
+     "path": "Bio-Rad ZE5/Step3-G.fcs",
+     "url": "https://zenodo.org/api/records/10639508/files/CleanPositiveControl_bubbles_Panel_step3g_fcs_folder_Step3-G.fcs/content",
+     "size": 2803194,
+     "sha256": "59e4cad8e39e03b61982c4210c9868c5067aa7825cebf78dfdbd5d7ff485ff8d"
+    },
+    {
+     "path": "CyTOF Helios/HAGE4.fcs",
+     "url": "https://zenodo.org/api/records/13773748/files/HAGE4.fcs/content",
+     "size": 397246,
+     "sha256": "696922b4f2cf281b667414ee09eb32c2071dd3c9b27b4c2b50036b7ed5f5111a"
+    },
+    {
+     "path": "BeamCyte/NC-1.fcs",
+     "url": "https://zenodo.org/api/records/14893440/files/NC%E7%BB%84-1.fcs/content",
+     "size": 4719201,
+     "sha256": "01580c298424ae8540de86e4d27c1f0756103a4f71dea36f5fc9e3843d9a4955"
+    }
+   ]
+  },
+  "zenodo-nanofcm": {
+   "title": "NanoFCM Flow NanoAnalyzer file (Zenodo 14270626)",
+   "description": "An FCS 3.0 file from a NanoFCM Flow NanoAnalyzer (extracellular vesicles): form-feed delimiter, empty keyword values ($PROJ, $OP) written as two adjacent delimiters, big-endian floats, $BEGINSTEXT pointing at the primary TEXT.",
+   "source": "https://zenodo.org/records/14270626 (doi:10.5281/zenodo.14270626)",
+   "license": "CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). CytoWeave downloads the file for testing and does not redistribute it.",
+   "files": [
+    {
+     "path": "SP2 Uninfected with 1% Triton X-100.fcs",
+     "url": "https://zenodo.org/api/records/14270626/files/SP2%20Uninfected%20with%201%25%20Triton%20X-100.fcs/content",
+     "size": 46771,
+     "sha256": "885a0f1c71642eefd15eb897e0adcf35925625018cbcae6e1859d1a57be6858d"
+    }
+   ]
+  },
+  "rosettax": {
+   "title": "RosettaX sample files: Apogee A60-Micro and Cytek Northern Lights rainbow beads",
+   "description": "Rainbow calibration bead runs on an Apogee A60-Micro (FCS 3.0, 32-bit integers, a supplemental TEXT segment holding Apogee's own settings block rather than keyword/value pairs) and on a Cytek Northern Lights (FCS 3.1, SpectroFlo 3.0.3; $BEGINSTEXT 0 with a nonzero $ENDSTEXT), from RosettaX's sample files.",
+   "source": "https://github.com/MartinPdeS/RosettaX (RosettaX/assets/sample-files, commit 24b9e8a)",
+   "license": "Part of RosettaX's repository, AGPL-3.0-or-later (https://github.com/MartinPdeS/RosettaX/blob/24b9e8a9a698c103084d7dc019815cf358f056f5/LICENSE). CytoWeave downloads them for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "Apogee A60-Micro/apogee_rainbow_beads.fcs",
+     "url": "https://raw.githubusercontent.com/MartinPdeS/RosettaX/24b9e8a9a698c103084d7dc019815cf358f056f5/RosettaX/assets/sample-files/apogee_rainbow_beads.fcs",
+     "size": 2243443,
+     "sha256": "758e8a3fa5dddc026692b5c4b28a00f816db11d0467001aa228533192c9d288d"
+    },
+    {
+     "path": "Cytek Northern Lights/northern_lights_rainbow_beads.fcs",
+     "url": "https://raw.githubusercontent.com/MartinPdeS/RosettaX/24b9e8a9a698c103084d7dc019815cf358f056f5/RosettaX/assets/sample-files/northern_lights_rainbow_beads.fcs",
+     "size": 1976914,
+     "sha256": "b52ebdb7a7a56b925915a0b0b4fd1bb68c49b142171136e612e7a99bc0c09c7d"
+    }
+   ]
+  },
   "rpackages": {
    "title": "Example data of the R packages PeacoQC, FlowSOM and CytoNorm",
    "description": "PeacoQC's 111.fcs; FlowSOM's 68983.fcs with the FlowJo workspace gated on it; CytoNorm's six control files (three batches, the same two volunteers in each).",

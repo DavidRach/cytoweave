@@ -292,13 +292,28 @@ to be revised as each wave lands.
 
 ### Wave 5
 
-1. **A harder FCS reader (D8):** a fuzzer that mutates real files (offsets, keywords, data types,
-   byte order, truncation, several data sets) and requires that the reader never crashes or hangs
-   and refuses with a clear message; public files from instruments not yet in the corpus
-   (CytoFLEX, Attune, NovoCyte, MACSQuant, Sony, Aurora and others), read as FlowIO and fcsparser
-   read them.
-   - Validation: a new `fuzz` suite (seeded, so a failure can be replayed) and the larger corpus
-     in `fcsparser` and `reference`.
+1. **A harder FCS reader (D8): done.** A fuzzer mutates files in every layout the reader decodes
+   and real instruments' files (HEADER offsets, keyword values, deleted and duplicated keywords,
+   delimiters, flipped bytes, the version line, truncation); each case must open with consistent
+   data or be refused with an `FCSError`, in a worker with a timeout so that a hang fails rather
+   than stalls the run. 47 public files from 42 more instrument models were added, compared with
+   FlowIO and fcsparser.
+   - Found by fuzzing: two hangs (a `$PnB` of 10^15 in packed data, a `$PAR` of 10^15), internal
+     errors on negative `$TOT` and negative or reversed offsets, ASCII and packed data allocating
+     what `$TOT` claimed rather than what the file held, messages saying "NaN"; a broken later data
+     set hid the earlier ones; long TEXT parsed slowly.
+   - Found on real files: stale `$BEGINDATA` (Accuri C6, CyAn) read every event shifted, as FlowIO
+     still does; supplemental TEXT split on its own first byte (Bio-Rad S3: 192 junk keywords);
+     empty values merging keywords (NanoFCM). The reference readers are wrong on four files in
+     ways the suite checks (offsets, FCS 3.2 integer channels, float log channels stored as
+     decades, `$PnG` on log channels).
+   - Validation: `fuzz` (21 seed layouts exact; 20,000 cases), `fuzz-corpus` (10,000 cases over 73
+     instrument files), `instruments` (47 files within 3.7e-7 of FlowIO and fcsparser);
+     `fuzz.mjs` for longer runs (0 failures in 310,000 cases) and replay.
+   - Not done: the ZE5 writes a `$PnR` (2^31 − 1) below what its time word and event-information
+     bits use, so masking as the standard describes (and as FlowIO and fcsparser do) changes them;
+     no ASCII, double or 64-bit integer files from instruments were found (the generated seeds
+     cover those layouts); Sony ID7000 files exist only under a non-commercial license.
 2. **Agents across the whole pipeline (M4):** MCP tools for acquisition QC, spectral unmixing,
    clustering and maps, annotating samples, figures, the FlowJo and de-identified exports, and
    starting or stopping a folder watch (left over from wave 4). Every change arrives as a proposal,
