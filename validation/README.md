@@ -72,6 +72,32 @@ fetches the data (cached between runs) and runs every suite with
 `--require-data` on each pull request and each push to `main`
 (`.github/workflows/ci.yml`).
 
+### The agent session
+
+```bash
+node validation/agent-session.mjs
+```
+
+drives every agent tool through remote control, as an AI agent drives them through
+`cytoweave mcp`, in the real program (built from source with Go) and headless Chrome, with no
+model involved. It needs no downloaded data and takes about two minutes. Each tool's result is
+checked against the same analysis run the way the app runs it, against the truth of the simulated
+examples, or against the files the exports write, read back:
+
+| Tool | Checked |
+| --- | --- |
+| `annotate_samples` | Held until accepted, then applied; a null value removes the field |
+| `export_flowjo` | Every population of three samples written with CytoWeave's count (18 of 18); after a QC gate, the populations under it reported as not exported |
+| `run_qc` | Each event's QC pass equal to the QC view's own run on three samples (300,000 events); the QC pass gate held, and accepting puts it at the top with every population beneath; samples with the user's result left alone |
+| `explore` | Every T cell's FlowSOM cluster equal to a direct run with the same settings (120,000 events); a population per cluster; map trustworthiness 0.98; clusters against the true T-cell types (adjusted Rand index 0.39); rejecting removes the clusters, their populations and their channels |
+| `build_figure`, `export_figure` | The SVG carries the analysis of every plot; an existing file is not replaced |
+| `export_table` | The CSV holds `statistics_table`'s values (0 cells differ) |
+| `export_fcs` | The de-identified files hold the same events as the originals |
+| `unmix` | A reference library proposed (25 spectra, autofluorescence signatures) and every unmixed channel equal to the same unmixing run directly |
+| `watch_folder` | Each file written to the watched folder added and checked |
+
+Continuous integration runs it on each pull request and push to `main`.
+
 ### Reference results
 
 The results of the reference tools are committed, so the checks need neither

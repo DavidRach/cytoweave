@@ -314,13 +314,26 @@ to be revised as each wave lands.
      bits use, so masking as the standard describes (and as FlowIO and fcsparser do) changes them;
      no ASCII, double or 64-bit integer files from instruments were found (the generated seeds
      cover those layouts); Sony ID7000 files exist only under a non-commercial license.
-2. **Agents across the whole pipeline (M4):** MCP tools for acquisition QC, spectral unmixing,
-   clustering and maps, annotating samples, figures, the FlowJo and de-identified exports, and
-   starting or stopping a folder watch (left over from wave 4). Every change arrives as a proposal,
-   as gates and matrices do now. Gates drawn from coordinates could also serve drawing a gate from
-   the keyboard (left over from V4).
-   - Validation: a scripted agent session (no model) reproduces an example's analysis through the
-     tools alone, with the same counts and statistics as the same analysis done in the app.
+2. **Agents across the whole pipeline (M4): done.** Eleven new tools: `annotate_samples`, `run_qc`,
+   `unmix`, `explore`, `build_figure`, `watch_folder`, and `export_flowjo`, `export_fcs`,
+   `export_figure` and `export_table`, which write to an absolute path the agent gives (Go checks
+   it before the page is asked; the page uploads the bytes to a one-time slot, written through a
+   temporary file and renamed; no file is replaced unless the call says overwrite; scripts need
+   the startup token). Proposals gained computed results and figures (added at once, marked) and
+   held annotations and root gates; rejecting removes the results, the populations on them and
+   their channels; QC of more samples joins the user's result on accepting; an agent never
+   replaces a result the user made.
+   - To share code with the views, the spectral workflow (`spectral-run.js`), clustering and maps
+     (`explore-run.js`), figure building and export (`lib/figures.js`, `figure-export.js`) and the
+     FlowJo and de-identified exports (`app.buildFlowJoExport`, `app.buildDeidentified`) left the
+     views' closures; the documentation scenes that exercise them run unchanged.
+   - Validation: `validation/agent-session.mjs` (CI job `agents`) drives every tool in the program
+     and headless Chrome, 15 checks: agent QC equal to the QC view's on every event of three
+     samples, agent clusters equal to a direct run on 120,000 T cells (adjusted Rand index 0.39
+     against the true types), agent unmixing equal on every channel, the FlowJo export's counts,
+     exports read back, and proposals held, accepted and rejected. Go tests of the output path.
+   - Not done: drawing a gate from the keyboard (V4) stays open; agents create gates from
+     coordinates, but a keyboard path for people needs its own design.
 3. **Analysis templates, with OMIP strategies and Cell Ontology terms (I5, research N13):** one
    template format for a saved analysis (gates, scales, compensation choice, tables, figure
    layouts) applied to a new experiment by matching markers, not channel names, with a report of

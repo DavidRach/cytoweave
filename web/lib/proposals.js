@@ -5,9 +5,13 @@
 // How each kind of change waits for review:
 //   - New gates are added to the workspace at once, marked as proposed (gate.meta.proposal), so
 //     they show on plots with real counts and the agent can gate on them. Rejecting removes them.
-//   - Edits and deletions of existing gates, and compensation matrices, are held in the proposal
-//     and only applied when it is accepted. (Editing or deleting a gate that is itself still
-//     proposed applies at once: it is part of the same proposal.)
+//   - Computed results (QC masks, unmixed channels, clusters, maps) and figures are also added at
+//     once, marked as proposed (record.proposal), so their channels can be gated and plotted.
+//     Rejecting removes them.
+//   - Edits and deletions of existing gates, compensation matrices, sample annotations and a gate
+//     inserted at the top of the tree are held in the proposal and only applied when it is
+//     accepted. (Editing or deleting a gate that is itself still proposed applies at once: it is
+//     part of the same proposal.)
 //
 // A proposal: { id, author, opened, changes: [...] }, a change being one of
 //   { kind: 'add-gates', gateIds }
@@ -17,9 +21,13 @@
 //   { kind: 'adjust-gate', gateId, name, overrides: { sampleId: geometry }, confidence: { sampleId },
 //     record }                                         (per-sample adjustments, as from autogating,
 //                                                      with the autogating record kept on accepting)
+//   { kind: 'add-derived', derivedIds }               (computed results, added at once)
+//   { kind: 'add-figure', figureIds }                 (figure pages, added at once)
+//   { kind: 'annotate-samples', samples: { sampleId: { meta: { field: value }, role, stain } } }
+//   { kind: 'insert-root-gate', gate }                (a gate above the whole tree, as "QC pass")
 
 import { newId } from './gates.js';
-import { addCompensation, addDerived, addGates, gateById, gateDescendants, removeGate, setGateGeometry, setSampleCompensation, updateGate } from './workspace.js';
+import { addCompensation, addDerived, addGates, gateById, gateDescendants, insertRootGate, removeDerived, removeGate, setCollection, setGateGeometry, setSampleCompensation, updateGate } from './workspace.js';
 
 const now = () => new Date().toISOString();
 
@@ -130,6 +138,50 @@ export function proposeGateAdjustments(ws, author, gateId, overrides, confidence
   return { ws: log(withChange(opened, proposal.id, change, (c) => c.kind === 'adjust-gate' && c.gateId === gateId), 'propose-adjustments', `${gate.name} (${Object.keys(overrides).length} samples)`), held: true };
 }
 
+// A computed result (a derived record: QC masks, unmixed channels, clusters, a map), added at once
+// and marked as proposed. Returns { ws, derived }.
+export function proposeDerived(ws, author, record) {
+  const { ws: opened, proposal } = openProposal(ws, author);
+  const added = addDerived(opened, { ...record, proposal: proposal.id, proposedBy: author });
+  const previous = proposal.changes.find((c) => c.kind === 'add-derived');
+  const ids = [...(previous?.derivedIds ?? []).filter((id) => id !== added.derived.id), added.derived.id];
+  return { ws: withChange(added.ws, proposal.id, { kind: 'add-derived', derivedIds: ids }, (c) => c.kind === 'add-derived'), derived: added.derived };
+}
+
+// A figure page ({ id, name, width, height, background, items }), added at once and marked as
+// proposed. Returns { ws, figure }.
+export function proposeFigure(ws, author, figure) {
+  const { ws: opened, proposal } = openProposal(ws, author);
+  const marked = { ...figure, id: figure.id ?? newId('f'), proposal: proposal.id, proposedBy: author };
+  const added = log(setCollection(opened, 'figures', [...(opened.figures ?? []), marked], 'propose-figure'), 'propose-figure', marked.name);
+  const previous = proposal.changes.find((c) => c.kind === 'add-figure');
+  return { ws: withChange(added, proposal.id, { kind: 'add-figure', figureIds: [...(previous?.figureIds ?? []), marked.id] }, (c) => c.kind === 'add-figure'), figure: marked };
+}
+
+// Sample annotations, held for review: { sampleId: { meta: { field: value }, role, stain } }
+// (each part optional; a meta value of null removes the field).
+export function proposeAnnotations(ws, author, samples) {
+  const { ws: opened, proposal } = openProposal(ws, author);
+  const earlier = proposal.changes.find((c) => c.kind === 'annotate-samples');
+  const merged = { ...(earlier?.samples ?? {}) };
+  for (const [id, change] of Object.entries(samples)) {
+    const before = merged[id] ?? {};
+    merged[id] = { ...before, ...change, meta: { ...(before.meta ?? {}), ...(change.meta ?? {}) } };
+  }
+  const n = Object.keys(samples).length;
+  return { ws: log(withChange(opened, proposal.id, { kind: 'annotate-samples', samples: merged }, (c) => c.kind === 'annotate-samples'), 'propose-annotations', `${n} sample${n === 1 ? '' : 's'}`), held: true };
+}
+
+// A gate at the top of the gating tree, held for review: accepting adds it and moves every other
+// top-level gate beneath it.
+export function proposeRootGate(ws, author, gate) {
+  const { ws: opened, proposal } = openProposal(ws, author);
+  const change = { kind: 'insert-root-gate', gate: { ...gate, id: gate.id ?? newId('g') } };
+  return { ws: log(withChange(opened, proposal.id, change, (c) => c.kind === 'insert-root-gate' && c.gate.name === gate.name), 'propose-root-gate', gate.name), held: true };
+}
+
+const KEEP_ALWAYS = new Set(['add-compensation', 'add-derived', 'add-figure', 'annotate-samples', 'insert-root-gate']);
+
 // Drops from the open proposals the ids of gates that no longer exist (removed by the user, or
 // with their parents).
 function forgetGates(ws) {
@@ -138,7 +190,7 @@ function forgetGates(ws) {
     ...p,
     changes: p.changes
       .map((c) => (c.kind === 'add-gates' ? { ...c, gateIds: c.gateIds.filter((id) => ids.has(id)) } : c))
-      .filter((c) => (c.kind === 'add-gates' ? c.gateIds.length > 0 : c.kind === 'add-compensation' || ids.has(c.gateId))),
+      .filter((c) => (c.kind === 'add-gates' ? c.gateIds.length > 0 : KEEP_ALWAYS.has(c.kind) || ids.has(c.gateId))),
   }));
   return { ...ws, proposals };
 }
@@ -167,6 +219,22 @@ export function describeProposal(ws, proposal) {
     } else if (change.kind === 'add-compensation') {
       const samples = change.sampleIds.filter((id) => (ws.samples ?? []).some((s) => s.id === id)).length;
       items.push({ kind: 'compensation', text: `Add the compensation matrix "${change.compensation.name}" (${change.compensation.channels.length} channels) and apply it to ${samples} sample${samples === 1 ? '' : 's'}` });
+    } else if (change.kind === 'add-derived') {
+      for (const id of change.derivedIds) {
+        const record = (ws.derived ?? []).find((d) => d.id === id);
+        if (record) items.push({ kind: 'derived', derivedId: id, text: `Add ${record.name ?? record.kind}${record.outputs?.length ? ` (${record.outputs.length === 1 ? `channel ${record.outputs[0]}` : `${record.outputs.length} channels`})` : ''}` });
+      }
+    } else if (change.kind === 'add-figure') {
+      for (const id of change.figureIds) {
+        const figure = (ws.figures ?? []).find((f) => f.id === id);
+        if (figure) items.push({ kind: 'figure', figureId: id, text: `Add the figure "${figure.name}" (${figure.items.filter((i) => i.kind === 'plot').length} plots)` });
+      }
+    } else if (change.kind === 'annotate-samples') {
+      const ids = Object.keys(change.samples).filter((id) => (ws.samples ?? []).some((s) => s.id === id));
+      const fields = [...new Set(ids.flatMap((id) => [...Object.keys(change.samples[id].meta ?? {}), ...(change.samples[id].role ? ['role'] : []), ...(change.samples[id].stain !== undefined ? ['stained channel'] : [])]))];
+      items.push({ kind: 'annotate', text: `Annotate ${ids.length} sample${ids.length === 1 ? '' : 's'} (${fields.join(', ') || 'no fields'})` });
+    } else if (change.kind === 'insert-root-gate') {
+      items.push({ kind: 'root-gate', text: `Add ${change.gate.name} at the top of the gating tree, with every population beneath it` });
     }
   }
   return items;
@@ -194,6 +262,37 @@ export function acceptProposal(ws, proposalId, acceptedBy = 'the user') {
     } else if (change.kind === 'add-compensation') {
       const added = addCompensation(next, { ...change.compensation, source: change.compensation.source ?? 'agent' });
       next = setSampleCompensation(added.ws, change.sampleIds.filter((id) => next.samples.some((s) => s.id === id)), added.compensation.id);
+    } else if (change.kind === 'add-derived') {
+      for (const id of change.derivedIds) {
+        const record = next.derived.find((d) => d.id === id);
+        if (!record) continue;
+        const kept = { ...withoutProposal(record), proposedBy: proposal.author, acceptedBy, accepted: time };
+        // Results of more samples for an accepted result of the same kind and channels (QC of
+        // other samples) join it; otherwise the result is kept as it is.
+        const into = record.outputs?.length ? next.derived.find((d) => d.id !== id && !d.proposal && d.kind === record.kind && sameOutputs(d.outputs, record.outputs)) : null;
+        if (into) {
+          const merged = { ...into, files: { ...(into.files ?? {}), ...(record.files ?? {}) }, summary: { ...(into.summary ?? {}), ...(record.summary ?? {}), perSample: { ...(into.summary?.perSample ?? {}), ...(record.summary?.perSample ?? {}) } } };
+          next = { ...next, derived: next.derived.filter((d) => d.id !== id).map((d) => (d.id === into.id ? merged : d)) };
+        } else {
+          next = { ...next, derived: next.derived.map((d) => (d.id === id ? kept : d)) };
+        }
+      }
+    } else if (change.kind === 'add-figure') {
+      const ids = new Set(change.figureIds);
+      next = { ...next, figures: next.figures.map((f) => (ids.has(f.id) ? { ...withoutProposal(f), proposedBy: proposal.author, acceptedBy, accepted: time } : f)) };
+    } else if (change.kind === 'annotate-samples') {
+      next = { ...next, samples: next.samples.map((s) => {
+        const c = change.samples[s.id];
+        if (!c) return s;
+        const meta = { ...s.meta };
+        for (const [field, value] of Object.entries(c.meta ?? {})) {
+          if (value === null || value === '') delete meta[field];
+          else meta[field] = value;
+        }
+        return { ...s, meta, ...(c.role ? { role: c.role } : {}), ...(c.stain !== undefined ? { stain: c.stain } : {}) };
+      }) };
+    } else if (change.kind === 'insert-root-gate') {
+      next = insertRootGate(next, { ...change.gate, meta: { ...(change.gate.meta ?? {}), proposedBy: proposal.author, acceptedBy, accepted: time } }, 'add-root-gate').ws;
     }
   }
   next = forgetGates({ ...next, proposals: openProposals(next).filter((p) => p.id !== proposalId) });
@@ -207,8 +306,9 @@ export function rejectProposal(ws, proposalId, rejectedBy = 'the user') {
   if (!proposal) return ws;
   let next = ws;
   for (const change of proposal.changes) {
-    if (change.kind !== 'add-gates') continue;
-    for (const id of change.gateIds) if (gateById(next, id)) next = removeGate(next, id);
+    if (change.kind === 'add-gates') for (const id of change.gateIds) if (gateById(next, id)) next = removeGate(next, id);
+    if (change.kind === 'add-derived') for (const id of change.derivedIds) next = removeDerived(next, id);
+    if (change.kind === 'add-figure') next = { ...next, figures: next.figures.filter((f) => !change.figureIds.includes(f.id)) };
   }
   next = forgetGates({ ...next, proposals: openProposals(next).filter((p) => p.id !== proposalId) });
   return log(next, 'reject-proposal', `${summary(ws, proposal)} — proposed by ${proposal.author}, rejected by ${rejectedBy}`);
@@ -221,7 +321,22 @@ export function dependentsOfProposal(ws, proposalId) {
   const proposed = new Set(proposal.changes.flatMap((c) => (c.kind === 'add-gates' ? c.gateIds : [])));
   const out = [];
   for (const id of proposed) for (const g of gateDescendants(ws, id)) if (!proposed.has(g.id)) out.push(g);
+  // Gates on the channels of proposed results, which would lose their channel.
+  const channels = new Set(proposal.changes.flatMap((c) => (c.kind === 'add-derived' ? c.derivedIds : [])).flatMap((id) => (ws.derived ?? []).find((d) => d.id === id)?.outputs ?? []));
+  for (const g of ws.gates) if (!proposed.has(g.id) && !out.includes(g) && g.dims.some((d) => channels.has(d.channel))) out.push(g);
   return out;
+}
+
+// The channels of a proposal's computed results (to detach from the samples when it is rejected).
+export function proposedChannels(ws, proposalId) {
+  const proposal = proposalById(ws, proposalId);
+  if (!proposal) return [];
+  const ids = new Set(proposal.changes.flatMap((c) => (c.kind === 'add-derived' ? c.derivedIds : [])));
+  return [...new Set((ws.derived ?? []).filter((d) => ids.has(d.id)).flatMap((d) => d.outputs ?? []))];
+}
+
+function sameOutputs(a = [], b = []) {
+  return a.length === b.length && a.every((x) => b.includes(x));
 }
 
 function withoutProposal(meta = {}) {

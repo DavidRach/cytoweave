@@ -304,7 +304,7 @@ func (a *app) printBanner(out io.Writer, url string) {
 	}
 	if a.control != nil && a.control.scripts {
 		fmt.Fprintf(out, "Remote control: POST {\"action\": ..., \"args\": {...}} to %s/api/remote/action\n", url)
-		fmt.Fprintf(out, "Opening files by path (action open_files) needs the header %s: %s\n", remoteTokenHeader, a.control.token)
+		fmt.Fprintf(out, "Opening files by path (open_files) and writing files (the export actions) need the header %s: %s\n", remoteTokenHeader, a.control.token)
 	}
 	fmt.Fprintln(out, "Press Ctrl+C to stop.")
 }

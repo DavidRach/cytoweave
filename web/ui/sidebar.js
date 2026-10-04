@@ -2,7 +2,7 @@
 
 import { h, icon, clear, iconButton, formatCount, formatPercent } from './dom.js';
 import { showMenu, promptDialog, confirmDialog, showDialog, toast } from './overlays.js';
-import { acceptProposal, dependentsOfProposal, describeProposal, heldChanges, openProposals, proposalOfGate, rejectProposal } from '../lib/proposals.js';
+import { acceptProposal, dependentsOfProposal, describeProposal, heldChanges, openProposals, proposalOfGate, proposedChannels, rejectProposal } from '../lib/proposals.js';
 import { countOf, populationSet } from '../lib/engine.js';
 import {
   ROOT,
@@ -395,8 +395,12 @@ export function mountSidebar(app) {
     const proposal = openProposals(store.ws).find((p) => p.id === id);
     if (!proposal) return;
     const drawn = dependentsOfProposal(store.ws, id);
-    if (drawn.length && !(await confirmDialog({ title: 'Reject the proposal?', message: `Rejecting removes the proposed gates, and with them ${drawn.length} population${drawn.length === 1 ? '' : 's'} drawn under them since: ${drawn.slice(0, 6).map((g) => g.name).join(', ')}${drawn.length > 6 ? '…' : ''}.`, confirm: 'Reject', danger: true }))) return;
+    if (drawn.length && !(await confirmDialog({ title: 'Reject the proposal?', message: `Rejecting removes the proposed gates and results, and with them ${drawn.length} population${drawn.length === 1 ? '' : 's'} drawn on them since: ${drawn.slice(0, 6).map((g) => g.name).join(', ')}${drawn.length > 6 ? '…' : ''}.`, confirm: 'Reject', danger: true }))) return;
+    const channels = proposedChannels(store.ws, id);
     store.commit(rejectProposal(store.ws, id), `Reject the proposal from ${proposal.author}`);
+    // Detach the rejected results' channels that no remaining result provides.
+    const kept = new Set(store.ws.derived.flatMap((d) => d.outputs ?? []));
+    for (const channel of channels) if (!kept.has(channel)) data.removeDerived(channel);
     toast(`Rejected the proposal from ${proposal.author}.`);
   }
 
@@ -422,7 +426,7 @@ export function mountSidebar(app) {
       item.kind === 'add' ? h('span.muted', frequency(item.gateId)) : null,
       item.gateId && gateById(ws, item.gateId) ? h('button.btn.small.ghost', { type: 'button', onclick: () => { app.selectGate(item.gateId); dialog.close(); } }, 'Show') : null)));
     const content = h('div',
-      h('p.muted', `Proposed by ${proposal.author}, ${new Date(proposal.opened).toLocaleString()}. New gates are already in the workspace, marked as proposed; the other changes apply only if you accept. The change log records your decision.${sample ? ` Frequencies are for ${sample.name}.` : ''}`),
+      h('p.muted', `Proposed by ${proposal.author}, ${new Date(proposal.opened).toLocaleString()}. New gates, results and figures are already in the workspace, marked as proposed; the other changes apply only if you accept. The change log records your decision.${sample ? ` Frequencies are for ${sample.name}.` : ''}`),
       list);
     const dialog = showDialog({
       title: 'Review the proposal',

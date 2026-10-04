@@ -1,0 +1,285 @@
+// A scripted agent session (no model): every agent tool driven through remote control, as an AI
+// agent drives them through "cytoweave mcp", in the real program and a headless browser. Each
+// result is checked against the same analysis run the way the app runs it, against the truth of
+// the simulated examples, or against the files the exports write read back.
+//
+//   node validation/agent-session.mjs [--verbose]
+//
+// Needs Go (to build CytoWeave from source) and Chrome, Chromium, Edge or Brave (CHROME=path).
+// Exits with status 1 when a check fails.
+
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { launch, sleep } from '../docs/capture/cdp.mjs';
+import { generateExample } from '../web/lib/examples.js';
+import { parseFCS } from '../web/lib/fcs.js';
+import { readZip } from '../web/lib/zip.js';
+import { readFigureProvenance } from '../web/lib/figure-provenance.js';
+import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PORT = 8795;
+const verbose = process.argv.includes('--verbose');
+const results = [];
+function check(name, value, ok, required) {
+  results.push({ name, ok });
+  if (verbose || !ok) console.log(`${ok ? 'ok  ' : 'FAIL'} ${name} — ${value} (required ${required})`);
+}
+
+// --- CytoWeave and the page -----------------------------------------------------------------------
+
+let URL = `http://127.0.0.1:${PORT}/`;
+let token = '';
+const temp = mkdtempSync(join(tmpdir(), 'cytoweave-agent-'));
+
+async function startCytoWeave() {
+  const binary = join(temp, process.platform === 'win32' ? 'cytoweave.exe' : 'cytoweave');
+  await new Promise((done, fail) => spawn('go', ['build', '-o', binary, '.'], { cwd: ROOT, stdio: 'inherit' }).on('exit', (code) => (code ? fail(new Error('go build failed (is Go installed?)')) : done())));
+  const server = spawn(binary, ['--remote-control', '--window', 'none', '--port', String(PORT), '--data-dir', join(temp, 'library')], { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
+  let output = '';
+  server.stdout.on('data', (chunk) => { output += chunk; });
+  for (let i = 0; i < 300; i += 1) {
+    const address = /running at (http:\/\/[\d.]+:\d+)/.exec(output)?.[1];
+    token = /X-CytoWeave-Token: (\S+)/.exec(output)?.[1] ?? token;
+    if (address && token) {
+      URL = `${address}/`;
+      try {
+        if ((await fetch(`${URL}api/info`)).ok) return () => server.kill();
+      } catch { /* starting */ }
+    }
+    await sleep(200);
+  }
+  server.kill();
+  throw new Error('CytoWeave did not start.');
+}
+
+// A tool call, as an agent sends it (exports carry the token, as scripts must).
+async function tool(name, args = {}, client = 'Claude Code') {
+  const response = await fetch(`${URL}api/remote/action`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CytoWeave-Token': token }, body: JSON.stringify({ action: name, args, client }) });
+  const result = await response.json();
+  if (!result.ok) throw new Error(`${name}: ${result.message ?? result.error}`);
+  return result;
+}
+// A tool call expected to fail; returns its message.
+async function refused(name, args = {}) {
+  const response = await fetch(`${URL}api/remote/action`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CytoWeave-Token': token }, body: JSON.stringify({ action: name, args, client: 'Claude Code' }) });
+  const result = await response.json();
+  return result.ok ? null : (result.message ?? result.error);
+}
+
+let b;
+const page = (code) => b.eval(`(async () => { const app = window.cytoweave; ${code} })()`);
+async function waitFor(expression, timeout = 240000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (await b.eval(expression)) return;
+    await sleep(500);
+  }
+  throw new Error(`Timed out waiting for ${expression}`);
+}
+// The user's decision on an agent's open proposal, from the review strip.
+const decide = (author, accept) => page(`
+  const { acceptProposal, openProposals, proposedChannels, rejectProposal } = await import('/lib/proposals.js');
+  const p = openProposals(app.store.ws).find((x) => x.author === ${JSON.stringify(author)});
+  if (!p) return false;
+  const channels = proposedChannels(app.store.ws, p.id);
+  app.store.commit((${accept} ? acceptProposal : rejectProposal)(app.store.ws, p.id), 'Decide');
+  if (!${accept}) { const kept = new Set(app.store.ws.derived.flatMap((d) => d.outputs ?? [])); for (const c of channels) if (!kept.has(c)) app.data.removeDerived(c); }
+  return true;`);
+
+// --- The session ----------------------------------------------------------------------------------
+
+const stopServer = await startCytoWeave();
+try {
+  b = await launch({ width: 1400, height: 900 });
+  await b.goto(URL);
+  await waitFor('Boolean(window.cytoweave)', 30000);
+
+  // 1. The PBMC example, opened by the agent; the user adds the suggested gates.
+  await tool('open_example', { id: 'pbmc-immunophenotyping' });
+  await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`);
+  await b.eval(`[...document.querySelectorAll('button')].find((e) => e.offsetParent && /Add suggested gates/.test(e.textContent))?.click()`);
+  await waitFor(`window.cytoweave.store.ws.gates.length > 5`, 30000);
+  const summary = (await tool('workspace_summary')).data;
+  const samples = summary.samples.filter((s) => s.role === 'sample').map((s) => s.name);
+
+  // Annotations wait for review, then apply.
+  await tool('annotate_samples', { samples: [{ sample: samples[0], meta: { cohort: 'A' } }, { sample: samples[1], meta: { cohort: 'B', batch: null } }] });
+  const before = await page(`return app.store.ws.samples.find((s) => s.name === ${JSON.stringify(samples[0])}).meta.cohort ?? null;`);
+  await decide('Claude Code', true);
+  const after = await page(`const ss = app.store.ws.samples; return [ss.find((s) => s.name === ${JSON.stringify(samples[0])}).meta.cohort, ss.find((s) => s.name === ${JSON.stringify(samples[1])}).meta.cohort, 'batch' in ss.find((s) => s.name === ${JSON.stringify(samples[1])}).meta];`);
+  check('annotate_samples: held until accepted, then applied (a null value removes the field)', `before ${before}; after ${after.join(', ')}`, before === null && after[0] === 'A' && after[1] === 'B' && after[2] === false, 'null, then A, B, field removed');
+
+  // The FlowJo workspace carries every population of every sample with CytoWeave's own count.
+  const outDir = join(temp, 'out');
+  mkdirSync(outDir);
+  const wspPath = join(outDir, 'pbmc.wsp');
+  const flowjo = await tool('export_flowjo', { path: wspPath });
+  const xml = readFileSync(wspPath, 'utf8');
+  let compared = 0;
+  let countDiffer = 0;
+  for (const name of samples.slice(0, 3)) {
+    const node = new RegExp(`<SampleNode name="${name}[^"]*"[\\s\\S]*?</SampleNode>`).exec(xml)?.[0] ?? '';
+    const written = new Map([...node.matchAll(/<Population name="([^"]*)"[^>]*? count="(\d+)"/g)].map((m) => [m[1], Number(m[2])]));
+    for (const row of (await tool('list_populations', { sample: name })).data.populations) {
+      const leaf = row.path.split('/').pop().trim();
+      if (!written.has(leaf)) continue;
+      compared += 1;
+      if (written.get(leaf) !== row.count) countDiffer += 1;
+    }
+  }
+  check('export_flowjo: every population written with CytoWeave\'s count (3 samples)', `${compared} counts compared, ${countDiffer} differ; ${flowjo.message.replace(/^Wrote \S+ \(\d+ bytes\)\. /, '').slice(0, 90)}`, compared >= 18 && countDiffer === 0, '0 differ');
+
+  // QC: the agent's result equals the QC view's on the same samples, and the gate waits.
+  const qcSamples = samples.slice(0, 3);
+  const qc = (await tool('run_qc', { samples: qcSamples, addGate: true })).data;
+  const qcState = await page(`
+    const { runQC, DEFAULT_SETTINGS } = await import('/ui/qc-run.js');
+    const record = app.store.ws.derived.find((d) => d.kind === 'qc' && d.proposal);
+    let differ = 0;
+    for (const name of ${JSON.stringify(qcSamples)}) {
+      const sample = app.store.ws.samples.find((s) => s.name === name);
+      const direct = await runQC(app, sample, structuredClone(DEFAULT_SETTINGS));
+      const values = app.data.view(sample.id).derived.get('QC pass');
+      for (let e = 0; e < direct.mask.length; e += 1) if ((values[e] ? 1 : 0) !== (direct.mask[e] ? 1 : 0)) differ += 1;
+    }
+    return { proposed: Boolean(record), samples: Object.keys(record?.files ?? {}).length, differ, rootHeld: !app.store.ws.gates.some((g) => g.name === 'QC pass'), gates: app.store.ws.gates.length };`);
+  check(`run_qc: ${qcSamples.length} samples proposed, each event's QC pass equal to the QC view's own run; the QC pass gate held`, `${qc.rows.map((r) => `${r.sample} ${r.score}`).join(', ')}; ${qcState.samples} samples; ${qcState.differ} events differ; gate ${qcState.rootHeld ? 'held' : 'added'}`, qcState.proposed && qcState.samples === qcSamples.length && qcState.differ === 0 && qcState.rootHeld, 'proposed, 0 differ, held');
+  await decide('Claude Code', true);
+  const tree = await page(`const qc = app.store.ws.gates.find((g) => g.name === 'QC pass'); return { qc: Boolean(qc), top: app.store.ws.gates.filter((g) => !g.parentId).map((g) => g.name), qcRecord: app.store.ws.derived.filter((d) => d.kind === 'qc').map((d) => [Boolean(d.proposal), Object.keys(d.files ?? {}).length]) };`);
+  check('accepting puts QC pass at the top with every population beneath it, and keeps the result', `top level: ${tree.top.join(', ')}; QC records ${JSON.stringify(tree.qcRecord)}`, tree.qc && tree.top.length === 1 && tree.top[0] === 'QC pass' && tree.qcRecord.length === 1 && tree.qcRecord[0][0] === false, 'only QC pass at the top');
+  const again = (await tool('run_qc', { samples: qcSamples })).data;
+  check('run_qc leaves samples the user has a result for alone', `already checked: ${again.alreadyChecked.join(', ')}`, again.alreadyChecked.length === qcSamples.length && again.rows.length === 0, 'all three');
+
+  // Clustering and a map of T cells: the agent's clusters equal a direct run with the same
+  // settings, agree with the true cell types, and the proposal can be rejected cleanly.
+  const exploreArgs = { population: 'T cells', samples: samples.slice(0, 4), clustering: 'flowsom', embedding: 'umap', k: 6, eventsPerSample: 1500, populations: true };
+  const explored = (await tool('explore', exploreArgs, 'Explorer')).data;
+  const exploreState = await page(`
+    const run = await import('/ui/explore-run.js');
+    const ws = app.store.ws;
+    const popId = ws.gates.find((g) => g.name === 'T cells').id;
+    const samples = ${JSON.stringify(samples.slice(0, 4))}.map((n) => ws.samples.find((s) => s.name === n));
+    const record = ws.derived.find((d) => d.proposal && d.proposedBy === 'Explorer');
+    const settings = { ...run.DEFAULT_SETTINGS, markers: record.params.markers, clustering: 'flowsom', embedding: 'none', k: 6, perSample: 1500 };
+    const direct = await run.runExplore(app, { settings, samples, popId });
+    let differ = 0;
+    let total = 0;
+    const truthLabels = [];
+    const clusterLabels = [];
+    for (const [id, columns] of direct.result.perSample) {
+      const view = app.data.view(id);
+      const a = view.derived.get('FlowSOM cluster');
+      const d = columns['FlowSOM cluster'];
+      const truth = view.column('Truth (simulated)');
+      for (let e = 0; e < d.length; e += 1) {
+        if (d[e] < 0) continue;
+        total += 1;
+        if (a[e] !== d[e]) differ += 1;
+        if (truth && truthLabels.length < 40000) { truthLabels.push(truth[e]); clusterLabels.push(d[e]); }
+      }
+    }
+    return { differ, total, gates: ws.gates.filter((g) => g.meta?.proposedBy === 'Explorer' || (g.meta?.proposal && g.dims[0]?.channel === 'FlowSOM cluster')).length, truthLabels, clusterLabels };`);
+  const ari = exploreState.truthLabels.length ? adjustedRandIndex(Int32Array.from(exploreState.truthLabels), Int32Array.from(exploreState.clusterLabels)) : Number.NaN;
+  check('explore: every T cell\'s FlowSOM cluster equals a direct run with the same settings; the clusters proposed as populations', `${exploreState.differ} of ${exploreState.total} differ; ${explored.clusters.length} clusters (${explored.clusters.slice(0, 3).map((c) => c.name).join(', ')}…); ${exploreState.gates} populations; map trustworthiness ${explored.quality?.trustworthiness}`, exploreState.differ === 0 && exploreState.total > 1000 && exploreState.gates === explored.clusters.length && explored.quality?.trustworthiness > 0.8, '0 differ; a population per cluster; trustworthiness > 0.8');
+  check('explore: the clusters follow the true T-cell types (adjusted Rand index)', ari.toFixed(3), ari > 0.3, '> 0.3');
+  await decide('Explorer', false);
+  const rejected = await page(`const s = app.store.ws.samples.find((x) => x.name === ${JSON.stringify(samples[0])}); return { derived: app.store.ws.derived.filter((d) => d.outputs?.includes('FlowSOM cluster')).length, gates: app.store.ws.gates.filter((g) => g.dims[0]?.channel === 'FlowSOM cluster').length, attached: app.data.view(s.id).derived.has('FlowSOM cluster') };`);
+  check('rejecting removes the clusters, their populations and their channels', JSON.stringify(rejected), rejected.derived === 0 && rejected.gates === 0 && !rejected.attached, 'none left');
+
+  // A gating-strategy figure, exported as SVG with its analysis.
+  const figureDir = outDir;
+  const fig = (await tool('build_figure', { kind: 'gating-strategy', population: 'T cells', sample: samples[0] })).data;
+  const svgPath = join(figureDir, 'strategy.svg');
+  await tool('export_figure', { path: svgPath });
+  const record = readFigureProvenance(readFileSync(svgPath, 'utf8'));
+  const figureRecord = record?.record ?? record;
+  check('build_figure + export_figure: the SVG carries the analysis of every plot', `${fig.plots.length} plots; record of ${figureRecord?.plots?.length ?? figureRecord?.figure?.items?.length ?? 'no'} plots`, fig.plots.length >= 4 && Boolean(figureRecord) && (figureRecord.plots?.length ?? figureRecord.figure?.items?.filter((i) => i.kind === 'plot').length) === fig.plots.length, 'one per plot');
+  const exists = await refused('export_figure', { path: svgPath });
+  check('an export never replaces a file unless told to', exists ?? 'replaced', /exists/.test(exists ?? ''), 'refused');
+
+  // A statistics table written as CSV equals statistics_table.
+  const csvPath = join(figureDir, 'table.csv');
+  await tool('export_table', { path: csvPath, statistic: 'freqParent' });
+  const table = (await tool('statistics_table', { statistic: 'freqParent' })).data;
+  const lines = readFileSync(csvPath, 'utf8').trim().split('\n').map((l) => l.split(','));
+  const header = lines[0];
+  let tableDiffer = 0;
+  for (const row of table.rows) {
+    const line = lines.find((l) => l[0] === row.sample);
+    for (const [population, value] of Object.entries(row.values)) {
+      const cell = line?.[header.indexOf(population)];
+      if (Number(cell) !== value && !(cell === '' && value === null)) tableDiffer += 1;
+    }
+  }
+  check('export_table: the CSV holds statistics_table\'s values', `${table.rows.length} rows; ${tableDiffer} cells differ`, table.rows.length > 5 && tableDiffer === 0, '0 differ');
+
+  // After the QC gate, the FlowJo export says the gates on QC pass (a computed channel) are left out.
+  const wspAfter = join(figureDir, 'pbmc-qc.wsp');
+  const flowjoAfter = await tool('export_flowjo', { path: wspAfter, counts: false });
+  check('export_flowjo after the QC gate: the populations under QC pass (a computed channel) reported as not exported', flowjoAfter.data.notExact.slice(0, 2).map((p) => `${p.population}: ${p.status}`).join('; '), flowjoAfter.data.notExact.some((p) => p.population === 'QC pass' && p.status === 'not exported'), 'QC pass not exported')
+  const populations = (await tool('list_populations', { sample: samples[0] })).data.populations;
+  const zipPath = join(figureDir, 'files.zip');
+  await tool('export_fcs', { path: zipPath, samples: samples.slice(0, 2) });
+  const files = await readZip(new Uint8Array(readFileSync(zipPath)));
+  const originals = generateExample('pbmc-immunophenotyping', {}).files;
+  let identical = 0;
+  for (const [name, bytes] of files) {
+    const mine = parseFCS(bytes).datasets[0];
+    const original = parseFCS(originals.find((f) => f.name.replace(/\.fcs$/i, '') === name.replace(/\.fcs$/i, ''))?.bytes ?? new Uint8Array(0)).datasets[0];
+    if (original && mine.eventCount === original.eventCount && mine.data.every((column, p) => column.every((v, e) => Object.is(v, original.data[p][e])))) identical += 1;
+  }
+  check('export_fcs: the de-identified files hold the same events as the originals', `${identical} of ${files.size} identical`, files.size === 2 && identical === 2, 'both');
+
+  // 2. The spectral example: unmix builds and proposes a reference library, then unmixes; it equals
+  // the same steps run directly.
+  await tool('open_example', { id: 'spectral-25color' }, 'Spectral agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`);
+  const sample = (await tool('workspace_summary')).data.samples.find((s) => s.role === 'sample').name;
+  const unmixed = (await tool('unmix', { samples: [sample] }, 'Spectral agent')).data;
+  const spectral = await page(`
+    const run = await import('/ui/spectral-run.js');
+    const ws = app.store.ws;
+    const s = ws.samples.find((x) => x.name === ${JSON.stringify(sample)});
+    const direct = await run.unmixSamples(app, [s], {});
+    const view = app.data.view(s.id);
+    let worst = 0;
+    let channels = 0;
+    for (const [name, column] of Object.entries(direct.result.perSample.get(s.id))) {
+      const a = view.derived.get(name);
+      if (!a) continue;
+      channels += 1;
+      for (let e = 0; e < column.length; e += 1) worst = Math.max(worst, Math.abs(a[e] - column[e]));
+    }
+    const setup = ws.derived.find((d) => d.kind === 'spectral-setup');
+    return { worst, channels, setupProposed: Boolean(setup?.proposal), afSignatures: setup?.autofluorescence?.signatures?.length ?? 0 };`);
+  check('unmix: the reference library proposed (spectra and autofluorescence), and every unmixed channel equal to the same unmixing run directly', `${unmixed.references.length} references, ${spectral.afSignatures} autofluorescence signatures, complexity ${unmixed.complexityIndex}; ${spectral.channels} channels within ${spectral.worst}`, unmixed.references.length === 25 && spectral.setupProposed && spectral.afSignatures >= 1 && spectral.channels === unmixed.channels.length && spectral.worst === 0, '25 references, identical');
+
+  // 3. QC as files are acquired: a watched folder's files are added and checked.
+  const watched = join(temp, 'exports');
+  mkdirSync(watched);
+  await tool('watch_folder', { action: 'start', path: watched });
+  const plate = generateExample('qc-showcase', {}).files.slice(0, 2);
+  for (const file of plate) writeFileSync(join(watched, file.name), file.bytes);
+  let status;
+  for (let i = 0; i < 120; i += 1) {
+    status = (await tool('watch_folder', { action: 'status' })).data;
+    if (status.files.length === plate.length && status.files.every((f) => f.state === 'checked')) break;
+    await sleep(1000);
+  }
+  await tool('watch_folder', { action: 'stop' });
+  check('watch_folder: each file the instrument writes is added and checked', status.files.map((f) => `${f.file} ${f.state} ${f.score ?? ''}`).join('; '), status.files.length === plate.length && status.files.every((f) => f.state === 'checked' && Number.isFinite(f.score)), 'both checked with a score');
+} catch (error) {
+  check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
+} finally {
+  await b?.close();
+  stopServer();
+  rmSync(temp, { recursive: true, force: true });
+}
+
+const failed = results.filter((r) => !r.ok);
+console.log(`${results.length - failed.length}/${results.length} agent-session checks passed.`);
+if (failed.length) process.exit(1);

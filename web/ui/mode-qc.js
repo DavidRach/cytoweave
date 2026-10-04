@@ -6,7 +6,7 @@
 
 import { h, icon, clear, debounce, formatBytes, formatCount, formatPercent } from './dom.js';
 import { confirmDialog, progressToast, toast } from './overlays.js';
-import { ROOT, addDerived, addGates, addGroup, channelLabel, setCollection, updateSample } from '../lib/workspace.js';
+import { ROOT, addDerived, addGates, addGroup, channelLabel, insertRootGate, updateSample } from '../lib/workspace.js';
 import { writeFCS } from '../lib/fcs.js';
 import { combinationKey, normalizeKey } from '../lib/debarcode.js';
 import { confoundingCheck, findMassChannel } from '../lib/normalize.js';
@@ -16,7 +16,7 @@ import { categoricalColor } from '../lib/colormaps.js';
 import { createRandom, sampleIndices } from '../lib/random.js';
 import { createInstrumentSection } from './qc-instrument.js';
 import { createLiveSection } from './live-qc.js';
-import { DEFAULT_SETTINGS, QC_CHANNEL, binSpan, runQC, saveDerivedMergedIn, saveQCResults, timeDomain } from './qc-run.js';
+import { DEFAULT_SETTINGS, QC_CHANNEL, binSpan, qcPassGate, runQC, saveDerivedMergedIn, saveQCResults, timeDomain } from './qc-run.js';
 
 const BEAD_CHANNEL = 'Bead';
 const BARCODE_CHANNEL = 'Barcode';
@@ -24,7 +24,6 @@ const NORM_SUFFIX = ' (norm)';
 const BEAD_SUFFIX = ' (beads)';
 const PALLADIUM = ['Pd102', 'Pd104', 'Pd105', 'Pd106', 'Pd108', 'Pd110'];
 const CLUSTER_PATTERN = /cluster|flowsom|\bsom\b|leiden|louvain|phenograph|k-?means/i;
-const QC_GREEN = '#1f9d55';
 
 // PeacoQC and flowAI are cited in qc-run.js, with the acquisition QC.
 const CITE = {
@@ -1147,18 +1146,7 @@ export function mountQCMode(app, container) {
       });
       if (!ok) return;
     }
-    const added = addGates(store.ws, [{
-      name: 'QC pass',
-      type: 'category',
-      dims: [{ channel: QC_CHANNEL }],
-      geometry: { values: [1] },
-      color: QC_GREEN,
-      parentId: null,
-      meta: { origin: 'auto', method: 'Acquisition QC (PeacoQC + flow rate + margins)', note: 'Events that passed acquisition QC (QC pass = 1).' },
-    }], 'add-qc-gate');
-    const gate = added.gates[0];
-    const gates = added.ws.gates.map((g) => (g.id !== gate.id && !g.parentId ? { ...g, parentId: gate.id } : g));
-    const next = { ...setCollection(added.ws, 'gates', gates, 'reparent-under-qc'), plots: (added.ws.plots ?? []).map((p) => (p.populationId === ROOT ? { ...p, populationId: gate.id } : p)) };
+    const { ws: next } = insertRootGate(store.ws, qcPassGate(), 'add-qc-gate');
     store.commit(next, 'Add “QC pass” gate', ['gate', 'plots']);
     toast('“QC pass” is now the root population; your gates and plots moved beneath it. Undo restores the previous tree.', { kind: 'ok' });
   }

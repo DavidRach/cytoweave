@@ -47,6 +47,7 @@ type remoteHub struct {
 	open    func(paths []string) ([]localFile, []string)
 	token   string
 	scripts bool
+	outputs outputSlots
 }
 
 type remoteClient struct {
@@ -63,6 +64,8 @@ type remoteEvent struct {
 	Args   json.RawMessage `json:"args,omitempty"`
 	Files  []localFile     `json:"files,omitempty"`
 	Client string          `json:"client,omitempty"`
+	// Output: where the page uploads the file an export action makes (output.go).
+	Output string `json:"output,omitempty"`
 }
 
 var (
@@ -79,7 +82,7 @@ type remoteResult struct {
 }
 
 // Actions that can run for a long time (analyses over many samples).
-var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "propose_compensation": true}
+var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true}
 
 func newRemoteHub() *remoteHub {
 	return &remoteHub{
@@ -103,6 +106,7 @@ func randomToken() string {
 func (h *remoteHub) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/remote/events", localOnly(h.serveEvents))
 	mux.HandleFunc("POST /api/remote/result/{id}", localOnly(h.serveResult))
+	mux.HandleFunc("POST /api/remote/output/{token}", localOnly(h.serveOutput))
 	if h.scripts {
 		mux.HandleFunc("POST /api/remote/action", localOnly(h.serveAction))
 	}
@@ -240,6 +244,19 @@ func (h *remoteHub) serveAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	event := remoteEvent{Action: request.Action, Args: request.Args, Client: clientName(request.Client, "a program on this computer")}
+	if outputActions[request.Action] {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get(remoteTokenHeader)), []byte(h.token)) != 1 {
+			writeError(w, http.StatusUnauthorized, "Writing files needs the X-CytoWeave-Token header with the token CytoWeave printed when it started.")
+			return
+		}
+		output, release, err := h.prepareOutput(request.Args)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		defer release()
+		event.Output = output
+	}
 	if request.Action == "open_files" {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get(remoteTokenHeader)), []byte(h.token)) != 1 {
 			writeError(w, http.StatusUnauthorized, "Opening files needs the X-CytoWeave-Token header with the token CytoWeave printed when it started.")

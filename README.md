@@ -171,9 +171,10 @@ guides to every view, with screenshots.
   panel, cell cycle, proliferation, a two-batch mass cytometry cohort, a
   barcoded plate, an index sort, a QC plate and 30 days of bead QC.
 - **Scripting and agents.** An MCP server lets AI agents such as Claude Code
-  open data, gate, compute statistics, review gates and write methods in the
-  window you are watching. Their changes arrive as proposals that you accept
-  or reject, and every change can be undone.
+  run the whole analysis in the window you are watching: open and annotate
+  data, gate, run QC, unmix, cluster, compute statistics, review gates, build
+  figures, write methods and export files. Their changes arrive as proposals
+  that you accept or reject, and every change can be undone.
 - **Large files.** Samples of ten million events open in seconds and stay
   responsive: files are read in parts and never held whole, populations are
   kept as bitsets, and analyses in the background share the events rather
@@ -879,11 +880,15 @@ cytoweave mcp [flags]
 `cytoweave mcp` is a [Model Context Protocol](https://modelcontextprotocol.io)
 server. With it, an AI agent such as Claude Code can drive the CytoWeave
 window you are watching:
-- open files and examples, and inspect the gating tree;
+- open files and examples, annotate samples, and inspect the gating tree;
 - create gates from coordinates or propose them from the data's density;
+- run acquisition QC, unmix spectral files, and cluster and map cells;
 - edit gates, compute statistics across samples and render plots;
 - review a gate across the cohort, adapt it to each sample, compare groups,
-  write the methods, and export Gating-ML.
+  check a comparison's robustness, build figures and write the methods;
+- watch an instrument's export folder as files are acquired;
+- export FlowJo workspaces, de-identified FCS files, figures and tables to
+  files, and Gating-ML.
 
 ```sh
 claude mcp add cytoweave -- ~/.local/bin/cytoweave mcp
@@ -899,12 +904,13 @@ claude mcp add cytoweave -- ~/.local/bin/cytoweave mcp
 </picture>
 
 The agent works through the same actions as you do, and its changes are
-proposals. Its gates appear at once, marked as proposed, with real counts;
-its renames, deletions and compensation matrices wait. A strip above the
+proposals. Its gates, computed results (QC, unmixed channels, clusters, maps)
+and figures appear at once, marked as proposed, with real counts; its
+renames, deletions, compensation matrices and sample annotations wait. A strip above the
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 18 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 29 tools, other clients
 and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
@@ -1056,6 +1062,8 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
+`node validation/agent-session.mjs` drives every agent tool in the program and
+headless Chrome (it needs Go and Chrome) and checks each result.
 `node validation/fuzz.mjs` fuzzes the FCS reader for longer than the suite
 does (`--cases 200000`), and `--replay <file> <seed>` repeats a failing case.
 

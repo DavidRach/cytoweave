@@ -152,7 +152,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M1 | MCP server for AI agents, acting in the visible window, every change undoable | done |
 | M2 | Remote control for local scripts | done |
 | M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
-| M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | planned (wave 5) |
+| M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | done: 11 new tools (29 in all); results and figures proposed, annotations and root gates held; exports write only to the path given and never replace a file unless told to; validation `agent-session.mjs` (15 checks, in CI) |
 | M5 | R and Python clients for remote control | planned (wave 6) |
 | M6 | Optional on-device assistant, without network | planned (wave 8) |
 

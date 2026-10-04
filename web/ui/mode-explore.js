@@ -11,21 +11,8 @@ import { ROOT, addGates, channelLabel, gateById, gatePath } from '../lib/workspa
 import { newId } from '../lib/gates.js';
 import { categoricalColor, colormapColor, colormapLUT } from '../lib/colormaps.js';
 import { RELIABILITY_THRESHOLD } from '../lib/embedding-quality.js';
-import { assignNearest, centroids, clusterName, embeddingRanges, embeddingRaster, gatherMatrix, markerCandidates, pickEvents, robustRange, samplingPlan } from '../lib/explore.js';
-
-const EMBEDDINGS = [
-  { id: 'umap', label: 'UMAP', axis: 'UMAP' },
-  { id: 'tsne', label: 't-SNE', axis: 't-SNE' },
-  { id: 'pca', label: 'PCA', axis: 'PC' },
-  { id: 'none', label: 'None', axis: '' },
-];
-const CLUSTERINGS = [
-  { id: 'flowsom', label: 'FlowSOM', channel: 'FlowSOM cluster' },
-  { id: 'phenograph', label: 'Leiden (PhenoGraph)', short: 'Leiden', channel: 'Leiden cluster' },
-  { id: 'louvain', label: 'Louvain', channel: 'Louvain cluster' },
-  { id: 'kmeans', label: 'k-means', channel: 'k-means cluster' },
-  { id: 'none', label: 'None', channel: '' },
-];
+import { assignNearest, embeddingRanges, embeddingRaster, gatherMatrix, markerCandidates, pickEvents, robustRange, samplingPlan } from '../lib/explore.js';
+import { CLUSTERINGS, DEFAULT_SETTINGS, EMBEDDINGS, clusterGates, runExplore } from './explore-run.js';
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -34,7 +21,7 @@ function cssVar(name) {
 export function mountExploreMode(app, container) {
   const { store, data } = app;
   const S = (store.state.ui.explore ??= {
-    settings: { populationId: null, scope: 'all', perSample: 5000, maxTotal: 100000, markers: null, embedding: 'umap', nNeighbors: 15, minDist: 0.1, perplexity: 30, clustering: 'flowsom', k: 12, xdim: 10, ydim: 10, leidenK: 30, resolution: 1, seed: 42 },
+    settings: { ...DEFAULT_SETTINGS },
     run: null,
     colorBy: 'cluster',
     highlight: null,
@@ -139,7 +126,6 @@ export function mountExploreMode(app, container) {
   // --- Running ------------------------------------------------------------------------------------
 
   async function run() {
-    const ws = store.ws;
     const settings = { ...S.settings, markers: [...(S.settings.markers ?? [])] };
     const samples = scopedSamples();
     const popId = populationId();
@@ -150,167 +136,10 @@ export function mountExploreMode(app, container) {
     const progress = progressToast('Preparing the cells…', () => { for (const job of jobs) job.cancel(); running = null; renderSetup(); });
     running = { progress };
     renderSetup();
-    const call = (worker, type, payload, transfer, from, to) => {
-      const job = app.worker(worker).run(type, payload, { transfer, onProgress: (f, m) => progress.update(from + (to - from) * f, m) });
-      jobs.push(job);
-      return job.promise;
-    };
     try {
-      // 1. The population of every sample and the subsample to embed.
-      const loaded = [];
-      for (const [i, sample] of samples.entries()) {
-        progress.update((0.15 * i) / samples.length, `Loading ${sample.name}`);
-        const view = await data.ensure(sample.id);
-        const indices = population(view, ws, popId);
-        if (indices === undefined) continue;
-        const missing = settings.markers.filter((m) => !view.hasChannel(m));
-        if (missing.length) throw new Error(`${sample.name} lacks ${missing.join(', ')}.`);
-        loaded.push({ sample, view, indices, count: countOf(indices, view) });
-      }
-      if (!loaded.length) throw new Error('The population applies to none of the samples.');
-      const plan = samplingPlan(loaded.map((l) => l.count), settings.perSample, settings.maxTotal);
-      const dim = settings.markers.length;
-      const n = plan.reduce((a, b) => a + b, 0);
-      const matrix = new Float32Array(n * dim);
-      const sampleOf = new Int32Array(n);
-      const scaledOf = (view) => settings.markers.map((m) => view.scaled(m, channelTransform(ws, view, m)));
-      let offset = 0;
-      for (const [i, item] of loaded.entries()) {
-        item.picked = pickEvents(item.indices, item.view.eventCount, plan[i], settings.seed + i);
-        item.offset = offset;
-        gatherMatrix(scaledOf(item.view), item.picked, matrix, offset);
-        sampleOf.fill(i, offset, offset + item.picked.length);
-        offset += item.picked.length;
-      }
-
-      // 2. Clustering of every event (FlowSOM trained on the subsample, every event mapped; Leiden
-      // on the subsample, other events assigned to the nearest cluster centroid).
-      let labels = null;
-      let k = 0;
-      let fullLabels = null;
-      let flowsomResult = null;
-      // How events outside the subsample (and placed samples) get a cluster.
-      let assign = null;
-      if (settings.clustering === 'flowsom') {
-        progress.update(0.18, 'FlowSOM: training the map');
-        flowsomResult = await call('cluster', 'flowsom', { data: matrix.slice(), n, dim, options: { xdim: settings.xdim, ydim: settings.xdim, k: settings.k, seed: settings.seed } }, [], 0.18, 0.4);
-        labels = Int32Array.from(flowsomResult.labels);
-        k = flowsomResult.k;
-        assign = { som: flowsomResult.som, metaclusters: flowsomResult.metaclusters, k };
-        fullLabels = [];
-        for (const [i, item] of loaded.entries()) {
-          progress.update(0.4 + (0.1 * i) / loaded.length, `FlowSOM: mapping ${item.sample.name}`);
-          const all = item.indices ?? Uint32Array.from({ length: item.view.eventCount }, (_, e) => e);
-          const full = gatherMatrix(scaledOf(item.view), all);
-          const mapped = await call('cluster', 'map', { som: flowsomResult.som, data: full, n: all.length }, [full.buffer], 0.4, 0.5);
-          fullLabels.push({ all, labels: Int32Array.from(mapped.mapping, (node) => flowsomResult.metaclusters[node]) });
-        }
-      } else if (settings.clustering === 'phenograph' || settings.clustering === 'louvain' || settings.clustering === 'kmeans') {
-        let centers;
-        if (settings.clustering === 'kmeans') {
-          progress.update(0.18, 'k-means clustering');
-          const result = await call('cluster', 'kmeans', { data: matrix.slice(), n, dim, k: Math.min(settings.k, n), options: { seed: settings.seed } }, [], 0.18, 0.45);
-          labels = Int32Array.from(result.labels);
-          k = Math.min(settings.k, n);
-        } else {
-          const louvain = settings.clustering === 'louvain';
-          progress.update(0.18, louvain ? 'Louvain clustering' : 'Leiden clustering');
-          const result = await call('dimred', 'phenograph', { data: matrix.slice(), n, dim, options: { k: settings.leidenK, resolution: settings.resolution, seed: settings.seed, algorithm: louvain ? 'louvain' : 'leiden' } }, [], 0.18, 0.45);
-          labels = Int32Array.from(result.labels);
-          k = result.communities ?? (Math.max(...labels) + 1);
-        }
-        centers = centroids(matrix, n, dim, labels, k);
-        assign = { centers, k };
-        fullLabels = loaded.map((item) => {
-          const all = item.indices ?? Uint32Array.from({ length: item.view.eventCount }, (_, e) => e);
-          return { all, labels: assignNearest(gatherMatrix(scaledOf(item.view), all), all.length, dim, centers, k) };
-        });
-        // The embedded events keep their own Leiden labels.
-        for (const [i, item] of loaded.entries()) {
-          const position = new Map();
-          fullLabels[i].all.forEach((e, j) => position.set(e, j));
-          item.picked.forEach((e, j) => { fullLabels[i].labels[position.get(e)] = labels[item.offset + j]; });
-        }
-      }
-
-      // 3. Embedding of the subsample.
-      let embedding = null;
-      let modelId = null;
-      if (settings.embedding === 'umap') {
-        const result = await call('dimred', 'umap', { data: matrix.slice(), n, dim, options: { nNeighbors: settings.nNeighbors, minDist: settings.minDist, seed: settings.seed }, keepModel: true }, [], 0.5, 0.82);
-        embedding = result.embedding;
-        modelId = result.modelId;
-      } else if (settings.embedding === 'tsne') {
-        const result = await call('dimred', 'tsne', { data: matrix.slice(), n, dim, options: { perplexity: settings.perplexity, seed: settings.seed } }, [], 0.5, 0.82);
-        embedding = result.embedding;
-      } else if (settings.embedding === 'pca') {
-        const result = await call('dimred', 'pca', { data: matrix.slice(), n, dim, options: { components: 2 } }, [], 0.5, 0.82);
-        embedding = Float32Array.from(result.scores);
-      }
-
-      // 4. Honesty report.
-      let quality = null;
-      if (embedding) {
-        quality = await call('dimred', 'assessEmbedding', { high: matrix.slice(), low: embedding.slice(), n, dimHigh: dim, dimLow: 2, modelId, options: { labels: loaded.length > 1 ? Int32Array.from(sampleOf) : null, seed: settings.seed } }, [], 0.82, 0.92);
-      }
-
-      // 5. Cluster summary (on the subsample) and abundance (on every event).
-      let summary = null;
-      if (labels) {
-        progress.update(0.93, 'Summarizing clusters');
-        summary = await call('cluster', 'summary', { data: matrix.slice(), n, dim, labels: Int32Array.from(labels), k, markers: settings.markers.map((m) => shortLabel(m)), heatmap: { scale: 'quantile' } }, [], 0.93, 0.97);
-      }
-      const abundance = fullLabels ? fullLabels.map(({ labels: l }) => {
-        const counts = new Float64Array(k);
-        for (const c of l) if (c >= 0) counts[c] += 1;
-        return Array.from(counts, (c) => (100 * c) / (l.length || 1));
-      }) : null;
-
-      // 6. Store the results as derived channels with the method and parameters.
-      progress.update(0.97, 'Saving the result');
-      const method = EMBEDDINGS.find((m) => m.id === settings.embedding);
-      const clustering = CLUSTERINGS.find((m) => m.id === settings.clustering);
-      const outputs = [];
-      if (embedding) outputs.push(`${method.axis} 1`, `${method.axis} 2`, 'Embedded');
-      if (fullLabels) outputs.push(clustering.channel);
-      const perSample = new Map();
-      for (const [i, item] of loaded.entries()) {
-        const columns = {};
-        if (embedding) {
-          const x = new Float32Array(item.view.eventCount).fill(Number.NaN);
-          const y = new Float32Array(item.view.eventCount).fill(Number.NaN);
-          const embedded = new Float32Array(item.view.eventCount);
-          item.picked.forEach((e, j) => {
-            x[e] = embedding[(item.offset + j) * 2];
-            y[e] = embedding[(item.offset + j) * 2 + 1];
-            embedded[e] = 1;
-          });
-          columns[`${method.axis} 1`] = x;
-          columns[`${method.axis} 2`] = y;
-          columns.Embedded = embedded;
-        }
-        if (fullLabels) {
-          const column = new Float32Array(item.view.eventCount).fill(-1);
-          fullLabels[i].all.forEach((e, j) => { column[e] = fullLabels[i].labels[j]; });
-          columns[clustering.channel] = column;
-        }
-        perSample.set(item.sample.id, columns);
-      }
-      const names = summary ? Array.from({ length: k }, (_, c) => clusterName(c, summary.annotation?.clusters?.[c]?.name, summary.mem?.labels?.[c])) : [];
-      const record = await app.saveDerived({
-        kind: settings.embedding !== 'none' ? settings.embedding : settings.clustering,
-        name: [clustering.id !== 'none' ? clustering.label : null, method.id !== 'none' ? method.label : null].filter(Boolean).join(' + '),
-        method: [clustering.id !== 'none' ? clustering.label : null, method.id !== 'none' ? method.label : null].filter(Boolean).join(' and '),
-        params: { markers: settings.markers, populationId: popId, population: popId === ROOT ? 'All events' : gatePath(ws, popId), samples: loaded.map((l) => l.sample.name), events: n, nNeighbors: settings.nNeighbors, minDist: settings.minDist, perplexity: settings.perplexity, k, xdim: settings.xdim, ydim: settings.xdim, leidenK: settings.leidenK, resolution: settings.resolution, embedding: settings.embedding, clustering: settings.clustering },
-        seed: settings.seed,
-        outputs,
-        perSample,
-        summary: {
-          quality: quality ? { trustworthiness: quality.trustworthiness, continuity: quality.continuity, knnPreservation: quality.knnPreservation, k: quality.k, batch: quality.batch, warnings: quality.warnings } : null,
-          clusters: summary ? { k, names, mem: summary.mem?.labels ?? null, frequencies: Array.from(summary.summary.frequencies ?? []) } : null,
-          abundance,
-        },
-      }, `Explore: ${clustering.id !== 'none' ? clustering.label : ''}${clustering.id !== 'none' && method.id !== 'none' ? ' + ' : ''}${method.id !== 'none' ? method.label : ''}`);
+      const computed = await runExplore(app, { settings, samples, popId }, { onProgress: (f, m) => progress.update(f, m), track: (job) => { jobs.push(job); return job; } });
+      const record = await app.saveDerived(computed.result, `Explore: ${computed.result.name}`);
+      const { loaded, matrix, n, dim, sampleOf, embedding, labels, k, summary, names, quality, abundance, method, clustering, modelId, assign } = computed.run;
       S.run = { recordId: record.id, settings, loaded: loaded.map((l) => ({ id: l.sample.id, name: l.sample.name, count: l.count, offset: l.offset, n: l.picked.length })), matrix, n, dim, sampleOf, embedding, ranges: embedding ? embeddingRanges(embedding, n) : null, labels, k, summary, names, quality, abundance, method, clustering, popId, reliability: quality?.reliability?.score ?? null, modelId, assign, placed: [] };
       S.mapShows = 'reference';
       S.colorBy = labels ? 'cluster' : 'density';
@@ -771,12 +600,7 @@ export function mountExploreMode(app, container) {
     const r = S.run;
     const ws = store.ws;
     const parentId = r.popId === ROOT ? null : r.popId;
-    const existing = new Set(ws.gates.filter((g) => g.type === 'category' && g.dims[0]?.channel === r.clustering.channel && (g.parentId ?? null) === parentId).map((g) => g.geometry.values[0]));
-    const gates = [];
-    for (let c = 0; c < r.k; c += 1) {
-      if (existing.has(c)) continue;
-      gates.push({ id: newId('g'), parentId, name: r.names[c], type: 'category', dims: [{ channel: r.clustering.channel }], geometry: { values: [c] }, color: categoricalColor(c), meta: { origin: 'auto', method: r.clustering.label, note: `${r.clustering.label} cluster ${c + 1}${r.summary?.mem?.labels?.[c] ? `: ${r.summary.mem.labels[c]}` : ''}.` } });
-    }
+    const gates = clusterGates(ws, { popId: r.popId, k: r.k, names: r.names, clustering: r.clustering, mem: r.summary?.mem?.labels });
     if (!gates.length) return toast('The clusters are already populations.');
     store.commit(addGates(ws, gates).ws, `Add ${gates.length} cluster populations`);
     toast(`Added ${gates.length} cluster populations under ${parentId ? gateById(ws, parentId).name : 'All events'}. Rename them in the tree; compare them in Compare → Screen populations.`, { kind: 'ok' });
