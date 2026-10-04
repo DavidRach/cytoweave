@@ -1,6 +1,6 @@
 # CytoWeave requirements
 
-What CytoWeave must do, and the status of each requirement in 0.3.0.
+What CytoWeave must do, and the status of each requirement in 0.4.0.
 - `research.md` explains why each requirement is here: the methods and
   standards of §3–4 and the design implications of §8.
 - `design.md` explains how the requirements are met.

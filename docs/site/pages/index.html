@@ -5,7 +5,7 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
 ---
     <section class="hero">
       <div class="container hero-grid">
-        <a class="eyebrow" href="{{github}}/releases/tag/v{{version}}"><span class="pill">v{{version}}</span> Gates adapted to each sample, Q and B of your cytometer, FlowJo export and figures that carry their analysis</a>
+        <a class="eyebrow" href="{{github}}/releases/tag/v{{version}}"><span class="pill">v{{version}}</span> Panel design from your instrument's noise, QC as files are acquired, conclusions checked against other analysis choices, and accessibility</a>
         <h1>Flow cytometry analysis <span class="accent">you can check</span></h1>
         <p class="lede">CytoWeave is an analysis workbench for conventional, spectral and mass cytometry. It runs on your own computer as one self-contained program, installed with a single command: no license server, no account, no Python, R or plugins. Files are read and analyzed in your browser and never leave your machine.</p>
         <shot name="gate" alt="The Gate view of CytoWeave: the gating path of T cells in a 14-color PBMC experiment, with CD4 against CD8 and CD45RA against CCR7 plots, the population tree and the T-cell statistics" window eager>The gating path of T cells in the bundled 14-color PBMC experiment, one of ten example experiments.</shot>
@@ -204,6 +204,21 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
 
         <article class="feature reverse">
           <div class="feature-text">
+            <span class="kicker">Robustness</span>
+            <h3>Would another analyst reach the same conclusion?</h3>
+            <p>A comparison rests on choices made before any test: where each gate was drawn, whether it was adjusted per sample, whether QC was applied, which compensation matrix was used. CytoWeave repeats the comparison 64 times with those choices made differently, alone and in combination, says whether the conclusion holds, mostly holds or is fragile, and names the choices it depends on.</p>
+            <ul class="checklist">
+              <li>A specification curve of every analysis, with its confidence interval</li>
+              <li>Gain shifts, clogs and a stale matrix traced to the choice behind them</li>
+              <li>A sentence on the check in the methods text</li>
+            </ul>
+            <a class="more-link" href="docs/statistics.html#robustness">Robustness to analysis choices</a>
+          </div>
+          <shot name="compare-robustness" alt="Robustness to analysis choices for monocytes, stimulated against unstimulated: the conclusion mostly holds, with a specification curve of 64 analyses, those drawn with a wider monocyte gate in red">Monocytes do not change with stimulation, unless the monocyte gate is drawn wider: activated T cells then fall into it.</shot>
+        </article>
+
+        <article class="feature">
+          <div class="feature-text">
             <span class="kicker">AI agents</span>
             <h3>Let an agent gate while you watch, then decide</h3>
             <p>CytoWeave is an MCP server, so Claude Code and other agents can open data, gate, compute statistics, review gates, compare groups and write the methods, in the window you are watching. Their changes arrive as proposals: new gates appear marked as proposed with real counts, and renames, deletions and compensation matrices wait for you.</p>
@@ -217,14 +232,14 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
           <shot name="agents-review" alt="Review the proposal: Claude Code proposes three gates with their frequencies and a compensation matrix for 12 samples, with Reject all and Accept all buttons">Claude Code proposes single cells, live cells and a compensation matrix; nothing is final until you accept.</shot>
         </article>
 
-        <article class="feature">
+        <article class="feature reverse">
           <div class="feature-text">
             <span class="kicker">Moving from FlowJo</span>
             <h3>Bring your FlowJo workspaces, and see that they match</h3>
             <p>FlowJo 10 workspaces import with their samples, gates, compensation and scales. The import lists every population as exact, approximated or unsupported, and the migration report compares every population count with FlowJo's, with the likely cause of any difference.</p>
             <ul class="checklist">
               <li>FlowJo's biexponential reproduced from its own algorithm</li>
-              <li>Workspaces exported back to FlowJo, one gating tree per sample</li>
+              <li>Workspaces exported back to FlowJo, one gating tree per sample, tested in FlowJo 11</li>
               <li>De-identified FCS files for sharing, with the events untouched</li>
               <li>Gating-ML 2.0 in and out: all 190 compliance gates exact</li>
               <li>Archival Cytometry Standard containers and CLR</li>
@@ -234,7 +249,7 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
           <shot name="flowjo" alt="The FlowJo migration report: 56 of 56 population counts agree exactly with FlowJo, listed by population and sample">The bundled FlowJo workspace: 56 of 56 population counts agree exactly.</shot>
         </article>
 
-        <article class="feature reverse">
+        <article class="feature">
           <div class="feature-text">
             <span class="kicker">Reproducible</span>
             <h3>Figures, methods and checkpoints</h3>
@@ -289,6 +304,21 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
             <h3>Ten example experiments</h3>
             <p>Simulated with the truth of every event: a planted compensation error, a FlowJo workspace, a spectral panel, a barcoded plate, a month of bead QC and more.</p>
           </a>
+          <a class="card" href="docs/spectral.html#design">
+            <span class="icon-badge gold"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span>
+            <h3>Panel design</h3>
+            <p>A panel's spreading matrix predicted from the instrument's own noise: leave a dye out or add one from the library and see the spread before you run it.</p>
+          </a>
+          <a class="card" href="docs/qc.html#live">
+            <span class="icon-badge mint"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
+            <h3>QC while you acquire</h3>
+            <p>Watch the instrument's export folder: each file is checked as soon as it is written, so a clog or a failing detector shows before the next tube.</p>
+          </a>
+          <a class="card" href="docs/accessibility.html">
+            <span class="icon-badge"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <h3>Accessible</h3>
+            <p>Color-vision-friendly colors as a setting, WCAG AA contrast in both themes, keyboard operation and plots described for screen readers.</p>
+          </a>
         </div>
       </div>
     </section>
@@ -310,8 +340,10 @@ description: A flow cytometry analysis workbench for conventional, spectral and 
               <tr><td><strong>Spectral</strong></td><td>True abundances of 25 fluorochromes</td><td class="agree">median r = 0.988</td></tr>
               <tr><td><strong>Gating-ML</strong></td><td>ISAC's compliance suite</td><td class="agree">190 of 190 gates exact</td></tr>
               <tr><td><strong>FlowJo</strong></td><td>FlowJo's saved counts in 14 workspaces</td><td class="agree">as close as FlowKit or closer</td></tr>
+              <tr><td><strong>FlowJo export</strong></td><td>FlowJo 11.2.0 opening three exports</td><td class="agree">every population within 0.6 points</td></tr>
               <tr><td><strong>Autogating</strong></td><td>An expert's per-donor gates in a real cytokine study</td><td class="agree">no adjustment moved away from the expert</td></tr>
               <tr><td><strong>Q and B</strong></td><td>flowQB on its own LSR II data</td><td class="agree">equal within 6e-9</td></tr>
+              <tr><td><strong>Predicted spread</strong></td><td>A BD LSRFortessa's 15 bead controls</td><td class="agree">79% of pairs within 2×</td></tr>
               <tr><td><strong>R packages</strong></td><td>flowCore, PeacoQC, FlowSOM and CytoNorm</td><td class="agree">within 1e-7 to 1e-5</td></tr>
             </tbody>
           </table>

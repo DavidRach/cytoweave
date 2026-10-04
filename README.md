@@ -19,12 +19,17 @@ checks each step:
 - spillover from single-stain controls, checked against those controls;
 - spectral unmixing with autofluorescence, and a comparison of how the choice
   of unmixing model changes the result;
-- acquisition QC that finds clogs and bubbles and leaves clean data alone;
+- panel design: a panel's spread predicted from the instrument's own noise
+  before the panel is run;
+- acquisition QC that finds clogs and bubbles and leaves clean data alone,
+  also as the instrument writes each file;
 - the instrument itself: detector efficiency Q and background B from beads,
   Levey–Jennings charts across runs, and a library of reference spectra;
 - batch normalization and debarcoding;
 - clustering and UMAP/t-SNE maps that report how far they can be trusted;
-- statistics tables and group comparisons with the right test for the design;
+- statistics tables and group comparisons with the right test for the design,
+  and a check of whether a conclusion survives other reasonable analysis
+  choices;
 - cell-cycle and proliferation models;
 - publication figures, a methods paragraph with references, and a MIFlowCyt
   checklist.
@@ -91,6 +96,11 @@ guides to every view, with screenshots.
     sample.
   - A **spectral library** across experiments that flags a degraded tandem
     and supplies spectra for dyes without a control.
+- **Panel design.** A panel's spreading matrix predicted from its spectra and
+  the instrument's noise (photon counting and laser fluctuations), fitted to
+  your controls, kept for the instrument or taken from its bead runs. Leave a
+  dye out or add one from the library and see the spread change before you
+  run the panel. Checked on a real LSRFortessa's controls.
 - **Acquisition QC.**
   - PeacoQC, with CytoWeave's refinements that stop it removing events from
     clean or slowly drifting files.
@@ -98,6 +108,9 @@ guides to every view, with screenshots.
   - A 0–100 score per sample and a cohort overview.
   - The result is a "QC pass" channel to gate on. Your data are never
     changed.
+  - **QC as files are acquired**: watch the instrument's export folder, and
+    each file is checked as soon as it is complete (bead files for Q and B),
+    so a clog or a failing detector shows before the next tube.
 - **The instrument.** Every detector's efficiency Q, background B and the
   beads' CV from multi-level beads or an LED pulser, as flowQB computes them,
   followed across runs and experiments on Levey–Jennings charts with the
@@ -124,6 +137,10 @@ guides to every view, with screenshots.
     correction.
   - Screens of every population or cluster, with volcano plots and
     differential abundance.
+  - **Robustness to analysis choices**: whether a comparison's conclusion
+    holds across 64 analyses with the gates moved or adapted, QC removed or
+    re-run, another compensation matrix or another test, with a
+    specification curve and the choices it depends on.
 - **Review across samples.**
   - Every sample's result for a gate, ranked by how unusual it is: frequency
     outliers, boundaries drawn through dense regions, low counts.
@@ -161,6 +178,10 @@ guides to every view, with screenshots.
   responsive: files are read in parts and never held whole, populations are
   kept as bitsets, and analyses in the background share the events rather
   than copy them.
+- **Accessible.** Color-vision-friendly colors as a setting (populations,
+  heat maps and status colors), text contrast that meets WCAG AA in both
+  themes, the population tree, sample list and dialogs by keyboard, and every
+  plot described for screen readers.
 - **Validated.** A validation suite checks the pipelines against known
   answers and published reference values on every change; see
   [validation/](validation/README.md).
@@ -435,6 +456,21 @@ Q and B with their standard errors and a plot of peak variance against mean.
 **Levey–Jennings** charts follow Q, B and a bead level across runs and
 experiments, flagged by the Westgard rules.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/qc-live-dark.webp">
+  <img alt="QC Live: watching the instrument's export folder, one file still being written, and four wells checked as they landed, scored 49, 80, 79 and 100" src="docs/images/qc-live-light.webp">
+</picture>
+
+**Live** (or `cytoweave --watch <folder>`) watches the folder an instrument
+exports to. Each FCS file is added to the workspace once the instrument has
+finished writing it (its size is steady and its header says all its data are
+there, which also works on network shares) and checked at once: acquisition
+QC for samples and controls, Q and B for bead files, added to the
+instrument's record and checked against the Levey–Jennings rules. A low score
+or a detector out of control raises a notice. The folder is only read.
+PeacoQC's per-channel work runs on up to four workers, with exactly the
+serial result: 3.4 s instead of 10.5 s for two million events in 20 channels.
+
 ### Compensate
 
 <picture>
@@ -503,6 +539,25 @@ controls are compared with the library's latest spectra, so a dye that
 changed (a tandem that degraded, a new lot) is flagged before it distorts the
 unmixing; a fluorochrome you have no control for can be unmixed with its
 library spectrum.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/spectral-design-dark.webp">
+  <img alt="The Panel design tab: noise fitted to the 25 controls with its check, the panel with BV711 left out, and the predicted spreading matrix" src="docs/images/spectral-design-light.webp">
+</picture>
+
+**Panel design** predicts the spreading matrix of a panel from its spectra and
+the instrument's noise, so you can try a change before running it. The noise
+has two parts: photon counting in every detector (1/Q), and each laser's
+intensity fluctuations, which make a dye excited by two lasers spread in
+proportion to its brightness. It is fitted to this experiment's controls
+(each control's spread is predicted from the others as a check), kept for the
+instrument in the library, or taken from its bead runs. Leave a dye out or add
+one from the library, and the matrix, the complexity index and the spread
+each channel receives follow; the channels that receive the least suit dim
+markers. With no files open, **Design a panel from the spectral library** does
+the same from an instrument's library alone. On a BD LSRFortessa's 15 bead
+controls, each control's spread predicted from the other 14 was within 2× of
+the observed value for 79% of well-measured pairs.
 
 ### Explore
 
@@ -590,6 +645,24 @@ cluster at once. Results are corrected for multiple testing
 volcano plot. Cluster abundance uses a quasi-binomial model in the manner of
 diffcyt. Clicking a point opens that sample.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-robustness-dark.webp">
+  <img alt="Robustness to analysis choices for monocytes, stimulated against unstimulated: the conclusion mostly holds, with a specification curve of 64 analyses and the choices each changed" src="docs/images/compare-robustness-light.webp">
+</picture>
+
+**Robustness to analysis choices** asks whether a two-group comparison's
+conclusion would change had the data been processed differently in ways
+another analyst might reasonably have chosen. The comparison is repeated with
+each gate on the population's path moved 1% and 2% of the axis, with the
+gates adapted to each sample or without per-sample adjustments, without the
+QC gate or with QC re-run stricter and looser, with the workspace's other
+compensation matrices and with the rank test, each alone and in random
+combinations (64 analyses). The result says whether the conclusion holds
+(≥ 90%), mostly holds (≥ 70%) or is fragile, names the choices that change it
+and those that move the size of a difference beyond its confidence interval,
+and draws the specification curve. The declared analysis stays the result;
+the methods text includes a sentence on the check.
+
 ### Figures
 
 Page layouts for publication: the gating strategy of a population in one
@@ -646,6 +719,29 @@ where it came from and what has changed since, plot by plot: for example
   changed", and shows the effect on every population's frequency. Restore a
   checkpoint with one click.
 - **Change log.** Every recorded action, downloadable as JSON.
+
+### Appearance and accessibility
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/color-vision-dark.webp">
+  <img alt="The Gate view with color-vision-friendly colors: populations in blue, orange, green, vermillion, sky blue and pink, density plots in viridis, and the Appearance menu with the setting ticked" src="docs/images/color-vision-light.webp">
+</picture>
+
+The **Appearance** menu (the sun or moon button) chooses the light or dark
+theme, or follows the system. **Color-vision-friendly colors** gives
+populations, groups and clusters a palette that stays distinct with
+protanopia, deuteranopia and tritanopia, draws the rainbow heat maps as
+viridis, and turns the green, amber and red status colors into blue, orange
+and magenta. The workspace is not changed: its own colors return when the
+setting is off.
+
+The population tree works from the keyboard (arrows, Home, End) and is
+announced as a tree with each population's frequency and count; the sample
+list is one stop with the arrow keys; dialogs keep the focus inside and give
+it back when they close; and every plot has a text description of its axes,
+population and gates. The
+[Accessibility page](https://robert-mcdermott.github.io/cytoweave/docs/accessibility.html)
+of the user guide lists the shortcuts and what is not covered yet.
 
 ## Workspaces, history and the library
 
@@ -839,11 +935,16 @@ pipelines, as the app does, against answers known in advance:
 | Instrument (Q and B) | 30 simulated bead runs with known Q and B, and a PMT, flow cell and laser problem | Q within 2% (median), B within 6%; every problem flagged at once on Levey–Jennings charts, none in the 20 baseline runs |
 | Spectral library | A second experiment's controls, and a tandem that lost 5% of its emission | Independent controls all match (largest difference 0.01); the degraded PE-Cy7 flagged and nothing else; a library spectrum unmixes as well as the dye's own control |
 | Figure provenance | A 60-plot figure of 12 samples | Read back intact from SVG, PNG and PDF; rebuilt with every plot drawn from the same events; a moved gate flags exactly the plots it affects |
+| Predicted spread | Simulated controls with known photon noise and laser fluctuations | Photon noise within 1% of the truth; each control's spread predicted from the other 24 within 2× for 98% of pairs; a 15-dye panel predicted from the 25-dye fit within 2× for every pair |
+| Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
+| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 66 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
 | Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
 | Autogating, against experts | An expert's per-donor gates in 4 FlowJo workspaces of a cytokine study (48 wells) | Agreement with the expert unchanged (F1 0.9876 → 0.9877), no adjustment lowering it; wells gated differently sent to review 3× as often as the others |
 | flowQB | flowQB on its own LSR II data: an LED series, 8-peak and 6-peak beads | The same peaks, Q, B and standard errors in all 36 detectors (within 6e-9) |
 | FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-color workspaces at least as close to FlowJo as FlowKit |
-| FlowJo export | The workspace imported back, and FlowKit reading the export | Every count unchanged in 12 workspaces; FlowKit counts what CytoWeave counts (ellipse boundaries aside) |
+| FlowJo export | The workspace imported back, FlowKit and CytoML reading the export, and FlowJo 11.2.0 (build 11.2.0.210156) opening three exports | Every count unchanged in 12 workspaces; FlowKit counts what CytoWeave counts (ellipse boundaries aside), CytoML 306 of 313 counts equal; in FlowJo 11 every population within 0.6 percentage points, most within 0.1 |
+| Predicted spread, real controls | A BD LSRFortessa's 15 bead controls, each predicted from the other 14 | Within 2× of the observed spread for 79% of well-measured pairs (median ×1.32) |
+| Robustness, real study | 4 donors of an intracellular cytokine study | Every PMA comparison holds in all analyses; one small IL-4 peptide response fragile |
 | De-identification | Every example and corpus FCS file | The same events, bit for bit |
 | Reference tools | FlowKit 1.3.2 and FlowIO | FCS decoding, compensation, spectral unmixing and transforms agree |
 | FCS files | 16 instrument and malformed test files | All readable files read and written back bit-exact; malformed ones refused with a clear message |
@@ -888,6 +989,20 @@ used for diagnosis.
   values lie within 2 SE), as in flowQB. The spectral library's threshold for
   a changed spectrum (0.03) was calibrated on simulated controls; real
   controls vary more, and a laboratory may need its own.
+- Predicted spread was checked on real controls of a conventional cytometer
+  (LSRFortessa) only; no public spectral data set with single-stain controls
+  was found. It does not predict spread from a heterogeneous dye (a degraded
+  tandem) or from autofluorescence that differs between positive and negative
+  cells.
+- Robustness to analysis choices covers two-group comparisons of a
+  population; designs of more than two groups and cluster abundances are not
+  checked, and scales are not varied.
+- QC as files are acquired needs the CytoWeave program (not the page served
+  as a web site) and checks whole files, as acquisition software writes them,
+  not events as they are acquired.
+- Drawing a new gate needs a pointer (or an AI agent); from the keyboard,
+  gates can be selected, moved, renamed and their limits typed. CytoWeave has
+  not yet been tested by people who use screen readers every day.
 - Event data in CSV are not imported, only annotations.
 - Imaging flow data (CellView, Amnis) are not supported.
 - Spectral unmixing needs the raw detector channels; files that hold only

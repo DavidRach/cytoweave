@@ -198,7 +198,12 @@ released as 0.3.0; wave 4 follows in 0.4.
      PE-Cy7 spectrum cost PE nearly a third of its correlation with the truth (0.68 → 0.48). Real controls will vary
      more than simulated ones; the threshold may need to be per laboratory.
 
-## Next (0.4)
+## 0.4.0: before, during and after acquisition (released 2026-10-03)
+
+Wave 4 follows an experiment from panel design through acquisition to the robustness of its
+conclusions, and makes the workbench accessible. It also fixed the FlowJo export for FlowJo 11,
+after compatibility testing with FlowJo 11.2.0 (build 11.2.0.210156), and gave CytoWeave a new
+logo.
 
 ### Wave 4
 

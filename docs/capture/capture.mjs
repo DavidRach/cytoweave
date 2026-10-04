@@ -581,6 +581,9 @@ try {
         console.error(`${name} (${theme}) failed: ${error.message}`);
         process.exitCode = 1;
       } finally {
+        // The watch runs in the program, which serves every later scene: stop it, or their
+        // status bars show it.
+        if (name === 'qc-live') await app(`if (app.live.status?.watching) await app.live.stop();`).catch(() => {});
         await b.close();
       }
     }

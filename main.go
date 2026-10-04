@@ -24,7 +24,7 @@ import (
 //go:embed web/index.html web/styles.css web/app.js web/favicon.svg web/lib/*.js web/ui/*.js web/workers/*.js
 var content embed.FS
 
-var version = "0.3.0"
+var version = "0.4.0"
 
 type config struct {
 	remote      bool

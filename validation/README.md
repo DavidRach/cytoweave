@@ -51,11 +51,11 @@ node validation/run.mjs
 already present are not downloaded again. The data are not part of the
 repository or of the CytoWeave program. Without them, the suites that need them
 are skipped and the others still run; the run needs no network and takes about
-25 seconds without them, and about 100 with them.
+a minute without them, and about 200 seconds with them.
 
 | Option | Effect |
 | --- | --- |
-| `fcs`, `compensation`, `gating`, `qc`, `spectral`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `figures`, `autogating`, `instrument`, `reference`, `experts`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `diva`, `bioconductor` | Run only these suites |
+| `fcs`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
 | `--verbose` | Print every check, not only failures |
 | `--require-data` | Fail, rather than skip, when the public test data are missing |
 
