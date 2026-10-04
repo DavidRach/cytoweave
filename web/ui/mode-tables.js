@@ -199,11 +199,17 @@ export function mountTablesMode(app, container) {
       if (ratio(textLum, lum) >= 4.5) return null;
       return ratio(0, lum) >= ratio(1, lum) ? '#000000' : '#ffffff';
     };
+    // A population's confirmed Cell Ontology term, under its column's name.
+    const cellType = (column) => {
+      const term = column.gateId && column.gateId !== ROOT ? gateById(ws, column.gateId)?.ontology : null;
+      return term?.status === 'confirmed' ? term : null;
+    };
     const head = h('tr', h('th', 'Sample'), ...metaFields.map((f) => h('th', f)),
-      ...table.columns.map((column) => h('th.r', { title: columnLabel(ws, column), style: { maxWidth: '180px' } },
+      ...table.columns.map((column) => h('th.r', { title: `${columnLabel(ws, column)}${cellType(column) ? `\nCell type: ${cellType(column).label} (${cellType(column).id})` : ''}`, style: { maxWidth: '180px' } },
         h('div', { style: { display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'flex-end' } },
           h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' } }, columnLabel(ws, column)),
-          h('button.icon-button.small', { type: 'button', title: 'Column options', onclick: (event) => columnMenu(event.currentTarget, table, column) }, icon('chevronDown'))))));
+          h('button.icon-button.small', { type: 'button', title: 'Column options', onclick: (event) => columnMenu(event.currentTarget, table, column) }, icon('chevronDown'))),
+        cellType(column) ? h('div.muted', { style: { fontSize: '11px', fontWeight: 'normal', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px', marginLeft: 'auto' } }, cellType(column).label) : null)));
     const body = h('tbody');
     for (const sample of rows) {
       const row = values.get(sample.id);

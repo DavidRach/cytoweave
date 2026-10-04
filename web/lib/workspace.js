@@ -91,7 +91,7 @@ export function guessStain(name, channels) {
 
 // A sample record from a parsed FCS data set.
 export function sampleFromDataset(dataset, file) {
-  const channels = dataset.parameters.map((p) => ({ name: p.name, label: p.label, marker: p.marker, type: p.type, range: p.range }));
+  const channels = dataset.parameters.map((p) => ({ name: p.name, label: p.label, marker: p.marker, type: p.type, range: p.range, ...(p.voltage ? { voltage: p.voltage } : {}) }));
   const name = (file.name ?? 'sample').replace(/\.(fcs|lmd)$/i, '');
   const spill = readSpillover(dataset.keywords, dataset.parameters);
   const role = guessRole(name, dataset.keywords);
@@ -361,6 +361,16 @@ export function clearOverride(ws, id, sampleId) {
 }
 
 // Removes a gate with its descendants and any boolean gates that reference them.
+// Adds a gate at the top of the gating tree and moves every other top-level gate, and every plot
+// of all events, beneath it (as for the "QC pass" gate). Returns { ws, gate }.
+export function insertRootGate(ws, gate, action = 'add-root-gate') {
+  const added = addGates(ws, [{ ...gate, parentId: null }], action);
+  const root = added.gates[0];
+  const gates = added.ws.gates.map((g) => (g.id !== root.id && !g.parentId ? { ...g, parentId: root.id } : g));
+  const next = { ...setCollection(added.ws, 'gates', gates, 'reparent-under-root'), plots: (added.ws.plots ?? []).map((p) => (p.populationId === ROOT ? { ...p, populationId: root.id } : p)) };
+  return { ws: next, gate: root };
+}
+
 export function removeGate(ws, id) {
   const doomed = new Set([id, ...gateDescendants(ws, id).map((g) => g.id)]);
   const gate = gateById(ws, id);
@@ -484,7 +494,7 @@ export function plotsOf(ws, populationId) {
 // --- Derived results ------------------------------------------------------------------------
 
 export function addDerived(ws, record) {
-  const entry = { id: record.id ?? newId('d'), created: now(), ...record };
+  const entry = { created: now(), ...record, id: record.id ?? newId('d') };
   return { ws: touch(ws, { derived: [...ws.derived.filter((d) => d.id !== entry.id), entry] }, `derive-${record.kind}`, record.name ?? record.kind), derived: entry };
 }
 

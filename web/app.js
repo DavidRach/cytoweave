@@ -9,6 +9,7 @@ import { mountSidebar } from './ui/sidebar.js';
 import { mountInspector } from './ui/inspector.js';
 import { installActions } from './ui/actions.js';
 import { installExportDialogs } from './ui/export-dialogs.js';
+import { installTemplateDialogs } from './ui/template-dialogs.js';
 import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
 import { installAutogating } from './ui/autogate-dialog.js';
 import { installLiveQC } from './ui/live-qc.js';
@@ -33,7 +34,7 @@ import {
   updateSample,
 } from './lib/workspace.js';
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 
 const MODES = [
   { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
@@ -96,6 +97,7 @@ async function start() {
 
   installActions(app);
   installExportDialogs(app);
+  installTemplateDialogs(app);
   installFigureProvenance(app);
   installAutogating(app);
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
@@ -236,7 +238,7 @@ async function start() {
   const fileInput = document.getElementById('file-input');
   const folderInput = document.getElementById('folder-input');
   app.pickFiles = (accept) => {
-    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.xml,.csv,.acs,.zip';
+    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.xml,.csv,.acs,.zip,.cwt';
     fileInput.value = '';
     fileInput.click();
   };
@@ -257,6 +259,7 @@ async function start() {
     const tables = items.filter((item) => /\.(csv|tsv)$/i.test(item.name));
     const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
     const figures = items.filter((item) => /\.(svg|png|pdf)$/i.test(item.name));
+    const templates = items.filter((item) => /\.cwt$/i.test(item.name));
     for (const item of workspaces) await openWorkspaceFile(item);
     if (fcs.length) await importFCSItems(fcs);
     for (const item of archives) await importArchive(item);
@@ -264,7 +267,8 @@ async function start() {
     for (const item of gatingml) await importGatingML(item);
     for (const item of tables) await importMetadataTable(item);
     for (const item of figures) await app.openFigureFile(item);
-    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv) and figures it exported (.svg, .png, .pdf).', { kind: 'error' });
+    for (const item of templates) await app.openTemplateFile(item);
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf).', { kind: 'error' });
   };
 
   async function readBytes(item) {
@@ -640,6 +644,10 @@ async function start() {
       } },
       { label: 'Save now', icon: 'save', hint: `${modKey}S`, onSelect: async () => { await saveNow(); toast('Saved.', { kind: 'ok' }); } },
       '-',
+      { section: 'Templates' },
+      { label: 'Save as a template…', icon: 'layers', onSelect: () => app.saveTemplate() },
+      { label: 'Apply a template…', icon: 'layers', onSelect: () => app.applyTemplateDialog() },
+      '-',
       { section: 'Export' },
       { label: 'Workspace file (.cwz)', icon: 'download', onSelect: exportWorkspaceFile },
       { label: 'Workspace with FCS files (ACS archive)', icon: 'download', onSelect: exportBundle },
@@ -674,6 +682,8 @@ async function start() {
     { label: 'Export as a FlowJo workspace', icon: 'download', run: () => app.exportFlowJo(), keywords: 'wsp flowjo' },
     { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymize privacy keywords' },
     { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
+    { label: 'Save as a template', icon: 'layers', run: () => app.saveTemplate(), keywords: 'template reuse strategy panel' },
+    { label: 'Apply a template', icon: 'layers', run: () => app.applyTemplateDialog(), keywords: 'template reuse strategy panel omip' },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
     { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },

@@ -288,3 +288,111 @@ test('columns can be allocated on shared memory (for workers), with the same val
     assert.deepEqual(Array.from(d.data[1]), [-4, 5, 6]);
   }
 });
+
+// Cases the fuzzer (validation/fuzz-cases.mjs) found: each must be refused with an FCSError, or
+// read with what the data hold, never crash, hang or allocate what the file cannot hold.
+const floatEvents = (n, p) => new Uint8Array(new Float32Array(n * p).fill(1).buffer);
+const floatKeywords = (extra = {}) => ({ $BYTEORD: '1,2,3,4', $DATATYPE: 'F', $MODE: 'L', $PAR: '2', $TOT: '4', $P1N: 'FSC-A', $P1B: '32', $P1E: '0,0', $P1R: '1024', $P2N: 'SSC-A', $P2B: '32', $P2E: '0,0', $P2R: '1024', ...extra });
+
+test('a bit width beyond 64 is refused, quoting the keyword (it once looped for hours)', () => {
+  const data = new Uint8Array(16);
+  const bytes = buildFCS({ version: 'FCS2.0', keywords: { $BYTEORD: '1,2,3,4', $DATATYPE: 'I', $MODE: 'L', $PAR: '2', $TOT: '4', $P1N: 'A', $P1B: '1000000000000000', $P1E: '0,0', $P1R: '1024', $P2N: 'B', $P2B: '10', $P2E: '0,0', $P2R: '1024' }, data });
+  assert.throws(() => parseFCS(bytes), (error) => error.name === 'FCSError' && /\$P1B is not a bit width \("1000000000000000"\)/.test(error.message));
+});
+
+test('$PAR larger than the TEXT segment could describe is refused at once', () => {
+  const bytes = buildFCS({ keywords: floatKeywords({ $PAR: '1000000000000000' }), data: floatEvents(4, 2) });
+  assert.throws(() => parseFCS(bytes), (error) => error.name === 'FCSError' && /\$PAR says the file has 1000000000000000 parameters/.test(error.message));
+});
+
+test('a negative $TOT is ignored and the count inferred from the data', () => {
+  const { datasets } = parseFCS(buildFCS({ keywords: floatKeywords({ $TOT: '-1' }), data: floatEvents(4, 2) }));
+  assert.equal(datasets[0].eventCount, 4);
+  assert.ok(datasets[0].diagnostics.some((d) => d.code === 'no-tot'));
+});
+
+test('negative DATA keywords fall back to the HEADER', () => {
+  const bytes = buildFCS({ keywords: floatKeywords(), data: floatEvents(4, 2) });
+  // Rewrite $BEGINDATA's value in place to a negative number of the same width.
+  const text = new TextDecoder().decode(bytes);
+  const match = /\/\$BEGINDATA\/(\d+)\//.exec(text);
+  const negative = `-${'9'.repeat(match[1].length - 1)}`;
+  bytes.set(encoder.encode(negative), match.index + '/$BEGINDATA/'.length);
+  const read = parseFCS(bytes).datasets[0];
+  assert.equal(read.eventCount, 4);
+  assert.ok(read.diagnostics.some((d) => d.code === 'offset-invalid'));
+});
+
+test('ASCII data with an impossible $TOT read only the events present', () => {
+  const data = encoder.encode('  1  2  3  4  5  6');
+  const keywords = { $BYTEORD: '1,2,3,4', $DATATYPE: 'A', $MODE: 'L', $PAR: '2', $TOT: '2147483648', $P1N: 'A', $P1B: '3', $P1E: '0,0', $P1R: '1024', $P2N: 'B', $P2B: '3', $P2E: '0,0', $P2R: '1024' };
+  const { datasets } = parseFCS(buildFCS({ version: 'FCS2.0', keywords, data }));
+  assert.equal(datasets[0].eventCount, 3);
+  assert.deepEqual([...datasets[0].data[1]], [2, 4, 6]);
+});
+
+test('a broken later data set leaves the earlier ones readable', () => {
+  const garbage = encoder.encode('not an FCS data set at all, but long enough to be looked at ...........');
+  // $NEXTDATA points just past the first data set, where junk follows (its own length changes
+  // with the value written, so settle it first).
+  let first = buildFCS({ keywords: floatKeywords({ $NEXTDATA: '0' }), data: floatEvents(4, 2) });
+  for (let i = 0; i < 3; i += 1) first = buildFCS({ keywords: floatKeywords({ $NEXTDATA: String(first.length) }), data: floatEvents(4, 2) });
+  const out = new Uint8Array(first.length + garbage.length);
+  out.set(first);
+  out.set(garbage, first.length);
+  const { datasets } = parseFCS(out);
+  assert.equal(datasets.length, 1);
+  assert.equal(datasets[0].eventCount, 4);
+  assert.match(datasets[0].diagnostics.find((d) => d.code === 'dataset-unreadable').message, /Data set 2 .* could not be read/);
+});
+
+// Cases found on real instruments' files (validation `instruments` suite).
+test('stale $BEGINDATA pointing into the TEXT segment gives way to the HEADER (BD Accuri C6)', () => {
+  const data = new Uint8Array(new Float32Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer);
+  const bytes = buildFCS({ keywords: floatKeywords(), data });
+  // Rewrite $BEGINDATA to point 8 bytes earlier, inside the TEXT, keeping its width.
+  const text = new TextDecoder().decode(bytes);
+  const match = /\/\$BEGINDATA\/(\d+)\//.exec(text);
+  const stale = String(Number(match[1]) - 8).padStart(match[1].length, '0');
+  bytes.set(encoder.encode(stale), match.index + '/$BEGINDATA/'.length);
+  const read = parseFCS(bytes).datasets[0];
+  assert.deepEqual([...read.data[0]], [1, 3, 5, 7]);
+  assert.match(read.diagnostics.find((d) => d.code === 'offset-mismatch').message, /the HEADER's offsets were used/);
+});
+
+test('supplemental TEXT uses the primary delimiter, even without its leading one (Bio-Rad S3), and non-keyword content is ignored (Apogee)', () => {
+  for (const [stext, expectKey] of [['SORTSTATS|abc|PROTOCOL|<xml>\r\n</xml>|', 'SORTSTATS'], ['FILEVERSION;3.3;SOFTWAREVERSION;6.0\nGAIN;LS1;0;1.0\n', null]]) {
+    const data = floatEvents(4, 2);
+    const extra = encoder.encode(stext);
+    // A file whose supplemental TEXT follows DATA.
+    let bytes = buildFCS({ keywords: floatKeywords({ $BEGINSTEXT: '0', $ENDSTEXT: '0' }), data, delimiter: '|' });
+    for (let i = 0; i < 3; i += 1) {
+      const start = bytes.length;
+      bytes = buildFCS({ keywords: floatKeywords({ $BEGINSTEXT: String(start), $ENDSTEXT: String(start + extra.length - 1) }), data, delimiter: '|' });
+    }
+    const out = new Uint8Array(bytes.length + extra.length);
+    out.set(bytes);
+    out.set(extra, bytes.length);
+    const read = parseFCS(out).datasets[0];
+    if (expectKey) {
+      assert.equal(read.keywords.SORTSTATS, 'abc');
+      assert.equal(read.keywords.PROTOCOL, '<xml>\r\n</xml>');
+    } else {
+      assert.ok(read.diagnostics.some((d) => d.code === 'stext-ignored'));
+      assert.ok(!Object.keys(read.keywords).some((k) => k.includes('\n')));
+    }
+  }
+});
+
+test('empty keyword values are recognized when the standard reading would merge keyword names (NanoFCM)', () => {
+  const pairs = [['$BEGINANALYSIS', '0'], ['$ENDANALYSIS', '0'], ['$BYTEORD', '1,2,3,4'], ['$DATATYPE', 'F'], ['$MODE', 'L'], ['$PAR', '2'], ['$TOT', '4'], ['$PROJ', ''], ['$FIL', 'a.fcs'], ['$OP', ''], ['$SYS', 'Windows NT'], ['$P1N', 'A'], ['$P1B', '32'], ['$P1E', '0,0'], ['$P1R', '1024'], ['$P2N', 'B'], ['$P2B', '32'], ['$P2E', '0,0'], ['$P2R', '1024']];
+  const text = '\f' + pairs.map(([k, v]) => `${k}\f${v}`).join('\f') + '\f';
+  const parsed = parseTextSegment(text, { emptyValues: true });
+  assert.deepEqual(parsed.find(([k]) => k === '$FIL'), ['$FIL', 'a.fcs']);
+  const keywords = Object.fromEntries(pairs.filter(([k]) => !/^\$(BEGIN|END)ANALYSIS$/.test(k)));
+  const bytes = buildFCS({ keywords, data: floatEvents(4, 2), delimiter: '\f' });
+  const read = parseFCS(bytes).datasets[0];
+  assert.equal(read.keywords.$FIL, 'a.fcs');
+  assert.equal(read.keywords.$SYS, 'Windows NT');
+  assert.equal(read.keywords.$PROJ, '');
+});

@@ -60,6 +60,22 @@ jobs:
       - name: Validation against reference values
         run: node validation/run.mjs --require-data
 
+  agents:
+    name: Agent session
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Every agent tool, in the program and headless Chrome
+        run: node validation/agent-session.mjs --verbose
+        env:
+          CHROME: /usr/bin/google-chrome
+
   installers:
     name: Installer syntax
     runs-on: ubuntu-latest

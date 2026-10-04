@@ -87,64 +87,69 @@ export function installExportDialogs(app) {
     });
   };
 
+  // The FlowJo workspace (options: counts, files, deidentify, samples (ids; default all)) as
+  // { bytes, name (a file name), kind ('wsp' or 'zip'), report, missing (files not in the library) }.
+  app.buildFlowJoExport = async (options, onProgress = () => {}) => {
+    const all = store.ws;
+    const ids = options.samples ? new Set(options.samples) : null;
+    const ws = ids ? { ...all, samples: all.samples.filter((s) => ids.has(s.id)), groups: all.groups.map((g) => ({ ...g, sampleIds: g.sampleIds.filter((id) => ids.has(id)) })) } : all;
+    const { exportFlowJo } = await import('../lib/flowjo-export.js');
+    const { deidentifyKeywords, deidentifyFCS } = await import('../lib/deidentify.js');
+    const counts = new Map();
+    if (options.counts) {
+      let done = 0;
+      for (const sample of ws.samples) {
+        try {
+          const view = await data.ensure(sample.id);
+          const out = new Map();
+          for (const gate of ws.gates) {
+            const members = population(view, ws, gate.id);
+            if (members !== undefined) out.set(gate.id, countOf(members, view));
+          }
+          counts.set(sample.id, out);
+        } catch {
+          // A sample whose file is not available gets no counts.
+        }
+        done += 1;
+        onProgress(done / ws.samples.length);
+      }
+    }
+    const names = options.deidentify ? pseudonyms(ws.samples) : null;
+    const { xml, report } = exportFlowJo(ws, {
+      counts: (sample) => counts.get(sample.id) ?? null,
+      keywords: options.deidentify ? (sample) => deidentifyKeywords(sample.keywords ?? {}).keywords : undefined,
+      fileName: names ? (sample) => names.get(sample.id) : undefined,
+      version: app.version,
+    });
+    const base = safeName(all.name, 'workspace');
+    if (!options.files) return { bytes: new TextEncoder().encode(xml), name: `${base}.wsp`, kind: 'wsp', report, missing: 0 };
+    onProgress(0, 'Packing the FCS files…');
+    const { createZip } = await import('../lib/zip.js');
+    const files = [{ name: `${base}.wsp`, data: xml }];
+    const seen = new Set();
+    let missing = 0;
+    for (const [i, sample] of ws.samples.entries()) {
+      const name = names ? names.get(sample.id) : sample.fileName;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const bytes = await fileBytes(sample);
+      if (!bytes) {
+        missing += 1;
+        continue;
+      }
+      files.push({ name, data: options.deidentify ? deidentifyFCS(bytes, { fileName: name }).bytes : bytes, compress: false });
+      onProgress((i + 1) / ws.samples.length);
+    }
+    return { bytes: await createZip(files), name: `${base}_FlowJo.zip`, kind: 'zip', report, missing };
+  };
+
   async function runFlowJoExport(options) {
-    const ws = store.ws;
     const progress = progressToast(options.counts ? 'Counting every population for FlowJo…' : 'Writing the FlowJo workspace…');
     try {
-      const { exportFlowJo } = await import('../lib/flowjo-export.js');
-      const { deidentifyKeywords, deidentifyFCS } = await import('../lib/deidentify.js');
-      const counts = new Map();
-      if (options.counts) {
-        let done = 0;
-        for (const sample of ws.samples) {
-          try {
-            const view = await data.ensure(sample.id);
-            const out = new Map();
-            for (const gate of ws.gates) {
-              const members = population(view, ws, gate.id);
-              if (members !== undefined) out.set(gate.id, countOf(members, view));
-            }
-            counts.set(sample.id, out);
-          } catch {
-            // A sample whose file is not available gets no counts.
-          }
-          done += 1;
-          progress.update(done / ws.samples.length);
-        }
-      }
-      const names = options.deidentify ? pseudonyms(ws.samples) : null;
-      const { xml, report } = exportFlowJo(ws, {
-        counts: (sample) => counts.get(sample.id) ?? null,
-        keywords: options.deidentify ? (sample) => deidentifyKeywords(sample.keywords ?? {}).keywords : undefined,
-        fileName: names ? (sample) => names.get(sample.id) : undefined,
-        version: app.version,
-      });
-      const base = safeName(ws.name, 'workspace');
-      if (!options.files) {
-        downloadBlob(new Blob([xml], { type: 'application/xml' }), `${base}.wsp`);
-      } else {
-        progress.update(0, 'Packing the FCS files…');
-        const { createZip } = await import('../lib/zip.js');
-        const files = [{ name: `${base}.wsp`, data: xml }];
-        const seen = new Set();
-        let missing = 0;
-        for (const [i, sample] of ws.samples.entries()) {
-          const name = names ? names.get(sample.id) : sample.fileName;
-          if (seen.has(name)) continue;
-          seen.add(name);
-          const bytes = await fileBytes(sample);
-          if (!bytes) {
-            missing += 1;
-            continue;
-          }
-          files.push({ name, data: options.deidentify ? deidentifyFCS(bytes, { fileName: name }).bytes : bytes, compress: false });
-          progress.update((i + 1) / ws.samples.length);
-        }
-        const zip = await createZip(files);
-        downloadBlob(new Blob([zip], { type: 'application/zip' }), `${base}_FlowJo.zip`);
-        if (missing) toast(`${missing} FCS file(s) were not in the library and are not in the archive.`, { kind: 'error' });
-      }
-      const { exact, approximated, omitted } = report.summary;
+      const out = await app.buildFlowJoExport(options, (f, message) => progress.update(f, message));
+      downloadBlob(new Blob([out.bytes], { type: out.kind === 'zip' ? 'application/zip' : 'application/xml' }), out.name);
+      if (out.missing) toast(`${out.missing} FCS file(s) were not in the library and are not in the archive.`, { kind: 'error' });
+      const { exact, approximated, omitted } = out.report.summary;
       progress.done(`Exported the FlowJo workspace: ${formatCount(exact)} populations exact${approximated ? `, ${formatCount(approximated)} traced` : ''}${omitted ? `, ${formatCount(omitted)} not exported` : ''}.`);
     } catch (error) {
       progress.fail(`FlowJo export failed: ${error.message}`);
@@ -192,41 +197,49 @@ export function installExportDialogs(app) {
     });
   };
 
-  async function runDeidentified(options) {
+  // De-identified FCS files (options: keepDates, format 'zip' or 'acs', samples (ids; default
+  // all)) as { bytes, name, files (count), removed (kinds of keyword), missing }.
+  app.buildDeidentified = async (options, onProgress = () => {}) => {
     const ws = store.ws;
+    const ids = options.samples ? new Set(options.samples) : null;
+    const samples = ws.samples.filter((s) => !ids || ids.has(s.id));
+    const { deidentifyFCS, deidentifyWorkspace } = await import('../lib/deidentify.js');
+    const { sha256 } = await import('../lib/sha256.js');
+    const names = pseudonyms(samples);
+    const files = [];
+    const byHash = new Map();
+    const removedKeys = new Set();
+    let missing = 0;
+    for (const [i, sample] of samples.entries()) {
+      const bytes = await fileBytes(sample);
+      if (!bytes) {
+        missing += 1;
+        continue;
+      }
+      const result = deidentifyFCS(bytes, { keepDates: options.keepDates, fileName: names.get(sample.id) });
+      for (const r of result.removed) removedKeys.add(r.key);
+      files.push({ name: names.get(sample.id), bytes: result.bytes });
+      if (options.format === 'acs') byHash.set(sample.id, sha256(result.bytes));
+      onProgress((i + 1) / samples.length);
+    }
+    const base = `${safeName(ws.name, 'workspace')}_deidentified`;
+    if (options.format === 'acs') {
+      const subset = ids ? { ...ws, samples } : ws;
+      const scrubbed = deidentifyWorkspace(subset, { fileNames: names, hashes: byHash, keepDates: options.keepDates });
+      const { createACS } = await import('../lib/acs.js');
+      return { bytes: await createACS({ fcsFiles: files, workspaceJSON: serializeWorkspace(scrubbed) }), name: `${base}.acs`, files: files.length, removed: [...removedKeys], missing };
+    }
+    const { createZip } = await import('../lib/zip.js');
+    return { bytes: await createZip(files.map((f) => ({ name: f.name, data: f.bytes, compress: false }))), name: `${base}.zip`, files: files.length, removed: [...removedKeys], missing };
+  };
+
+  async function runDeidentified(options) {
     const progress = progressToast('De-identifying the FCS files…');
     try {
-      const { deidentifyFCS, deidentifyWorkspace } = await import('../lib/deidentify.js');
-      const { sha256 } = await import('../lib/sha256.js');
-      const names = pseudonyms(ws.samples);
-      const files = [];
-      const byHash = new Map();
-      const removedKeys = new Set();
-      let missing = 0;
-      for (const [i, sample] of ws.samples.entries()) {
-        const bytes = await fileBytes(sample);
-        if (!bytes) {
-          missing += 1;
-          continue;
-        }
-        const result = deidentifyFCS(bytes, { keepDates: options.keepDates, fileName: names.get(sample.id) });
-        for (const r of result.removed) removedKeys.add(r.key);
-        files.push({ name: names.get(sample.id), bytes: result.bytes });
-        if (options.format === 'acs') byHash.set(sample.id, sha256(result.bytes));
-        progress.update((i + 1) / ws.samples.length);
-      }
-      const base = `${safeName(ws.name, 'workspace')}_deidentified`;
-      if (options.format === 'zip') {
-        const { createZip } = await import('../lib/zip.js');
-        downloadBlob(new Blob([await createZip(files.map((f) => ({ name: f.name, data: f.bytes, compress: false })))], { type: 'application/zip' }), `${base}.zip`);
-      } else {
-        const scrubbed = deidentifyWorkspace(ws, { fileNames: names, hashes: byHash, keepDates: options.keepDates });
-        const { createACS } = await import('../lib/acs.js');
-        const bytes = await createACS({ fcsFiles: files, workspaceJSON: serializeWorkspace(scrubbed) });
-        downloadBlob(new Blob([bytes], { type: 'application/zip' }), `${base}.acs`);
-      }
-      if (missing) toast(`${missing} FCS file(s) were not in the library and are not in the archive.`, { kind: 'error' });
-      progress.done(`De-identified ${files.length} file(s); removed ${removedKeys.size} kinds of keyword.`);
+      const out = await app.buildDeidentified(options, (f) => progress.update(f));
+      downloadBlob(new Blob([out.bytes], { type: 'application/zip' }), out.name);
+      if (out.missing) toast(`${out.missing} FCS file(s) were not in the library and are not in the archive.`, { kind: 'error' });
+      progress.done(`De-identified ${out.files} file(s); removed ${out.removed.length} kinds of keyword.`);
     } catch (error) {
       progress.fail(`De-identified export failed: ${error.message}`);
     }

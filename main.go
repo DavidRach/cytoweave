@@ -24,7 +24,7 @@ import (
 //go:embed web/index.html web/styles.css web/app.js web/favicon.svg web/lib/*.js web/ui/*.js web/workers/*.js
 var content embed.FS
 
-var version = "0.4.0"
+var version = "0.5.0"
 
 type config struct {
 	remote      bool
@@ -304,7 +304,7 @@ func (a *app) printBanner(out io.Writer, url string) {
 	}
 	if a.control != nil && a.control.scripts {
 		fmt.Fprintf(out, "Remote control: POST {\"action\": ..., \"args\": {...}} to %s/api/remote/action\n", url)
-		fmt.Fprintf(out, "Opening files by path (action open_files) needs the header %s: %s\n", remoteTokenHeader, a.control.token)
+		fmt.Fprintf(out, "Opening files by path (open_files) and writing files (the export actions) need the header %s: %s\n", remoteTokenHeader, a.control.token)
 	}
 	fmt.Fprintln(out, "Press Ctrl+C to stop.")
 }

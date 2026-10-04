@@ -22,34 +22,34 @@ import { c1FromRuns, noiseOn, predictedSpreading, spreadModel, spreadReceived } 
 import { applyTransform, axisTicks, createTransform, defaultTransform } from '../lib/transforms.js';
 import { categoricalColor, colormapLUT, luminance } from '../lib/colormaps.js';
 import {
-  AF_CHANNEL,
   AF_MODES,
-  AF_TYPE_CHANNEL,
   LASER_LABELS,
   METHODS,
-  RESIDUAL_CHANNEL,
-  abundanceTransform,
-  commonDetectors,
   complexityInterpretation,
   copyColumns,
   detectorTick,
   guessFluorochrome,
   laserBands,
-  peakHint,
   recommendFromComparison,
-  residualTransform,
   ribbonCounts,
-  serializeSpectrum,
   similarPairs,
   similarityLevel,
-  spectralDetectors,
   thinIndices,
-  unmixedChannel,
 } from '../lib/spectral-ui.js';
+import {
+  LIMITS,
+  SEED,
+  SETUP_ID,
+  baseSetup as baseSetupOf,
+  buildModel as buildModelOf,
+  computeReferences,
+  findAutofluorescence,
+  spectralState,
+  unmixSamples as unmixSamplesOf,
+  unstainedColumns as unstainedColumnsOf,
+  withChannelSettings,
+} from './spectral-run.js';
 
-const SETUP_ID = 'spectral-setup';
-const SEED = 1;
-const LIMITS = { control: 100000, unstained: 30000, af: 60000, check: 30000, compare: 20000, ribbon: 40000 };
 const AF_COLORS = ['#7d8597', '#b07d4f', '#5f9a7a', '#9d6fa8', '#5f8fa3', '#a3925f'];
 const FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 const TABS = [
@@ -110,85 +110,26 @@ export function mountSpectralMode(app, container) {
     body);
   container.append(root);
 
-  // --- Workspace state -----------------------------------------------------------------------
+  // --- Workspace state (spectral-run.js) ------------------------------------------------------
 
   const ws = () => store.ws;
-  const setup = () => ws().derived.find((d) => d.id === SETUP_ID) ?? null;
-  const controls = () => ws().samples.filter((s) => s.role === 'single-stain');
-  const unstainedList = () => ws().samples.filter((s) => s.role === 'unstained');
-  const unstainedSample = () => {
-    const chosen = setup()?.params?.unstainedId;
-    return unstainedList().find((s) => s.id === chosen) ?? unstainedList()[0] ?? null;
-  };
-  const controlSettings = (id) => setup()?.controlSettings?.[id] ?? {};
-
-  // The detectors shared by the controls and the unstained control (or by any sample).
-  function panelDetectors() {
-    const involved = [...controls(), ...unstainedList()];
-    const pool = involved.length ? involved : ws().samples;
-    return commonDetectors(pool.map((s) => spectralDetectors(s.channels, s.technology)));
-  }
-
-  function detectorRange(detectors) {
-    let range = 0;
-    for (const sample of ws().samples) {
-      for (const c of sample.channels) if (detectors.includes(c.name) && c.range > range) range = c.range;
-      if (range) break;
-    }
-    return range;
-  }
-
-  // References of current controls, in the order the controls are listed, named from the sample.
-  function references() {
-    const refs = setup()?.references ?? [];
-    const detectors = setup()?.params?.detectors ?? panelDetectors();
-    const fromControls = controls().map((sample) => {
-      const ref = refs.find((r) => r.sampleId === sample.id);
-      return { sample, ref, name: guessFluorochrome(sample, detectors), marker: sample.meta?.marker ?? '', excluded: Boolean(controlSettings(sample.id).excluded) };
-    });
-    // Library spectra added for fluorochromes without a control: a stand-in sample, no events.
-    const fromLibrary = (setup()?.libraryReferences ?? []).map((e) => {
-      const id = `lib:${e.id}`;
-      const ref = { spectrum: e.spectrum, peakDetector: e.peakDetector, computed: e.added, fromLibrary: true, entry: e, brightness: e.quality?.brightness ?? null, separation: e.quality?.separation ?? null, stainIndex: e.quality?.stainIndex ?? null, heterogeneity: e.quality?.heterogeneity ?? null, warnings: [], positiveEvents: null, negativeEvents: null };
-      return { sample: { id, name: `Library · ${(e.date ?? e.added ?? '').slice(0, 10)} · ${e.file ?? ''}`, library: true, role: 'library', meta: {} }, ref, name: e.fluorochrome, marker: e.marker ?? '', excluded: Boolean(controlSettings(id).excluded) };
-    });
-    return [...fromControls, ...fromLibrary];
-  }
-
-  function activeRefs() {
-    return references().filter((r) => r.ref?.spectrum && !r.excluded);
-  }
-
-  function afSignatures() {
-    return setup()?.autofluorescence?.signatures ?? [];
-  }
-
-  function settings() {
-    const s = setup()?.settings ?? {};
-    const af = afSignatures();
-    return {
-      method: s.method ?? 'ols',
-      afMode: af.length ? (s.afMode ?? (af.length > 1 ? 'perEvent' : 'single')) : 'none',
-    };
-  }
-
-  function baseSetup() {
-    return {
-      id: SETUP_ID,
-      kind: 'spectral-setup',
-      name: 'Spectral reference library',
-      method: 'Reference spectra from single-stain controls: per detector, median(positive) − median(negative), normalized to a peak of 1. Controls are gated automatically without scatter gates (autoGateControl): positives are the brightest events above the negative on the peak detector; negatives are matched in autofluorescence on dye-dark detectors.',
-      params: { detectors: panelDetectors(), seed: SEED },
-      seed: SEED,
-      software: `CytoWeave ${app.version ?? ''}`.trim(),
-      outputs: [],
-      references: [],
-      autofluorescence: null,
-      controlSettings: {},
-      settings: {},
-      spreading: null,
-    };
-  }
+  const state = () => spectralState(ws());
+  const setup = () => state().setup;
+  const controls = () => state().controls;
+  const unstainedList = () => state().unstainedList;
+  const unstainedSample = () => state().unstainedSample;
+  const controlSettings = (id) => state().controlSettings(id);
+  const panelDetectors = () => state().panelDetectors();
+  const detectorRange = (detectors) => state().detectorRange(detectors);
+  const references = () => state().references();
+  const activeRefs = () => state().activeRefs();
+  const afSignatures = () => state().afSignatures();
+  const settings = () => state().settings();
+  const panelSpectra = () => state().panelSpectra();
+  const duplicateNames = () => state().duplicateNames();
+  const unmixProblems = () => state().unmixProblems();
+  const panelComplexity = () => state().panelComplexity();
+  const baseSetup = () => baseSetupOf(state(), app.version);
 
   function saveSetup(patch, label) {
     const current = setup() ?? baseSetup();
@@ -206,16 +147,6 @@ export function mountSpectralMode(app, container) {
     return activeRefs().map((r) => `${r.sample.id}:${r.ref.computed}`).join('|');
   }
 
-  function panelSpectra() {
-    return activeRefs().map((r) => ({ name: r.name, spectrum: r.ref.spectrum }));
-  }
-
-  function duplicateNames() {
-    const seen = new Map();
-    for (const r of activeRefs()) seen.set(r.name, (seen.get(r.name) ?? 0) + 1);
-    return [...seen].filter(([, n]) => n > 1).map(([name]) => name);
-  }
-
   // --- Data access ---------------------------------------------------------------------------
 
   function detectorColumns(view, detectors) {
@@ -226,17 +157,8 @@ export function mountSpectralMode(app, container) {
     });
   }
 
-  async function unstainedColumns(detectors) {
-    const sample = unstainedSample();
-    if (!sample) return null;
-    const key = `${sample.id}|${detectors.join(',')}`;
-    if (unstainedCache.has(key)) return unstainedCache.get(key);
-    const view = await data.ensure(sample.id);
-    const columns = copyColumns(detectorColumns(view, detectors), thinIndices(null, view.eventCount, LIMITS.unstained));
-    unstainedCache.clear();
-    unstainedCache.set(key, columns);
-    return columns;
-  }
+  const unstainedColumns = (detectors) => unstainedColumnsOf(app, state(), detectors, unstainedCache);
+  const buildModel = (method, afMode, name) => buildModelOf(app, state(), method, afMode, name, unstainedCache);
 
   // The current sample's population: { view, indices (null = all), label, note }.
   async function currentPopulation() {
@@ -279,11 +201,17 @@ export function mountSpectralMode(app, container) {
     }
   }
 
+  // Follows a worker job of spectral-run.js, so closing the view cancels it.
+  const track = (job) => {
+    jobs.add(job);
+    job.promise.finally(() => jobs.delete(job)).catch(() => {});
+    return job;
+  };
+
   // --- Actions -------------------------------------------------------------------------------
 
   async function gateControls(only = null) {
-    const detectors = panelDetectors();
-    if (!detectors.length) {
+    if (!panelDetectors().length) {
       toast('The controls have no raw spectral detectors in common.', { kind: 'error' });
       return;
     }
@@ -292,58 +220,15 @@ export function mountSpectralMode(app, container) {
     ui.busy = 'controls';
     renderLeft();
     let canceled = false;
-    let current = null;
-    const progress = progressToast(`Gating ${list.length} control${list.length > 1 ? 's' : ''}…`, () => { canceled = true; current?.cancel(); });
-    const refs = [...(setup()?.references ?? [])];
-    const range = detectorRange(detectors);
+    const progress = progressToast(`Gating ${list.length} control${list.length > 1 ? 's' : ''}…`, () => { canceled = true; for (const job of jobs) job.cancel(); });
     try {
-      const needUnstained = list.some((s) => controlSettings(s.id).negative === 'unstained');
-      const unstained = needUnstained ? await unstainedColumns(detectors) : null;
-      for (let i = 0; i < list.length && !canceled; i += 1) {
-        const sample = list[i];
-        const name = guessFluorochrome(sample, detectors);
-        progress.update(i / list.length, `Gating ${name} (${i + 1}/${list.length})`);
-        const entry = { sampleId: sample.id, sampleName: sample.name, fluorochrome: name, marker: sample.meta?.marker ?? '', computed: new Date().toISOString() };
-        try {
-          const view = await data.ensure(sample.id);
-          const columns = copyColumns(detectorColumns(view, detectors), thinIndices(null, view.eventCount, LIMITS.control));
-          const options = { negative: controlSettings(sample.id).negative ?? 'internal', peakDetector: controlSettings(sample.id).peakDetector ?? peakHint(sample, detectors), name, seed: SEED, range };
-          current = worker.run('referenceFromControl', { columns, detectors, unstained: options.negative === 'unstained' ? unstained : null, options }, { transfer: columns.map((c) => c.buffer) });
-          jobs.add(current);
-          const result = await current.promise.finally(() => jobs.delete(current));
-          const ref = result.reference;
-          Object.assign(entry, {
-            eventsUsed: columns[0].length,
-            peakDetector: ref?.peakDetector ?? result.gate.peakDetector,
-            positiveEvents: result.gate.positiveEvents,
-            negativeEvents: result.gate.negativeEvents,
-            negativeSource: result.gate.negativeSource,
-            matchedNegatives: result.gate.matchedNegatives,
-            spectrum: ref ? serializeSpectrum(ref.spectrum) : null,
-            separation: ref?.quality.separation ?? null,
-            stainIndex: ref?.quality.stainIndex ?? null,
-            heterogeneity: Number.isFinite(ref?.quality.heterogeneity) ? ref.quality.heterogeneity : null,
-            brightness: ref?.quality.brightness ?? null,
-            warnings: [...result.gate.warnings, ...(ref?.quality.warnings ?? [])].filter((w, k, all) => all.indexOf(w) === k),
-            error: ref ? null : (result.error ?? 'No spectrum could be computed.'),
-          });
-        } catch (error) {
-          if (error.canceled) break;
-          entry.error = error.message;
-          entry.warnings = [];
-          entry.spectrum = null;
-        }
-        const at = refs.findIndex((r) => r.sampleId === sample.id);
-        if (at >= 0) refs[at] = entry;
-        else refs.push(entry);
-      }
-      if (canceled) {
+      const run = await computeReferences(app, { only, track, isCanceled: () => canceled, onProgress: (f, message) => progress.update(f, message), cache: unstainedCache });
+      if (run.canceled || canceled) {
         progress.done('Gating canceled; no spectra were changed.', 'info');
         return;
       }
-      const params = { ...(setup()?.params ?? {}), detectors, seed: SEED, unstainedId: unstainedSample()?.id ?? null, maxEventsPerControl: LIMITS.control };
-      saveSetup({ references: refs.filter((r) => ws().samples.some((s) => s.id === r.sampleId)), params, spreading: null }, list.length > 1 ? `Reference spectra from ${list.length} controls` : `Reference spectrum of ${refs.find((r) => r.sampleId === list[0].id)?.fluorochrome}`);
-      const failed = refs.filter((r) => list.some((s) => s.id === r.sampleId) && r.error).length;
+      saveSetup({ references: run.references, params: run.params, spreading: null }, list.length > 1 ? `Reference spectra from ${list.length} controls` : `Reference spectrum of ${run.computed[0]?.fluorochrome}`);
+      const failed = run.computed.filter((r) => r.error).length;
       progress.done(failed ? `${list.length - failed} spectra computed; ${failed} control(s) failed.` : `${list.length} reference spectra computed.`, failed ? 'error' : 'ok');
     } catch (error) {
       progress.fail(error.message);
@@ -355,86 +240,26 @@ export function mountSpectralMode(app, container) {
 
   async function extractAF() {
     const sample = unstainedSample();
-    const detectors = panelDetectors();
-    if (!sample || !detectors.length) return;
+    if (!sample || !panelDetectors().length) return;
     ui.busy = 'af';
     renderLeft();
+    // A gate on the unstained control (e.g. live single cells) is used when one is selected.
+    let job = null;
+    const progress = progressToast(`Finding autofluorescence signatures in ${sample.name}…`, () => job?.cancel());
     try {
-      const view = await data.ensure(sample.id);
-      // A gate on the unstained control (e.g. live single cells) is used when one is selected.
-      let indices = null;
-      let label = 'All events';
-      const gateId = store.ui.gateId;
-      if (gateId && gateId !== ROOT) {
-        try {
-          const pop = population(view, ws(), gateId);
-          if (pop) {
-            indices = pop;
-            label = gatePath(ws(), gateId);
-          }
-        } catch { /* all events */ }
+      const run = await findAutofluorescence(app, { gateId: store.ui.gateId, onProgress: (f, note) => progress.update(f, note), track: (j) => { job = track(j); return job; } });
+      if (!run) {
+        progress.done('Canceled.', 'info');
+        return;
       }
-      const columns = copyColumns(detectorColumns(view, detectors), thinIndices(indices, view.eventCount, LIMITS.af));
-      const result = await runJob('extractAutofluorescence', { columns, detectors, options: { seed: SEED, maxSignatures: 6 } }, { message: `Finding autofluorescence signatures in ${sample.name}…`, transfer: columns.map((c) => c.buffer) });
-      if (!result) return;
-      const autofluorescence = {
-        sampleId: sample.id,
-        sampleName: sample.name,
-        population: label,
-        method: 'Spherical k-means++ on unit-normalized event spectra (Roet et al. 2024 approach); signatures are per-detector medians normalized to peak 1; signatures are added while each removes at least 10% of the remaining non-noise misfit and 0.5% of the signal energy.',
-        params: { seed: SEED, maxSignatures: 6, minImprovement: 0.1, minSignalGain: 0.005, eventsSent: columns[0].length },
-        k: result.k,
-        misfitByK: result.misfitByK,
-        residualByK: result.residualByK,
-        noiseFraction: result.noiseFraction,
-        eventsUsed: result.eventsUsed,
-        signatures: result.signatures.map((s) => ({ name: s.name, spectrum: serializeSpectrum(s.spectrum), fraction: s.fraction, count: s.count, brightness: s.brightness })),
-        computed: new Date().toISOString(),
-      };
-      saveSetup({ autofluorescence, settings: { ...(setup()?.settings ?? {}), afMode: result.k > 1 ? 'perEvent' : 'single' } }, `Autofluorescence: ${result.k} signature${result.k > 1 ? 's' : ''}`);
-      toast(`Found ${result.k} autofluorescence signature${result.k > 1 ? 's' : ''} in ${sample.name}.`, { kind: 'ok' });
+      progress.done();
+      saveSetup({ autofluorescence: run.autofluorescence, settings: { ...(setup()?.settings ?? {}), afMode: run.afMode } }, `Autofluorescence: ${run.autofluorescence.k} signature${run.autofluorescence.k > 1 ? 's' : ''}`);
+      toast(`Found ${run.autofluorescence.k} autofluorescence signature${run.autofluorescence.k > 1 ? 's' : ''} in ${sample.name}.`, { kind: 'ok' });
     } catch (error) {
-      toast(error.message, { kind: 'error' });
+      progress.fail(error.message);
     } finally {
       ui.busy = null;
       renderAll();
-    }
-  }
-
-  // An unmixing model for the worker from the reference library and settings.
-  async function buildModel(method, afMode, name) {
-    const spectra = panelSpectra();
-    const af = afSignatures();
-    const model = { name, method, spectra, options: {} };
-    if (afMode === 'single' && af.length) model.spectra = [...spectra, { name: 'AF', spectrum: af[0].spectrum }];
-    if (afMode === 'perEvent' && af.length) {
-      if (af.length === 1) model.spectra = [...spectra, { name: 'AF', spectrum: af[0].spectrum }];
-      else model.afSignatures = af.map((s) => ({ name: s.name, spectrum: s.spectrum }));
-    }
-    if (method === 'wls' || method === 'wls-fixed') {
-      const unstained = await unstainedColumns(setup()?.params?.detectors ?? panelDetectors());
-      if (unstained) model.options.unstainedColumns = unstained;
-    }
-    return model;
-  }
-
-  function unmixProblems() {
-    const problems = [];
-    const refs = activeRefs();
-    if (!refs.length) problems.push('Compute reference spectra from the controls first.');
-    const dups = duplicateNames();
-    if (dups.length) problems.push(`Two controls are named ${dups.join(', ')}; give each fluorochrome a unique name.`);
-    if (refs.length && !Number.isFinite(panelComplexity())) problems.push('The reference spectra are linearly dependent; exclude the duplicate control.');
-    return problems;
-  }
-
-  function panelComplexity() {
-    const spectra = panelSpectra();
-    if (!spectra.length) return Number.NaN;
-    try {
-      return complexityIndex(spectra);
-    } catch {
-      return Infinity;
     }
   }
 
@@ -458,106 +283,22 @@ export function mountSpectralMode(app, container) {
       toast('Choose the samples to unmix.', { kind: 'error' });
       return;
     }
-    const detectors = setup()?.params?.detectors ?? panelDetectors();
-    const { method, afMode } = settings();
-    const methodInfo = METHODS.find((m) => m.id === method);
-    const afInfo = AF_MODES.find((m) => m.id === afMode);
     ui.busy = 'unmix';
     renderLeft();
     let canceled = false;
-    let current = null;
-    const progress = progressToast(`Unmixing ${samples.length} sample${samples.length > 1 ? 's' : ''}…`, () => { canceled = true; current?.cancel(); });
+    const progress = progressToast(`Unmixing ${samples.length} sample${samples.length > 1 ? 's' : ''}…`, () => { canceled = true; for (const job of jobs) job.cancel(); });
     try {
-      const model = await buildModel(method, afMode, methodInfo.label);
-      const perSample = new Map();
-      const summaries = [];
-      const skipped = [];
-      for (let i = 0; i < samples.length && !canceled; i += 1) {
-        const sample = samples[i];
-        progress.update(i / samples.length, `Unmixing ${sample.name} (${i + 1}/${samples.length})`);
-        let view;
-        let columns;
-        try {
-          view = await data.ensure(sample.id);
-          columns = copyColumns(detectorColumns(view, detectors));
-        } catch (error) {
-          skipped.push(`${sample.name}: ${error.message}`);
-          continue;
-        }
-        current = worker.run('unmixModel', { columns, model, options: { seed: SEED } }, {
-          transfer: columns.map((c) => c.buffer),
-          onProgress: (f, note) => progress.update((i + f) / samples.length, `${sample.name}: ${note}`),
-        });
-        jobs.add(current);
-        let result;
-        try {
-          result = await current.promise;
-        } catch (error) {
-          if (error.canceled) break;
-          skipped.push(`${sample.name}: ${error.message}`);
-          continue;
-        } finally {
-          jobs.delete(current);
-        }
-        const channels = {};
-        result.names.forEach((name, f) => { channels[name === 'AF' ? AF_CHANNEL : unmixedChannel(name)] = result.abundances[f]; });
-        if (result.afIndex) channels[AF_TYPE_CHANNEL] = Float32Array.from(result.afIndex, (v) => v + 1);
-        if (result.residuals) channels[RESIDUAL_CHANNEL] = result.residuals;
-        perSample.set(sample.id, channels);
-        const sorted = Float32Array.from(result.residuals ?? []).sort();
-        summaries.push({ sampleId: sample.id, sample: sample.name, events: view.eventCount, medianResidual: sorted.length ? +sorted[Math.floor(sorted.length / 2)].toFixed(5) : null });
-      }
-      if (canceled) {
+      const run = await unmixSamplesOf(app, samples, { track, isCanceled: () => canceled, onProgress: (f, message) => progress.update(f, message), cache: unstainedCache });
+      if (run.canceled || canceled) {
         progress.done('Unmixing canceled; nothing was saved.', 'info');
         return;
       }
-      if (!perSample.size) {
-        progress.fail(skipped[0] ?? 'No sample could be unmixed.');
-        return;
-      }
-      const outputs = Object.keys(perSample.values().next().value);
-      const refs = activeRefs();
+      const { result, outputs, skipped } = run;
       progress.update(0.98, 'Saving the unmixed channels…');
-      await app.saveDerived({
-        kind: 'unmixing',
-        name: `Spectral unmixing · ${methodInfo.label}${afMode !== 'none' ? ` · AF ${afInfo.label.toLowerCase()}` : ''}`,
-        method: `${methodInfo.long}. Autofluorescence: ${afInfo.text}`,
-        params: {
-          method,
-          afMode,
-          detectors,
-          fluorochromes: refs.map((r) => r.name),
-          references: refs.map((r) => ({ fluorochrome: r.name, sampleId: r.sample.library ? null : r.sample.id, peakDetector: r.ref.peakDetector, computed: r.ref.computed, ...(r.sample.library ? { library: { file: r.ref.entry.file, date: r.ref.entry.date, workspace: r.ref.entry.workspace, sha256: r.ref.entry.sha256 } } : {}) })),
-          autofluorescence: afMode === 'none' ? [] : afSignatures().map((s) => s.name),
-          referenceLibrary: SETUP_ID,
-          weights: method.startsWith('wls') ? (unstainedSample() ? `background variance from ${unstainedSample().name}` : 'background variance from the dimmest 10% of events') : null,
-        },
-        seed: SEED,
-        outputs,
-        perSample,
-        summary: { samples: summaries, complexityIndex: panelComplexity(), software: `CytoWeave ${app.version ?? ''}`.trim(), skipped },
-      }, `Unmix ${perSample.size} sample${perSample.size > 1 ? 's' : ''} (${methodInfo.label})`);
-      // Display scales and labels for the new channels (kept if the user already set them).
-      const first = perSample.values().next().value;
-      const range = detectorRange(detectors);
-      const channelSettings = { ...ws().channelSettings };
-      let changed = false;
-      for (const name of outputs) {
-        if (channelSettings[name]?.transform) continue;
-        let transform;
-        if (name === RESIDUAL_CHANNEL) transform = residualTransform(first[name]);
-        else if (name === AF_TYPE_CHANNEL) transform = { type: 'linear', min: 0.5, max: afSignatures().length + 0.5 };
-        else transform = abundanceTransform(first[name], range);
-        const ref = refs.find((r) => unmixedChannel(r.name) === name);
-        channelSettings[name] = { ...(channelSettings[name] ?? {}), transform, ...(ref?.marker ? { label: `${ref.marker} · ${name}` } : {}) };
-        changed = true;
-      }
-      if (changed) {
-        const time = new Date().toISOString();
-        store.commit({ ...ws(), channelSettings, modified: time, provenance: [...ws().provenance, { time, action: 'scale', detail: `unmixed channels: ${outputs.length}` }] }, 'Scales for unmixed channels', ['ws']);
-      }
+      await app.saveDerived(result, `Unmix ${result.perSample.size} sample${result.perSample.size > 1 ? 's' : ''} (${run.methodLabel})`);
+      if (run.channelSettings) store.commit(withChannelSettings(ws(), run.channelSettings, outputs.length), 'Scales for unmixed channels', ['ws']);
       progress.done();
-      toast(`Unmixed ${perSample.size} sample${perSample.size > 1 ? 's' : ''} into ${outputs.length} channels${skipped.length ? `; ${skipped.length} skipped` : ''}.`, { kind: skipped.length ? 'error' : 'ok', action: { label: 'Gate them', onClick: () => app.setMode('gate') }, timeout: 7000 });
+      toast(`Unmixed ${result.perSample.size} sample${result.perSample.size > 1 ? 's' : ''} into ${outputs.length} channels${skipped.length ? `; ${skipped.length} skipped` : ''}.`, { kind: skipped.length ? 'error' : 'ok', action: { label: 'Gate them', onClick: () => app.setMode('gate') }, timeout: 7000 });
       for (const problem of skipped.slice(0, 2)) toast(problem, { kind: 'error' });
     } catch (error) {
       progress.fail(error.message);

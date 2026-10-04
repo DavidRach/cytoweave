@@ -9,6 +9,19 @@ import { peacoQCLayout } from '../lib/qc.js';
 import { WorkerClient } from './workers.js';
 
 export const QC_CHANNEL = 'QC pass';
+export const QC_GREEN = '#1f9d55';
+
+// The "QC pass" gate: a category gate on the QC channel, for the top of the gating tree.
+export function qcPassGate() {
+  return {
+    name: 'QC pass',
+    type: 'category',
+    dims: [{ channel: QC_CHANNEL }],
+    geometry: { values: [1] },
+    color: QC_GREEN,
+    meta: { origin: 'auto', method: 'Acquisition QC (PeacoQC + flow rate + margins)', note: 'Events that passed acquisition QC (QC pass = 1).' },
+  };
+}
 
 export const QC_CITE = {
   peacoqc: 'PeacoQC: Emmaneel et al., Cytometry A 2022, doi:10.1002/cyto.a.24501',

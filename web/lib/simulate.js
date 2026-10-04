@@ -684,7 +684,8 @@ const SPECIAL = ['Dead cells', 'Debris', 'Doublets', 'Junk'];
 //   { fluorescence, scatter } (relative change by the end), markerFactors: { marker: factor },
 //   detectorOffsets: Float64Array, scatterWidth (record -W), keepAbundances, recordState,
 //   laserCV: a coefficient of variation of every laser's intensity from event to event (a
-//   number, or { [laser]: cv }), lognormal and independent between lasers (default none).
+//   number, or { [laser]: cv }), lognormal and independent between lasers (default none),
+//   detectorGains: { detector: PMT gain relative to its own voltage } (default 1).
 export function simulateEvents(config, random, options = {}) {
   const { count, instrument, panel, populations } = config;
   const nPop = populations.length;
@@ -729,6 +730,9 @@ export function simulateEvents(config, random, options = {}) {
   const abundanceScale = new Float64Array(nEmit);
   for (let k = 0; k < nEmit; k += 1) for (let j = 0; j < nDet; j += 1) abundanceScale[k] = Math.max(abundanceScale[k], E[k * nDet + j]);
   const offsets = config.detectorOffsets ?? new Float64Array(nDet);
+  // PMT gains relative to the detectors' own voltages (a voltage walk): the signal and its photon
+  // noise SD scale with the gain, the electronic noise does not.
+  const gains = Float64Array.from(panel.detectors, (dt) => config.detectorGains?.[dt.name] ?? 1);
   const maxValue = instrument.range - 1;
 
   // Event kinds: live populations, then dead, debris, doublets (multinomial counts).
@@ -928,8 +932,8 @@ export function simulateEvents(config, random, options = {}) {
       for (let j = 0; j < nDet; j += 1) raw[j] *= laserFactor[laserOf[j]];
     }
     for (let j = 0; j < nDet; j += 1) {
-      const r = raw[j] * fluorGain + offsets[j];
-      const sd = Math.sqrt((r > 0 ? r * kq[j] : 0) + sig[j] * sig[j]);
+      const r = raw[j] * fluorGain * gains[j] + offsets[j];
+      const sd = Math.sqrt((r > 0 ? r * kq[j] * gains[j] : 0) + sig[j] * sig[j]);
       let v = r + sd * g();
       if (v > maxValue) v = maxValue;
       fluor[j][e] = v;

@@ -1,0 +1,62 @@
+{
+  "about": "FlowJo 11.2.0 (build 11.2.0.210156, macOS, trial license) on 2026-10-04: the titration example's eleven titration tubes (CytoWeave simulation, default seed and size) with the workspace written by reference/write_flowjo_titration.mjs, opened with File > Import FlowJo v10 Workspace and the FCS files reconnected. Median and Robust SD of PE-A :: CD4 were added with Analysis Tree > Add Statistic to Samples Table for the ungated events and the populations CD4+ (PE-A at or above 1,000) and CD4- (below it), and read from the samples table; Freq. of Parent is FlowJo's frequency of the population among all events. The files' spillover matrix is the identity, so PE-A is not changed by compensation. FlowJo was available only for a trial, so these numbers are kept here; validation/run.mjs (suite titration) compares CytoWeave's with them.",
+  "flowjoVersion": "11.2.0",
+  "flowjoBuild": "11.2.0.210156",
+  "parameter": "PE-A",
+  "split": 1000,
+  "samples": {
+    "Unstained.fcs": {
+      "All events": { "freq": 100, "median": 21.7617, "robustSD": 38.3819 }
+    },
+    "CD4-PE 1.953 ng.fcs": {
+      "All events": { "freq": 100, "median": 1017.6714, "robustSD": 1509.2711 },
+      "CD4+": { "freq": 50.87, "median": 5006.9631, "robustSD": 2113.3819 },
+      "CD4-": { "freq": 49.13, "median": 21.1848, "robustSD": 38.4904 }
+    },
+    "CD4-PE 3.906 ng.fcs": {
+      "All events": { "freq": 100, "median": 1508.6002, "robustSD": 2236.2232 },
+      "CD4+": { "freq": 58.13, "median": 7262.7502, "robustSD": 4892.9894 },
+      "CD4-": { "freq": 41.87, "median": 14.2987, "robustSD": 29.6191 }
+    },
+    "CD4-PE 7.813 ng.fcs": {
+      "All events": { "freq": 100, "median": 2072.0703, "robustSD": 3072.9985 },
+      "CD4+": { "freq": 60.11, "median": 9958.2139, "robustSD": 7245.8137 },
+      "CD4-": { "freq": 39.89, "median": 12.6971, "robustSD": 27.9949 }
+    },
+    "CD4-PE 15.63 ng.fcs": {
+      "All events": { "freq": 100, "median": 2571.4338, "robustSD": 3813.4314 },
+      "CD4+": { "freq": 59.99, "median": 12415.8682, "robustSD": 8557.1835 },
+      "CD4-": { "freq": 40.01, "median": 13.1353, "robustSD": 28.2296 }
+    },
+    "CD4-PE 31.25 ng.fcs": {
+      "All events": { "freq": 100, "median": 2881.8496, "robustSD": 4269.9632 },
+      "CD4+": { "freq": 59.83, "median": 13996.4966, "robustSD": 10303.5567 },
+      "CD4-": { "freq": 40.17, "median": 14.5521, "robustSD": 27.9026 }
+    },
+    "CD4-PE 62.5 ng.fcs": {
+      "All events": { "freq": 100, "median": 3077.7346, "robustSD": 4558.5421 },
+      "CD4+": { "freq": 60.445, "median": 15051.0381, "robustSD": 10928.4857 },
+      "CD4-": { "freq": 39.555, "median": 17.4106, "robustSD": 29.2929 }
+    },
+    "CD4-PE 125 ng.fcs": {
+      "All events": { "freq": 100, "median": 3178.8679, "robustSD": 4701.4407 },
+      "CD4+": { "freq": 59.985, "median": 15580.9736, "robustSD": 11520.7764 },
+      "CD4-": { "freq": 40.015, "median": 22.3688, "robustSD": 30.9903 }
+    },
+    "CD4-PE 250 ng.fcs": {
+      "All events": { "freq": 100, "median": 3318.722, "robustSD": 4896.0183 },
+      "CD4+": { "freq": 60.505, "median": 15820.7949, "robustSD": 11846.6371 },
+      "CD4-": { "freq": 39.495, "median": 31.765, "robustSD": 34.23 }
+    },
+    "CD4-PE 500 ng.fcs": {
+      "All events": { "freq": 100, "median": 3380.7748, "robustSD": 4965.3625 },
+      "CD4+": { "freq": 60.46, "median": 16123.9819, "robustSD": 11642.2606 },
+      "CD4-": { "freq": 39.54, "median": 51.8698, "robustSD": 43.3408 }
+    },
+    "CD4-PE 1000 ng.fcs": {
+      "All events": { "freq": 100, "median": 3372.6698, "robustSD": 4909.5962 },
+      "CD4+": { "freq": 60.26, "median": 16099.7222, "robustSD": 11857.285 },
+      "CD4-": { "freq": 39.74, "median": 88.0572, "robustSD": 62.1062 }
+    }
+  }
+}

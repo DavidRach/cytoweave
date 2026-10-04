@@ -7,6 +7,7 @@ export const REFERENCES = {
   fcs31: { text: 'Spidlen J, Moore W, Parks D, et al. Data File Standard for Flow Cytometry, version FCS 3.1. Cytometry A. 2010;77(1):97–100.', doi: '10.1002/cyto.a.20825' },
   logicle: { text: 'Parks DR, Roederer M, Moore WA. A new "Logicle" display method avoids deceptive effects of logarithmic scaling for low signals and compensated data. Cytometry A. 2006;69(6):541–551.', doi: '10.1002/cyto.a.20258' },
   logicleAlgorithm: { text: 'Moore WA, Parks DR. Update for the logicle data scale including operational code implementations. Cytometry A. 2012;81(4):273–277.', doi: '10.1002/cyto.a.22030' },
+  cellOntology: { text: 'Diehl AD, Meehan TF, Bradford YM, et al. The Cell Ontology 2016: enhanced content, modularization, and ontology interoperability. J Biomed Semantics. 2016;7:44.', doi: '10.1186/s13326-016-0088-7' },
   gatingml: { text: 'Spidlen J, Moore W, Brinkman RR, et al. ISAC\'s Gating-ML 2.0 data exchange standard for gating description. Cytometry A. 2015;87(7):683–687.', doi: '10.1002/cyto.a.22690' },
   ssm: { text: 'Nguyen R, Perfetto S, Mahnke YD, Chattopadhyay P, Roederer M. Quantifying spillover spreading for comparing instrument performance and aiding in multicolor panel design. Cytometry A. 2013;83(3):306–315.', doi: '10.1002/cyto.a.22251' },
   autospill: { text: 'Roca CP, Burton OT, Gergelits V, et al. AutoSpill is a principled framework that simplifies the analysis of multichromatic flow cytometry data. Nat Commun. 2021;12:2890.', doi: '10.1038/s41467-021-23126-8' },
@@ -37,6 +38,9 @@ export const REFERENCES = {
   westgard: { text: 'Westgard JO, Barry PL, Hunt MR, Groth T. A multi-rule Shewhart chart for quality control in clinical chemistry. Clin Chem. 1981;27(3):493–501.', doi: '10.1093/clinchem/27.3.493' },
   gaussNorm: { text: 'Hahne F, Khodabakhshi AH, Bashashati A, et al. Per-channel basis normalization methods for flow cytometry data. Cytometry A. 2010;77(2):121–131.', doi: '10.1002/cyto.a.20823' },
   stainIndex: { text: 'Maecker HT, Frey T, Nomura LE, Trotter J. Selecting fluorochrome conjugates for maximum sensitivity. Cytometry A. 2004;62(2):169–173.', doi: '10.1002/cyto.a.20092' },
+  separationIndex: { text: 'Bigos M. Separation index: an easy-to-use metric for evaluation of different configurations on the same flow cytometer. Curr Protoc Cytom. 2007;Chapter 1:Unit 1.21.', doi: '10.1002/0471142956.cy0121s40' },
+  titration: { text: 'Bonilla DL, Paul A, Gil-Pulido J, Park LM, Jaimes MC. The power of reagent titration in flow cytometry. Cells. 2024;13(20):1677.', doi: '10.3390/cells13201677' },
+  voltageSetup: { text: 'Meinelt E, Reunanen M, Edinger M, et al. Standardizing application setup across multiple flow cytometers using BD FACSDiva version 6 software. BD Biosciences technical bulletin; 2012.', doi: null },
 };
 
 const ORDER = Object.keys(REFERENCES);
@@ -144,6 +148,21 @@ export function writeMethods(ws, options = {}) {
     paragraphs.push(`The detection efficiency (Q) and optical background (B) of each fluorescence detector of ${d.instrument?.name ?? 'the cytometer'} were measured from ${what}${dates.length > 1 ? ` between ${dates[0].slice(0, 10)} and ${dates.at(-1).slice(0, 10)}` : ''} by weighted quadratic least squares on the peaks' means and variances, as in flowQB ${cite('parksQB')}: each peak's mean and SD from a normal fitted to its central 80%, peaks outside the detector's linear range left out, and weights re-estimated from the fit.${runs.length >= 3 ? ` Runs were followed on Levey–Jennings charts with Westgard rules ${cite('westgard')} against the mean and SD of the first ${Math.min(20, runs.length)} runs.` : ''}`);
   }
 
+  // Reagent titration and detector voltages.
+  for (const d of ws.derived.filter((r) => r.kind === 'titration')) {
+    const steps = d.steps ?? [];
+    if (!steps.length) continue;
+    const among = d.population ? ` among ${d.population}` : '';
+    if (d.mode === 'voltage') {
+      const v = d.summary ?? {};
+      const noise = v.rsdEN ? ` (${+v.rsdEN.toPrecision(3)}, ${v.noiseSource === 'given' ? 'from the cytometer\'s baseline report' : 'estimated from the walk'})` : '';
+      paragraphs.push(`The ${d.channel} detector was set from a voltage walk of ${steps.length} steps from ${steps[0].label} to ${steps.at(-1).label}${among}: the minimum voltage is where the negative cells' robust SD reaches 2.5 times the detector's electronic noise${noise} ${cite('voltageSetup')}${Number.isFinite(v.minimum) ? `, ${Math.round(v.minimum)} V` : ''}, and the maximum keeps the positive cells' 99th percentile within the linear range${Number.isFinite(v.maximum) ? `, ${Math.round(v.maximum)} V` : ''}${Number.isFinite(v.recommended) ? `; ${v.recommended} V was chosen` : ''}.`);
+    } else {
+      const t = d.summary ?? {};
+      paragraphs.push(`${d.marker ? `The ${d.marker} reagent` : 'The reagent'} (${d.channel}) was titrated in ${steps.length} steps from ${steps[0].label} to ${steps.at(-1).label}${among}; at each step the stain index ${cite('stainIndex')} and separation index ${cite('separationIndex')} of the positive against the negative cells were computed, a saturation curve was fitted to the stain index, and ${t.recommended ? `${t.recommended} was chosen as` : 'the amount to use is'} at least twice the amount giving 90% of saturating staining${t.c90 ? ` (${t.c90})` : ''} ${cite('titration')}.`);
+    }
+  }
+
   // Gating.
   const roots = ws.gates.filter((g) => !g.parentId);
   if (ws.gates.length) {
@@ -162,6 +181,10 @@ export function writeMethods(ws, options = {}) {
     const pending = ws.gates.filter((g) => g.meta?.proposal).length;
     paragraphs.push(`Populations were identified by sequential gating (${ws.gates.length} gates): ${paths.slice(0, 8).join('; ')}${paths.length > 8 ? `; and ${paths.length - 8} further branches` : ''}. ${auto ? `${auto} gate(s) were proposed automatically from the data's density and accepted by the analyst. ` : ''}${agentGates ? `${agentGates} gate(s) were proposed by an AI agent (${byAgents.join(', ')}) and reviewed and accepted by the analyst. ` : ''}${pending ? `${pending} gate(s) proposed by an AI agent have not yet been reviewed. ` : ''}${adjusted ? `${adjusted} gate(s) were adjusted for individual samples; all other gates were applied identically to every sample. ` : 'Gates were applied identically to every sample. '}The gating strategy is available in Gating-ML 2.0 format ${cite('gatingml')}.`);
   }
+  // Cell Ontology terms the analyst confirmed.
+  const annotated = ws.gates.filter((g) => g.ontology?.status === 'confirmed');
+  if (annotated.length) paragraphs.push(`Populations were annotated with Cell Ontology terms ${cite('cellOntology')}: ${annotated.slice(0, 12).map((g) => `${g.name} as ${g.ontology.label} (${g.ontology.id})`).join('; ')}${annotated.length > 12 ? `; and ${annotated.length - 12} more` : ''}.`);
+
   // Autogating: the latest adaptation of each gate.
   const adaptations = new Map();
   for (const d of ws.derived.filter((r) => r.kind === 'autogating')) adaptations.set(d.gateId, d);

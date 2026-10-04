@@ -6,7 +6,7 @@
 
 import { h, icon, clear, debounce, formatBytes, formatCount, formatPercent } from './dom.js';
 import { confirmDialog, progressToast, toast } from './overlays.js';
-import { ROOT, addDerived, addGates, addGroup, channelLabel, setCollection, updateSample } from '../lib/workspace.js';
+import { ROOT, addDerived, addGates, addGroup, channelLabel, insertRootGate, updateSample } from '../lib/workspace.js';
 import { writeFCS } from '../lib/fcs.js';
 import { combinationKey, normalizeKey } from '../lib/debarcode.js';
 import { confoundingCheck, findMassChannel } from '../lib/normalize.js';
@@ -15,8 +15,9 @@ import { histogram } from '../lib/density.js';
 import { categoricalColor } from '../lib/colormaps.js';
 import { createRandom, sampleIndices } from '../lib/random.js';
 import { createInstrumentSection } from './qc-instrument.js';
+import { createTitrationSection } from './qc-titration.js';
 import { createLiveSection } from './live-qc.js';
-import { DEFAULT_SETTINGS, QC_CHANNEL, binSpan, runQC, saveDerivedMergedIn, saveQCResults, timeDomain } from './qc-run.js';
+import { DEFAULT_SETTINGS, QC_CHANNEL, binSpan, qcPassGate, runQC, saveDerivedMergedIn, saveQCResults, timeDomain } from './qc-run.js';
 
 const BEAD_CHANNEL = 'Bead';
 const BARCODE_CHANNEL = 'Barcode';
@@ -24,7 +25,6 @@ const NORM_SUFFIX = ' (norm)';
 const BEAD_SUFFIX = ' (beads)';
 const PALLADIUM = ['Pd102', 'Pd104', 'Pd105', 'Pd106', 'Pd108', 'Pd110'];
 const CLUSTER_PATTERN = /cluster|flowsom|\bsom\b|leiden|louvain|phenograph|k-?means/i;
-const QC_GREEN = '#1f9d55';
 
 // PeacoQC and flowAI are cited in qc-run.js, with the acquisition QC.
 const CITE = {
@@ -38,6 +38,7 @@ const SECTIONS = [
   { id: 'normalize', label: 'Normalize', icon: 'layers', title: 'Batch normalization with reference samples' },
   { id: 'debarcode', label: 'Debarcode', icon: 'tag', title: 'Split barcoded samples' },
   { id: 'instrument', label: 'Instrument', icon: 'gauge', title: 'Detector efficiency Q and background B from beads, and Levey–Jennings charts across runs' },
+  { id: 'titration', label: 'Titration', icon: 'flask', title: 'Reagent titration and detector voltage walks: stain index, the amount of antibody or the voltage to use' },
   { id: 'live', label: 'Live', icon: 'play', title: 'QC of files as they are acquired, from a watched folder' },
 ];
 
@@ -575,6 +576,7 @@ export function mountQCMode(app, container) {
   }
 
   const instrumentSection = createInstrumentSection({ app, chart, alpha, rerender: () => scheduleRender() });
+  const titrationSection = createTitrationSection({ app, rerender: () => scheduleRender() });
   const liveSection = createLiveSection({
     app,
     rerender: () => { if (S.section === 'live') scheduleRender(); },
@@ -624,6 +626,7 @@ export function mountQCMode(app, container) {
     if (S.section === 'normalize') renderNormalize();
     else if (S.section === 'debarcode') renderDebarcode();
     else if (S.section === 'instrument') instrumentSection.render(sectionHost);
+    else if (S.section === 'titration') titrationSection.render(sectionHost);
     else renderClean();
     const body = root.querySelector('.view-body');
     if (body) body.scrollTop = scroll;
@@ -1147,18 +1150,7 @@ export function mountQCMode(app, container) {
       });
       if (!ok) return;
     }
-    const added = addGates(store.ws, [{
-      name: 'QC pass',
-      type: 'category',
-      dims: [{ channel: QC_CHANNEL }],
-      geometry: { values: [1] },
-      color: QC_GREEN,
-      parentId: null,
-      meta: { origin: 'auto', method: 'Acquisition QC (PeacoQC + flow rate + margins)', note: 'Events that passed acquisition QC (QC pass = 1).' },
-    }], 'add-qc-gate');
-    const gate = added.gates[0];
-    const gates = added.ws.gates.map((g) => (g.id !== gate.id && !g.parentId ? { ...g, parentId: gate.id } : g));
-    const next = { ...setCollection(added.ws, 'gates', gates, 'reparent-under-qc'), plots: (added.ws.plots ?? []).map((p) => (p.populationId === ROOT ? { ...p, populationId: gate.id } : p)) };
+    const { ws: next } = insertRootGate(store.ws, qcPassGate(), 'add-qc-gate');
     store.commit(next, 'Add “QC pass” gate', ['gate', 'plots']);
     toast('“QC pass” is now the root population; your gates and plots moved beneath it. Undo restores the previous tree.', { kind: 'ok' });
   }

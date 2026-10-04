@@ -170,3 +170,11 @@ test('FlowJo transforms are the same functions as CytoWeave scales', () => {
   assert.deepEqual(flowJoTransformXML({ type: 'linear', min: 0, max: 1000 }, 0.01).attrs, { minRange: 0, maxRange: 10 });
   assert.ok(flowJoTransformXML({ type: 'logicle', T: 262144, W: 0.5, M: 4.5, A: 0, boundMin: 0 }).error);
 });
+
+test('a confirmed Cell Ontology term is written as the population annotation', () => {
+  const t = { type: 'linear', min: 0, max: 262144 };
+  let ws = { ...createWorkspace('t'), samples: [{ id: 's1', name: 'S1', fileName: 'S1.fcs', eventCount: 10, channels: [{ name: 'CD3', type: 'fluorescence', range: 262144 }], keywords: {}, meta: {} }] };
+  ws = addGates(ws, [{ id: 'g1', name: 'T cells', parentId: null, type: 'range', dims: [{ channel: 'CD3', transform: t }], geometry: { min: 0.5, max: null }, ontology: { id: 'CL:0000084', label: 'T cell', status: 'confirmed' } }]).ws;
+  const { xml } = exportFlowJo(ws, {});
+  assert.match(xml, /<Population name="T cells" annotation="CL:0000084 T cell"/);
+});

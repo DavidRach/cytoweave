@@ -4,10 +4,11 @@
 
 import { h, icon, clear, downloadBlob } from './dom.js';
 import { showMenu, toast, promptDialog, progressToast } from './overlays.js';
-import { drawScene, sceneToSVG } from '../lib/plot.js';
+import { drawScene } from '../lib/plot.js';
 import { newId } from '../lib/gates.js';
-import { ROOT, channelLabel, gateAncestors, gateById, gatePath, plotsOf, setCollection } from '../lib/workspace.js';
-import { rgbaToRgb, writePDF } from '../lib/pdf.js';
+import { ROOT, channelLabel, gateById, gatePath, plotsOf, setCollection } from '../lib/workspace.js';
+import { gatingStrategyFigure, samplesGridFigure } from '../lib/figures.js';
+import { figurePDF, figurePNG, figureSVG, figureScene } from './figure-export.js';
 import { prefs } from './storage.js';
 
 const PAGES = [
@@ -22,18 +23,6 @@ function rasterImage(raster) {
   const canvas = new OffscreenCanvas(raster.width, raster.height);
   canvas.getContext('2d').putImageData(new ImageData(raster.rgba, raster.width, raster.height), 0, 0);
   return canvas;
-}
-
-function rasterDataURL(raster) {
-  const canvas = document.createElement('canvas');
-  canvas.width = raster.width;
-  canvas.height = raster.height;
-  canvas.getContext('2d').putImageData(new ImageData(raster.rgba, raster.width, raster.height), 0, 0);
-  return canvas.toDataURL('image/png');
-}
-
-function esc(text) {
-  return String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function mountFiguresMode(app, container) {
@@ -83,43 +72,20 @@ export function mountFiguresMode(app, container) {
   }
 
   function gatingStrategy() {
-    const ws = store.ws;
     const gateId = store.ui.gateId;
     const sampleId = store.ui.sampleId;
     if (!gateId || !sampleId) {
       toast('Select a population (and a sample) in the Gate view first.');
       return;
     }
-    const path = [...gateAncestors(ws, gateId), gateById(ws, gateId)].filter((g) => g && g.type !== 'boolean' && g.type !== 'category');
-    const perRow = Math.min(4, path.length);
-    const w = 330;
-    const hgt = 300;
-    const gap = 50;
-    const rows = Math.ceil(path.length / perRow);
-    const width = Math.max(900, 40 + perRow * w + (perRow - 1) * gap + 40);
-    const height = 110 + rows * (hgt + 40) + 30;
-    const sample = ws.samples.find((s) => s.id === sampleId);
-    const items = [
-      { id: newId('i'), kind: 'text', x: 40, y: 28, w: width - 80, h: 34, text: `Gating strategy: ${gatePath(ws, gateId)}`, size: 22, weight: 700 },
-      { id: newId('i'), kind: 'text', x: 40, y: 64, w: width - 80, h: 24, text: `${sample?.name ?? ''} · ${sample?.acquisition?.cytometer ?? ''}`.replace(/ · $/, ''), size: 13, weight: 400, color: '#5b6475' },
-    ];
-    path.forEach((gate, i) => {
-      const row = Math.floor(i / perRow);
-      const col = i % perRow;
-      const x = 40 + col * (w + gap);
-      const y = 110 + row * (hgt + 40);
-      items.push({
-        id: newId('i'),
-        kind: 'plot',
-        x, y, w, h: hgt,
-        sampleId,
-        spec: { populationId: gate.parentId ?? ROOT, x: gate.dims[0].channel, y: gate.dims[1]?.channel ?? null, type: gate.dims.length === 1 ? 'histogram' : 'pseudocolor', options: {} },
-        title: gate.parentId ? gateById(ws, gate.parentId)?.name : 'All events',
-        highlight: gate.id,
-      });
-      if (col < perRow - 1 && i < path.length - 1) items.push({ id: newId('i'), kind: 'arrow', x: x + w + 8, y: y + hgt / 2 - 10, w: gap - 16, h: 20 });
-    });
-    newFigure(items, `Gating strategy – ${gateById(ws, gateId).name}`, { width, height });
+    let fig;
+    try {
+      fig = gatingStrategyFigure(store.ws, gateId, sampleId);
+    } catch (error) {
+      toast(error.message, { kind: 'error' });
+      return;
+    }
+    newFigure(fig.items, fig.name, { width: fig.width, height: fig.height });
     toast('Built the gating strategy figure. Drag plots to arrange them; export as SVG for editing in Illustrator or Inkscape.', { kind: 'ok' });
   }
 
@@ -132,18 +98,9 @@ export function mountFiguresMode(app, container) {
       return;
     }
     const group = store.ui.groupFilter && !store.ui.groupFilter.startsWith('role:') ? ws.groups.find((g) => g.id === store.ui.groupFilter) : null;
-    const samples = ws.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : s.role === 'sample')).slice(0, 24);
-    const cell = 240;
-    const width = 160 + plots.length * (cell + 16) + 40;
-    const height = 80 + samples.length * (cell + 16) + 20;
-    const items = [{ id: newId('i'), kind: 'text', x: 40, y: 24, w: width - 80, h: 34, text: `${pop === ROOT ? 'All events' : gateById(ws, pop)?.name} across ${group ? group.name : 'samples'}`, size: 20, weight: 700 }];
-    samples.forEach((sample, r) => {
-      items.push({ id: newId('i'), kind: 'text', x: 20, y: 80 + r * (cell + 16) + cell / 2 - 12, w: 130, h: 24, text: sample.name, size: 13, weight: 600, align: 'right' });
-      plots.forEach((plot, c) => {
-        items.push({ id: newId('i'), kind: 'plot', x: 160 + c * (cell + 16), y: 80 + r * (cell + 16), w: cell, h: cell, sampleId: sample.id, spec: { populationId: pop, x: plot.x, y: plot.y, type: plot.type, options: plot.options ?? {} }, title: '' });
-      });
-    });
-    newFigure(items, `${pop === ROOT ? 'All events' : gateById(ws, pop)?.name} across samples`, { width, height });
+    const samples = ws.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : s.role === 'sample'));
+    const fig = samplesGridFigure(ws, pop, plots, samples, group?.name ?? null);
+    newFigure(fig.items, fig.name, { width: fig.width, height: fig.height });
   }
 
   // --- Page rendering -----------------------------------------------------------------------------
@@ -170,19 +127,7 @@ export function mountFiguresMode(app, container) {
 
   // In the scaled-down preview, dots are drawn larger so sparse populations stay visible.
   function sceneFor(item, view, preview = false) {
-    try {
-      const dotSize = item.spec.options?.dotSize ?? (preview ? Math.max(1, Math.round(1 / Math.max(zoom, 0.25))) : 1);
-      const spec = { ...item.spec, options: { ...(item.spec.options ?? {}), dotSize } };
-      const scene = app.buildExportScene(store.ws, view, spec, { width: item.w, height: item.h, theme: 'light', title: item.title ?? '' });
-      if (item.highlight) {
-        for (const gate of scene.gates) {
-          if (gate.id !== item.highlight) gate.color = '#9aa3b2';
-        }
-      }
-      return scene;
-    } catch {
-      return null;
-    }
+    return figureScene(app, item, view, preview ? Math.max(1, Math.round(1 / Math.max(zoom, 0.25))) : 1);
   }
 
   function renderPage() {
@@ -356,117 +301,20 @@ export function mountFiguresMode(app, container) {
 
   // --- Export -------------------------------------------------------------------------------------
 
-  async function scenesFor(fig) {
-    const out = new Map();
-    for (const item of fig.items) {
-      if (item.kind !== 'plot') continue;
-      const view = data.view(item.sampleId) ?? await data.ensure(item.sampleId).catch(() => null);
-      if (view) out.set(item.id, sceneFor(item, view));
-    }
-    return out;
-  }
-
-  async function renderToCanvas(fig, scale) {
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(fig.width * scale);
-    canvas.height = Math.round(fig.height * scale);
-    const ctx = canvas.getContext('2d');
-    ctx.scale(scale, scale);
-    ctx.fillStyle = fig.background ?? '#ffffff';
-    ctx.fillRect(0, 0, fig.width, fig.height);
-    const scenes = await scenesFor(fig);
-    for (const item of fig.items) {
-      ctx.save();
-      ctx.translate(item.x, item.y);
-      if (item.kind === 'plot' && scenes.get(item.id)) drawScene(ctx, scenes.get(item.id), rasterImage);
-      else if (item.kind === 'text') {
-        ctx.fillStyle = item.color ?? '#171b26';
-        ctx.font = `${item.weight ?? 400} ${item.size ?? 14}px Inter, system-ui, sans-serif`;
-        ctx.textBaseline = 'top';
-        ctx.textAlign = item.align ?? 'left';
-        const x = item.align === 'center' ? item.w / 2 : item.align === 'right' ? item.w : 0;
-        String(item.text).split('\n').forEach((line, i) => ctx.fillText(line, x, i * (item.size ?? 14) * 1.25));
-      } else if (item.kind === 'arrow') {
-        drawArrow(ctx, item);
-      }
-      ctx.restore();
-    }
-    return canvas;
-  }
-
-  function drawArrow(ctx, item) {
-    ctx.strokeStyle = '#8a93a6';
-    ctx.fillStyle = '#8a93a6';
-    ctx.lineWidth = 2;
-    const y = item.h / 2;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(item.w - 8, y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(item.w, y);
-    ctx.lineTo(item.w - 10, y - 6);
-    ctx.lineTo(item.w - 10, y + 6);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // The analysis behind a figure, embedded in its exports (figure-provenance.js), unless turned off.
+  // The analysis behind a figure is embedded in its exports (figure-provenance.js), unless turned off.
   const embedding = () => prefs.get('figureProvenance', true) !== false;
-  async function provenanceFor(fig) {
-    if (!embedding()) return null;
-    const { buildProvenance } = await import('../lib/figure-provenance.js');
-    const views = new Map();
-    for (const item of fig.items) {
-      if (item.kind !== 'plot' || views.has(item.sampleId)) continue;
-      const view = data.view(item.sampleId) ?? await data.ensure(item.sampleId).catch(() => null);
-      if (view) views.set(item.sampleId, view);
-    }
-    return buildProvenance(store.ws, fig, { views, version: app.version });
-  }
+  const fileName = (fig, extension) => `${fig.name.replace(/[^\w.-]+/g, '_')}.${extension}`;
 
   async function exportSVG(fig) {
-    const scenes = await scenesFor(fig);
-    const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${fig.width}" height="${fig.height}" viewBox="0 0 ${fig.width} ${fig.height}">`, `<rect width="${fig.width}" height="${fig.height}" fill="${fig.background ?? '#ffffff'}"/>`];
-    for (const item of fig.items) {
-      if (item.kind === 'plot' && scenes.get(item.id)) {
-        const scene = scenes.get(item.id);
-        parts.push(sceneToSVG(scene, { embedded: true, x: item.x, y: item.y, rasterHref: scene.raster ? rasterDataURL(scene.raster) : null }));
-      } else if (item.kind === 'text') {
-        const anchor = item.align === 'center' ? 'middle' : item.align === 'right' ? 'end' : 'start';
-        const x = item.x + (item.align === 'center' ? item.w / 2 : item.align === 'right' ? item.w : 0);
-        String(item.text).split('\n').forEach((line, i) => parts.push(`<text x="${x}" y="${item.y + (item.size ?? 14) * (0.9 + 1.25 * i)}" font-family="Inter, Helvetica, Arial, sans-serif" font-size="${item.size ?? 14}" font-weight="${item.weight ?? 400}" fill="${item.color ?? '#171b26'}" text-anchor="${anchor}">${esc(line)}</text>`));
-      } else if (item.kind === 'arrow') {
-        const y = item.y + item.h / 2;
-        parts.push(`<path d="M${item.x} ${y}H${item.x + item.w - 8}" stroke="#8a93a6" stroke-width="2"/><path d="M${item.x + item.w} ${y}l-10 -6v12z" fill="#8a93a6"/>`);
-      }
-    }
-    parts.push('</svg>');
-    let svg = parts.join('');
-    const record = await provenanceFor(fig);
-    if (record) svg = (await import('../lib/figure-provenance.js')).embedSVG(svg, record);
-    downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${fig.name.replace(/[^\w.-]+/g, '_')}.svg`);
+    const svg = await figureSVG(app, fig, { provenance: embedding() });
+    downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), fileName(fig, 'svg'));
   }
 
   async function exportRaster(fig, format) {
     const progress = progressToast(`Rendering ${fig.name}…`);
     try {
-      if (format === 'png') {
-        const canvas = await renderToCanvas(fig, 3);
-        let blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-        const record = await provenanceFor(fig);
-        if (record) blob = new Blob([(await import('../lib/figure-provenance.js')).embedPNG(new Uint8Array(await blob.arrayBuffer()), record)], { type: 'image/png' });
-        downloadBlob(blob, `${fig.name.replace(/[^\w.-]+/g, '_')}.png`);
-      } else {
-        // 300 dots per inch at 96 CSS pixels per inch.
-        const scale = 300 / 96;
-        const canvas = await renderToCanvas(fig, scale);
-        const rgba = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
-        const record = await provenanceFor(fig);
-        const attachments = record ? [(await import('../lib/figure-provenance.js')).pdfAttachment(record)] : [];
-        const pdf = await writePDF([{ width: fig.width * 0.75, height: fig.height * 0.75, image: { width: canvas.width, height: canvas.height, rgb: rgbaToRgb(rgba) } }], { title: fig.name, attachments });
-        downloadBlob(new Blob([pdf], { type: 'application/pdf' }), `${fig.name.replace(/[^\w.-]+/g, '_')}.pdf`);
-      }
+      if (format === 'png') downloadBlob(new Blob([await figurePNG(app, fig, { provenance: embedding() })], { type: 'image/png' }), fileName(fig, 'png'));
+      else downloadBlob(new Blob([await figurePDF(app, fig, { provenance: embedding() })], { type: 'application/pdf' }), fileName(fig, 'pdf'));
       progress.done();
     } catch (error) {
       progress.fail(`Export failed: ${error.message}`);

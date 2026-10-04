@@ -7,8 +7,8 @@ import { createTransform } from '../lib/transforms.js';
 import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
 import { densityGateAt, suggestSinglets, valleyThreshold } from '../lib/autogate.js';
-import { ROOT, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
-import { describeProposal, openProposals, proposalHistory, proposeCompensation, proposeGateAdjustments, proposeGateEdit, proposeGateRemoval, proposeGates } from '../lib/proposals.js';
+import { ROOT, SAMPLE_ROLES, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
+import { describeProposal, openProposals, proposalHistory, proposeAnnotations, proposeCompensation, proposeDerived, proposeFigure, proposeGateAdjustments, proposeGateEdit, proposeGateRemoval, proposeGates, proposeRootGate } from '../lib/proposals.js';
 import { spilloverFromControls } from './controls.js';
 import { describe } from '../lib/stats.js';
 import { toast } from './overlays.js';
@@ -434,6 +434,490 @@ export function installRemote(app) {
       return { message: `Proposed a ${n}×${n} matrix from ${result.controls.length} single-stain controls for ${targets.length} sample${targets.length === 1 ? '' : 's'}; it applies when the user accepts your proposal.${warnings.length ? ` Warnings: ${warnings.slice(0, 4).join(' ')}` : ''}`, data: { detectors: result.detectors, largest: largest.slice(0, 12), warnings, proposal: proposalSummary() } };
     },
 
+    async annotate_samples(args) {
+      const list = Array.isArray(args.samples) ? args.samples : [];
+      if (!list.length) throw new ActionError('Give samples: [{ "sample": "name", "meta": { "condition": "stim" }, "role": "single-stain", "stain": "FITC-A" }, ...].');
+      const changes = {};
+      const described = [];
+      for (const entry of list) {
+        const sample = resolveSample(entry.sample);
+        const change = {};
+        if (entry.meta && typeof entry.meta === 'object') {
+          change.meta = {};
+          for (const [field, value] of Object.entries(entry.meta)) {
+            const key = String(field).trim();
+            if (!key) continue;
+            change.meta[key] = value === null || value === undefined || value === '' ? null : String(value);
+          }
+        }
+        if (entry.role !== undefined) {
+          if (!SAMPLE_ROLES.includes(entry.role)) throw new ActionError(`Role "${entry.role}" is not one of ${SAMPLE_ROLES.join(', ')}.`);
+          change.role = entry.role;
+        }
+        if (entry.stain !== undefined) {
+          if (entry.stain === null || entry.stain === '') change.stain = null;
+          else {
+            const channel = sample.channels.find((c) => c.name === entry.stain || c.name.toLowerCase() === String(entry.stain).toLowerCase() || (c.marker && c.marker.toLowerCase() === String(entry.stain).toLowerCase()));
+            if (!channel) throw new ActionError(`${sample.name} has no channel "${entry.stain}". Channels: ${sample.channels.map((c) => c.name).join(', ')}`);
+            change.stain = channel.name;
+          }
+        }
+        if (!Object.keys(change).length) continue;
+        changes[sample.id] = { ...(changes[sample.id] ?? {}), ...change, meta: { ...(changes[sample.id]?.meta ?? {}), ...(change.meta ?? {}) } };
+        described.push(`${sample.name}: ${[...Object.entries(change.meta ?? {}).map(([k, v]) => `${k} = ${v ?? '(removed)'}`), ...(change.role ? [`role ${change.role}`] : []), ...(change.stain !== undefined ? [`stained channel ${change.stain ?? '(none)'}`] : [])].join(', ')}`);
+      }
+      if (!described.length) throw new ActionError('Nothing to annotate: give meta, role or stain for each sample.');
+      const result = proposeAnnotations(ws(), author, changes);
+      store.commit(result.ws, `${author} proposed annotating ${described.length} sample${described.length === 1 ? '' : 's'}`);
+      toast(`${author} proposes annotations for ${described.length} sample${described.length === 1 ? '' : 's'}. Review the proposal to accept or reject them.`);
+      return { message: `Proposed annotations for ${described.length} sample${described.length === 1 ? '' : 's'}; they apply when the user accepts your proposal (until then, compare and the other tools see the current annotations).`, data: { annotations: described, proposal: proposalSummary() } };
+    },
+
+    async run_qc(args) {
+      const qc = await import('./qc-run.js');
+      const w = ws();
+      const chosen = args.samples?.length ? args.samples.map((s) => resolveSample(s)) : w.samples.filter((s) => s.role === 'sample' || s.role === 'reference' || (args.includeControls && s.role !== 'bead'));
+      if (!chosen.length) throw new ActionError('No samples to check.');
+      const existing = w.derived.find((d) => d.kind === 'qc' && !d.proposal && d.outputs?.includes(qc.QC_CHANNEL));
+      const proposed = w.derived.find((d) => d.kind === 'qc' && d.proposal && d.proposedBy === author);
+      const already = chosen.filter((s) => existing?.files?.[s.id]);
+      const todo = chosen.filter((s) => !existing?.files?.[s.id]);
+      const settings = structuredClone(app.qcState?.settings ?? qc.DEFAULT_SETTINGS);
+      if (args.variant) {
+        if (!['refined', 'classic'].includes(args.variant)) throw new ActionError('variant is refined or classic.');
+        settings.variant = args.variant;
+      }
+      if (args.mad !== undefined) settings.mad = Number(args.mad);
+      const results = new Map();
+      for (const sample of todo) {
+        const result = await qc.runQC(app, sample, settings);
+        results.set(sample.id, result);
+        app.qcState?.results?.set(sample.id, result);
+      }
+      if (results.size) {
+        const perSample = new Map();
+        const summaries = { ...(proposed?.summary?.perSample ?? {}) };
+        for (const [id, result] of results) {
+          perSample.set(id, { [qc.QC_CHANNEL]: Float32Array.from(result.mask) });
+          summaries[id] = result.persisted;
+        }
+        await proposeResult({
+          id: proposed?.id,
+          kind: 'qc',
+          name: 'Acquisition QC',
+          method: 'PeacoQC + flow rate + margins',
+          params: qc.paramsOf(settings),
+          seed: 1,
+          outputs: [qc.QC_CHANNEL],
+          files: proposed?.files ?? {},
+          summary: { version: 1, software: `CytoWeave ${app.version ?? ''}`.trim(), references: [qc.QC_CITE.peacoqc, qc.QC_CITE.flowai], perSample: summaries },
+        }, perSample, `${author} proposed acquisition QC of ${results.size} sample${results.size === 1 ? '' : 's'}`);
+      }
+      let gate = null;
+      if (args.addGate) {
+        if (w.gates.some((g) => g.dims.some((d) => d.channel === qc.QC_CHANNEL))) gate = 'a gate on QC pass exists already';
+        else {
+          store.commit(proposeRootGate(ws(), author, qc.qcPassGate()).ws, `${author} proposed a QC pass gate at the top`);
+          gate = 'proposed at the top of the gating tree';
+        }
+      }
+      if (results.size || gate) toast(`${author} proposes ${[results.size ? `acquisition QC of ${results.size} sample${results.size === 1 ? '' : 's'}` : '', gate === 'proposed at the top of the gating tree' ? 'a “QC pass” gate at the top' : ''].filter(Boolean).join(' and ')}. Review the proposal to accept or reject it.`);
+      const rows = [...results.entries()].map(([id, r]) => {
+        const p = r.persisted;
+        return { sample: p.name, score: p.score, grade: p.grade, percentRemoved: round(p.percentRemoved, 3), events: p.eventCount, removed: p.removed, findings: p.findings.filter((f) => f.method !== 'summary' && f.severity !== 'info').slice(0, 4).map((f) => f.text), drifted: p.drifted };
+      }).sort((a, b) => a.score - b.score);
+      const low = rows.filter((r) => r.score < 70).map((r) => `${r.sample} (${r.score})`);
+      return {
+        message: `${rows.length ? `Checked ${rows.length} sample${rows.length === 1 ? '' : 's'} (${settings.variant ?? 'refined'} PeacoQC, flow rate, margins, drift): ${low.length ? `low scores: ${low.join(', ')}` : 'all scored 70 or more'}. The results are proposed: their "${qc.QC_CHANNEL}" channel (1 = passed) can be gated at once.` : 'No sample needed checking.'}${already.length ? ` Already checked by the user (their result stands): ${already.map((s) => s.name).join(', ')}.` : ''}${gate ? ` QC pass gate: ${gate}${gate.startsWith('proposed') ? '; it moves every population beneath it when the user accepts' : ''}.` : ''}`,
+        data: { rows, alreadyChecked: already.map((s) => s.name), gate, proposal: proposalSummary() },
+      };
+    },
+
+    async unmix(args) {
+      const run = await import('./spectral-run.js');
+      const { AF_MODES, METHODS } = await import('../lib/spectral-ui.js');
+      let state = run.spectralState(ws());
+      if (!state.controls.length) throw new ActionError('Spectral unmixing needs single-stain reference controls: give them the role "single-stain" (annotate_samples; the user must accept), and an unstained control the role "unstained" for autofluorescence.');
+      const steps = [];
+      const setup = state.setup;
+      const mine = setup?.proposal && setup.proposedBy === author;
+      const hasSpectra = state.activeRefs().length > 0;
+      // The user's reference library is used as it is; the agent builds (or rebuilds) only its own.
+      if (setup && !setup.proposal && !hasSpectra) throw new ActionError('The reference library has no spectra yet. The user computes them in the Spectral view (or, with no library, unmix computes a proposed one).');
+      if (!setup || (mine && (args.recompute || !hasSpectra))) {
+        const refs = await run.computeReferences(app, {});
+        let record = { ...(setup ?? run.baseSetup(state, app.version)), references: refs.references, params: refs.params, spreading: null, modified: new Date().toISOString() };
+        record = proposeDerived(ws(), author, record);
+        store.commit(record.ws, `${author} proposed reference spectra from ${refs.computed.length} controls`, ['derived']);
+        const failed = refs.computed.filter((r) => r.error);
+        steps.push(`reference spectra from ${refs.computed.length - failed.length} of ${refs.computed.length} controls${failed.length ? ` (failed: ${failed.map((r) => `${r.sampleName}: ${r.error}`).join('; ')})` : ''}`);
+        state = run.spectralState(ws());
+        if (state.unstainedSample && args.autofluorescence !== false) {
+          const gateId = args.unstainedPopulation ? resolvePopulation(args.unstainedPopulation) : null;
+          const af = await run.findAutofluorescence(app, { gateId });
+          if (af) {
+            const next = proposeDerived(ws(), author, { ...state.setup, autofluorescence: af.autofluorescence, settings: { ...(state.setup.settings ?? {}), afMode: af.afMode }, modified: new Date().toISOString() });
+            store.commit(next.ws, `${author} proposed ${af.autofluorescence.k} autofluorescence signature${af.autofluorescence.k > 1 ? 's' : ''}`, ['derived']);
+            steps.push(`${af.autofluorescence.k} autofluorescence signature${af.autofluorescence.k > 1 ? 's' : ''} from ${state.unstainedSample.name} (${af.autofluorescence.population})`);
+          }
+        }
+        state = run.spectralState(ws());
+      } else {
+        steps.push(`the ${setup.proposal ? 'proposed' : "user's"} reference library (${state.activeRefs().length} spectra, ${state.afSignatures().length} autofluorescence signature${state.afSignatures().length === 1 ? '' : 's'})`);
+      }
+      const existing = ws().derived.find((d) => d.kind === 'unmixing' && !d.proposal);
+      const chosen = args.samples?.length ? args.samples.map((x) => resolveSample(x)) : ws().samples.filter((x) => x.role === 'sample' || x.role === 'reference');
+      const already = chosen.filter((x) => existing?.files?.[x.id]);
+      const todo = chosen.filter((x) => !existing?.files?.[x.id]);
+      if (args.method && !METHODS.some((m) => m.id === args.method)) throw new ActionError(`method is one of ${METHODS.map((m) => m.id).join(', ')}.`);
+      if (args.autofluorescenceMode && !AF_MODES.some((m) => m.id === args.autofluorescenceMode)) throw new ActionError(`autofluorescenceMode is one of ${AF_MODES.map((m) => m.id).join(', ')}.`);
+      let unmixed = null;
+      if (todo.length) {
+        try {
+          unmixed = await run.unmixSamples(app, todo, { method: args.method, afMode: args.autofluorescenceMode });
+        } catch (error) {
+          throw new ActionError(`${error.message}${steps.length ? ` (done so far, proposed: ${steps.join('; ')})` : ''}`);
+        }
+        const { perSample, ...record } = unmixed.result;
+        await proposeResult(record, perSample, `${author} proposed unmixing ${perSample.size} sample${perSample.size === 1 ? '' : 's'} (${unmixed.methodLabel})`);
+        if (unmixed.channelSettings) store.commit(run.withChannelSettings(ws(), unmixed.channelSettings, unmixed.outputs.length), 'Scales for unmixed channels', ['ws']);
+        toast(`${author} proposes unmixing ${perSample.size} sample${perSample.size === 1 ? '' : 's'}. Review the proposal to accept or reject it.`);
+      }
+      const refs = state.activeRefs().map((r) => ({ fluorochrome: r.name, control: r.sample.name, peakDetector: r.ref.peakDetector, stainIndex: round(r.ref.stainIndex, 3), warnings: r.ref.warnings?.length ? r.ref.warnings : undefined }));
+      const complexity = state.panelComplexity();
+      return {
+        message: `${unmixed ? `Unmixed ${unmixed.result.perSample.size} sample${unmixed.result.perSample.size === 1 ? '' : 's'} (${unmixed.methodLabel}${unmixed.result.params.afMode !== 'none' ? `, autofluorescence ${unmixed.result.params.afMode}` : ''}) into ${unmixed.outputs.length} channels, proposed: they can be gated at once (e.g. ${unmixed.outputs.slice(0, 3).join(', ')}).` : 'No sample needed unmixing.'} Used ${steps.join('; ')}. Panel complexity index ${round(complexity, 3)}.${already.length ? ` Already unmixed by the user (their channels stand): ${already.map((x) => x.name).join(', ')}.` : ''}${unmixed?.skipped.length ? ` Skipped: ${unmixed.skipped.join('; ')}.` : ''}`,
+        data: { channels: unmixed?.outputs ?? existing?.outputs ?? [], references: refs, complexityIndex: round(complexity, 4), samples: unmixed?.result.summary.samples.map((x) => ({ sample: x.sample, events: x.events, medianResidual: x.medianResidual })) ?? [], alreadyUnmixed: already.map((x) => x.name), proposal: proposalSummary() },
+      };
+    },
+
+    async explore(args) {
+      const run = await import('./explore-run.js');
+      const { markerCandidates } = await import('../lib/explore.js');
+      const w = ws();
+      const popId = resolvePopulation(args.population);
+      let samples;
+      if (args.samples?.length) samples = args.samples.map((x) => resolveSample(x));
+      else if (args.group) {
+        const group = w.groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase());
+        if (!group) throw new ActionError(`No group "${args.group}". Groups: ${w.groups.map((g) => g.name).join(', ') || 'none'}.`);
+        samples = w.samples.filter((x) => group.sampleIds.includes(x.id));
+      } else samples = w.samples.filter((x) => x.role === 'sample' || x.role === 'reference');
+      if (!samples.length) throw new ActionError('No samples to analyze.');
+      const first = await loadedView(samples[0]);
+      const markers = args.markers?.length ? args.markers.map((m) => resolveChannel(first, m)) : markerCandidates(first).filter((c) => c.selected).map((c) => c.name);
+      const clustering = args.clustering ?? 'flowsom';
+      const embedding = args.embedding ?? 'umap';
+      if (!run.CLUSTERINGS.some((c) => c.id === clustering)) throw new ActionError(`clustering is one of ${run.CLUSTERINGS.map((c) => c.id).join(', ')}.`);
+      if (!run.EMBEDDINGS.some((e) => e.id === embedding)) throw new ActionError(`embedding is one of ${run.EMBEDDINGS.map((e) => e.id).join(', ')}.`);
+      const settings = { ...run.DEFAULT_SETTINGS, markers, clustering, embedding };
+      for (const key of ['k', 'seed', 'nNeighbors', 'minDist', 'perplexity', 'resolution']) if (args[key] !== undefined) settings[key] = Number(args[key]);
+      if (args.neighbors !== undefined) settings.leidenK = Number(args.neighbors);
+      if (args.eventsPerSample !== undefined) settings.perSample = Number(args.eventsPerSample);
+      const outputs = [...(embedding !== 'none' ? [`${run.EMBEDDINGS.find((e) => e.id === embedding).axis} 1`] : []), ...(clustering !== 'none' ? [run.CLUSTERINGS.find((c) => c.id === clustering).channel] : [])];
+      const taken = w.derived.find((d) => !d.proposal && d.outputs?.some((o) => outputs.includes(o)));
+      if (taken) throw new ActionError(`The workspace already has ${taken.name} with the channel${outputs.length > 1 ? 's' : ''} ${outputs.join(', ')}; the user's result stands. Choose another method, or ask the user to remove it.`);
+      let computed;
+      try {
+        computed = await run.runExplore(app, { settings, samples, popId });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      // A proposal of the same method replaces the agent's earlier one.
+      const earlier = w.derived.find((d) => d.proposal && d.proposedBy === author && d.outputs?.some((o) => computed.result.outputs.includes(o)));
+      const { perSample, ...record } = computed.result;
+      await proposeResult({ ...record, id: earlier?.id }, perSample, `${author} proposed ${record.name}`);
+      const r = computed.run;
+      let populations = null;
+      if (args.populations && r.k) {
+        const gates = run.clusterGates(ws(), { popId, k: r.k, names: r.names, clustering: r.clustering, mem: r.summary?.mem?.labels });
+        if (gates.length) {
+          const result = proposeGates(ws(), author, gates);
+          store.commit(result.ws, `${author} proposed ${gates.length} cluster populations`);
+          populations = gates.map((g) => gatePath(store.ws, g.id));
+        }
+      }
+      toast(`${author} proposes ${record.name}${populations ? ` and ${populations.length} cluster populations` : ''}. Review the proposal to accept or reject it.`);
+      const q = r.quality;
+      const clusters = r.k ? Array.from({ length: r.k }, (_, c) => ({ cluster: c, name: r.names[c], frequency: round(r.summary?.summary?.frequencies?.[c] ?? 0, 4), enrichment: r.summary?.mem?.labels?.[c] ?? undefined, abundanceBySample: Object.fromEntries(r.loaded.map((l, i) => [l.sample.name, round(r.abundance[i][c], 4)])) })) : [];
+      return {
+        message: `${record.name} of ${popId === ROOT ? 'all events' : gatePath(w, popId)} in ${r.loaded.length} sample${r.loaded.length === 1 ? '' : 's'} on ${markers.length} markers${r.k ? `: ${r.k} clusters` : ''}${r.embedding ? `, a map of ${r.n} events${q ? ` (trustworthiness ${round(q.trustworthiness, 3)}, continuity ${round(q.continuity, 3)})` : ''}` : ''}. Proposed: the channels ${computed.result.outputs.join(', ')} can be gated and plotted at once${populations ? `; ${populations.length} cluster populations proposed` : r.k ? '; pass populations: true to propose the clusters as populations' : ''}.${q?.warnings?.length ? ` Map warnings: ${q.warnings.join(' ')}` : ''}`,
+        data: { channels: computed.result.outputs, markers, clusters, quality: q ? { trustworthiness: round(q.trustworthiness, 4), continuity: round(q.continuity, 4), knnPreservation: round(q.knnPreservation, 4), sampleMixing: q.batch ?? undefined, warnings: q.warnings } : null, populations, proposal: proposalSummary() },
+      };
+    },
+
+    async build_figure(args) {
+      const { gatingStrategyFigure, samplesGridFigure } = await import('../lib/figures.js');
+      const { plotsOf } = await import('../lib/workspace.js');
+      const w = ws();
+      const popId = resolvePopulation(args.population);
+      let figure;
+      if ((args.kind ?? 'gating-strategy') === 'gating-strategy') {
+        if (popId === ROOT) throw new ActionError('Name the population whose gating strategy to show.');
+        const sample = resolveSample(args.sample);
+        try {
+          figure = gatingStrategyFigure(w, popId, sample.id);
+        } catch (error) {
+          throw new ActionError(error.message);
+        }
+      } else if (args.kind === 'across-samples') {
+        let samples;
+        let groupName = null;
+        if (args.samples?.length) samples = args.samples.map((x) => resolveSample(x));
+        else if (args.group) {
+          const group = w.groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase());
+          if (!group) throw new ActionError(`No group "${args.group}".`);
+          samples = w.samples.filter((x) => group.sampleIds.includes(x.id));
+          groupName = group.name;
+        } else samples = w.samples.filter((x) => x.role === 'sample');
+        if (!samples.length) throw new ActionError('No samples to show.');
+        const view = await loadedView(samples[0]);
+        const plots = args.plots?.length
+          ? args.plots.map((p) => ({ x: resolveChannel(view, p.x), y: p.y ? resolveChannel(view, p.y) : null, type: p.type ?? (p.y ? 'pseudocolor' : 'histogram') }))
+          : plotsOf(w, popId).map((p) => ({ x: p.x, y: p.y, type: p.type, options: p.options }));
+        if (!plots.length) throw new ActionError('Give plots: [{ "x": "CD4", "y": "CD8" }, ...] (the population has no plots shown in the Gate view to copy).');
+        figure = samplesGridFigure(w, popId, plots, samples, groupName);
+      } else {
+        throw new ActionError('kind is gating-strategy or across-samples.');
+      }
+      if (args.name) figure.name = String(args.name);
+      const result = proposeFigure(ws(), author, figure);
+      store.commit(result.ws, `${author} proposed the figure ${figure.name}`, ['figures']);
+      toast(`${author} proposes the figure “${figure.name}”. Review the proposal to accept or reject it.`, { action: { label: 'Open Figures', onClick: () => app.setMode('figures') } });
+      const plots = figure.items.filter((i) => i.kind === 'plot');
+      return { message: `Proposed the figure "${figure.name}" (${plots.length} plot${plots.length === 1 ? '' : 's'}, ${figure.width} × ${figure.height} px). It stays live until exported; export_figure writes it as SVG, PNG or PDF.`, data: { figure: figure.name, plots: plots.map((p) => ({ sample: ws().samples.find((x) => x.id === p.sampleId)?.name, population: p.spec.populationId === ROOT ? 'All events' : gatePath(ws(), p.spec.populationId), x: p.spec.x, y: p.spec.y, type: p.spec.type })), proposal: proposalSummary() } };
+    },
+
+    async export_flowjo(args) {
+      requireExtension(args.path, args.files ? ['.zip'] : ['.wsp'], args.files ? 'a ZIP of the workspace and its FCS files' : 'a FlowJo workspace');
+      if (!ws().samples.length) throw new ActionError('The workspace has no samples.');
+      const samples = args.samples?.length ? args.samples.map((x) => resolveSample(x).id) : undefined;
+      const out = await app.buildFlowJoExport({ counts: args.counts !== false, files: Boolean(args.files), deidentify: Boolean(args.deidentify), samples });
+      const { exact, approximated, omitted } = out.report.summary;
+      const notExact = [...new Map(out.report.populations.filter((p) => p.status !== 'exact').map((p) => [`${p.status}|${p.path}`, { population: p.path, status: p.status === 'approximated' ? 'traced' : 'not exported', why: p.detail }])).values()];
+      return {
+        file: out.bytes,
+        message: `FlowJo workspace: ${exact} population-sample pairs exact${approximated ? `, ${approximated} traced on another scale` : ''}${omitted ? `, ${omitted} not exported` : ''}${args.files ? `, with ${ws().samples.length - out.missing} FCS files` : '; keep the FCS files beside it (FlowJo 11 asks to reconnect them once)'}${args.deidentify ? ', de-identified' : ''}.${out.missing ? ` ${out.missing} FCS files were not in the library and are left out.` : ''}`,
+        data: { notExact: notExact.slice(0, 50), warnings: out.report.warnings },
+      };
+    },
+
+    async export_fcs(args) {
+      const format = requireExtension(args.path, ['.zip', '.acs'], 'de-identified FCS files (.zip), or the workspace with them (.acs)') === '.acs' ? 'acs' : 'zip';
+      const samples = args.samples?.length ? args.samples.map((x) => resolveSample(x).id) : undefined;
+      const out = await app.buildDeidentified({ keepDates: Boolean(args.keepDates), format, samples });
+      if (!out.files) throw new ActionError('None of the FCS files is in the library.');
+      return { file: out.bytes, message: `${out.files} de-identified FCS file${out.files === 1 ? '' : 's'}${format === 'acs' ? ' with the workspace (ACS archive)' : ''}: only technical keywords kept, ${out.removed.length} kinds of keyword removed, the events copied byte for byte. Files are named after their samples, whose names are kept.${out.missing ? ` ${out.missing} files were not in the library.` : ''}`, data: { removed: out.removed } };
+    },
+
+    async export_figure(args) {
+      const extension = requireExtension(args.path, ['.svg', '.png', '.pdf'], 'a figure');
+      const figures = ws().figures;
+      if (!figures.length) throw new ActionError('The workspace has no figures; build_figure makes one.');
+      const fig = args.figure ? figures.find((f) => f.name.toLowerCase() === String(args.figure).toLowerCase()) ?? figures.find((f) => f.name.toLowerCase().includes(String(args.figure).toLowerCase())) : figures.at(-1);
+      if (!fig) throw new ActionError(`No figure "${args.figure}". Figures: ${figures.map((f) => f.name).join(', ')}.`);
+      const exporter = await import('./figure-export.js');
+      const provenance = args.provenance !== false;
+      const file = extension === '.svg' ? await exporter.figureSVG(app, fig, { provenance }) : extension === '.png' ? await exporter.figurePNG(app, fig, { provenance }) : await exporter.figurePDF(app, fig, { provenance });
+      return { file, message: `The figure "${fig.name}" as ${extension.slice(1).toUpperCase()}${extension === '.pdf' ? ' (300 dpi)' : extension === '.png' ? ' (3×)' : ''}${provenance ? ', carrying the analysis behind its plots (opening it in CytoWeave shows what changed since)' : ''}.${fig.proposal ? ' The figure is still part of your proposal.' : ''}` };
+    },
+
+    async export_table(args) {
+      const extension = requireExtension(args.path, ['.csv', '.tsv'], 'a table');
+      const table = await actions.statistics_table(args);
+      const separator = extension === '.tsv' ? '\t' : ',';
+      const quote = (v) => {
+        const text = v === null || v === undefined ? '' : String(v);
+        return /[",\t\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      };
+      const rows = table.data.rows;
+      const fields = [...new Set(rows.flatMap((r) => Object.keys(r.meta ?? {})))];
+      const columns = rows.length ? Object.keys(rows[0].values) : [];
+      const lines = [['Sample', ...fields, ...columns].map(quote).join(separator), ...rows.map((r) => [r.sample, ...fields.map((f) => r.meta?.[f] ?? ''), ...columns.map((c) => r.values[c])].map(quote).join(separator))];
+      return { file: `${lines.join('\n')}\n`, message: `${table.message} ${rows.length} rows, ${columns.length} population column${columns.length === 1 ? '' : 's'}.` };
+    },
+
+    async list_templates() {
+      const list = await app.listTemplates();
+      const templates = [];
+      for (const t of list.slice(0, 50)) {
+        const template = await app.loadTemplate(t.id).catch(() => null);
+        if (template) templates.push({ name: template.name, saved: t.modified, populations: template.gates.length, markers: Object.values(template.channels).map((c) => c.marker || c.name), notes: template.notes });
+      }
+      const { STRATEGIES } = await import('../lib/strategies.js');
+      const strategies = STRATEGIES.map((t) => ({ id: t.id, name: t.name, description: t.description, citation: t.citation, populations: t.gates.length, markers: Object.values(t.channels).map((c) => c.marker || c.name), substitutions: t.substitutions }));
+      return { message: `${templates.length ? `${templates.length} template${templates.length === 1 ? '' : 's'} in the library: ${templates.map((t) => t.name).join(', ')}.` : 'No templates in the library; save_template keeps one.'} Published gating strategies, placed on the data by apply_template: ${strategies.map((t) => `${t.id} (${t.name})`).join(', ')}.`, data: { templates, strategies } };
+    },
+
+    async save_template(args) {
+      const { buildTemplate } = await import('../lib/templates.js');
+      if (!ws().gates.length) throw new ActionError('The workspace has no gates to keep.');
+      const gateIds = args.population ? [resolvePopulation(args.population)].filter((id) => id !== ROOT) : null;
+      const template = buildTemplate(ws(), { name: String(args.name ?? `${ws().name} template`), gateIds: gateIds?.length ? gateIds : null, version: app.version });
+      await app.storeTemplate(template);
+      return { message: `Saved the template "${template.name}" to the library: ${template.gates.length} populations on ${Object.keys(template.channels).length} channels (${Object.values(template.channels).map((c) => c.marker || c.name).join(', ')}), ${template.plots.length} plots, ${template.tables.length} tables, ${template.figures.length} figures.${template.notes.length ? ` Notes: ${template.notes.join(' ')}` : ''}`, data: { name: template.name, notes: template.notes } };
+    },
+
+    async apply_template(args) {
+      const { applyTemplate } = await import('../lib/templates.js');
+      const { STRATEGIES } = await import('../lib/strategies.js');
+      const wanted = String(args.template ?? '').toLowerCase();
+      // A published strategy by id (omip-101) or name, else a template in the library.
+      let template = STRATEGIES.find((t) => t.id === wanted || t.name.toLowerCase() === wanted || t.name.toLowerCase().startsWith(`${wanted}:`)) ?? null;
+      if (!template) {
+        const list = await app.listTemplates();
+        const entry = list.find((t) => (t.name ?? '').toLowerCase() === wanted) ?? list.find((t) => t.id === args.template) ?? list.find((t) => (t.name ?? '').toLowerCase().includes(wanted));
+        if (!entry) throw new ActionError(`No template "${args.template}" in the library. Templates: ${list.map((t) => t.name).join(', ') || 'none'}; published strategies: ${STRATEGIES.map((t) => t.id).join(', ')}.`);
+        template = await app.loadTemplate(entry.id);
+      }
+      if (!ws().samples.length) throw new ActionError('Open the samples first: the template is matched to their channels.');
+      // A strategy's recipe gates are placed on one sample's events.
+      let place;
+      let placedOn = null;
+      if (template.gates.some((g) => g.type === 'recipe')) {
+        const { placeOnSample } = await import('../lib/recipes.js');
+        placedOn = resolveSample(args.sample);
+        place = placeOnSample(await loadedView(placedOn), placedOn.name);
+      }
+      const parentId = args.parent ? resolvePopulation(args.parent) : ROOT;
+      const overrides = {};
+      for (const [marker, channel] of Object.entries(args.channels ?? {})) {
+        const key = Object.keys(template.channels).find((k) => (template.channels[k].marker || template.channels[k].name).toLowerCase() === marker.toLowerCase());
+        if (!key) throw new ActionError(`The template has no channel "${marker}".`);
+        overrides[key] = resolveChannel(await loadedView(ws().samples[0]), channel);
+      }
+      const before = ws();
+      const result = applyTemplate(before, template, { parentId, overrides, scales: 'keep', figures: args.figures !== false, place, sampleId: store.ui.sampleId ?? undefined });
+      // Gates and figures are proposed; plots, tables and scales for channels without one follow.
+      let next = proposeGates(before, author, result.gates).ws;
+      next = { ...next, plots: result.ws.plots, tables: result.ws.tables, channelSettings: result.ws.channelSettings };
+      for (const figure of result.ws.figures.filter((f) => !before.figures.some((g) => g.id === f.id))) next = proposeFigure(next, author, figure).ws;
+      store.commit(next, `${author} proposed the template ${template.name}`);
+      toast(`${author} proposes the template “${template.name}”: ${result.report.gates.applied} populations. Review the proposal to accept or reject it.`);
+      const r = result.report;
+      return {
+        message: `${template.builtIn ? 'Strategy' : 'Template'} "${template.name}": ${r.gates.applied} of ${template.gates.length} populations proposed${parentId !== ROOT ? ` under ${gatePath(ws(), parentId)}` : ''}, ${r.plots} plots, ${r.tables} tables, ${r.figures} figures; ${r.matched} of ${r.channels.length} channels matched.${r.gates.skipped.length ? ` Not applied: ${r.gates.skipped.map((x) => `${x.gate} (${x.reason})`).join('; ')}.` : ''}${placedOn ? ` Its gates were placed on the events of ${placedOn.name} and are shared by every sample: review_gate and adapt_gate check and adjust them per sample. Populations carry a suggested Cell Ontology term for the user to confirm. ${template.citation ?? ''}` : ' Gates keep their position in data values: on another instrument, review_gate and adapt_gate check and adjust them.'}${template.compensation?.source === 'file' && !template.builtIn ? " The template's samples used their files' compensation." : ''}`,
+        data: { placedOn: placedOn?.name ?? null, substitutions: template.substitutions ?? [], channels: r.channels.map((c) => ({ template: c.template, channel: c.channel, how: c.how, note: c.note })), skipped: r.gates.skipped, notes: r.notes, proposal: proposalSummary() },
+      };
+    },
+
+    async titration(args) {
+      const lib = await import('../lib/titration.js');
+      const { detectWalk } = await import('./qc-titration.js');
+      const w = ws();
+      const mode = args.mode === 'voltage' ? 'voltage' : 'titration';
+      const named = args.samples?.length ? args.samples.map((ref) => resolveSample(ref)) : null;
+      let chosen;
+      if (mode === 'voltage') {
+        chosen = named ? named.map((sample) => ({ sample })) : detectWalk(w.samples).map(({ sample }) => ({ sample }));
+      } else {
+        const series = lib.titrationSeries(named ?? w.samples);
+        if (named && series.steps.length < named.length) {
+          const missing = named.filter((s) => !series.steps.some((x) => x.sample.id === s.id) && !series.unstained.includes(s));
+          if (missing.length) throw new ActionError(`No amount in the name or "amount" annotation of ${missing.map((s) => s.name).join(', ')} ("125 ng", "1:200", "2.5 uL").`);
+        }
+        chosen = series.steps;
+      }
+      if (chosen.length < 3) throw new ActionError(mode === 'voltage' ? 'Fewer than three samples at different voltages were found; name them with samples.' : 'Fewer than three samples with an amount of antibody were found; name the files with the amount ("125 ng", "1:200") or annotate an "amount" field.');
+      const views = new Map();
+      for (const x of chosen) views.set(x.sample.id, await loadedView(x.sample));
+      const channel = args.channel ? resolveChannel(views.get(chosen[0].sample.id), args.channel) : lib.guessChannel(w, chosen.map((x) => x.sample), views, mode);
+      if (!channel) throw new ActionError('The samples have no fluorescence channel.');
+      const populationId = args.population ? resolvePopulation(args.population) : (w.gates.find((g) => /lymph/i.test(g.name))?.id ?? ROOT);
+      const items = mode === 'voltage'
+        ? lib.voltageSeries(chosen.map((x) => x.sample), views, channel).map(({ sample, voltage }) => ({ sample, view: views.get(sample.id), label: `${voltage} V`, voltage }))
+        : chosen.map(({ sample, amount }) => ({ sample, view: views.get(sample.id), label: amount.label, amount }));
+      const steps = lib.stepsFrom(w, items, { channel, populationId });
+      const options = { rsdEN: Number(args.rsdEN) > 0 ? Number(args.rsdEN) : undefined, linearMax: Number(args.linearMax) > 0 ? Number(args.linearMax) : undefined };
+      const analysis = mode === 'voltage' ? lib.analyzeVoltageWalk(steps, options) : lib.analyzeTitration(steps);
+      const info = w.samples[0]?.channels.find((c) => c.name === channel);
+      const populationName = populationId === ROOT ? 'All events' : gatePath(w, populationId);
+      const r3 = (v) => (Number.isFinite(v) ? +v.toPrecision(4) : null);
+      const rows = analysis.rows.map((x) => ({ step: mode === 'voltage' ? `${x.voltage} V` : x.amount.label, positiveMedian: r3(x.positive?.median), negativeMedian: r3(x.negative?.median), negativeRSD: r3(x.negative?.rsd), positiveP99: r3(x.positive?.p99), stainIndex: r3(x.stainIndex), separationIndex: r3(x.separationIndex), percentPositive: Number.isFinite(x.fraction) ? r3(100 * x.fraction) : null, resolved: x.resolved, ...(mode === 'voltage' ? { withinLinearRange: x.inRange } : {}) }));
+      let message;
+      if (mode === 'voltage') {
+        message = analysis.recommended
+          ? `${channel} voltage walk (${rows.length} steps, within ${populationName}): ${Math.round(analysis.minimum.voltage)}–${Math.round(analysis.maximum.voltage)} V. Minimum: the negative cells' rSD reaches 2.5 × the electronic noise (rSD_EN ${r3(analysis.noise.rsdEN)}, ${analysis.noise.source === 'given' ? 'given' : 'estimated from the walk'}); maximum: the positive cells' 99th percentile reaches the top of the linear range. Recommended ${analysis.recommended.voltage} V. Signal ∝ V^${analysis.exponent.toFixed(2)}.`
+          : `${channel} voltage walk (${rows.length} steps): no voltage range.`;
+      } else {
+        message = analysis.recommended
+          ? `${info?.marker ? `${info.marker} (${channel})` : channel} titration (${rows.length} steps, within ${populationName}): recommended ${analysis.recommended.row.amount.label} per test, the first amount tested at or above twice the amount giving 90% of saturating staining (${lib.formatAmount(analysis.c90, analysis.rows[0].amount.kind)}, from a saturation curve fitted to the stain index). Highest stain index ${r3(analysis.best.row.stainIndex)} at ${analysis.best.row.amount.label}.`
+          : `${channel} titration (${rows.length} steps): no recommendation.`;
+      }
+      if (analysis.notes.length) message += ` Notes: ${analysis.notes.join(' ')}`;
+      let proposed = false;
+      if (args.save) {
+        const record = lib.titrationRecord(analysis, { mode, channel, marker: info?.marker || null, population: populationName, sampleIds: items.map((x) => x.sample.id), params: options });
+        store.commit(proposeDerived(ws(), author, record).ws, `${author} proposed the ${mode === 'voltage' ? 'voltage walk' : 'titration'} of ${channel}`);
+        proposed = true;
+        message += ' The result is proposed for the workspace (the methods describe it once accepted).';
+      }
+      return {
+        message,
+        data: {
+          mode, channel, marker: info?.marker || null, population: populationName, rows, notes: analysis.notes, proposed,
+          ...(mode === 'voltage'
+            ? { exponent: r3(analysis.exponent), rsdEN: r3(analysis.noise?.rsdEN), noiseSource: analysis.noise?.source ?? null, minimumVoltage: r3(analysis.minimum?.voltage), maximumVoltage: r3(analysis.maximum?.voltage), recommendedVoltage: analysis.recommended?.voltage ?? null }
+            : { c90: analysis.c90 ? lib.formatAmount(analysis.c90, analysis.rows[0].amount.kind) : null, recommended: analysis.recommended?.row.amount.label ?? null, best: analysis.best?.row.amount.label ?? null }),
+        },
+      };
+    },
+
+    async suggest_cell_types(args) {
+      const { suggestForPopulation } = await import('../lib/ontology.js');
+      const w = ws();
+      const sample = resolveSample(args.sample);
+      const view = await loadedView(sample);
+      const ids = args.populations?.length ? args.populations.map(resolvePopulation).filter((id) => id !== ROOT) : w.gates.filter((g) => g.type !== 'boolean').map((g) => g.id);
+      const rows = [];
+      let proposed = 0;
+      let next = w;
+      for (const id of ids) {
+        const gate = gateById(w, id);
+        const { phenotype, scatter, suggestions } = suggestForPopulation(view, w, id);
+        const top = suggestions[0];
+        rows.push({ population: gatePath(w, id), phenotype: phenotype.markers, scatter: scatter ?? undefined, confirmed: gate.ontology?.status === 'confirmed' ? `${gate.ontology.label} (${gate.ontology.id})` : undefined, suggestions: suggestions.map((x) => ({ term: x.label, id: x.id, confidence: x.confidence, from: x.reason })) });
+        if (args.propose && top && gate.ontology?.status !== 'confirmed') {
+          next = proposeGateEdit(next, author, id, { ontology: { id: top.id, label: top.label, status: 'confirmed', by: author, at: new Date().toISOString(), evidence: top.reason } }).ws;
+          proposed += 1;
+        }
+      }
+      if (proposed) {
+        store.commit(next, `${author} proposed cell types for ${proposed} population${proposed === 1 ? '' : 's'}`);
+        toast(`${author} proposes Cell Ontology terms for ${proposed} population${proposed === 1 ? '' : 's'}. Review the proposal to accept or reject them.`);
+      }
+      return {
+        message: `Cell Ontology terms suggested from each population's marker phenotype in ${sample.name} (from the gates' sides and the data, not the names): ${rows.filter((r) => r.suggestions.length).length} of ${rows.length} populations have one.${proposed ? ` Proposed the top term for ${proposed}; they apply when the user accepts.` : args.propose ? ' Nothing new to propose.' : ' Pass propose: true to propose the top terms for the user to confirm.'}`,
+        data: { rows, proposal: proposalSummary() },
+      };
+    },
+
+    async watch_folder(args) {
+      const live = app.live;
+      if (!live?.available) throw new ActionError('Folder watching needs the CytoWeave program (it is not available when the page is served as a web site).');
+      const action = args.action ?? 'status';
+      if (action === 'start') {
+        if (!args.path) throw new ActionError('Give the folder\'s absolute path.');
+        if (args.qc !== undefined) live.options.qc = Boolean(args.qc);
+        if (args.beads !== undefined) live.options.beads = Boolean(args.beads);
+        await live.start(String(args.path)).catch((error) => { throw new ActionError(error.message); });
+        if (args.existing) await live.handOverExisting();
+      } else if (action === 'stop') {
+        if (live.status?.watching) await live.stop();
+      } else if (action === 'existing') {
+        if (!live.status?.watching) throw new ActionError('No folder is being watched.');
+        await live.handOverExisting();
+      } else if (action !== 'status') {
+        throw new ActionError('action is start, stop, existing or status.');
+      }
+      const status = live.status ?? {};
+      const files = live.queue.map((q) => ({ file: q.name, state: q.state, sample: q.sampleId ? ws().samples.find((s) => s.id === q.sampleId)?.name : undefined, score: q.score, percentRemoved: q.percentRemoved === undefined ? undefined : round(q.percentRemoved, 3), finding: q.finding ?? undefined, detectorsOutOfControl: q.rejected, error: q.error }));
+      return {
+        message: status.watching ? `Watching ${status.folder}: ${files.length} file${files.length === 1 ? '' : 's'} so far${status.pending?.length ? `, ${status.pending.length} still being written` : ''}${status.existing ? `; ${status.existing} were there before (action existing checks them)` : ''}. Each finished FCS file is added to the workspace and checked at once (acquisition QC for samples, Q and B for bead files); the folder is only read.` : `No folder is being watched${files.length ? ` (${files.length} files handled earlier)` : ''}.`,
+        data: { watching: Boolean(status.watching), folder: status.folder ?? null, pending: status.pending ?? [], existing: status.existing ?? 0, options: { ...live.options }, files },
+      };
+    },
+
     async proposals() {
       const history = proposalHistory(ws(), 10).map((e) => ({ time: e.time, decision: e.action === 'accept-proposal' ? 'accepted' : 'rejected', detail: e.detail }));
       const mine = proposalSummary();
@@ -542,6 +1026,32 @@ export function installRemote(app) {
     },
   };
 
+  // The extension of an export's path, which must be one of `allowed`.
+  function requireExtension(path, allowed, what) {
+    const match = /\.[a-z0-9]+$/i.exec(String(path ?? ''));
+    const extension = match ? match[0].toLowerCase() : '';
+    if (!allowed.includes(extension)) throw new ActionError(`The path for ${what} must end in ${allowed.join(' or ')}.`);
+    return extension;
+  }
+
+  // Records a computed result as part of the agent's proposal: attaches the per-event columns to
+  // the samples, stores them in the library, and adds the record marked as proposed.
+  //   record: as app.saveDerived's result without perSample (files: columns already stored);
+  //   perSample: Map(sampleId → { channel: Float32Array }).
+  async function proposeResult(record, perSample, label) {
+    const files = { ...(record.files ?? {}) };
+    for (const [sampleId, columns] of perSample) {
+      files[sampleId] = {};
+      for (const [name, column] of Object.entries(columns)) {
+        data.setDerived(sampleId, name, column);
+        files[sampleId][name] = await data.persistColumn(column);
+      }
+    }
+    const result = proposeDerived(ws(), author, { ...record, files });
+    store.commit(result.ws, label, ['derived', 'data']);
+    return result.derived;
+  }
+
   // Adds gates as a proposal of the agent, for the user to review.
   function commitGates(gates, { parentId, dims, name, view, origin, method, explanation }) {
     const w = ws();
@@ -589,7 +1099,16 @@ export function installRemote(app) {
       const args = typeof event.args === 'object' && event.args ? event.args : {};
       author = event.client || 'a program on this computer';
       const result = await handler(args, event);
-      outcome = { ok: true, message: result.message ?? 'Done.', data: result.data ?? null };
+      let message = result.message ?? 'Done.';
+      // An export: the file goes to the program, which writes it where the caller asked.
+      if (result.file !== undefined) {
+        if (!event.output) throw new ActionError('Writing files needs the CytoWeave program.');
+        const response = await fetch(event.output, { method: 'POST', body: result.file, headers: { 'Content-Type': 'application/octet-stream' } });
+        const written = await response.json().catch(() => ({}));
+        if (!response.ok) throw new ActionError(`The file could not be written: ${written.error ?? `HTTP ${response.status}`}`);
+        message = `Wrote ${written.path} (${written.bytes} bytes). ${message}`;
+      }
+      outcome = { ok: true, message, data: result.data ?? null };
     } catch (error) {
       outcome = { ok: false, message: error.message ?? String(error) };
     }

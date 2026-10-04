@@ -50,7 +50,7 @@ export function readHeader(bytes, base = 0) {
     const raw = asciiField(bytes, base + start, base + start + 8);
     if (raw === '') return 0;
     const value = Number.parseInt(raw, 10);
-    return Number.isFinite(value) ? value : 0;
+    return Number.isFinite(value) && value >= 0 ? value : 0;
   };
   return {
     version,
@@ -73,6 +73,16 @@ export function parseTextSegment(text, options = {}) {
   let current = '';
   let i = 1;
   while (i < text.length) {
+    // Copy up to the next delimiter in one piece (a long TEXT segment, a character at a time, is slow).
+    const next = text.indexOf(delimiter, i);
+    if (next < 0) {
+      current += text.slice(i);
+      break;
+    }
+    if (next > i) {
+      current += text.slice(i, next);
+      i = next;
+    }
     const ch = text[i];
     if (ch === delimiter) {
       if (!options.emptyValues && text[i + 1] === delimiter && i + 1 < text.length - 1) {
@@ -94,15 +104,27 @@ export function parseTextSegment(text, options = {}) {
   return pairs;
 }
 
+// Keyword–value pairs of a supplemental TEXT segment, which uses the primary TEXT's delimiter (some
+// writers leave out its leading delimiter); null when it holds something else (instrument settings,
+// a ZIP archive), as some writers put there.
+function supplementalPairs(extra, delimiter) {
+  const text = extra.startsWith(delimiter) ? extra : delimiter + extra;
+  const pairs = parseTextSegment(text);
+  const plausible = (key) => /^[\x20-\x7e]{1,128}$/.test(key) && key.trim() !== '';
+  return pairs.length && pairs.every(([key]) => plausible(key)) ? pairs : null;
+}
+
 // Scores a keyword parse: parameter keywords that agree with $PAR, standard keys that look right.
-function scorePairs(pairs) {
+// A keyword name holding the delimiter is suspicious: values may contain an escaped delimiter, but
+// a name that does is two keywords run together by an empty value read as an escape.
+function scorePairs(pairs, delimiter) {
   const keys = new Map();
   for (const [key, value] of pairs) keys.set(key.trim().toUpperCase(), value);
   const par = Number.parseInt(keys.get('$PAR') ?? '', 10);
   let score = 0;
   if (Number.isFinite(par) && par > 0) {
     score += 5;
-    for (let n = 1; n <= par; n += 1) {
+    for (let n = 1; n <= Math.min(par, pairs.length); n += 1) {
       if (keys.has(`$P${n}N`)) score += 2;
       if (keys.has(`$P${n}B`)) score += 1;
       if (keys.has(`$P${n}R`)) score += 1;
@@ -112,7 +134,7 @@ function scorePairs(pairs) {
   let suspicious = 0;
   for (const [key] of pairs) {
     const trimmed = key.trim();
-    if (!trimmed || trimmed.length > 128 || /[\x00-\x08]/.test(trimmed)) suspicious += 1;
+    if (!trimmed || trimmed.length > 128 || /[\x00-\x08]/.test(trimmed) || trimmed.includes(delimiter)) suspicious += 1;
   }
   return score - 3 * suspicious;
 }
@@ -123,7 +145,7 @@ function chooseTextParse(text, diagnostics) {
   const delimiter = text[0];
   if (!text.includes(delimiter + delimiter, 1)) return standard;
   const lenient = parseTextSegment(text, { emptyValues: true });
-  if (scorePairs(lenient) > scorePairs(standard)) {
+  if (scorePairs(lenient, delimiter) > scorePairs(standard, delimiter)) {
     diagnostics.push({ level: 'warning', code: 'empty-values', message: 'Doubled delimiters were read as empty keyword values (not allowed by the standard, but some instruments write them).' });
     return lenient;
   }
@@ -137,6 +159,13 @@ function keywordMap(pairs) {
     if (!(upper in map)) map[upper] = value;
   }
   return map;
+}
+
+// A keyword's value for a message: quoted, shortened, or "missing".
+function quoted(value) {
+  if (value === undefined) return 'missing';
+  const text = String(value).trim();
+  return `"${text.length > 40 ? `${text.slice(0, 40)}…` : text}"`;
 }
 
 function intKeyword(keywords, key) {
@@ -292,7 +321,7 @@ function dataPlan(keywords, parameters) {
     if (types[i] === 'F') return 4;
     if (types[i] === 'D') return 8;
     const bits = p.bits;
-    if (!Number.isFinite(bits) || bits <= 0) throw new FCSError(`$P${i + 1}B is not a bit width ("${p.bits}").`);
+    if (!Number.isInteger(bits) || bits <= 0 || bits > 64) throw new FCSError(`$P${i + 1}B is not a bit width (${quoted(keywords[`$P${i + 1}B`])}): integers take 1 to 64 bits.`);
     if (bits % 8 !== 0) return -bits;
     return bytesPerValue('I', bits);
   });
@@ -372,8 +401,25 @@ function maskedDiagnostic(masked) {
   return { level: 'info', code: 'masked-bits', message: `${masked} integer values had bits above $PnR set; they were masked as the standard describes.` };
 }
 
+// The most events ASCII or packed data of `length` bytes can hold (binary data is checked in
+// parseLayout): fixed-width ASCII and packed events have a known size; free-format ASCII needs at
+// least a digit and a separator per value.
+function textOrPackedLimit(plan, parameters, length) {
+  if (plan.kind === 'packed') return Math.floor((length * 8) / parameters.reduce((sum, p) => sum + p.bits, 0));
+  const fixed = parameters.every((p) => Number.isFinite(p.bits) && p.bits > 0);
+  if (fixed) return Math.floor(length / parameters.reduce((sum, p) => sum + p.bits, 0));
+  return Math.ceil((length + 1) / (2 * parameters.length));
+}
+
 function decodeData(bytes, start, end, keywords, parameters, eventCount, diagnostics, allocate = (n) => new Float32Array(n)) {
   const plan = dataPlan(keywords, parameters);
+  if (plan.kind !== 'binary') {
+    const limit = Math.max(0, textOrPackedLimit(plan, parameters, Math.max(0, Math.min(end, bytes.length - 1) - start + 1)));
+    if (eventCount > limit) {
+      diagnostics.push({ level: 'error', code: 'truncated', message: `$TOT says ${eventCount} events but the DATA segment can hold at most ${limit}; only those were read.` });
+      eventCount = limit;
+    }
+  }
   const columns = parameters.map(() => allocate(eventCount));
   if (plan.kind === 'ascii') return decodeASCII(bytes, start, end, parameters, eventCount, columns, diagnostics);
   if (plan.kind === 'packed') return decodePacked(bytes, start, parameters, eventCount, columns, plan.byteOrder, diagnostics);
@@ -477,15 +523,33 @@ function crc16(bytes, start, end, crc = 0) {
 function resolveDataOffsets(header, keywords, eventBytes, eventCount, base, fileLength, diagnostics) {
   let start = header.dataStart;
   let end = header.dataEnd;
-  const kStart = intKeyword(keywords, '$BEGINDATA');
-  const kEnd = intKeyword(keywords, '$ENDDATA');
+  let kStart = intKeyword(keywords, '$BEGINDATA');
+  let kEnd = intKeyword(keywords, '$ENDDATA');
+  // Offsets that cannot be right (negative, or an end before the start) are ignored.
+  if (kStart !== undefined && (kStart < 0 || kEnd === undefined || kEnd < kStart)) {
+    diagnostics.push({ level: 'warning', code: 'offset-invalid', message: `$BEGINDATA and $ENDDATA (${quoted(keywords.$BEGINDATA)}, ${quoted(keywords.$ENDDATA)}) are not a valid range; the HEADER's offsets were used.` });
+    kStart = undefined;
+    kEnd = undefined;
+  }
   if ((start === 0 || end === 0) && kStart !== undefined && kEnd !== undefined) {
     start = kStart;
     end = kEnd;
   } else if (kStart !== undefined && kEnd !== undefined && (kStart !== start || kEnd !== end) && kEnd > 0) {
-    diagnostics.push({ level: 'warning', code: 'offset-mismatch', message: `The HEADER gives DATA at ${start}–${end} but $BEGINDATA/$ENDDATA give ${kStart}–${kEnd}; the keywords were used.` });
-    start = kStart;
-    end = kEnd;
+    // The HEADER and the keywords disagree. A range is possible if it lies outside the primary TEXT,
+    // within the file and holds the events (allowing the common off-by-one). When only one is
+    // possible it is used; when both are, the keywords, unless only the HEADER's puts DATA directly
+    // after the TEXT, as writers do (keywords written before the TEXT grew: BD Accuri C6, Beckman
+    // Coulter CyAn).
+    const needed = eventBytes > 0 && eventCount > 0 ? eventBytes * eventCount : 0;
+    const possible = (s, e) => s > 0 && e >= s && (s > header.textEnd || e < header.textStart) && base + e <= fileLength && e - s + 2 >= needed;
+    const headerOk = possible(start, end);
+    const keywordsOk = possible(kStart, kEnd);
+    const useHeader = headerOk && (!keywordsOk || (start === header.textEnd + 1 && kStart !== header.textEnd + 1));
+    diagnostics.push({ level: 'warning', code: 'offset-mismatch', message: `The HEADER gives DATA at ${start}–${end} but $BEGINDATA/$ENDDATA give ${kStart}–${kEnd}; ${useHeader ? `the HEADER's offsets were used${keywordsOk ? ', which place DATA directly after the TEXT segment' : ', since the keywords\' range cannot hold the data'}` : 'the keywords were used'}.` });
+    if (!useHeader) {
+      start = kStart;
+      end = kEnd;
+    }
   }
   if (eventBytes > 0 && eventCount > 0) {
     const needed = eventBytes * eventCount;
@@ -498,6 +562,7 @@ function resolveDataOffsets(header, keywords, eventBytes, eventCount, base, file
       end += 1;
     }
   }
+  if (!(start >= 0) || !(end >= 0) || (end < start && eventCount > 0)) throw new FCSError(`The file does not locate its DATA segment: the HEADER and keywords give no valid byte range (${start}–${end}).`);
   return { start: base + start, end: base + end };
 }
 
@@ -517,17 +582,24 @@ function parseLayout(get, length, base, options, version) {
   // Supplemental TEXT (FCS 3.x), when it lies outside the primary TEXT segment.
   const sStart = intKeyword(keywords, '$BEGINSTEXT');
   const sEnd = intKeyword(keywords, '$ENDSTEXT');
-  if (sStart && sEnd && sEnd > sStart && (sStart > header.textEnd || sEnd < header.textStart)) {
+  const stextValid = sStart > 0 && sEnd > sStart && base + sEnd < length;
+  if (stextValid && (sStart > header.textEnd || sEnd < header.textStart)) {
     const extra = decodeText(get(base + sStart, base + sEnd + 1)).text;
-    const extraPairs = parseTextSegment(extra);
-    pairs = pairs.concat(extraPairs);
-    keywords = keywordMap(pairs);
+    const extraPairs = supplementalPairs(extra, text[0]);
+    if (extraPairs) {
+      pairs = pairs.concat(extraPairs);
+      keywords = keywordMap(pairs);
+    } else {
+      diagnostics.push({ level: 'info', code: 'stext-ignored', message: `The supplemental TEXT segment (${sEnd - sStart + 1} bytes) does not hold keywords (it starts "${extra.slice(0, 24).replace(/[^\x20-\x7e]/g, '?')}"); it was ignored.` });
+    }
   }
 
   const mode = (keywords.$MODE ?? 'L').trim().toUpperCase();
   if (mode !== 'L') throw new FCSError(`Only list-mode data ($MODE L) is supported; this file has $MODE ${mode}.`, 'unsupported');
   const par = intKeyword(keywords, '$PAR');
   if (!par || par <= 0) throw new FCSError('The file does not say how many parameters it has ($PAR).');
+  // Each parameter needs at least its $PnB keyword, so $PAR cannot exceed the number of keywords.
+  if (par > pairs.length) throw new FCSError(`$PAR says the file has ${par} parameters, but its TEXT segment holds only ${pairs.length} keywords.`);
   const parameters = decodeParameters(keywords, par, diagnostics);
   const datatype = (keywords.$DATATYPE ?? 'F').trim().toUpperCase();
   const types = parameters.map((p) => p.datatype ?? datatype);
@@ -539,6 +611,10 @@ function parseLayout(get, length, base, options, version) {
     }
   }
   let eventCount = intKeyword(keywords, '$TOT');
+  if (eventCount !== undefined && eventCount < 0) {
+    diagnostics.push({ level: 'warning', code: 'no-tot', message: `$TOT (${quoted(keywords.$TOT)}) is not an event count; it was ignored.` });
+    eventCount = undefined;
+  }
   const offsets = resolveDataOffsets(header, keywords, eventBytes, eventCount ?? 0, base, length, diagnostics);
   let hasData = true;
   if (offsets.start >= length && (eventCount ?? 1) > 0) {
@@ -553,6 +629,7 @@ function parseLayout(get, length, base, options, version) {
   }
   if (eventCount === undefined) {
     if (!(eventBytes > 0)) throw new FCSError('$TOT is missing and cannot be inferred for this data type.');
+    if (offsets.end < offsets.start) throw new FCSError('$TOT is missing, and the file does not say where its DATA segment ends, so the number of events cannot be inferred.');
     eventCount = Math.floor((offsets.end - offsets.start + 1) / eventBytes);
     diagnostics.push({ level: 'warning', code: 'no-tot', message: `$TOT is missing; ${eventCount} events were inferred from the DATA length.` });
   } else if (eventBytes > 0 && Number.isInteger(eventBytes) && offsets.start < length) {
@@ -565,7 +642,7 @@ function parseLayout(get, length, base, options, version) {
   if (options.maxEvents !== undefined && eventCount > options.maxEvents) eventCount = options.maxEvents;
   const nextData = intKeyword(keywords, '$NEXTDATA') ?? 0;
   // The last byte of the data set's segments; an FCS 3.1 CRC may follow it.
-  const lastEnd = Math.max(header.textEnd, offsets.end - base, header.analysisEnd, sEnd ?? 0);
+  const lastEnd = Math.max(header.textEnd, offsets.end - base, header.analysisEnd, stextValid ? sEnd : 0);
   return { version, base, header, keywords, pairs, parameters, types, eventBytes, eventCount, offsets, diagnostics, nextData, lastEnd, hasData };
 }
 
@@ -611,6 +688,8 @@ function parseDataset(bytes, base, options, version) {
   const layout = parseLayout((a, b) => bytes.subarray(a, b), bytes.length, base, options, version);
   const { keywords, parameters, eventCount, offsets, diagnostics } = layout;
   const columns = options.headerOnly ? parameters.map(() => new Float32Array(0)) : decodeData(bytes, offsets.start, offsets.end, keywords, parameters, eventCount, diagnostics, options.allocate);
+  // ASCII and packed data may hold fewer events than $TOT says.
+  if (!options.headerOnly && columns.length) layout.eventCount = columns[0].length;
   const crcText = asciiField(bytes, layout.lastEnd + 1, layout.lastEnd + 9);
   const crc = checkCRC(layout, bytes.length, crcText, () => crc16(bytes, 0, layout.lastEnd + 1), options);
   return finishDataset(layout, columns, crc, options);
@@ -626,7 +705,15 @@ export function parseFCS(input, options = {}) {
   let base = 0;
   const seen = new Set();
   while (true) {
-    const dataset = parseDataset(bytes, base, options, readHeader(bytes, base).version);
+    let dataset;
+    try {
+      dataset = parseDataset(bytes, base, options, readHeader(bytes, base).version);
+    } catch (error) {
+      // A later data set that cannot be read leaves the earlier ones usable.
+      if (!datasets.length || !(error instanceof FCSError)) throw error;
+      datasets[0].diagnostics.push({ level: 'warning', code: 'dataset-unreadable', message: `Data set ${datasets.length + 1} (at byte ${base}) could not be read and was left out: ${error.message}` });
+      break;
+    }
     datasets.push(dataset);
     if (!dataset.nextData || seen.has(dataset.nextData) || dataset.nextData >= bytes.length || options.firstOnly) break;
     seen.add(dataset.nextData);
@@ -709,7 +796,8 @@ export async function parseFCSAsync(source, options = {}) {
       layout = parseLayout(get, size, 0, options, header.version);
       break;
     } catch (error) {
-      if (!(error instanceof NeedBytes) || attempt > 4) throw error;
+      if (!(error instanceof NeedBytes)) throw error;
+      if (attempt > 4 || error.start < 0 || error.start >= size) throw new FCSError(`The file's offsets point outside it (bytes ${error.start}–${error.end} of ${size}).`);
       await fetchRange(error.start, error.end);
     }
   }
