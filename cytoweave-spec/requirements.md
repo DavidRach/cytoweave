@@ -87,7 +87,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | Q3 | CytoNorm with a confounding check; bead normalization; debarcoding | done |
 | Q4 | QC of files as they are acquired (folder watching) | done: the program watches a folder read-only and hands over complete files; acquisition QC or Q and B as they land; PeacoQC's channels in parallel |
 | Q5 | Instrument characterization (Q and B, Levey–Jennings) | done: Q, B and CV0 from multi-level beads or LED series as flowQB computes them (validation `flowqb`: equal within 6e-9), runs kept per instrument and followed on Levey–Jennings charts with Westgard rules (validation `instrument`) |
-| Q6 | Titration and voltage optimization: stain and separation index per step, a recommended titer or voltage | planned (wave 5) |
+| Q6 | Titration and voltage optimization: stain and separation index per step, a recommended titer or voltage | done: QC → Titration reads amounts from names and voltages from $PnV; stain and separation index per step; the recommended amount (twice the 90% saturation amount) and voltage range (2.5 × rSD_EN to the linear range), with a figure and the methods |
 
 ## High-dimensional analysis
 

@@ -91,7 +91,7 @@ export function guessStain(name, channels) {
 
 // A sample record from a parsed FCS data set.
 export function sampleFromDataset(dataset, file) {
-  const channels = dataset.parameters.map((p) => ({ name: p.name, label: p.label, marker: p.marker, type: p.type, range: p.range }));
+  const channels = dataset.parameters.map((p) => ({ name: p.name, label: p.label, marker: p.marker, type: p.type, range: p.range, ...(p.voltage ? { voltage: p.voltage } : {}) }));
   const name = (file.name ?? 'sample').replace(/\.(fcs|lmd)$/i, '');
   const spill = readSpillover(dataset.keywords, dataset.parameters);
   const role = guessRole(name, dataset.keywords);

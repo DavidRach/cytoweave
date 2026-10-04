@@ -479,6 +479,18 @@ const scenes = {
     await js(`[...document.querySelectorAll('main h3')].find((e) => /Beads_2026/.test(e.textContent))?.scrollIntoView({ block: 'start' })`);
     await sleep(1200);
   },
+  // QC → Titration: the CD4-PE titration within the lymphocytes, with the recommended amount.
+  async titration() {
+    await example('titration-voltage');
+    await mode('qc');
+    await click('Titration', '.workbench-head [role="tab"]');
+    await sleep(800);
+    await click('Analyze 10 amounts');
+    await waitFor(`/recommended 125 ng per test/.test(${mainText})`, 120000);
+    await sleep(1500);
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /titration:/.test(e.textContent))?.scrollIntoView({ block: 'start' })`);
+    await sleep(1200);
+  },
   // The Levey–Jennings chart of the aging detector's Q across the 30 runs.
   async 'levey-jennings'() {
     await scenes.instrument();

@@ -122,3 +122,17 @@ test('confirmed Cell Ontology terms are named in the methods, with the reference
   assert.ok(paragraphs.some((p) => /T cells as T cell \(CL:0000084\)/.test(p)));
   assert.ok(references.some((r) => r.doi === '10.1186/s13326-016-0088-7'));
 });
+
+test('methods describe a titration and a voltage walk, with their references', async () => {
+  const { addDerived } = await import('./workspace.js');
+  let ws = createWorkspace('Setup');
+  ws = addDerived(ws, { kind: 'titration', mode: 'titration', channel: 'PE-A', marker: 'CD4', population: 'Lymphocytes', steps: [{ label: '1.95 ng' }, { label: '125 ng' }, { label: '1000 ng' }], summary: { recommended: '125 ng', c90: '40.6 ng' } }).ws;
+  ws = addDerived(ws, { kind: 'titration', mode: 'voltage', channel: 'PE-A', steps: [{ label: '300 V' }, { label: '750 V' }], summary: { rsdEN: 25.1, noiseSource: 'estimated', minimum: 507.2, maximum: 566.8, recommended: 510 } }).ws;
+  const { paragraphs, references } = writeMethods(ws, { version: '0.5.0' });
+  const text = paragraphs.join(' ');
+  assert.match(text, /CD4 reagent \(PE-A\) was titrated in 3 steps from 1\.95 ng to 1000 ng among Lymphocytes/);
+  assert.match(text, /125 ng was chosen as at least twice the amount giving 90% of saturating staining \(40\.6 ng\)/);
+  assert.match(text, /2\.5 times the detector's electronic noise \(25\.1, estimated from the walk\)/);
+  assert.match(text, /507 V.*567 V; 510 V was chosen/);
+  for (const key of ['stainIndex', 'separationIndex', 'titration', 'voltageSetup']) assert.ok(references.some((r) => r.key === key), key);
+});

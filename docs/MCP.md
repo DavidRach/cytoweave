@@ -47,7 +47,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools and `suggest_cell_types` 0.5.0.
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0.
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the
@@ -115,6 +115,7 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `list_templates` | The templates in the library, and the published gating strategies (OMIP-101 major leukocyte populations, OMIP-090 regulatory T cells) with their citations and where they depart from the articles. |
 | `apply_template` | Applies a template or a strategy (`omip-101`) to the open samples: channels matched by marker (scatter and time by name), with how each matched and what could not be applied. A strategy's gates are placed on one sample's events (`sample`), each from its parent population, with suggested Cell Ontology terms. The gates and figures are proposed. |
 | `suggest_cell_types` | A Cell Ontology term for each population from its marker phenotype and scatter, never its name, with a confidence and the markers it rests on; `propose` proposes the top terms for you to confirm. |
+| `titration` | Analyzes an antibody titration (amounts from the file names or an "amount" annotation) or a detector voltage walk (voltages from `$PnV`) on one channel within a population: each step's stain and separation index, and the recommended amount (twice the amount giving 90% of saturation) or voltage range (the negative cells' rSD at 2.5 × the electronic noise; the positive cells within the linear range). `save` proposes the result for the workspace. |
 | `export_flowjo` | Writes a FlowJo workspace (.wsp, or .zip with the FCS files), optionally de-identified, with the populations not written exactly. |
 | `export_fcs` | Writes de-identified FCS files (.zip) or the workspace with them (.acs). |
 | `export_figure` | Writes a figure as SVG, PNG or PDF, carrying the analysis behind it. |

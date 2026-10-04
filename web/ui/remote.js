@@ -801,6 +801,68 @@ export function installRemote(app) {
       };
     },
 
+    async titration(args) {
+      const lib = await import('../lib/titration.js');
+      const { detectWalk } = await import('./qc-titration.js');
+      const w = ws();
+      const mode = args.mode === 'voltage' ? 'voltage' : 'titration';
+      const named = args.samples?.length ? args.samples.map((ref) => resolveSample(ref)) : null;
+      let chosen;
+      if (mode === 'voltage') {
+        chosen = named ? named.map((sample) => ({ sample })) : detectWalk(w.samples).map(({ sample }) => ({ sample }));
+      } else {
+        const series = lib.titrationSeries(named ?? w.samples);
+        if (named && series.steps.length < named.length) {
+          const missing = named.filter((s) => !series.steps.some((x) => x.sample.id === s.id) && !series.unstained.includes(s));
+          if (missing.length) throw new ActionError(`No amount in the name or "amount" annotation of ${missing.map((s) => s.name).join(', ')} ("125 ng", "1:200", "2.5 uL").`);
+        }
+        chosen = series.steps;
+      }
+      if (chosen.length < 3) throw new ActionError(mode === 'voltage' ? 'Fewer than three samples at different voltages were found; name them with samples.' : 'Fewer than three samples with an amount of antibody were found; name the files with the amount ("125 ng", "1:200") or annotate an "amount" field.');
+      const views = new Map();
+      for (const x of chosen) views.set(x.sample.id, await loadedView(x.sample));
+      const channel = args.channel ? resolveChannel(views.get(chosen[0].sample.id), args.channel) : lib.guessChannel(w, chosen.map((x) => x.sample), views, mode);
+      if (!channel) throw new ActionError('The samples have no fluorescence channel.');
+      const populationId = args.population ? resolvePopulation(args.population) : (w.gates.find((g) => /lymph/i.test(g.name))?.id ?? ROOT);
+      const items = mode === 'voltage'
+        ? lib.voltageSeries(chosen.map((x) => x.sample), views, channel).map(({ sample, voltage }) => ({ sample, view: views.get(sample.id), label: `${voltage} V`, voltage }))
+        : chosen.map(({ sample, amount }) => ({ sample, view: views.get(sample.id), label: amount.label, amount }));
+      const steps = lib.stepsFrom(w, items, { channel, populationId });
+      const options = { rsdEN: Number(args.rsdEN) > 0 ? Number(args.rsdEN) : undefined, linearMax: Number(args.linearMax) > 0 ? Number(args.linearMax) : undefined };
+      const analysis = mode === 'voltage' ? lib.analyzeVoltageWalk(steps, options) : lib.analyzeTitration(steps);
+      const info = w.samples[0]?.channels.find((c) => c.name === channel);
+      const populationName = populationId === ROOT ? 'All events' : gatePath(w, populationId);
+      const r3 = (v) => (Number.isFinite(v) ? +v.toPrecision(4) : null);
+      const rows = analysis.rows.map((x) => ({ step: mode === 'voltage' ? `${x.voltage} V` : x.amount.label, positiveMedian: r3(x.positive?.median), negativeMedian: r3(x.negative?.median), negativeRSD: r3(x.negative?.rsd), positiveP99: r3(x.positive?.p99), stainIndex: r3(x.stainIndex), separationIndex: r3(x.separationIndex), percentPositive: Number.isFinite(x.fraction) ? r3(100 * x.fraction) : null, resolved: x.resolved, ...(mode === 'voltage' ? { withinLinearRange: x.inRange } : {}) }));
+      let message;
+      if (mode === 'voltage') {
+        message = analysis.recommended
+          ? `${channel} voltage walk (${rows.length} steps, within ${populationName}): ${Math.round(analysis.minimum.voltage)}–${Math.round(analysis.maximum.voltage)} V. Minimum: the negative cells' rSD reaches 2.5 × the electronic noise (rSD_EN ${r3(analysis.noise.rsdEN)}, ${analysis.noise.source === 'given' ? 'given' : 'estimated from the walk'}); maximum: the positive cells' 99th percentile reaches the top of the linear range. Recommended ${analysis.recommended.voltage} V. Signal ∝ V^${analysis.exponent.toFixed(2)}.`
+          : `${channel} voltage walk (${rows.length} steps): no voltage range.`;
+      } else {
+        message = analysis.recommended
+          ? `${info?.marker ? `${info.marker} (${channel})` : channel} titration (${rows.length} steps, within ${populationName}): recommended ${analysis.recommended.row.amount.label} per test, the first amount tested at or above twice the amount giving 90% of saturating staining (${lib.formatAmount(analysis.c90, analysis.rows[0].amount.kind)}, from a saturation curve fitted to the stain index). Highest stain index ${r3(analysis.best.row.stainIndex)} at ${analysis.best.row.amount.label}.`
+          : `${channel} titration (${rows.length} steps): no recommendation.`;
+      }
+      if (analysis.notes.length) message += ` Notes: ${analysis.notes.join(' ')}`;
+      let proposed = false;
+      if (args.save) {
+        const record = lib.titrationRecord(analysis, { mode, channel, marker: info?.marker || null, population: populationName, sampleIds: items.map((x) => x.sample.id), params: options });
+        store.commit(proposeDerived(ws(), author, record).ws, `${author} proposed the ${mode === 'voltage' ? 'voltage walk' : 'titration'} of ${channel}`);
+        proposed = true;
+        message += ' The result is proposed for the workspace (the methods describe it once accepted).';
+      }
+      return {
+        message,
+        data: {
+          mode, channel, marker: info?.marker || null, population: populationName, rows, notes: analysis.notes, proposed,
+          ...(mode === 'voltage'
+            ? { exponent: r3(analysis.exponent), rsdEN: r3(analysis.noise?.rsdEN), noiseSource: analysis.noise?.source ?? null, minimumVoltage: r3(analysis.minimum?.voltage), maximumVoltage: r3(analysis.maximum?.voltage), recommendedVoltage: analysis.recommended?.voltage ?? null }
+            : { c90: analysis.c90 ? lib.formatAmount(analysis.c90, analysis.rows[0].amount.kind) : null, recommended: analysis.recommended?.row.amount.label ?? null, best: analysis.best?.row.amount.label ?? null }),
+        },
+      };
+    },
+
     async suggest_cell_types(args) {
       const { suggestForPopulation } = await import('../lib/ontology.js');
       const w = ws();

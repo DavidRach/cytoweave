@@ -6,7 +6,7 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, templates, strategies, titration, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor
@@ -29,6 +29,8 @@ import { evaluate as evaluateOntology } from './ontology-cases.mjs';
 import { suggestForPopulation, termById } from '../web/lib/ontology.js';
 import { applyStrategy, pbmcCohort, placeOn } from './strategy-cases.mjs';
 import { STRATEGIES, strategyById } from '../web/lib/strategies.js';
+import { runTitration, runWalk, titrationExample, trueVoltageLimits } from './titration-cases.mjs';
+import { TITRATION } from '../web/lib/examples.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
 import { characterize, findBeadPeaks, REJECT_RULES } from '../web/lib/qb.js';
@@ -342,7 +344,7 @@ function deidentifyChecks(suite, label, files) {
 const suites = {
   fcs() {
     const all = [];
-    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc']) {
+    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
       const { files } = generateExample(id, { scale: 0.05 });
       all.push(...files);
       let problems = 0;
@@ -457,6 +459,32 @@ const suites = {
       }
     }
     check('strategies', `the Cell Ontology terms of the ${total} strategy populations against the terms suggested from the placed gates' data`, `${same} the same, ${related} an ancestor or descendant${differ.length ? ` (${differ.join('; ')})` : ''}`, same + related === total && same >= total - 2, 'all the same or related, at most 2 related');
+  },
+  // Titration and voltage walks (titration-cases.mjs): the example's CD4-PE titration and PE
+  // voltage walk analyzed within its lymphocyte gate, against the true cell types, the binding
+  // constant and the detector's noise and gain.
+  titration() {
+    const example = titrationExample(1);
+    const t = runTitration(example);
+    const walkSamples = example.ws.samples.filter((s) => /Voltage walk/.test(s.name));
+    const walk = runWalk(example);
+    check('titration', 'the series read from the files: amounts from the names, the unstained tube set apart, voltages from $PnV', `${t.series.steps.length} amounts (${t.series.steps.map((x) => x.amount.label).join(', ')}), ${t.series.unstained.length} unstained; ${walk.series.length} voltages (${walk.series.map((x) => x.voltage).join(', ')})`, t.series.steps.length === TITRATION.amounts.length && t.series.unstained.length === 1 && walk.series.length === walkSamples.length && walk.series.every((x, i) => x.voltage === TITRATION.voltages[i]), 'all');
+    const errors = t.analysis.rows.map((r, i) => Math.abs(r.stainIndex / t.truth[i] - 1));
+    check('titration', `stain index of every step, from the positive and negative cells found in the data, against the true CD4 T cells and CD4-negative lymphocytes (within ${t.population})`, `largest difference ${(100 * Math.max(...errors)).toFixed(1)}% (median ${(100 * [...errors].sort((a, b) => a - b)[Math.floor(errors.length / 2)]).toFixed(1)}%); ${t.analysis.rows.filter((r) => r.resolved).length} of ${t.analysis.rows.length} steps resolved`, Math.max(...errors) <= 0.05 && t.analysis.rows.every((r) => r.resolved), '≤ 5%, every step resolved');
+    const c90 = 9 * TITRATION.kd;
+    const truthRecommended = TITRATION.amounts.filter((a) => a >= 2 * c90).sort((a, b) => a - b)[0];
+    check('titration', `the recommended amount (Bonilla et al. 2024: the first tested at or above twice the amount giving 90% of saturation) against the binding: CD4 90% bound at ${c90} ng`, `recommended ${t.analysis.recommended?.row.label ?? 'none'} (true ${truthRecommended} ng); 90% of saturation of the stain index at ${t.analysis.c90?.toFixed(1)} ng`, t.analysis.recommended?.row.amount.value === truthRecommended && t.analysis.c90 > c90 / 1.5 && t.analysis.c90 < c90 * 1.5, 'the same amount; within ×1.5');
+    const truth = trueVoltageLimits();
+    const a = walk.analysis;
+    check('titration', `voltage walk: the gain exponent from the positive cells and the electronic noise estimated from the negative cells, against the detector's (V^${TITRATION.exponent}, rSD_EN ${truth.rsdEN})`, `exponent ${a.exponent?.toFixed(2)}; rSD_EN ${a.noise?.rsdEN.toFixed(1)} (${a.noise?.source})`, Math.abs(a.exponent - TITRATION.exponent) < 0.1 && a.noise?.source === 'estimated' && Math.abs(a.noise.rsdEN / truth.rsdEN - 1) < 0.05, 'within 0.1; within 5%');
+    const given = runWalk(example, { rsdEN: truth.rsdEN }).analysis;
+    check('titration', "voltage walk: the minimum voltage (negative cells' rSD = 2.5 × rSD_EN) and maximum (positive cells' 99th percentile at 90% of the range), against the true cells simulated at 200,000 events", `minimum ${a.minimum?.voltage.toFixed(1)} V (rSD_EN given: ${given.minimum?.voltage.toFixed(1)} V; true ${truth.minimum.toFixed(1)} V); maximum ${a.maximum?.voltage.toFixed(1)} V (true ${truth.maximum.toFixed(1)} V); recommended ${a.recommended?.voltage} V`, Math.abs(a.minimum.voltage - truth.minimum) <= 5 && Math.abs(given.minimum.voltage - truth.minimum) <= 5 && Math.abs(a.maximum.voltage - truth.maximum) <= 5 && a.recommended?.voltage === Math.ceil(a.minimum.voltage / 5) * 5, 'within 5 V; the minimum rounded up to 5 V');
+    // A walk that starts too high to see the noise floor: no estimate, and with rSD_EN given, the minimum extrapolated.
+    const high = example.ws.samples.filter((s) => /Voltage walk/.test(s.name) && Number(s.name.match(/(\d+) V/)[1]) >= 500);
+    const highExample = { ...example, ws: { ...example.ws, samples: [...example.ws.samples.filter((s) => !/Voltage walk/.test(s.name)), ...high] } };
+    const highWalk = runWalk(highExample).analysis;
+    const highGiven = runWalk(highExample, { rsdEN: truth.rsdEN }).analysis;
+    check('titration', 'a walk from 500 V, too high to reach the noise floor: the noise is not estimated and the report asks for rSD_EN; given it, the minimum is extrapolated', `${highWalk.noise ? `estimated ${highWalk.noise.rsdEN.toFixed(1)}` : 'not estimated'}; given rSD_EN, minimum ${highGiven.minimum?.voltage.toFixed(1)} V (true ${truth.minimum.toFixed(1)} V)`, !highWalk.noise && highWalk.notes.some((n) => /baseline report/.test(n)) && Math.abs(highGiven.minimum.voltage - truth.minimum) <= 10, 'not estimated; within 10 V');
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});

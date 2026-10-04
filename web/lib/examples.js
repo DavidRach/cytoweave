@@ -16,6 +16,7 @@ import {
   INSTRUMENTS,
   acquisitionKeywords,
   buildPanel,
+  getDetector,
   compilePopulations,
   createRandom,
   deriveSeed,
@@ -1522,6 +1523,110 @@ function beadQCAssignments() {
   return INSTRUMENTS.fortessa.detectors.map((d) => ({ detector: d.name, marker: '', label: '' }));
 }
 
+// --- 11. Titration and a voltage walk (panel setup) -------------------------------------------
+
+// CD4-PE titrated in two-fold steps on PBMC, then the PE detector walked through its voltages
+// with cells stained at 125 ng. Binding follows occupancy c / (c + K); unbound antibody sticks to
+// every cell in proportion to the amount (non-specific binding). Every fluorescence PMT is set to
+// the tube's voltage, as in a voltage walk; its gain grows as (V / V0)^n from the detector's own
+// voltage V0, and the electronic noise stays as it is.
+export const TITRATION = Object.freeze({
+  marker: 'CD4',
+  detector: 'PE-A',
+  kd: 5, // ng per test at which half the antigen is bound
+  amounts: [1000, 500, 250, 125, 62.5, 31.25, 15.625, 7.8125, 3.90625, 1.953125],
+  nonspecific: 0.15, // abundance per ng bound non-specifically to every cell
+  walkAmount: 125,
+  voltages: [300, 350, 400, 450, 500, 550, 600, 650, 700, 750],
+  exponent: 7.4, // PMT gain ∝ V^n (BD CS&T baseline reports show slopes of 7.3–7.5)
+});
+const TITRATION_PANEL = [
+  { marker: 'CD3', fluor: 'FITC', detector: 'FITC-A' },
+  { marker: 'CD4', fluor: 'PE', detector: 'PE-A' },
+  { marker: 'CD8', fluor: 'APC', detector: 'APC-A' },
+];
+
+// The cells, with CD4 bound at an amount of antibody (ng per test; 0 for unstained).
+export function titrationPopulations(amount) {
+  const occupancy = amount > 0 ? amount / (amount + TITRATION.kd) : 0;
+  const specs = [
+    population('CD4 T', LYMPH, { CD4: [4e4 * occupancy, 0.2] }),
+    population('CD8 T', LYMPH, {}),
+    population('B cells', { fsc: [57000, 0.1], ssc: [12000, 0.2], af: 1.1 }, {}),
+    population('NK cells', { fsc: [62000, 0.1], ssc: [19000, 0.22], af: 1.15 }, {}),
+    population('Monocytes', MONO, { CD4: [7e3 * occupancy, 0.35] }),
+  ];
+  return {
+    specs,
+    weights: [0.3, 0.15, 0.08, 0.08, 0.2],
+    options: amount > 0 ? { stained: new Set(['CD4']), background: [TITRATION.nonspecific * amount, 0.6] } : { stained: new Set() },
+    occupancy,
+  };
+}
+
+// Gains of the fluorescence detectors with every PMT at one voltage.
+export function walkGains(voltage, instrument = INSTRUMENTS.fortessa) {
+  return Object.fromEntries(instrument.detectors.map((d) => [d.name, (voltage / d.voltage) ** TITRATION.exponent]));
+}
+
+function titrationDesign(scale) {
+  const name = (a) => `CD4-PE ${+a.toPrecision(4)} ng.fcs`;
+  return [
+    { name: 'Unstained.fcs', events: eventsFor(20000, scale), role: 'unstained', condition: 'Titration', amount: 0 },
+    ...TITRATION.amounts.map((a) => ({ name: name(a), events: eventsFor(20000, scale), role: 'sample', condition: 'Titration', amount: a })),
+    ...TITRATION.voltages.map((v) => ({ name: `Voltage walk ${v} V.fcs`, events: eventsFor(20000, scale), role: 'sample', condition: 'Voltage walk', amount: TITRATION.walkAmount, voltage: v })),
+  ];
+}
+
+function* generateTitration(ctx, samples, all) {
+  ctx.schedule(1500, all);
+  const instrument = INSTRUMENTS.fortessa;
+  const base = buildPanel(instrument, TITRATION_PANEL);
+  const files = [];
+  for (const [index, sample] of samples.entries()) {
+    ctx.check();
+    ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
+    const { specs, weights, options, occupancy } = titrationPopulations(sample.amount);
+    const populations = compilePopulations(specs, base.markers, options);
+    const gains = sample.voltage ? walkGains(sample.voltage, instrument) : null;
+    const panel = sample.voltage ? { ...base, detectors: base.detectors.map((d) => ({ ...d, voltage: sample.voltage })) } : base;
+    const sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: { dead: 0.03, debris: 0.04, doublets: 0.03 }, rate: 1500, detectorGains: gains }, ctx.random(sample.name), { signal: ctx.signal });
+    files.push(flowFile(ctx, sample, sim, {
+      instrument,
+      panel,
+      date: sample.voltage ? '2026-05-06' : '2026-05-05',
+      assignments: TITRATION_PANEL,
+      spill: base.spill,
+      truth: { amount: sample.amount, occupancy, kd: TITRATION.kd, voltage: sample.voltage ?? null, gain: gains?.[TITRATION.detector] ?? 1, rsdEN: getDetector(instrument, TITRATION.detector).sigma },
+    }));
+    yield;
+  }
+  const transforms = channelTransforms(bdChannels(TITRATION_PANEL), () => LOGICLE_BD, 262144, 4096);
+  return {
+    files,
+    workspaceHints: {
+      groups: [
+        { name: 'Titration', color: '#8b5cf6', files: samples.filter((s) => s.condition === 'Titration').map((s) => s.name) },
+        { name: 'Voltage walk', color: '#0ea5e9', files: samples.filter((s) => s.condition === 'Voltage walk').map((s) => s.name) },
+      ],
+      sampleMeta: Object.fromEntries(samples.map((s) => [s.name, sampleMeta(s)])),
+      channelSettings: Object.fromEntries(Object.entries(transforms).map(([k, v]) => [k, { transform: v }])),
+      compensation: { fromFile: '$SPILLOVER' },
+      suggestedGates: titrationGates(),
+    },
+  };
+}
+
+function titrationGates() {
+  const fsc = ['FSC-A', LINEAR_BD];
+  const ssc = ['SSC-A', LINEAR_BD];
+  return [
+    polygonGate('gsim-cells', 'Cells', null, fsc, ssc, [[26000, 0], [270000, 0], [270000, 270000], [45000, 270000], [26000, 40000]], '#64748b', 'Excludes debris (low FSC).'),
+    polygonGate('gsim-singlets', 'Single cells', 'gsim-cells', fsc, ['FSC-H', LINEAR_BD], [[15000, 11200], [270000, 201000], [270000, 270000], [215000, 270000], [15000, 18000]], '#0ea5e9', 'Singlets have FSC-H ≈ FSC-A; doublets fall below the diagonal.'),
+    polygonGate('gsim-lymph', 'Lymphocytes', 'gsim-singlets', fsc, ssc, [[33000, 1000], [92000, 1000], [95000, 34000], [40000, 36000]], '#3b82f6', 'FSC/SSC lymphocyte region: titrate on the cells that carry the antigen and those that do not, without monocytes, which are CD4-dim.'),
+  ];
+}
+
 // --- Catalog ------------------------------------------------------------------------------------
 
 const DEFINITIONS = [
@@ -1706,6 +1811,24 @@ const DEFINITIONS = [
       events: Object.fromEntries(Object.entries(BEAD_EVENTS).map(([k, v]) => [k, `from run ${v.from}: ${v.what}`])),
     }),
     generate: generateBeadQC,
+  },
+  {
+    id: 'titration-voltage',
+    title: 'Antibody titration and a voltage walk',
+    description: 'Setting up a panel: CD4-PE titrated on PBMC in ten two-fold steps from 1000 ng to 2 ng per test, with an unstained tube, and then the PE detector walked from 300 V to 750 V with cells stained at 125 ng. Find the amount of antibody that saturates CD4 without adding background (QC → Titration), and the voltage range that lifts the negative cells above the detector\'s electronic noise while keeping the positive cells within its linear range. The binding constant, the detector\'s noise and its gain at every voltage are known.',
+    technology: 'conventional',
+    instrument: 'BD LSRFortessa X-20-like, range 2^18',
+    tags: ['titration', 'voltage walk', 'stain index', 'panel setup', 'beginner'],
+    design: titrationDesign,
+    channels: () => bdChannels(TITRATION_PANEL),
+    transforms: () => channelTransforms(bdChannels(TITRATION_PANEL), () => LOGICLE_BD, 262144, 4096),
+    answerKey: () => ({
+      labels: 'files[i].meta.truth.labels / names: CD4 T, CD8 T, B cells, NK cells, Monocytes, Dead cells, Debris, Doublets, Junk.',
+      binding: `CD4 occupancy = c / (c + ${TITRATION.kd} ng); 90% bound at ${9 * TITRATION.kd} ng; non-specific binding ${TITRATION.nonspecific} units per ng on every cell.`,
+      titration: 'Recommended (Bonilla et al. 2024: at least twice the amount giving 90% of saturation): the first amount tested at or above 90 ng, 125 ng.',
+      walk: `PE-A gain (V / 430 V)^${TITRATION.exponent}; electronic noise SD ${INSTRUMENTS.fortessa.detectors.find((d) => d.name === TITRATION.detector).sigma} (rSD_EN); linear range taken as 90% of 262,144.`,
+    }),
+    generate: generateTitration,
   },
 ];
 

@@ -269,6 +269,29 @@ try {
     return { proposed: proposed.length, pending: proposed.filter((g) => g.meta?.proposal).length, same, direct: direct.gates.length, terms: proposed.filter((g) => g.ontology?.status === 'suggested').length };`);
   check('apply_template with a published strategy: OMIP-101 placed on one sample, every gate proposed, the same as placing it directly, with suggested Cell Ontology terms', `${strategies.length} strategies listed; ${strategyState.proposed} gates proposed (${strategyState.pending} pending review), ${strategyState.same} of ${strategyState.direct} as placed directly; ${strategyState.terms} with a suggested term; placed on ${appliedStrategy.placedOn}`, strategies.length === 2 && strategyState.proposed === 25 && strategyState.pending === 25 && strategyState.same === 25 && strategyState.terms === 19 && appliedStrategy.skipped.length === 0, '2 listed; 25 gates, all identical; 19 terms');
 
+  // Titration and a voltage walk on their example: the agent's results equal the analysis run
+  // directly in the page, and the saved result is proposed.
+  await decide('Strategy agent', true);
+  await tool('open_example', { id: 'titration-voltage' }, 'Setup agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`);
+  await b.eval(`document.querySelectorAll('.dialog .icon-button').forEach((x) => x.click())`);
+  const titrated = (await tool('titration', { mode: 'titration' }, 'Setup agent')).data;
+  const walked = (await tool('titration', { mode: 'voltage', save: true }, 'Setup agent')).data;
+  const setupState = await page(`
+    const lib = await import('/lib/titration.js');
+    const { detectWalk } = await import('/ui/qc-titration.js');
+    const ws = app.store.ws;
+    const views = new Map();
+    const series = lib.titrationSeries(ws.samples).steps;
+    for (const x of series) views.set(x.sample.id, await app.data.ensure(x.sample.id));
+    const t = lib.analyzeTitration(lib.stepsFrom(ws, series.map(({ sample, amount }) => ({ sample, view: views.get(sample.id), label: amount.label, amount })), { channel: 'PE-A', populationId: 'root' }));
+    const walk = detectWalk(ws.samples);
+    for (const x of walk) views.set(x.sample.id, await app.data.ensure(x.sample.id));
+    const v = lib.analyzeVoltageWalk(lib.stepsFrom(ws, lib.voltageSeries(walk.map((x) => x.sample), views, 'PE-A').map(({ sample, voltage }) => ({ sample, view: views.get(sample.id), label: voltage + ' V', voltage })), { channel: 'PE-A', populationId: 'root' }));
+    return { recommended: t.recommended?.row.amount.label, si: t.rows.map((r) => +r.stainIndex.toPrecision(4)), minimum: v.minimum?.voltage, maximum: v.maximum?.voltage, proposed: ws.derived.filter((d) => d.kind === 'titration' && d.proposal).length };`);
+  const sameSI = titrated.rows.every((r, i) => r.stainIndex === setupState.si[i]);
+  check('titration: a CD4-PE titration and a PE voltage walk on the example, the same as the analysis run directly, the saved walk proposed', `${titrated.channel}: recommended ${titrated.recommended} (direct ${setupState.recommended}), stain index of ${titrated.rows.length} steps ${sameSI ? 'equal' : 'differ'}; walk ${walked.minimumVoltage}–${walked.maximumVoltage} V (direct ${setupState.minimum?.toFixed(1)}–${setupState.maximum?.toFixed(1)}), recommended ${walked.recommendedVoltage} V; ${setupState.proposed} proposed`, titrated.channel === 'PE-A' && titrated.recommended === '125 ng' && setupState.recommended === '125 ng' && sameSI && Math.abs(walked.minimumVoltage - setupState.minimum) < 0.5 && Math.abs(walked.maximumVoltage - setupState.maximum) < 0.5 && setupState.proposed === 1, 'equal; 125 ng; proposed');
+
   // 2. The spectral example: unmix builds and proposes a reference library, then unmixes; it equals
   // the same steps run directly.
   await tool('open_example', { id: 'spectral-25color' }, 'Spectral agent');

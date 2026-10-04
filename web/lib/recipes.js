@@ -51,7 +51,7 @@ export function densityPeaks(xs, ys, indices, floor = 0.05) {
 
 // The modes of a marker's distribution in scale space, dimmest first, and the smoothed histogram.
 // floor: the smallest mode kept, as a fraction of the highest.
-function modesOf(values, indices, floor = 0.03) {
+export function modesOf(values, indices, floor = 0.03) {
   const bins = 256;
   // Smoothed by Silverman's rule (at least 3 bins), so that the few cells in a small population's
   // tails do not make modes of their own.
@@ -122,7 +122,7 @@ export function quadrantDivider(values, indices, side) {
   return modes.length >= 2 ? dividerOf(smooth, modes, bins) : sideThreshold(values, indices, side);
 }
 
-function valleyBetween(smooth, a, b) {
+export function valleyBetween(smooth, a, b) {
   let valley = a;
   for (let i = a; i <= b; i += 1) if (smooth[i] < smooth[valley]) valley = i;
   return valley;
