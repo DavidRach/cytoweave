@@ -220,7 +220,8 @@ function customInfo(el) {
       spec: attr(info, 'spec'),
       channel: attr(info, 'channel'),
       compensation: attr(info, 'compensation'),
-      quadrants: Object.fromEntries(children(info, 'quadrant').map((q) => [attr(q, 'id'), { name: attr(q, 'name'), color: attr(q, 'color'), type: attr(q, 'type') }])),
+      ontology: attr(info, 'ontology'),
+      quadrants: Object.fromEntries(children(info, 'quadrant').map((q) => [attr(q, 'id'), { name: attr(q, 'name'), color: attr(q, 'color'), type: attr(q, 'type'), ontology: attr(q, 'ontology') }])),
     };
   }
   // Other tools (Cytobank, FlowJo) keep a population name in their own custom_info blocks.
@@ -508,6 +509,8 @@ export function importGatingML(input, options = {}) {
       meta: { origin: 'imported', source: 'gating-ml', gatingMLId: gmlId, compensation: dims.map((d) => d.compensationRef) },
     };
     if (info?.color) gate.color = info.color;
+    const term = /^(CL:\d{7})\s+(.+)$/.exec(info?.ontology ?? '');
+    if (term) gate.ontology = { id: term[1], label: term[2], status: 'confirmed', source: 'gating-ml' };
     if (record.parentGmlId) {
       const parentId = idMap.get(record.parentGmlId);
       if (parentId) gate.parentId = parentId;
@@ -1047,7 +1050,8 @@ export function exportGatingML(workspace, options = {}) {
   const infoElement = (attrs, kids = []) => (withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', attrs, kids)]) : null);
   // compensation="sample": the gate follows each sample's compensation in CytoWeave, so a
   // re-import leaves its dimensions unpinned.
-  const gateInfo = (gate) => ({ name: gate.name, type: gate.type, color: gate.color, compensation: gate.dims?.length && gate.dims.every((d) => d.compensation === undefined || d.compensation === null) ? 'sample' : undefined });
+  // A confirmed Cell Ontology term travels as "CL:0000624 CD4-positive, alpha-beta T cell".
+  const gateInfo = (gate) => ({ name: gate.name, type: gate.type, color: gate.color, compensation: gate.dims?.length && gate.dims.every((d) => d.compensation === undefined || d.compensation === null) ? 'sample' : undefined, ontology: gate.ontology?.status === 'confirmed' ? `${gate.ontology.id} ${gate.ontology.label}` : undefined });
   const gateAttrs = (gate, id) => {
     const attrs = { 'gating:id': id };
     if (gate.parentId) attrs['gating:parent_id'] = gateIds.get(gate.parentId);
@@ -1139,7 +1143,7 @@ export function exportGatingML(workspace, options = {}) {
           });
           const attrs = { 'gating:id': groupId };
           if (gate.parentId) attrs['gating:parent_id'] = gateIds.get(gate.parentId);
-          const info = withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', { type: gate.type, compensation: gateInfo(gate).compensation }, members.map((m) => element('cytoweave:quadrant', { id: gateIds.get(m.id), name: m.name, color: m.color, type: m.type })))]) : null;
+          const info = withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', { type: gate.type, compensation: gateInfo(gate).compensation }, members.map((m) => element('cytoweave:quadrant', { id: gateIds.get(m.id), name: m.name, color: m.color, type: m.type, ontology: gateInfo(m).ontology })))]) : null;
           gateElements.push(element('gating:QuadrantGate', attrs, [info, ...dividers, ...quadrantEls]));
           break;
         }

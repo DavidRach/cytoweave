@@ -678,3 +678,20 @@ test('export honors a sample, the file compensation and plain output', () => {
   const none = exportGatingML({ ...ws, samples: [{ id: 's1', compensationId: 'none' }] }, { gateIds: ['gBlob'] });
   assert.doesNotMatch(none.xml, /compensation-ref="(FCS|c1)"/);
 });
+
+test('a confirmed Cell Ontology term travels through Gating-ML, also on quadrants; a suggested one does not', async () => {
+  const { quadrantGates } = await import('./gates.js');
+  const t = { type: 'linear', min: 0, max: 1 };
+  let ws = createWorkspace('t');
+  ws = addGates(ws, [{ id: 'gT', name: 'T cells', parentId: null, type: 'range', dims: [{ channel: 'CD3', transform: t }], geometry: { min: 0.5, max: null }, ontology: { id: 'CL:0000084', label: 'T cell', status: 'confirmed' } }]).ws;
+  ws = addGates(ws, [{ id: 'gB', name: 'B cells', parentId: null, type: 'range', dims: [{ channel: 'CD19', transform: t }], geometry: { min: 0.5, max: null }, ontology: { id: 'CL:0000236', label: 'B cell', status: 'suggested' } }]).ws;
+  const quads = quadrantGates({ parentId: 'gT', dims: [{ channel: 'CD4', transform: t }, { channel: 'CD8', transform: t }], center: [0.5, 0.5], names: { UL: 'CD4- CD8+', UR: 'DP', LR: 'CD4+ CD8-', LL: 'DN' } });
+  quads[2].ontology = { id: 'CL:0000624', label: 'CD4-positive, alpha-beta T cell', status: 'confirmed' };
+  ws = addGates(ws, quads).ws;
+  const { xml } = exportGatingML(ws);
+  const back = importGatingML(xml);
+  const byName = Object.fromEntries(back.gates.map((g) => [g.name, g.ontology]));
+  assert.deepEqual(byName['T cells'], { id: 'CL:0000084', label: 'T cell', status: 'confirmed', source: 'gating-ml' });
+  assert.equal(byName['B cells'], undefined);
+  assert.equal(byName['CD4+ CD8-']?.id, 'CL:0000624');
+});

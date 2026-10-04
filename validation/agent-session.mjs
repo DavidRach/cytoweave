@@ -187,8 +187,8 @@ try {
   check('explore: every T cell\'s FlowSOM cluster equals a direct run with the same settings; the clusters proposed as populations', `${exploreState.differ} of ${exploreState.total} differ; ${explored.clusters.length} clusters (${explored.clusters.slice(0, 3).map((c) => c.name).join(', ')}…); ${exploreState.gates} populations; map trustworthiness ${explored.quality?.trustworthiness}`, exploreState.differ === 0 && exploreState.total > 1000 && exploreState.gates === explored.clusters.length && explored.quality?.trustworthiness > 0.8, '0 differ; a population per cluster; trustworthiness > 0.8');
   check('explore: the clusters follow the true T-cell types (adjusted Rand index)', ari.toFixed(3), ari > 0.3, '> 0.3');
   await decide('Explorer', false);
-  const rejected = await page(`const s = app.store.ws.samples.find((x) => x.name === ${JSON.stringify(samples[0])}); return { derived: app.store.ws.derived.filter((d) => d.outputs?.includes('FlowSOM cluster')).length, gates: app.store.ws.gates.filter((g) => g.dims[0]?.channel === 'FlowSOM cluster').length, attached: app.data.view(s.id).derived.has('FlowSOM cluster') };`);
-  check('rejecting removes the clusters, their populations and their channels', JSON.stringify(rejected), rejected.derived === 0 && rejected.gates === 0 && !rejected.attached, 'none left');
+  const rejected = await page(`const s = app.store.ws.samples.find((x) => x.name === ${JSON.stringify(samples[0])}); return { derived: app.store.ws.derived.filter((d) => d.outputs?.includes('FlowSOM cluster')).length, gates: app.store.ws.gates.filter((g) => g.dims[0]?.channel === 'FlowSOM cluster').length, attached: app.data.view(s.id).derived.has('FlowSOM cluster'), qcKept: app.store.ws.derived.filter((d) => d.kind === 'qc').length };`);
+  check('rejecting removes the clusters, their populations and their channels, and nothing else (the accepted QC result stays)', JSON.stringify(rejected), rejected.derived === 0 && rejected.gates === 0 && !rejected.attached && rejected.qcKept === 1, 'none left; QC kept');
 
   // A gating-strategy figure, exported as SVG with its analysis.
   const figureDir = outDir;
@@ -233,6 +233,41 @@ try {
     if (original && mine.eventCount === original.eventCount && mine.data.every((column, p) => column.every((v, e) => Object.is(v, original.data[p][e])))) identical += 1;
   }
   check('export_fcs: the de-identified files hold the same events as the originals', `${identical} of ${files.size} identical`, files.size === 2 && identical === 2, 'both');
+
+  // Templates: the PBMC analysis saved, then applied to another experiment with the same panel.
+  await decide('Claude Code', true);
+  const saved = await tool('save_template', { name: 'PBMC analysis' });
+  const listed = (await tool('list_templates')).data.templates;
+  await tool('open_example', { id: 'flowjo-workspace' }, 'Template agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`);
+  await b.eval(`document.querySelectorAll('.dialog .icon-button').forEach((x) => x.click())`);
+  const appliedTemplate = (await tool('apply_template', { template: 'PBMC analysis' }, 'Template agent')).data;
+  const templateState = await page(`const ws = app.store.ws; return { proposed: ws.gates.filter((g) => g.meta?.proposal && g.meta?.origin === 'template').length, names: ws.gates.map((g) => g.name) };`);
+  const unmatched = appliedTemplate.channels.filter((c) => !c.channel);
+  check('save_template + apply_template: the analysis applied to another experiment of the same panel, every channel matched, its gates proposed', `${saved.message.slice(0, 70)}…; listed ${listed.length}; ${templateState.proposed} gates proposed (${templateState.names.slice(0, 4).join(', ')}…); ${unmatched.length} channels unmatched`, listed.some((t) => t.name === 'PBMC analysis') && templateState.proposed >= 6 && unmatched.length === 0 && appliedTemplate.skipped.length === 0, 'listed; >= 6 gates; all matched');
+
+  // A published strategy: OMIP-101 placed on one sample of the PBMC example, the same gates as
+  // placing it directly, each population with a suggested Cell Ontology term.
+  await decide('Template agent', true);
+  await tool('open_example', { id: 'pbmc-immunophenotyping' }, 'Strategy agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`);
+  await b.eval(`document.querySelectorAll('.dialog .icon-button').forEach((x) => x.click())`);
+  const strategies = (await tool('list_templates')).data.strategies;
+  const reference = (await tool('workspace_summary')).data.samples.find((s) => s.role === 'sample').name;
+  const appliedStrategy = (await tool('apply_template', { template: 'omip-101', sample: reference }, 'Strategy agent')).data;
+  const strategyState = await page(`
+    const { applyTemplate } = await import('/lib/templates.js');
+    const { placeOnSample } = await import('/lib/recipes.js');
+    const { strategyById } = await import('/lib/strategies.js');
+    const strategy = strategyById('omip-101');
+    const ws = app.store.ws;
+    const s = ws.samples.find((x) => x.name === ${JSON.stringify(reference)});
+    const proposed = ws.gates.filter((g) => g.meta?.template === strategy.name);
+    const base = { ...ws, gates: ws.gates.filter((g) => g.meta?.template !== strategy.name) };
+    const direct = applyTemplate(base, strategy, { place: placeOnSample(app.data.view(s.id) ?? await app.data.ensure(s.id), s.name) });
+    const same = direct.gates.filter((g, i) => proposed[i] && JSON.stringify(proposed[i].geometry) === JSON.stringify(g.geometry)).length;
+    return { proposed: proposed.length, pending: proposed.filter((g) => g.meta?.proposal).length, same, direct: direct.gates.length, terms: proposed.filter((g) => g.ontology?.status === 'suggested').length };`);
+  check('apply_template with a published strategy: OMIP-101 placed on one sample, every gate proposed, the same as placing it directly, with suggested Cell Ontology terms', `${strategies.length} strategies listed; ${strategyState.proposed} gates proposed (${strategyState.pending} pending review), ${strategyState.same} of ${strategyState.direct} as placed directly; ${strategyState.terms} with a suggested term; placed on ${appliedStrategy.placedOn}`, strategies.length === 2 && strategyState.proposed === 25 && strategyState.pending === 25 && strategyState.same === 25 && strategyState.terms === 19 && appliedStrategy.skipped.length === 0, '2 listed; 25 gates, all identical; 19 terms');
 
   // 2. The spectral example: unmix builds and proposes a reference library, then unmixes; it equals
   // the same steps run directly.

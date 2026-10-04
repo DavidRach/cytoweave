@@ -6,9 +6,9 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, templates, strategies, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
-// multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, fuzz-corpus, diva,
+// multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
@@ -20,9 +20,15 @@ import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
 import { SampleView, countOf, population } from '../web/lib/engine.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
-import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs';
+import { builtCase, bundledCase, flowKitCases, importWithFiles } from './flowjo-export-cases.mjs';
 import { deidentifyFCS } from '../web/lib/deidentify.js';
 import { CORPUS, corpusFiles, fuzz, seedFiles } from './fuzz-cases.mjs';
+import { asOtherInstrument, countsOf, loadSamples, pbmcFiles, sourceAnalysis } from './template-cases.mjs';
+import { applyTemplate, buildTemplate, parseTemplate } from '../web/lib/templates.js';
+import { evaluate as evaluateOntology } from './ontology-cases.mjs';
+import { suggestForPopulation, termById } from '../web/lib/ontology.js';
+import { applyStrategy, pbmcCohort, placeOn } from './strategy-cases.mjs';
+import { STRATEGIES, strategyById } from '../web/lib/strategies.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
 import { characterize, findBeadPeaks, REJECT_RULES } from '../web/lib/qb.js';
@@ -373,6 +379,84 @@ const suites = {
     const summary = await fuzz({ seed: 1, count: 20000 });
     check('fuzz', `20,000 mutated files (HEADER offsets, keyword values, deleted and duplicated keywords, delimiters, flipped bytes, version, truncation): read consistently or refused with an FCSError, by both readers alike`, `${summary.read} read, ${summary.refused} refused, ${summary.failures.length} failed${summary.failures.length ? `: ${summary.failures.slice(0, 2).map((f) => `${f.file} #${f.seed} ${f.problem}`).join('; ')}` : ''}`, summary.failures.length === 0, 'no crash, hang, outsized allocation or disagreement');
     check('fuzz', 'no mutated file takes long to read or refuse', `slowest ${summary.slowest.toFixed(0)} ms (${summary.slowestCase})`, summary.slowest < 1000, '< 1 s');
+  },
+  // Analysis templates (template-cases.mjs): an analysis saved as a template and applied to the
+  // same events written as another instrument writes them (other detector names, another order,
+  // the markers kept), through the template's JSON.
+  templates() {
+    const input = pbmcFiles(0.1);
+    const source = sourceAnalysis(input);
+    const template = parseTemplate(JSON.stringify(buildTemplate(source.ws, { name: 'PBMC analysis' })));
+    const before = countsOf(source.ws, source.views);
+    const compare = (after) => {
+      let same = 0;
+      const differ = [];
+      for (const [path, counts] of before) {
+        const other = after.get(path);
+        if (!other) continue;
+        if ([...counts].every(([sample, n]) => other.get(sample) === n)) same += 1;
+        else differ.push(path.split(' / ').pop());
+      }
+      return { same, differ };
+    };
+    const other = loadSamples(asOtherInstrument(input.files), 'other instrument');
+    const applied = applyTemplate(other.ws, template);
+    const byMarker = applied.report.channels.filter((c) => c.how === 'marker').length;
+    const result = compare(countsOf(applied.ws, other.views));
+    check('templates', `an analysis of ${before.size} populations (polygons, quadrants, ranges, a rectangle, a Boolean) applied to the same events with every detector renamed and reordered: each population holds the same events in all ${source.ws.samples.length} samples`, `${result.same} of ${before.size} identical${result.differ.length ? `; differ: ${result.differ.join(', ')}` : ''}; ${byMarker} channels matched by marker, ${applied.report.channels.length - byMarker} by name`, result.same === before.size && applied.report.unmatched === 0, 'all identical, every channel matched');
+    check('templates', 'its plots, table (with a channel column) and gating-strategy figure follow onto the matched channels', `${applied.report.plots} plots, ${applied.report.tables} table (${applied.ws.tables[0]?.columns.length} columns), ${applied.report.figures} figure (${applied.ws.figures[0]?.items.filter((i) => i.kind === 'plot').length} plots)`, applied.report.plots === 2 && applied.report.tables === 1 && applied.ws.tables[0].columns.length === source.ws.tables[0].columns.length && applied.report.figures === 1 && applied.ws.figures[0].items.filter((i) => i.kind === 'plot').every((i) => applied.ws.samples[0].channels.some((c) => c.name === i.spec.x)), 'all, on the new detectors');
+    const partial = loadSamples(asOtherInstrument(input.files, { unlabel: ['CD25', 'CD127'] }), 'without CD25 and CD127');
+    const appliedPartial = applyTemplate(partial.ws, template);
+    const resultPartial = compare(countsOf(appliedPartial.ws, partial.views));
+    check('templates', 'with CD25 and CD127 not named in the panel: only the gate on them is skipped, with the reason, and every other population holds the same events', `skipped: ${appliedPartial.report.gates.skipped.map((x) => `${x.gate} (${x.reason})`).join('; ')}; ${resultPartial.same} of ${before.size - 1} identical`, appliedPartial.report.gates.skipped.length === 1 && appliedPartial.report.gates.skipped[0].gate === 'Tregs' && resultPartial.same === before.size - 1 && !resultPartial.differ.length, 'Tregs only; the rest identical');
+  },
+  // Published strategies (strategy-cases.mjs): OMIP-101 and OMIP-090 as recipe gates placed on
+  // one sample of the PBMC example and shared by all twelve, each population against the
+  // simulator's true cell types (F1).
+  strategies() {
+    const cohort = pbmcCohort(0.25);
+    const bars = {
+      'omip-101': [[0.95, ['Single cells', 'Live', 'Leukocytes', 'Lymphocytes', 'T cells', 'CD4 T cells', 'CD8 T cells', 'CD4 naive', 'CD8 naive', 'B cells']], [0.85, ['CD4 central memory', 'CD4 effector memory', 'CD4 TEMRA', 'CD8 central memory', 'CD8 effector memory', 'CD8 TEMRA', 'NK cells', 'Classical monocytes', 'Non-classical monocytes']], [0.65, ['Intermediate monocytes']]],
+      'omip-090': [[0.95, ['Lymphocytes', 'Single cells', 'Live', 'CD3+ CD4+ T cells']], [0.85, ['Tregs']]],
+    };
+    const applied = new Map();
+    for (const strategy of STRATEGIES) {
+      const result = applyStrategy(cohort, strategy);
+      applied.set(strategy.id, result);
+      const median = new Map(result.rows.map((r) => [r.population, r.median]));
+      for (const [bar, names] of bars[strategy.id]) {
+        const low = names.filter((n) => !(median.get(n) >= bar));
+        check('strategies', `${strategy.name}, placed on one sample and shared by ${cohort.ws.samples.length}: median F1 against the true cell types of ${names.join(', ')}${names.length === 1 && names[0] === 'Intermediate monocytes' ? ' (between the classical and non-classical monocytes on CD16)' : ''}${names.includes('Tregs') ? ' (lower in the stimulated samples, where conventional T cells raise CD25)' : ''}`, `${names.map((n) => `${n} ${median.get(n)?.toFixed(3) ?? 'not placed'}`).join('; ')}; ${result.report.gates.applied} of ${strategy.gates.length} gates placed`, !low.length && result.report.gates.applied === strategy.gates.length, `each ≥ ${bar}, every gate placed`);
+      }
+    }
+    // A panel that lacks markers a step needs: that step and its children are left out, with the reason.
+    const input = pbmcFiles(0.1);
+    const partial = loadSamples(asOtherInstrument(input.files, { unlabel: ['CD25', 'CD127'] }), 'without CD25 and CD127');
+    const reference = partial.ws.samples[0];
+    const omip090 = strategyById('omip-090');
+    const placed = applyTemplate(partial.ws, omip090, { place: placeOn(partial.views.get(reference.id), reference.name) });
+    const skipped = placed.report.gates.skipped;
+    check('strategies', 'OMIP-090 on a panel whose CD25 and CD127 are not named: only the Treg gate is left out, with the reason, and the rest are placed', `skipped: ${skipped.map((x) => `${x.gate} (${x.reason})`).join('; ') || 'none'}; ${placed.report.gates.applied} placed`, skipped.length === 1 && skipped[0].gate === 'Tregs' && placed.report.gates.applied === omip090.gates.length - 1, 'Tregs only');
+    // The terms the strategies give their populations against those suggested from the placed
+    // gates' own data: the same term, or one of its ancestors or descendants.
+    let same = 0;
+    let related = 0;
+    const differ = [];
+    let total = 0;
+    for (const strategy of STRATEGIES) {
+      const { ws } = applied.get(strategy.id);
+      const view = cohort.views.get(ws.samples.find((x) => x.name === 'D01_Unstim').id);
+      for (const g of ws.gates.filter((x) => x.ontology)) {
+        total += 1;
+        const top = suggestForPopulation(view, ws, g.id).suggestions[0];
+        if (top?.id === g.ontology.id) same += 1;
+        else if (top && (termById(top.id)?.ancestors?.includes(g.ontology.id) || termById(g.ontology.id)?.ancestors?.includes(top.id))) {
+          related += 1;
+          differ.push(`${g.name}: ${top.label}`);
+        } else differ.push(`${g.name}: ${top?.label ?? 'none'} (unrelated)`);
+      }
+    }
+    check('strategies', `the Cell Ontology terms of the ${total} strategy populations against the terms suggested from the placed gates' data`, `${same} the same, ${related} an ancestor or descendant${differ.length ? ` (${differ.join('; ')})` : ''}`, same + related === total && same >= total - 2, 'all the same or related, at most 2 related');
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});
@@ -1659,6 +1743,34 @@ const suites = {
     check('instruments', 'a file cut short (DxFLEX, 10,000 events declared) opens with the events it holds and says so', `${truncated?.eventCount} events; ${truncated?.diagnostics.filter((x) => x.level !== 'info').map((x) => x.code).join(', ')}`, truncated?.eventCount === 466 && truncated.diagnostics.some((x) => x.code === 'truncated' && x.level === 'error'), '466 events, with an error-level diagnostic');
     check('instruments', 'every data set is written and read back', exactTrip ? 'bit-exact' : 'differs', exactTrip, 'bit-exact');
     deidentifyChecks('instruments', `${files.length} instrument files`, files.map((f) => ({ name: f.key, bytes: f.bytes })));
+  },
+  // External data: Cell Ontology terms suggested for populations experts named (ontology-cases.mjs),
+  // from the populations' marker phenotype and gates, never their names.
+  ontology() {
+    const rows = [];
+    const bundled = bundledCase().original;
+    rows.push(...evaluateOntology('bundled FlowJo example', bundled.ws, bundled.views));
+    const ics = flowKitCases().find((c) => /8_color_ICS\.wsp$/.test(c.source));
+    if (!ics) throw new MissingData('the flowkit data set is missing; run node validation/fetch.mjs flowkit');
+    rows.push(...evaluateOntology('FlowKit 8-color ICS', ics.original.ws, ics.original.views));
+    const som = dataset('rpackages');
+    const mouse = importWithFiles(som.text('FlowSOM/gating.wsp'), [{ name: '68983.fcs', bytes: new Uint8Array(som.read('FlowSOM/68983.fcs')) }]);
+    rows.push(...evaluateOntology("FlowSOM's mouse workspace", mouse.ws, mouse.views));
+    const by = new Map();
+    for (const r of rows) by.set(r.workspace, [...(by.get(r.workspace) ?? []), r]);
+    const ok = rows.filter((r) => r.ok).length;
+    const misses = rows.filter((r) => !r.ok).map((r) => `${r.workspace}: ${r.population} → ${r.suggested}`);
+    check('ontology', `the suggested term of ${rows.length} expert-named populations in 3 workspaces (${[...by].map(([w, list]) => `${w} ${list.length}`).join(', ')}; T, B, NK, NK T, αβ and γδ T, CD4 and CD8 T, Tregs, lymphocytes, monocytes, cytokine-positive subsets) is a term the name denotes, and quality gates get none or their parent's`, `${ok} of ${rows.length}; exact ${rows.filter((r) => r.ok && r.confidence === 'exact').length}, likely ${rows.filter((r) => r.ok && r.confidence === 'likely').length}, none ${rows.filter((r) => r.ok && !r.confidence).length}${misses.length ? `; misses: ${misses.slice(0, 4).join('; ')}` : ''}`, ok === rows.length, 'all');
+    // The suggestions do not read the names: renamed gates give the same suggestions.
+    const renamed = { ...bundled.ws, gates: bundled.ws.gates.map((g, i) => ({ ...g, name: `population ${i + 1}` })) };
+    const view = bundled.views.get(bundled.ws.samples[0].id);
+    let same = 0;
+    for (const gate of bundled.ws.gates) {
+      const a = suggestForPopulation(view, bundled.ws, gate.id).suggestions[0]?.id ?? null;
+      const b = suggestForPopulation(view, renamed, gate.id).suggestions[0]?.id ?? null;
+      if (a === b) same += 1;
+    }
+    check('ontology', 'the suggestions come from the data and gates, not the names: with every gate renamed, each suggestion stays the same', `${same} of ${bundled.ws.gates.length} the same`, same === bundled.ws.gates.length, 'all');
   },
   // External data: the same, with real instruments' files as the seeds.
   async 'fuzz-corpus'() {

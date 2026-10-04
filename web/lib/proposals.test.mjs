@@ -148,3 +148,12 @@ test('an accepted result of more samples joins the result of the same kind and c
   assert.deepEqual(Object.keys(ws.derived[0].files), ['s1', 's2']);
   assert.deepEqual(Object.keys(ws.derived[0].summary.perSample), ['s1', 's2']);
 });
+
+test('a result proposed without an id gets one, and rejecting it leaves the other results', () => {
+  const { ws: start } = base();
+  let ws = { ...start, derived: [{ id: 'qc1', kind: 'qc', outputs: ['QC pass'] }] };
+  ws = proposeDerived(ws, 'agent', { id: undefined, kind: 'flowsom', outputs: ['FlowSOM cluster'] }).ws;
+  assert.ok(ws.derived.every((d) => typeof d.id === 'string'));
+  ws = rejectProposal(ws, openProposals(ws)[0].id);
+  assert.deepEqual(ws.derived.map((d) => d.id), ['qc1']);
+});

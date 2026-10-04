@@ -7,6 +7,7 @@ export const REFERENCES = {
   fcs31: { text: 'Spidlen J, Moore W, Parks D, et al. Data File Standard for Flow Cytometry, version FCS 3.1. Cytometry A. 2010;77(1):97–100.', doi: '10.1002/cyto.a.20825' },
   logicle: { text: 'Parks DR, Roederer M, Moore WA. A new "Logicle" display method avoids deceptive effects of logarithmic scaling for low signals and compensated data. Cytometry A. 2006;69(6):541–551.', doi: '10.1002/cyto.a.20258' },
   logicleAlgorithm: { text: 'Moore WA, Parks DR. Update for the logicle data scale including operational code implementations. Cytometry A. 2012;81(4):273–277.', doi: '10.1002/cyto.a.22030' },
+  cellOntology: { text: 'Diehl AD, Meehan TF, Bradford YM, et al. The Cell Ontology 2016: enhanced content, modularization, and ontology interoperability. J Biomed Semantics. 2016;7:44.', doi: '10.1186/s13326-016-0088-7' },
   gatingml: { text: 'Spidlen J, Moore W, Brinkman RR, et al. ISAC\'s Gating-ML 2.0 data exchange standard for gating description. Cytometry A. 2015;87(7):683–687.', doi: '10.1002/cyto.a.22690' },
   ssm: { text: 'Nguyen R, Perfetto S, Mahnke YD, Chattopadhyay P, Roederer M. Quantifying spillover spreading for comparing instrument performance and aiding in multicolor panel design. Cytometry A. 2013;83(3):306–315.', doi: '10.1002/cyto.a.22251' },
   autospill: { text: 'Roca CP, Burton OT, Gergelits V, et al. AutoSpill is a principled framework that simplifies the analysis of multichromatic flow cytometry data. Nat Commun. 2021;12:2890.', doi: '10.1038/s41467-021-23126-8' },
@@ -162,6 +163,10 @@ export function writeMethods(ws, options = {}) {
     const pending = ws.gates.filter((g) => g.meta?.proposal).length;
     paragraphs.push(`Populations were identified by sequential gating (${ws.gates.length} gates): ${paths.slice(0, 8).join('; ')}${paths.length > 8 ? `; and ${paths.length - 8} further branches` : ''}. ${auto ? `${auto} gate(s) were proposed automatically from the data's density and accepted by the analyst. ` : ''}${agentGates ? `${agentGates} gate(s) were proposed by an AI agent (${byAgents.join(', ')}) and reviewed and accepted by the analyst. ` : ''}${pending ? `${pending} gate(s) proposed by an AI agent have not yet been reviewed. ` : ''}${adjusted ? `${adjusted} gate(s) were adjusted for individual samples; all other gates were applied identically to every sample. ` : 'Gates were applied identically to every sample. '}The gating strategy is available in Gating-ML 2.0 format ${cite('gatingml')}.`);
   }
+  // Cell Ontology terms the analyst confirmed.
+  const annotated = ws.gates.filter((g) => g.ontology?.status === 'confirmed');
+  if (annotated.length) paragraphs.push(`Populations were annotated with Cell Ontology terms ${cite('cellOntology')}: ${annotated.slice(0, 12).map((g) => `${g.name} as ${g.ontology.label} (${g.ontology.id})`).join('; ')}${annotated.length > 12 ? `; and ${annotated.length - 12} more` : ''}.`);
+
   // Autogating: the latest adaptation of each gate.
   const adaptations = new Map();
   for (const d of ws.derived.filter((r) => r.kind === 'autogating')) adaptations.set(d.gateId, d);

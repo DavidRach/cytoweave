@@ -494,7 +494,7 @@ export function plotsOf(ws, populationId) {
 // --- Derived results ------------------------------------------------------------------------
 
 export function addDerived(ws, record) {
-  const entry = { id: record.id ?? newId('d'), created: now(), ...record };
+  const entry = { created: now(), ...record, id: record.id ?? newId('d') };
   return { ws: touch(ws, { derived: [...ws.derived.filter((d) => d.id !== entry.id), entry] }, `derive-${record.kind}`, record.name ?? record.kind), derived: entry };
 }
 

@@ -209,6 +209,7 @@ export function describeProposal(ws, proposal) {
       const parts = [];
       if (change.patch.name !== undefined && change.patch.name !== gate?.name) parts.push(`rename to ${change.patch.name}`);
       if (change.patch.color !== undefined && change.patch.color !== gate?.color) parts.push('change its color');
+      if (change.patch.ontology !== undefined) parts.push(change.patch.ontology ? `annotate it as ${change.patch.ontology.label} (${change.patch.ontology.id})` : 'clear its cell type');
       items.push({ kind: 'edit', gateId: change.gateId, text: `${gate?.name ?? change.name}: ${parts.join(', ') || 'no change'}` });
     } else if (change.kind === 'remove-gate') {
       const below = gateById(ws, change.gateId) ? gateDescendants(ws, change.gateId).length : 0;

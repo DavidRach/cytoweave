@@ -8,6 +8,7 @@ import { formatStatistic, wilsonInterval } from '../lib/stats.js';
 import { BOOLEAN_OPS, ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
 import { CATEGORICAL, colorVisionFriendly } from '../lib/colormaps.js';
 import { isInteracting } from './activity.js';
+import { suggestForPopulation, termById } from '../lib/ontology.js';
 
 export function mountInspector(app) {
   const { store, data } = app;
@@ -56,6 +57,46 @@ export function mountInspector(app) {
         h('div.stat-tile', h('div.k', '% of grandparent'), h('div.v', gate?.parentId ? formatPercent((100 * count) / (grandCount || 1)) : '—'))));
   }
 
+  // The population's Cell Ontology term: confirmed, or suggested from its marker phenotype for the
+  // user to confirm (lib/ontology.js). Confirmed terms go into exports and the methods.
+  function cellTypeRow(ws, view, gate) {
+    const set = (ontology, label) => store.commit(updateGate(store.ws, gate.id, { ontology }, 'set-cell-type'), label);
+    const link = (id) => h('a', { href: `https://www.ebi.ac.uk/ols4/ontologies/cl/classes/${encodeURIComponent(`http://purl.obolibrary.org/obo/${id.replace(':', '_')}`)}`, target: '_blank', rel: 'noopener', title: `${id} in the EBI Ontology Lookup Service` }, id);
+    const confirmed = gate.ontology?.status === 'confirmed' ? gate.ontology : null;
+    let suggestions = [];
+    if (view && gate.type !== 'boolean') {
+      try {
+        suggestions = suggestForPopulation(view, ws, gate.id).suggestions;
+      } catch {
+        suggestions = [];
+      }
+    }
+    const confirm = (s) => set({ id: s.id, label: s.label, status: 'confirmed', by: 'the user', at: new Date().toISOString(), evidence: s.reason }, `Cell type of ${gate.name}: ${s.label}`);
+    const choose = (anchor) => showMenu(anchor, [
+      { section: 'Suggested from the phenotype' },
+      ...(suggestions.length ? suggestions.map((s) => ({ label: `${s.label} (${s.confidence})`, icon: 'tag', hint: s.id, onSelect: () => confirm(s) })) : [{ label: 'No term fits the gated markers', disabled: true }]),
+      ...(confirmed ? ['-', { label: 'Clear the cell type', icon: 'close', onSelect: () => set(undefined, `Clear the cell type of ${gate.name}`) }] : []),
+    ]);
+    // A term a template or published strategy suggests for the gate comes first, with its source.
+    const stored = gate.ontology?.status === 'suggested' && gate.ontology.id ? gate.ontology : null;
+    if (stored) {
+      const fromData = suggestions.find((s) => s.id === stored.id);
+      suggestions = [{ id: stored.id, label: stored.label, confidence: fromData?.confidence ?? 'exact', reason: `suggested by ${stored.source ?? 'the template'}${fromData ? `; the phenotype agrees (${fromData.reason})` : ''}`, stored: true }, ...suggestions.filter((s) => s.id !== stored.id)];
+    }
+    const top = suggestions[0];
+    const body = confirmed
+      ? h('div', h('div', h('strong', confirmed.label), ' ', h('span.muted', link(confirmed.id))), h('div.row', { style: { gap: '6px', marginTop: '4px' } }, h('button.btn.small.ghost', { type: 'button', onclick: (e) => choose(e.currentTarget) }, 'Change')))
+      : top
+        ? h('div',
+          h('div', top.label, ' ', h('span.muted', link(top.id)), ' ', h(`span.badge.${top.confidence === 'exact' || top.stored ? 'ok' : 'accent'}`, top.confidence === 'exact' || top.stored ? 'Suggested' : 'Likely')),
+          h('div.muted', { style: { fontSize: '11.5px', marginTop: '2px' } }, `${top.stored ? top.reason[0].toUpperCase() + top.reason.slice(1) : `From ${top.reason}`}. ${termById(top.id)?.definition ?? ''}`),
+          h('div.row', { style: { gap: '6px', marginTop: '6px' } },
+            h('button.btn.small', { type: 'button', onclick: () => confirm(top) }, icon('check'), 'Confirm'),
+            suggestions.length > 1 ? h('button.btn.small.ghost', { type: 'button', onclick: (e) => choose(e.currentTarget) }, 'Other terms') : null))
+        : h('span.muted', 'No Cell Ontology term fits the markers this population is gated on.');
+    return h('div', { style: { marginTop: '10px' } }, h('div.section-title', 'Cell type (Cell Ontology)'), body);
+  }
+
   function gateSection(ws, view, gate, sampleId) {
     const geometry = effectiveGeometry(gate, sampleId);
     const overridden = Boolean(gate.overrides?.[sampleId]);
@@ -75,6 +116,7 @@ export function mountInspector(app) {
         h('dt', 'Applies to'), h('dd', gate.scope?.groupId ? ws.groups.find((g) => g.id === gate.scope.groupId)?.name ?? 'a group' : 'All samples'),
         h('dt', 'Origin'), h('dd', gate.meta?.proposedBy
           ? `Proposed by ${gate.meta.proposedBy}${gate.meta.origin === 'auto' ? ` from the data (${gate.meta.method ?? 'density'})` : ''}${gate.meta.acceptedBy ? `; accepted by ${gate.meta.acceptedBy}` : '; waiting for your review'}`
+          : gate.meta?.origin === 'auto' && gate.meta.template ? `Placed on ${gate.meta.placedOn ?? 'a sample'}'s data by ${gate.meta.template} (${gate.meta.method ?? 'recipe'})`
           : gate.meta?.origin === 'auto' ? `Proposed from the data (${gate.meta.method ?? 'density'})` : gate.meta?.origin === 'imported' ? 'Imported' : gate.meta?.origin === 'agent' ? 'Added by an AI agent' : 'Drawn')),
     ];
     if (gate.meta?.note) content.push(h('div.callout.accent', { style: { marginTop: '8px' } }, icon('sparkles'), h('span', gate.meta.note)));
@@ -106,6 +148,7 @@ export function mountInspector(app) {
       content.push(swatches);
     }
     if (gate.type !== 'boolean' && gate.type !== 'category' && !isMultidimensional(gate) && view) content.push(robustnessBlock(ws, view, gate));
+    content.push(cellTypeRow(ws, view, gate));
     return section('Gate', ...content);
   }
 

@@ -47,7 +47,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder` and the export tools 0.5.0.
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools and `suggest_cell_types` 0.5.0.
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the
@@ -111,6 +111,10 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `explore` | Clustering (FlowSOM, Leiden, Louvain, k-means) and a map (UMAP, t-SNE, PCA) of a population across samples, with cluster names, abundances and the map's faithfulness; `populations` proposes the clusters as populations. |
 | `build_figure` | Proposes a figure: the gating strategy of a population, or the same plots across samples. |
 | `watch_folder` | Watches an instrument's export folder: each finished FCS file is added and checked (QC, or Q and B for beads); `status` lists the results. |
+| `save_template` | Saves the analysis (or a population and those under it) as a template in the library: gates, scales, plots, tables, figures and which compensation the samples used. |
+| `list_templates` | The templates in the library, and the published gating strategies (OMIP-101 major leukocyte populations, OMIP-090 regulatory T cells) with their citations and where they depart from the articles. |
+| `apply_template` | Applies a template or a strategy (`omip-101`) to the open samples: channels matched by marker (scatter and time by name), with how each matched and what could not be applied. A strategy's gates are placed on one sample's events (`sample`), each from its parent population, with suggested Cell Ontology terms. The gates and figures are proposed. |
+| `suggest_cell_types` | A Cell Ontology term for each population from its marker phenotype and scatter, never its name, with a confidence and the markers it rests on; `propose` proposes the top terms for you to confirm. |
 | `export_flowjo` | Writes a FlowJo workspace (.wsp, or .zip with the FCS files), optionally de-identified, with the populations not written exactly. |
 | `export_fcs` | Writes de-identified FCS files (.zip) or the workspace with them (.acs). |
 | `export_figure` | Writes a figure as SVG, PNG or PDF, carrying the analysis behind it. |

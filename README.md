@@ -73,6 +73,16 @@ guides to every view, with screenshots.
     gets a confidence, confident adjustments are proposed, uncertain samples
     go to review with the reason. Checked against an expert's own gates in a
     real study.
+- **Templates and published strategies.**
+  - Save an analysis as a template and apply it to another experiment: its
+    channels are matched by marker, not detector, with a report of what
+    matched and what could not be applied.
+  - OMIP-101 (major leukocyte populations) and OMIP-090 (regulatory T cells)
+    built in, their gates placed on your own data, each explaining where it
+    was placed and why.
+- **Cell types.** Each population gets a suggested Cell Ontology term from
+  the markers along its path, never its name, to confirm; confirmed terms go
+  into the FlowJo and Gating-ML exports, tables and the methods.
 - **Scales that match.** Logicle (Moore & Parks reference implementation),
   arcsinh, log, linear and FlowJo's biexponential. The biexponential is
   reproduced exactly from FlowJo's own table algorithm, and checked against
@@ -761,6 +771,28 @@ library keeps each FCS file once, under its SHA-256 checksum. A workspace
 refers to files by checksum, so it keeps working when the original files are
 moved or renamed. Deleted workspaces go to the library's `trash` folder.
 
+**Templates** (Workspace → Save as a template) keep an analysis, or one
+population and those under it: gates, scales, plots, tables, figure layouts and
+which compensation the samples used, in the library or as a `.cwt` file.
+**Workspace → Apply a template** matches the template's channels to the open
+experiment by marker (scatter and time by name), shows how each matched and
+lets you choose another, says which populations will be left out and why, and
+adds the gates under any population. The same dialog offers two published
+gating strategies, OMIP-101 and OMIP-090, written for CytoWeave from the
+articles' hierarchies (each lists where it departs from its article). Their
+gates are placed on the current sample's events, each in its parent population
+(density peaks on scatter, the valleys between a marker's populations), and
+say where they were placed and why; review or adapt them across samples like
+any other gate.
+
+**Cell types.** The inspector suggests a Cell Ontology term for the selected
+population from which side of each gate's markers it lies on (and, for scatter
+gates, where it sits), with the markers the term rests on and its definition;
+confirm it or choose another. Confirmed terms are written into FlowJo
+workspace exports (each population's annotation) and Gating-ML, shown under
+the population's columns in Tables, and named in the methods. CLR files keep
+populations' names only: the CLR format has no field for a term.
+
 **Workspace → Export** writes:
 - a workspace file (`.cwz`);
 - an ACS container with the FCS files, to send to a colleague or archive with
@@ -883,6 +915,8 @@ window you are watching:
 - open files and examples, annotate samples, and inspect the gating tree;
 - create gates from coordinates or propose them from the data's density;
 - run acquisition QC, unmix spectral files, and cluster and map cells;
+- save and apply analysis templates and published gating strategies (OMIP-101,
+  OMIP-090), and name populations with Cell Ontology terms;
 - edit gates, compute statistics across samples and render plots;
 - review a gate across the cohort, adapt it to each sample, compare groups,
   check a comparison's robustness, build figures and write the methods;
@@ -910,7 +944,7 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 29 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 33 tools, other clients
 and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
@@ -945,7 +979,10 @@ pipelines, as the app does, against answers known in advance:
 | Predicted spread | Simulated controls with known photon noise and laser fluctuations | Photon noise within 1% of the truth; each control's spread predicted from the other 24 within 2× for 98% of pairs; a 15-dye panel predicted from the 25-dye fit within 2× for every pair |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
 | Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 66 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
+| Templates | A 19-population analysis applied to the same events with every detector renamed and reordered | Every population holds the same events in all 12 samples; with two markers unnamed, only the gate on them left out |
+| Published strategies | OMIP-101 and OMIP-090 placed on one sample of the PBMC example, against the true cell types | Median F1 0.96–0.99 for lineages, 0.88–0.96 for memory subsets, NK cells and classical and non-classical monocytes; Tregs 0.91; intermediate monocytes 0.76 |
 | Gating-ML | ISAC's compliance suite | All 190 gates match on every event |
+| Cell Ontology | 40 populations experts named in 3 public workspaces | Every top suggestion a term the name denotes; the same with every gate renamed |
 | Autogating, against experts | An expert's per-donor gates in 4 FlowJo workspaces of a cytokine study (48 wells) | Agreement with the expert unchanged (F1 0.9876 → 0.9877), no adjustment lowering it; wells gated differently sent to review 3× as often as the others |
 | flowQB | flowQB on its own LSR II data: an LED series, 8-peak and 6-peak beads | The same peaks, Q, B and standard errors in all 36 detectors (within 6e-9) |
 | FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-color workspaces at least as close to FlowJo as FlowKit |
@@ -1011,6 +1048,11 @@ used for diagnosis.
 - Drawing a new gate needs a pointer (or an AI agent); from the keyboard,
   gates can be selected, moved, renamed and their limits typed. CytoWeave has
   not yet been tested by people who use screen readers every day.
+- Published strategies place each gate on one sample and share it; where
+  samples differ (stimulation, another instrument), review and adapt the gates.
+  Intermediate monocytes, which lie between the classical and non-classical
+  ones on CD16, are the least accurate of their populations (F1 0.76 in
+  validation).
 - Event data in CSV are not imported, only annotations.
 - Imaging flow data (CellView, Amnis) are not supported.
 - Spectral unmixing needs the raw detector channels; files that hold only
@@ -1130,7 +1172,17 @@ code and in the methods text it writes, among them:
 - CytoNorm (Van Gassen et al.);
 - the spillover spreading matrix (Nguyen et al.);
 - MEM (Diggins et al.);
-- MIFlowCyt, FCS and Gating-ML (ISAC).
+- MIFlowCyt, FCS and Gating-ML (ISAC);
+- the OMIP-101 (Imbratta et al. 2024) and OMIP-090 (Stroukov et al. 2023)
+  gating strategies, and the immunophenotypes of Maecker, McCoy & Nussenblatt
+  (2012).
+
+Cell types are named with terms of the [Cell Ontology](https://obofoundry.org/ontology/cl.html)
+(release 2026-06-08): CytoWeave contains its labels, synonyms and definitions
+of 89 terms, under the
+[Creative Commons Attribution 4.0](http://creativecommons.org/licenses/by/4.0/)
+license. Tan SZK et al. The Cell Ontology in the age of single-cell omics.
+*Sci Data* 13, 946 (2026), doi:10.1038/s41597-026-07173-8.
 
 Ported code:
 - The FlowJo biexponential algorithm is ported from FlowKit (BSD-3-Clause,

@@ -24,7 +24,7 @@ const VERSION = /var version = "([^"]+)"/.exec(readFileSync(join(repo, 'main.go'
 // The documentation, in reading order.
 const DOCS = [
   { group: 'Start', pages: [['index', 'Overview'], ['getting-started', 'Getting started'], ['opening-data', 'Opening data']] },
-  { group: 'Analysis', pages: [['gating', 'Gating'], ['compensation', 'Compensation'], ['spectral', 'Spectral unmixing'], ['qc', 'Acquisition QC'], ['cohorts', 'Normalization and debarcoding'], ['explore', 'Clustering and maps']] },
+  { group: 'Analysis', pages: [['gating', 'Gating'], ['templates', 'Templates and cell types'], ['compensation', 'Compensation'], ['spectral', 'Spectral unmixing'], ['qc', 'Acquisition QC'], ['cohorts', 'Normalization and debarcoding'], ['explore', 'Clustering and maps']] },
   { group: 'Results', pages: [['statistics', 'Tables and comparisons'], ['assays', 'Cell cycle, proliferation and index sorting'], ['figures', 'Figures, methods and checkpoints']] },
   { group: 'Share and automate', pages: [['workspaces', 'Workspaces and large files'], ['flowjo', 'FlowJo and Gating-ML'], ['agents', 'AI agents (MCP)'], ['scripting', 'Scripting and command line']] },
   { group: 'Reference', pages: [['accessibility', 'Accessibility'], ['troubleshooting', 'Troubleshooting']] },

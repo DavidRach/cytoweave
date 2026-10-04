@@ -112,3 +112,13 @@ test('methods say which reference spectra came from the spectral library', () =>
   const text = writeMethods(ws, { version: '0.3.0' }).paragraphs.join(' ');
   assert.match(text, /reference spectra of PE-Cy7 \(acquired 2026-05-20\) came from the instrument's spectral library/);
 });
+
+test('confirmed Cell Ontology terms are named in the methods, with the reference', async () => {
+  const { writeMethods } = await import('./methods.js');
+  const { createWorkspace, addGates } = await import('./workspace.js');
+  let ws = createWorkspace('t');
+  ws = addGates(ws, [{ name: 'T cells', parentId: null, type: 'range', dims: [{ channel: 'CD3', transform: { type: 'linear', min: 0, max: 1 } }], geometry: { min: 0.5, max: null }, ontology: { id: 'CL:0000084', label: 'T cell', status: 'confirmed' } }]).ws;
+  const { paragraphs, references } = writeMethods(ws, {});
+  assert.ok(paragraphs.some((p) => /T cells as T cell \(CL:0000084\)/.test(p)));
+  assert.ok(references.some((r) => r.doi === '10.1186/s13326-016-0088-7'));
+});

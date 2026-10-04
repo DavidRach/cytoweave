@@ -427,7 +427,9 @@ export function exportFlowJo(ws, options = {}) {
       const renamed = name !== gate.name ? `renamed "${name}" (FlowJo needs unique names without "/")` : '';
       gateNumber += 1;
       const gid = `ID${gateNumber}`;
-      const common = `name="${esc(name)}" annotation="" owningGroup="" expanded="1" sortPriority="10"${countAttr(gate.id)}`;
+      // A confirmed Cell Ontology term goes in FlowJo's annotation field.
+      const annotation = gate.ontology?.status === 'confirmed' ? `${gate.ontology.id} ${gate.ontology.label}` : '';
+      const common = `name="${esc(name)}" annotation="${esc(annotation)}" owningGroup="" expanded="1" sortPriority="10"${countAttr(gate.id)}`;
       let body;
       let status = 'exact';
       let detail = '';

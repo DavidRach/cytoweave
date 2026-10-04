@@ -737,6 +737,99 @@ export function installRemote(app) {
       return { file: `${lines.join('\n')}\n`, message: `${table.message} ${rows.length} rows, ${columns.length} population column${columns.length === 1 ? '' : 's'}.` };
     },
 
+    async list_templates() {
+      const list = await app.listTemplates();
+      const templates = [];
+      for (const t of list.slice(0, 50)) {
+        const template = await app.loadTemplate(t.id).catch(() => null);
+        if (template) templates.push({ name: template.name, saved: t.modified, populations: template.gates.length, markers: Object.values(template.channels).map((c) => c.marker || c.name), notes: template.notes });
+      }
+      const { STRATEGIES } = await import('../lib/strategies.js');
+      const strategies = STRATEGIES.map((t) => ({ id: t.id, name: t.name, description: t.description, citation: t.citation, populations: t.gates.length, markers: Object.values(t.channels).map((c) => c.marker || c.name), substitutions: t.substitutions }));
+      return { message: `${templates.length ? `${templates.length} template${templates.length === 1 ? '' : 's'} in the library: ${templates.map((t) => t.name).join(', ')}.` : 'No templates in the library; save_template keeps one.'} Published gating strategies, placed on the data by apply_template: ${strategies.map((t) => `${t.id} (${t.name})`).join(', ')}.`, data: { templates, strategies } };
+    },
+
+    async save_template(args) {
+      const { buildTemplate } = await import('../lib/templates.js');
+      if (!ws().gates.length) throw new ActionError('The workspace has no gates to keep.');
+      const gateIds = args.population ? [resolvePopulation(args.population)].filter((id) => id !== ROOT) : null;
+      const template = buildTemplate(ws(), { name: String(args.name ?? `${ws().name} template`), gateIds: gateIds?.length ? gateIds : null, version: app.version });
+      await app.storeTemplate(template);
+      return { message: `Saved the template "${template.name}" to the library: ${template.gates.length} populations on ${Object.keys(template.channels).length} channels (${Object.values(template.channels).map((c) => c.marker || c.name).join(', ')}), ${template.plots.length} plots, ${template.tables.length} tables, ${template.figures.length} figures.${template.notes.length ? ` Notes: ${template.notes.join(' ')}` : ''}`, data: { name: template.name, notes: template.notes } };
+    },
+
+    async apply_template(args) {
+      const { applyTemplate } = await import('../lib/templates.js');
+      const { STRATEGIES } = await import('../lib/strategies.js');
+      const wanted = String(args.template ?? '').toLowerCase();
+      // A published strategy by id (omip-101) or name, else a template in the library.
+      let template = STRATEGIES.find((t) => t.id === wanted || t.name.toLowerCase() === wanted || t.name.toLowerCase().startsWith(`${wanted}:`)) ?? null;
+      if (!template) {
+        const list = await app.listTemplates();
+        const entry = list.find((t) => (t.name ?? '').toLowerCase() === wanted) ?? list.find((t) => t.id === args.template) ?? list.find((t) => (t.name ?? '').toLowerCase().includes(wanted));
+        if (!entry) throw new ActionError(`No template "${args.template}" in the library. Templates: ${list.map((t) => t.name).join(', ') || 'none'}; published strategies: ${STRATEGIES.map((t) => t.id).join(', ')}.`);
+        template = await app.loadTemplate(entry.id);
+      }
+      if (!ws().samples.length) throw new ActionError('Open the samples first: the template is matched to their channels.');
+      // A strategy's recipe gates are placed on one sample's events.
+      let place;
+      let placedOn = null;
+      if (template.gates.some((g) => g.type === 'recipe')) {
+        const { placeOnSample } = await import('../lib/recipes.js');
+        placedOn = resolveSample(args.sample);
+        place = placeOnSample(await loadedView(placedOn), placedOn.name);
+      }
+      const parentId = args.parent ? resolvePopulation(args.parent) : ROOT;
+      const overrides = {};
+      for (const [marker, channel] of Object.entries(args.channels ?? {})) {
+        const key = Object.keys(template.channels).find((k) => (template.channels[k].marker || template.channels[k].name).toLowerCase() === marker.toLowerCase());
+        if (!key) throw new ActionError(`The template has no channel "${marker}".`);
+        overrides[key] = resolveChannel(await loadedView(ws().samples[0]), channel);
+      }
+      const before = ws();
+      const result = applyTemplate(before, template, { parentId, overrides, scales: 'keep', figures: args.figures !== false, place, sampleId: store.ui.sampleId ?? undefined });
+      // Gates and figures are proposed; plots, tables and scales for channels without one follow.
+      let next = proposeGates(before, author, result.gates).ws;
+      next = { ...next, plots: result.ws.plots, tables: result.ws.tables, channelSettings: result.ws.channelSettings };
+      for (const figure of result.ws.figures.filter((f) => !before.figures.some((g) => g.id === f.id))) next = proposeFigure(next, author, figure).ws;
+      store.commit(next, `${author} proposed the template ${template.name}`);
+      toast(`${author} proposes the template “${template.name}”: ${result.report.gates.applied} populations. Review the proposal to accept or reject it.`);
+      const r = result.report;
+      return {
+        message: `${template.builtIn ? 'Strategy' : 'Template'} "${template.name}": ${r.gates.applied} of ${template.gates.length} populations proposed${parentId !== ROOT ? ` under ${gatePath(ws(), parentId)}` : ''}, ${r.plots} plots, ${r.tables} tables, ${r.figures} figures; ${r.matched} of ${r.channels.length} channels matched.${r.gates.skipped.length ? ` Not applied: ${r.gates.skipped.map((x) => `${x.gate} (${x.reason})`).join('; ')}.` : ''}${placedOn ? ` Its gates were placed on the events of ${placedOn.name} and are shared by every sample: review_gate and adapt_gate check and adjust them per sample. Populations carry a suggested Cell Ontology term for the user to confirm. ${template.citation ?? ''}` : ' Gates keep their position in data values: on another instrument, review_gate and adapt_gate check and adjust them.'}${template.compensation?.source === 'file' && !template.builtIn ? " The template's samples used their files' compensation." : ''}`,
+        data: { placedOn: placedOn?.name ?? null, substitutions: template.substitutions ?? [], channels: r.channels.map((c) => ({ template: c.template, channel: c.channel, how: c.how, note: c.note })), skipped: r.gates.skipped, notes: r.notes, proposal: proposalSummary() },
+      };
+    },
+
+    async suggest_cell_types(args) {
+      const { suggestForPopulation } = await import('../lib/ontology.js');
+      const w = ws();
+      const sample = resolveSample(args.sample);
+      const view = await loadedView(sample);
+      const ids = args.populations?.length ? args.populations.map(resolvePopulation).filter((id) => id !== ROOT) : w.gates.filter((g) => g.type !== 'boolean').map((g) => g.id);
+      const rows = [];
+      let proposed = 0;
+      let next = w;
+      for (const id of ids) {
+        const gate = gateById(w, id);
+        const { phenotype, scatter, suggestions } = suggestForPopulation(view, w, id);
+        const top = suggestions[0];
+        rows.push({ population: gatePath(w, id), phenotype: phenotype.markers, scatter: scatter ?? undefined, confirmed: gate.ontology?.status === 'confirmed' ? `${gate.ontology.label} (${gate.ontology.id})` : undefined, suggestions: suggestions.map((x) => ({ term: x.label, id: x.id, confidence: x.confidence, from: x.reason })) });
+        if (args.propose && top && gate.ontology?.status !== 'confirmed') {
+          next = proposeGateEdit(next, author, id, { ontology: { id: top.id, label: top.label, status: 'confirmed', by: author, at: new Date().toISOString(), evidence: top.reason } }).ws;
+          proposed += 1;
+        }
+      }
+      if (proposed) {
+        store.commit(next, `${author} proposed cell types for ${proposed} population${proposed === 1 ? '' : 's'}`);
+        toast(`${author} proposes Cell Ontology terms for ${proposed} population${proposed === 1 ? '' : 's'}. Review the proposal to accept or reject them.`);
+      }
+      return {
+        message: `Cell Ontology terms suggested from each population's marker phenotype in ${sample.name} (from the gates' sides and the data, not the names): ${rows.filter((r) => r.suggestions.length).length} of ${rows.length} populations have one.${proposed ? ` Proposed the top term for ${proposed}; they apply when the user accepts.` : args.propose ? ' Nothing new to propose.' : ' Pass propose: true to propose the top terms for the user to confirm.'}`,
+        data: { rows, proposal: proposalSummary() },
+      };
+    },
+
     async watch_folder(args) {
       const live = app.live;
       if (!live?.available) throw new ActionError('Folder watching needs the CytoWeave program (it is not available when the page is served as a web site).');

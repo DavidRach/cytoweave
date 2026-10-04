@@ -141,7 +141,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | I2 | Gating-ML 2.0 import and export, including spectrum (unmixing) matrices, ratio dimensions and per-dimension compensation | done |
 | I3 | CLR export; ACS containers | done |
 | I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Compatibility tested with FlowJo 11.2.0 (build 11.2.0.210156, 2026-10-03): three exports within 0.6 percentage points, most within 0.1; CytoML 2.24 reads every export. Logicle and arcsinh scales are written as FlowJo biex for FlowJo 11. FlowJo 10 not tried |
-| I5 | Analysis templates applied by marker, with a match report; OMIP gating strategies; populations mapped to Cell Ontology IDs, carried into exports and methods | planned (wave 5) |
+| I5 | Analysis templates applied by marker, with a match report; OMIP gating strategies; populations mapped to Cell Ontology IDs, carried into exports and methods | done: templates matched by marker with a preview and report; OMIP-101 and OMIP-090 placed on the data; Cell Ontology suggestions confirmed by the user, written to FlowJo and Gating-ML exports, tables and methods (not CLR, which has no field for them) |
 | I6 | CSV event import; AnnData export; concatenated and downsampled FCS export | planned (wave 6) |
 | I7 | Acquisition-software experiments (FACSDiva, FACSChorus, SpectroFlo) and FlowJo 11 `.flowjo` workspaces | planned (wave 7) |
 
