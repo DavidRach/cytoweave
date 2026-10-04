@@ -282,6 +282,117 @@ logo.
    - Not done: drawing a new gate without a pointer, exploring a plot's events without one, and
      testing by people who use screen readers (a walkthrough is in the docs).
 
+## Next (0.5)
+
+The order of waves 5–8 comes from `research.md` §8 and a parity and differentiation study
+(October 2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza, SpectroFlo, CellEngine,
+Floreada and the open-source tools, and of what users asked for in 2024–2026. Within each wave:
+trust first, then the daily workbench, then what no single tool combines. Waves 6–8 are a plan,
+to be revised as each wave lands.
+
+### Wave 5
+
+1. **A harder FCS reader (D8):** a fuzzer that mutates real files (offsets, keywords, data types,
+   byte order, truncation, several data sets) and requires that the reader never crashes or hangs
+   and refuses with a clear message; public files from instruments not yet in the corpus
+   (CytoFLEX, Attune, NovoCyte, MACSQuant, Sony, Aurora and others), read as FlowIO and fcsparser
+   read them.
+   - Validation: a new `fuzz` suite (seeded, so a failure can be replayed) and the larger corpus
+     in `fcsparser` and `reference`.
+2. **Agents across the whole pipeline (M4):** MCP tools for acquisition QC, spectral unmixing,
+   clustering and maps, annotating samples, figures, the FlowJo and de-identified exports, and
+   starting or stopping a folder watch (left over from wave 4). Every change arrives as a proposal,
+   as gates and matrices do now. Gates drawn from coordinates could also serve drawing a gate from
+   the keyboard (left over from V4).
+   - Validation: a scripted agent session (no model) reproduces an example's analysis through the
+     tools alone, with the same counts and statistics as the same analysis done in the app.
+3. **Analysis templates, with OMIP strategies and Cell Ontology terms (I5, research N13):** one
+   template format for a saved analysis (gates, scales, compensation choice, tables, figure
+   layouts) applied to a new experiment by matching markers, not channel names, with a report of
+   what matched and what did not. The same engine carries a few OMIP gating strategies and, later,
+   clinical panels. Each population gets a suggested Cell Ontology term from the markers along
+   its path, for the user to confirm; the terms go into the exports, CLR, tables and methods.
+   Cell Ontology is CC-BY 4.0; each OMIP's terms are checked before it is bundled. This is the
+   base for batch reports in wave 6.
+   - Validation: a template saved from the PBMC example and applied to a reshuffled panel
+     reproduces the hand-built tree's counts; suggested terms against expert-labeled populations
+     in public workspaces.
+4. **Titration and voltage optimization (Q6):** a titration series or voltage walk read from file
+   names or keywords; stain index, separation index and spread of the negative per step;
+   the recommended titer (or voltage) with the reason; a figure for the panel's record. Asked
+   about far more often than kinetics in user forums, and it serves core facilities.
+   - Validation: a simulated titration and voltage walk with known saturation and noise; stain
+     index computed as published (Maecker) and against FlowJo 11 on the same files while the
+     trial lasts.
+
+## Then (0.6–0.8)
+
+### Wave 6: the bench, batch by batch
+
+1. **Statistics users already expect (G10, G11):** the population comparisons FlowJo users rely
+   on (probability binning with T(χ), Overton subtraction, SED, Kolmogorov–Smirnov; already
+   implemented and tested in `distribution.js`, not yet in any view) and rare-event statistics:
+   Poisson intervals on counts, a limit of detection and quantification against a negative
+   reference, and events needed for a target precision.
+   - Validation: flowStats and published worked examples; exact formulas.
+2. **Batch reports and spreadsheet export (R7):** a page layout iterated over samples or groups,
+   multi-page PDF and PowerPoint, Excel workbooks and GraphPad Prism (`.pzfx`) tables, built on
+   the template engine.
+   - Validation: every number in a report traced to the table it came from; files read back by
+     their own formats' readers.
+3. **Derived parameters, calibrated units and absolute counts (G12, G13):** a formula editor for
+   new channels (written to Gating-ML where it can express them); MEF/ERF units from calibration
+   beads; concentrations from counting beads with the dilution factor.
+   - Validation: FlowCal's bead files and results; simulated counting beads of known
+     concentration.
+4. **Computational users (H6, I6, M5):** differential state per cluster or population (as
+   diffcyt), concatenated and downsampled FCS export, CSV event import, AnnData export, and R and
+   Python clients for remote control (users who outgrow GUIs move to R first).
+   - Validation: diffcyt-DS in R on the mass cytometry example; AnnData read back by `anndata`;
+     the clients' calls against the HTTP API's tests.
+
+### Wave 7: plates, migration and the spectral doctor
+
+1. **Migration from acquisition software (I7):** FACSDiva experiments, FACSChorus and S8 files'
+   embedded gates, SpectroFlo reference controls, and FlowJo 11 `.flowjo` workspaces, each with a
+   fidelity report like the `.wsp` import's.
+   - Validation: counts against the source software's saved statistics; independent readers
+     (CyFj11 for `.flowjo`) where they exist.
+2. **Plates (A5):** wells as samples, plate layouts from CSV or keywords, and heat maps of any
+   statistic across the plate.
+3. **Curves (A6, A4):** dose-response (4PL/5PL, EC50/IC50) and Z′ for screens; standard curves
+   and concentrations for bead-based immunoassays (LEGENDplex, CBA); kinetics and calcium flux
+   (baseline, peak, time to peak, area under the curve, responding fraction), moved here from
+   wave 5.
+   - Validation: simulated plates and kinetics with known parameters; R `drc` and beadplexr as
+     oracles.
+4. **The unmixing doctor (S8):** names the likely cause of a poor unmixing (a missing or wrong
+   reference, a degraded tandem, a bead control for a cell stain, autofluorescence that differs
+   between controls and sample) from the residuals, the library and the control checks, and
+   proposes the fix.
+   - Validation: each fault planted in the simulator, named first; AutoSpectral's bead and cell
+     controls.
+
+### Wave 8: designed, explained, certified
+
+1. **Reproducibility certificate (R8):** a bundle (workspace, file checksums, versions, seeds)
+   that re-runs itself to confirm every reported number, ready for Zenodo or a journal, with
+   MIFlowCyt filled in.
+   - Validation: certificates of every example re-run bit for bit; a changed file or gate
+     detected.
+2. **A virtual FMO (C4):** where each population's negative would fall without a given dye,
+   predicted from the spread model of wave 4, drawn on the plot as a guide for gating. No tool
+   offers it.
+   - Validation: two public data sets with real FMO controls (Zenodo 22808501 and 20644656).
+3. **A panel optimizer (S9):** assigns fluorochromes to markers by expression level and
+   co-expression, using the user's own instrument model and library, warns of pairs prone to
+   energy transfer, and is checked against the panel's result once run.
+   - Validation: simulated panels with known best assignments; the predicted spread against the
+     run's unmixed controls.
+4. **An on-device assistant (M6):** an optional local model (in the browser, no network) that
+   answers questions about the workspace through the same tools as external agents.
+5. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
+
 ## Later
 - Branches of an analysis, three-way merge of non-conflicting edits, and
   signed approval of checkpoints, building on the semantic diff.
@@ -291,7 +402,8 @@ logo.
   so a tool cannot change a workspace invisibly. This would replace the
   plugin approach of other tools, which depends on the user's own R or Python
   installation.
-- A Python package wrapping remote control, for notebooks and pipelines.
+- Robustness to analysis choices for designs of more than two groups and for
+  cluster abundances.
 - Design studies with one or two core facilities, and tutorials built on
   public FlowRepository studies.
 
@@ -299,9 +411,6 @@ logo.
   files.
 - Audit trail and electronic signatures for regulated labs (R6).
 - Real-time co-annotation of one workspace by several people.
-- Ontology-mapped population names (Cell Ontology) for machine-comparable
-  results.
-- Kinetics and calcium-flux analysis (A4).
 
 ## Risks
 

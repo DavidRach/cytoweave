@@ -40,6 +40,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | D5 | Content-addressed library: workspaces refer to files by SHA-256 and survive moves | done |
 | D6 | Large data: 10 million events per sample at interactive speed | done: files read in parts (never whole), bitset populations, lazy compensation, statistics by selection, shared memory with workers; at 10M events a gate drag draws in about 8 ms and dropping it re-evaluates every population in about 0.4 s (`validation/bench.mjs`) |
 | D7 | FCS de-identification on export | done: an allowlist of technical keywords, the rest removed and reported; the TEXT segment rewritten and the events copied byte for byte (checked on every example and corpus file); for population exports, the FlowJo export, a ZIP of the files and an ACS archive |
+| D8 | The reader hardened by fuzzing (no crash or hang on any mutated file, a clear message for every refusal) and checked on more instruments | planned (wave 5) |
 
 ## Gating and statistics
 
@@ -54,6 +55,10 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | G7 | Batch tables, CSV/TSV export, heat maps | done |
 | G8 | Review a gate across samples; boundary robustness | done |
 | G9 | Learned per-sample gate adjustment with abstention (uncertainty-aware autogating) | done: landmark registration from the gate's exemplars with an ensemble confidence; confident adjustments proposed, uncertain samples sent to review; one gate per donor or subject; CLR probabilities; validated on simulated shifts (validation `autogating`) and against an expert's per-donor gates in a real ICS study (`experts`) |
+| G10 | Population comparison: probability binning, Overton subtraction, SED, Kolmogorov–Smirnov | planned (wave 6) |
+| G11 | Rare-event statistics: Poisson intervals on counts, limits of detection and quantification, events needed | planned (wave 6) |
+| G12 | Derived parameters from formulas | planned (wave 6) |
+| G13 | Calibrated units (MEF, ERF) from beads; absolute counts from counting beads | planned (wave 6) |
 
 ## Compensation and spectral
 
@@ -62,6 +67,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | C1 | Spillover from single-stain controls (median difference, robust regression); manual editing with undo | done |
 | C2 | Check a matrix against its controls and suggest corrections; recognize autofluorescent positives | done |
 | C3 | Spillover spreading matrix; N×N pair plots | done |
+| C4 | Virtual FMO: each population's negative without a dye, predicted from the spread model | planned (wave 8) |
 | S1 | Reference spectra from controls with automatic gating; control quality metrics | done |
 | S2 | Several autofluorescence signatures; per-event autofluorescence | done |
 | S3 | OLS, WLS (fixed and per-event weights) and NNLS unmixing; residual channel | done |
@@ -69,6 +75,8 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | S5 | Comparison of unmixing models on the user's own sample | done |
 | S6 | Predicted spread for panel design from the user's own references | done: photon and laser noise fitted to the controls, kept per instrument or from bead runs; validated on simulated and real (LSRFortessa) controls |
 | S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
+| S8 | Unmixing doctor: the likely cause of a poor unmixing, named with its fix | planned (wave 7) |
+| S9 | Panel optimizer from the user's instrument model and library | planned (wave 8) |
 
 ## Quality control and normalization
 
@@ -79,6 +87,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | Q3 | CytoNorm with a confounding check; bead normalization; debarcoding | done |
 | Q4 | QC of files as they are acquired (folder watching) | done: the program watches a folder read-only and hands over complete files; acquisition QC or Q and B as they land; PeacoQC's channels in parallel |
 | Q5 | Instrument characterization (Q and B, Levey–Jennings) | done: Q, B and CV0 from multi-level beads or LED series as flowQB computes them (validation `flowqb`: equal within 6e-9), runs kept per instrument and followed on Levey–Jennings charts with Westgard rules (validation `instrument`) |
+| Q6 | Titration and voltage optimization: stain and separation index per step, a recommended titer or voltage | planned (wave 5) |
 
 ## High-dimensional analysis
 
@@ -89,6 +98,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | H3 | Embedding faithfulness: trustworthiness, continuity, kNN preservation, mixing, seed stability, unreliable regions | done |
 | H4 | Differential abundance of clusters across groups | done (quasi-binomial, diffcyt-like) |
 | H5 | Placing new samples on an existing map | done: samples left out of a UMAP are placed on it with UMAP's transform, the map unchanged |
+| H6 | Differential state of markers per cluster or population across groups | planned (wave 6) |
 
 ## Specialized analyses
 
@@ -97,7 +107,9 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | A1 | Cell cycle: Dean–Jett–Fox and Watson | done |
 | A2 | Proliferation: generation fitting and Roederer's indices | done |
 | A3 | Index sorting: well-to-event links | done: a plate view (96- and 384-well and others) from BD's INDEX SORTING LOCATIONS or well parameters, colored by population or channel, wells marked on the plots, CSV export |
-| A4 | Kinetics and ratiometric (calcium) analysis | planned |
+| A4 | Kinetics and ratiometric (calcium) analysis | planned (wave 7) |
+| A5 | Plates: wells as samples, layouts, heat maps of any statistic | planned (wave 7) |
+| A6 | Dose-response (EC50/IC50) and Z′; bead-based immunoassay standard curves | planned (wave 7) |
 
 ## Comparison and statistics
 
@@ -118,6 +130,8 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R4 | Publication figures (SVG, PNG, PDF) that stay live until export | done |
 | R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | done: SVG, PNG and PDF exports carry the record; opening one reports what changed since and rebuilds it from the same files (validation `figures`) |
 | R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned |
+| R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | planned (wave 6) |
+| R8 | Reproducibility certificate that re-runs and confirms every reported number | planned (wave 8) |
 
 ## Interchange
 
@@ -127,6 +141,9 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | I2 | Gating-ML 2.0 import and export, including spectrum (unmixing) matrices, ratio dimensions and per-dimension compensation | done |
 | I3 | CLR export; ACS containers | done |
 | I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Compatibility tested with FlowJo 11.2.0 (build 11.2.0.210156, 2026-10-03): three exports within 0.6 percentage points, most within 0.1; CytoML 2.24 reads every export. Logicle and arcsinh scales are written as FlowJo biex for FlowJo 11. FlowJo 10 not tried |
+| I5 | Analysis templates applied by marker, with a match report; OMIP gating strategies; populations mapped to Cell Ontology IDs, carried into exports and methods | planned (wave 5) |
+| I6 | CSV event import; AnnData export; concatenated and downsampled FCS export | planned (wave 6) |
+| I7 | Acquisition-software experiments (FACSDiva, FACSChorus, SpectroFlo) and FlowJo 11 `.flowjo` workspaces | planned (wave 7) |
 
 ## Automation
 
@@ -135,6 +152,9 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M1 | MCP server for AI agents, acting in the visible window, every change undoable | done |
 | M2 | Remote control for local scripts | done |
 | M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
+| M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | planned (wave 5) |
+| M5 | R and Python clients for remote control | planned (wave 6) |
+| M6 | Optional on-device assistant, without network | planned (wave 8) |
 
 ## Quality
 
@@ -144,3 +164,4 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | V2 | End-to-end validation against simulated truth and published references in CI | done |
 | V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | done: ISAC's Gating-ML suite, FlowKit, FlowIO, FlowJo's saved counts, FACSDiva's spillover, and flowCore, PeacoQC, FlowSOM and CytoNorm in R |
 | V4 | Accessible: keyboard operation, labeled controls, color maps safe for color-vision deficiency | done: color-vision-friendly colors (a setting); WCAG AA contrast in both themes; keyboard tree, list, dialogs and scroll regions; plots described in text; axe-core audit of every documentation scene (`capture.mjs --audit`) and validation `accessibility`. Not done: drawing gates without a pointer; testing by screen-reader users |
+| V5 | Teaching mode on the examples | planned (wave 8) |
