@@ -71,8 +71,8 @@ export function createInstrumentSection(ctx) {
     const samples = chosenSamples();
     if (!samples.length || S.busy) return;
     S.busy = true;
-    let cancelled = false;
-    const progress = progressToast(`Measuring Q and B on ${samples.length} file${samples.length === 1 ? '' : 's'}…`, () => { cancelled = true; });
+    let canceled = false;
+    const progress = progressToast(`Measuring Q and B on ${samples.length} file${samples.length === 1 ? '' : 's'}…`, () => { canceled = true; });
     const byInstrument = new Map();
     try {
       const add = (instrument, run) => {
@@ -83,7 +83,7 @@ export function createInstrumentSection(ctx) {
       if (S.mode === 'series') {
         const items = [];
         for (const [i, sample] of samples.entries()) {
-          if (cancelled) throw new Error('Cancelled.');
+          if (canceled) throw new Error('Canceled.');
           items.push({ sample, view: await data.ensure(sample.id) });
           progress.update((i + 1) / (samples.length + 1), `Reading ${sample.name}`);
         }
@@ -91,7 +91,7 @@ export function createInstrumentSection(ctx) {
         add(instrumentOf(samples[0].keywords), seriesRun(items, { channels: fluorescenceChannels(samples[0], { heights: S.heights }) }));
       } else {
         for (const [i, sample] of samples.entries()) {
-          if (cancelled) throw new Error('Cancelled.');
+          if (canceled) throw new Error('Canceled.');
           progress.update(i / samples.length, `Fitting ${sample.name}`);
           await new Promise((resolve) => setTimeout(resolve, 0));
           const view = await data.ensure(sample.id);
@@ -303,7 +303,7 @@ export function createInstrumentSection(ctx) {
           : h('span.badge.ok', 'In control')),
         h('td.muted', run.source === 'library' ? `library${run.workspace ? ` · ${run.workspace}` : ''}` : 'this workspace'));
     }));
-    pane.append(h('div.qc-table-scroll', { style: { maxHeight: '280px' } }, h('table.data', h('thead', h('tr', h('th', 'Date'), h('th', 'File'), h('th.r', 'Detectors fitted'), h('th', 'Levey–Jennings'), h('th', 'Source'))), body)),
+    pane.append(h('div.qc-table-scroll', { tabIndex: 0, style: { maxHeight: '280px' } }, h('table.data', h('thead', h('tr', h('th', 'Date'), h('th', 'File'), h('th.r', 'Detectors fitted'), h('th', 'Levey–Jennings'), h('th', 'Source'))), body)),
       h('div.btn-row', { style: { marginTop: '10px' } },
         library.putRecord ? h('button.btn', { type: 'button', onclick: () => saveToLibrary(record), title: 'Keep these runs in the library\'s record of this instrument, to follow it across experiments' }, icon('library'), 'Save to the instrument\'s record') : null,
         h('button.btn.ghost', { type: 'button', onclick: () => exportCSV(runs) }, icon('download'), 'Export CSV'),
@@ -334,7 +334,7 @@ export function createInstrumentSection(ctx) {
     pane.append(h('h3', icon('table'), `${dateLabel(run.date)} · ${run.file}`),
       h('p.qc-explain', run.method === 'beads' ? `${run.peaks} levels found by k-means on the logicle-scaled detectors after a scatter gate (${run.gated?.toLocaleString('en-US')} of ${run.events?.toLocaleString('en-US')} events). ` : `${run.peaks} files, one level each. `,
         `Each peak's mean and SD are those of a normal fitted to its central 80%; peaks with a mean above ${sig(run.bounds?.maximum)} or below ${sig(run.bounds?.minimum)} are left out (the detector's linear range). Q in photoelectrons per unit of signal, B in photoelectrons, ± standard errors of the fit.`),
-      h('div.qc-table-scroll', { style: { maxHeight: '330px' } }, h('table.data', h('thead', h('tr', h('th', 'Detector'), h('th.r', 'Q'), h('th.r', 'B'), h('th.r', 'Bead CV'), h('th.r', 'Peaks used'), h('th.r', 'Brightest peak'), h('th.r', 'rCV'), h('th', 'Flags'))), body)));
+      h('div.qc-table-scroll', { tabIndex: 0, style: { maxHeight: '330px' } }, h('table.data', h('thead', h('tr', h('th', 'Detector'), h('th.r', 'Q'), h('th.r', 'B'), h('th.r', 'Bead CV'), h('th.r', 'Peaks used'), h('th.r', 'Brightest peak'), h('th.r', 'rCV'), h('th', 'Flags'))), body)));
     const c = run.channels[S.channel];
     if (c) {
       const omitted = c.peaks.filter((p) => p.omit);
@@ -356,7 +356,7 @@ export function createInstrumentSection(ctx) {
         h('label.field', h('span', 'Detector'), h('select.input.small', { onchange: (event) => { S.ljChannel = event.target.value; ctx.rerender(); } }, channels.map((ch) => h('option', { value: ch, selected: ch === S.ljChannel }, ch)))),
         h('label.field', h('span', 'Metric'), h('select.input.small', { onchange: (event) => { S.ljMetric = event.target.value; ctx.rerender(); } }, LJ_METRICS.map((m) => h('option', { value: m.id, selected: m.id === metric.id }, m.label))))),
       runs.length < 3 ? h('p.muted', 'Measure at least three runs to follow the instrument.') : ljChart(runs, series, metric),
-      h('p.muted.qc-small', `Mean ${sig(series.mean)} and SD ${sig(series.sd, 2)} from the first ${series.n} run${series.n === 1 ? '' : 's'} (shaded)${metric.level && series.level !== null ? `; bead level ${series.level + 1}, the brightest within the linear range in every run` : ''}. Red points break a rejection rule, amber ones warn; grey points come from the library.`));
+      h('p.muted.qc-small', `Mean ${sig(series.mean)} and SD ${sig(series.sd, 2)} from the first ${series.n} run${series.n === 1 ? '' : 's'} (shaded)${metric.level && series.level !== null ? `; bead level ${series.level + 1}, the brightest within the linear range in every run` : ''}. Red points break a rejection rule, amber ones warn; gray points come from the library.`));
     return pane;
   }
 

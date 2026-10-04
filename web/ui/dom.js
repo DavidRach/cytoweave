@@ -38,7 +38,11 @@ export function h(selector, props, ...children) {
     for (const [key, value] of Object.entries(props)) {
       if (value === undefined || value === null || value === false) continue;
       if (key === 'class' || key === 'className') el.className = [el.className, value].filter(Boolean).join(' ');
-      else if (key === 'style' && typeof value === 'object') Object.assign(el.style, value);
+      else if (key === 'style' && typeof value === 'object') {
+        Object.assign(el.style, value);
+        // A region that scrolls must be reachable by keyboard to be scrolled (WCAG 2.1.1).
+        if ([value.overflow, value.overflowY, value.overflowX].includes('auto') && !('tabIndex' in props) && !('tabindex' in props)) el.tabIndex = 0;
+      }
       else if (key === 'dataset') Object.assign(el.dataset, value);
       else if (key.startsWith('on') && typeof value === 'function') el.addEventListener(key.slice(2).toLowerCase(), value);
       else if (key === 'html') el.innerHTML = value;

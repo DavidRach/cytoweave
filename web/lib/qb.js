@@ -16,7 +16,7 @@
 // Each peak's mean and SD are the parameters of a normal distribution fitted to its central
 // 80% (extremevalues' getOutliers, method I, as flowQB uses): sorted values against the normal
 // quantiles of their plotting positions i/(N + 1), between the 10th and 90th percentiles. So
-// tails and stray events of a neighbouring peak barely move them.
+// tails and stray events of a neighboring peak barely move them.
 
 import { normalQuantile, studentTSurvival } from './hypothesis.js';
 import { kmeans } from './kmeans.js';

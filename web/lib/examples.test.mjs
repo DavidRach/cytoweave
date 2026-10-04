@@ -464,7 +464,7 @@ test('progress, cancellation, subsets and the async variant', async () => {
   const fractions = [];
   generateExample('cell-cycle', { scale: 0.02, onProgress: (f) => fractions.push(f) });
   assert.deepEqual(fractions, [0, 0.5, 1]);
-  assert.throws(() => generateExample('cell-cycle', { scale: 0.02, signal: { aborted: true } }), /cancelled/);
+  assert.throws(() => generateExample('cell-cycle', { scale: 0.02, signal: { aborted: true } }), /canceled/);
   assert.throws(() => generateExample('cell-cycle', { samples: ['missing.fcs'] }), /None of the requested/);
   assert.throws(() => generateExample('cell-cycle', { scale: 0 }), /positive/);
   const sync = generateExample('qc-showcase', { scale: 0.02 });

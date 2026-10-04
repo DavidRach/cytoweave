@@ -3,15 +3,15 @@
 //   trustworthiness    Venna & Kaski 2001 (doi:10.1007/3-540-44668-0_68), with continuity, its
 //                      mirror image; computed exactly for a seeded subsample of query events
 //                      against all events, which estimates the full-data value without bias.
-//   knnPreservation    mean fraction of each event's k nearest neighbours (high-dimensional) that
+//   knnPreservation    mean fraction of each event's k nearest neighbors (high-dimensional) that
 //                      are also among its k nearest in the embedding (Kobak & Berens 2019).
-//   seedStability      neighbourhood overlap and Procrustes disparity between two embeddings of
+//   seedStability      neighborhood overlap and Procrustes disparity between two embeddings of
 //                      the same events (e.g. two seeds); Gower 1975 orthogonal Procrustes.
-//   mixingEntropy      per-event normalised Shannon entropy of a category (sample, batch) among
-//                      its embedding neighbours.
+//   mixingEntropy      per-event normalized Shannon entropy of a category (sample, batch) among
+//                      its embedding neighbors.
 //   lisi               local inverse Simpson's index with perplexity 30 (Korsunsky et al. 2019,
 //                      Harmony, doi:10.1038/s41592-019-0619-0), as the LISI R package computes it.
-//   regionReliability  per-event neighbourhood precision and recall (Venna et al. 2010, JMLR
+//   regionReliability  per-event neighborhood precision and recall (Venna et al. 2010, JMLR
 //                      11:451) for shading unreliable regions of a map.
 //   assessEmbedding    all of the above with plain-language warnings.
 //
@@ -27,8 +27,8 @@ function checkMatrix(data, n, dim, name) {
 }
 
 function checkK(n, k) {
-  if (!Number.isInteger(k) || k < 1) throw new Error('The neighbourhood size k must be a positive whole number.');
-  if (k >= n / 2) throw new Error(`A neighbourhood of ${k} needs more than ${2 * k} events; this selection has ${n}.`);
+  if (!Number.isInteger(k) || k < 1) throw new Error('The neighborhood size k must be a positive whole number.');
+  if (k >= n / 2) throw new Error(`A neighborhood of ${k} needs more than ${2 * k} events; this selection has ${n}.`);
 }
 
 // Max-heap of (distance, index) pairs of fixed size k in flat arrays; root = current worst.
@@ -118,8 +118,8 @@ function chooseSample(n, options) {
   return sampleIndices(n, Math.min(n, sampleSize), createRandom(seed));
 }
 
-// Exact neighbourhood statistics of the sampled events against all events, in both spaces.
-function sampledNeighbourhoods(high, low, n, dimHigh, dimLow, k, sample, options = {}) {
+// Exact neighborhood statistics of the sampled events against all events, in both spaces.
+function sampledNeighborhoods(high, low, n, dimHigh, dimLow, k, sample, options = {}) {
   const { keepHigh = 0, keepLow = 0, onProgress, signal } = options;
   const m = sample.length;
   const dH = new Float64Array(n);
@@ -141,7 +141,7 @@ function sampledNeighbourhoods(high, low, n, dimHigh, dimLow, k, sample, options
   for (let s = 0; s < m; s += 1) {
     if ((s & 31) === 0) {
       throwIfAborted(signal);
-      if (onProgress) onProgress(s / m, 'Comparing neighbourhoods');
+      if (onProgress) onProgress(s / m, 'Comparing neighborhoods');
     }
     const i = sample[s];
     distancesFrom(high, n, dimHigh, i, dH);
@@ -204,7 +204,7 @@ function sampledNeighbourhoods(high, low, n, dimHigh, dimLow, k, sample, options
 }
 
 // Trustworthiness T(k) = 1 − 2/(n k (2n − 3k − 1)) Σ_i Σ_{j ∈ U_k(i)} (r(i, j) − k), where U_k(i)
-// are the embedding neighbours of i that are not among its k nearest in the original space and r
+// are the embedding neighbors of i that are not among its k nearest in the original space and r
 // their rank there (Venna & Kaski 2001; equals sklearn.manifold.trustworthiness on all events).
 // Evaluated for options.sampleSize (1000) seeded query events against all n events. Returns
 // { value, continuity, knnPreservation, perPoint (local trustworthiness of the sampled events),
@@ -214,7 +214,7 @@ export function trustworthiness(high, low, n, dimHigh, dimLow, k = 15, options =
   checkMatrix(low, n, dimLow, 'embedding');
   checkK(n, k);
   const sample = chooseSample(n, options);
-  const stats = sampledNeighbourhoods(high, low, n, dimHigh, dimLow, k, sample, options);
+  const stats = sampledNeighborhoods(high, low, n, dimHigh, dimLow, k, sample, options);
   return {
     value: stats.trustworthiness,
     continuity: stats.continuity,
@@ -226,9 +226,9 @@ export function trustworthiness(high, low, n, dimHigh, dimLow, k = 15, options =
   };
 }
 
-// Mean fraction of each event's k nearest original-space neighbours that are also among its k
-// nearest embedding neighbours. Exact on a seeded subsample (options.sampleSize, default 1000);
-// with options.full = true, over all events using the neighbour searches of knn.js (approximate in
+// Mean fraction of each event's k nearest original-space neighbors that are also among its k
+// nearest embedding neighbors. Exact on a seeded subsample (options.sampleSize, default 1000);
+// with options.full = true, over all events using the neighbor searches of knn.js (approximate in
 // the original space above 5000 events). Chance level is k / (n − 1).
 export function knnPreservation(high, low, n, dimHigh, dimLow, k = 15, options = {}) {
   checkMatrix(high, n, dimHigh, 'original data');
@@ -252,7 +252,7 @@ export function knnPreservation(high, low, n, dimHigh, dimLow, k = 15, options =
     return { value: total / n, perPoint, chance: k / (n - 1), k };
   }
   const sample = chooseSample(n, options);
-  const stats = sampledNeighbourhoods(high, low, n, dimHigh, dimLow, k, sample, options);
+  const stats = sampledNeighborhoods(high, low, n, dimHigh, dimLow, k, sample, options);
   return { value: stats.knnPreservation, perPoint: stats.overlap, sample, chance: k / (n - 1), k };
 }
 
@@ -285,7 +285,7 @@ export function procrustes(A, B, n, dim) {
   }
   na = Math.sqrt(na) || 1;
   nb = Math.sqrt(nb) || 1;
-  // M = Bᵀ A (dim × dim) of the standardised configurations.
+  // M = Bᵀ A (dim × dim) of the standardized configurations.
   const M = new Float64Array(dim * dim);
   for (let i = 0; i < n; i += 1) {
     for (let r = 0; r < dim; r += 1) {
@@ -390,7 +390,7 @@ function jacobiEigen(matrix, n) {
 }
 
 // Agreement of two embeddings of the same events (different seeds, subsamples or parameters):
-// per-event fraction of shared k nearest neighbours, and the Procrustes disparity of the whole
+// per-event fraction of shared k nearest neighbors, and the Procrustes disparity of the whole
 // layouts (0 = identical up to rotation, reflection, scale and shift). Options: dim (2).
 export function seedStability(embeddingA, embeddingB, n, k = 15, options = {}) {
   const { dim = 2, signal } = options;
@@ -411,7 +411,7 @@ export function seedStability(embeddingA, embeddingB, n, k = 15, options = {}) {
   }
   const fit = procrustes(embeddingA, embeddingB, n, dim);
   return {
-    neighbourOverlap: total / n,
+    neighborOverlap: total / n,
     perPoint,
     disparity: fit.disparity,
     rmsd: fit.rmsd,
@@ -449,8 +449,8 @@ function median(values) {
   return m % 2 ? sorted[(m - 1) / 2] : (sorted[m / 2 - 1] + sorted[m / 2]) / 2;
 }
 
-// Normalised Shannon entropy H/ln C of the labels among each event's k embedding neighbours
-// (1 = as mixed as possible, 0 = all neighbours share one label). `expected` is the entropy of the
+// Normalized Shannon entropy H/ln C of the labels among each event's k embedding neighbors
+// (1 = as mixed as possible, 0 = all neighbors share one label). `expected` is the entropy of the
 // overall label proportions — the value perfect mixing would give. Options: dim (2).
 export function mixingEntropy(low, n, labels, k = 30, options = {}) {
   const { dim = 2, signal } = options;
@@ -459,14 +459,14 @@ export function mixingEntropy(low, n, labels, k = 30, options = {}) {
   const { codes, categories, proportions } = encodeLabels(labels, n);
   const perPoint = new Float32Array(n);
   if (categories < 2) return { perPoint: perPoint.fill(1), mean: 1, median: 1, expected: 1, relative: 1, categories, k: kk };
-  const neighbours = options.knn ?? knn(low, n, dim, kk, { signal });
-  const kn = neighbours.indices.length / n;
+  const neighbors = options.knn ?? knn(low, n, dim, kk, { signal });
+  const kn = neighbors.indices.length / n;
   const counts = new Int32Array(categories);
   const logC = Math.log(categories);
   let total = 0;
   for (let i = 0; i < n; i += 1) {
     counts.fill(0);
-    for (let t = 0; t < kn; t += 1) counts[codes[neighbours.indices[i * kn + t]]] += 1;
+    for (let t = 0; t < kn; t += 1) counts[codes[neighbors.indices[i * kn + t]]] += 1;
     let h = 0;
     for (let c = 0; c < categories; c += 1) {
       if (counts[c]) {
@@ -483,7 +483,7 @@ export function mixingEntropy(low, n, labels, k = 30, options = {}) {
   return { perPoint, mean, median: median(perPoint), expected, relative: expected > 0 ? mean / expected : 1, categories, k: kn };
 }
 
-// Simpson's index Σ_c (Σ_{j ∈ c} P_j)² of one neighbourhood with Gaussian weights P_j ∝
+// Simpson's index Σ_c (Σ_{j ∈ c} P_j)² of one neighborhood with Gaussian weights P_j ∝
 // exp(−β d_j) on (unsquared) distances, β set by bisection to the perplexity, as LISI's
 // compute_simpson_index. `d` includes the event itself at distance 0.
 function simpsonIndex(d, codes, ids, kk, perplexity, P, counts) {
@@ -523,9 +523,9 @@ function simpsonIndex(d, codes, ids, kk, perplexity, P, counts) {
   return simpson;
 }
 
-// LISI from neighbour lists that exclude the events themselves (rows of `indices`/`distances`,
+// LISI from neighbor lists that exclude the events themselves (rows of `indices`/`distances`,
 // width kn), for the events `rows` (null = 0…m−1, the row's own event id).
-function lisiFromNeighbours(indices, distances, kn, codes, categories, perplexity, rowIds) {
+function lisiFromNeighbors(indices, distances, kn, codes, categories, perplexity, rowIds) {
   const m = rowIds.length;
   const kk = kn + 1;
   const d = new Float64Array(kk);
@@ -546,7 +546,7 @@ function lisiFromNeighbours(indices, distances, kn, codes, categories, perplexit
 }
 
 // Local inverse Simpson's index (Korsunsky et al. 2019): the effective number of categories in
-// each event's embedding neighbourhood (1 … C), from 3·perplexity neighbours (the event itself
+// each event's embedding neighborhood (1 … C), from 3·perplexity neighbors (the event itself
 // included, as RANN::nn2 returns it) weighted by a Gaussian kernel calibrated to the perplexity.
 // `ideal` is 1/Σπ_c², the value of perfect mixing; `normalized` = (mean − 1)/(ideal − 1).
 export function lisi(low, n, labels, options = {}) {
@@ -558,10 +558,10 @@ export function lisi(low, n, labels, options = {}) {
   ideal = 1 / ideal;
   const kn = Math.min(n - 1, Math.max(1, Math.round(3 * perplexity) - 1));
   const perp = Math.min(perplexity, (kn + 1) / 3);
-  const neighbours = options.knn ?? knn(low, n, dim, kn, { signal });
-  const width = neighbours.indices.length / n;
+  const neighbors = options.knn ?? knn(low, n, dim, kn, { signal });
+  const width = neighbors.indices.length / n;
   const rowIds = Int32Array.from({ length: n }, (_, i) => i);
-  const perPoint = lisiFromNeighbours(neighbours.indices, neighbours.distances, width, codes, categories, perp, rowIds);
+  const perPoint = lisiFromNeighbors(neighbors.indices, neighbors.distances, width, codes, categories, perp, rowIds);
   let total = 0;
   for (let i = 0; i < n; i += 1) total += perPoint[i];
   const mean = total / n;
@@ -578,26 +578,26 @@ export function lisi(low, n, labels, options = {}) {
 
 // --- Local reliability ---------------------------------------------------------------------------
 
-// Per-event neighbourhood precision (the share of its k embedding neighbours that are among its
-// kWide nearest original-space neighbours — a local trustworthiness) and recall (the share of its
-// k original-space neighbours found among its kWide nearest embedding neighbours — a local
+// Per-event neighborhood precision (the share of its k embedding neighbors that are among its
+// kWide nearest original-space neighbors — a local trustworthiness) and recall (the share of its
+// k original-space neighbors found among its kWide nearest embedding neighbors — a local
 // continuity), Venna et al. 2010. `score` is their mean, averaged over the event and its k
-// embedding neighbours so that the UI can shade regions. Options: k (15), kWide (5k), highKnn,
-// lowKnn (precomputed neighbour tables, e.g. from UMAP; ignored when narrower than kWide), smooth
+// embedding neighbors so that the UI can shade regions. Options: k (15), kWide (5k), highKnn,
+// lowKnn (precomputed neighbor tables, e.g. from UMAP; ignored when narrower than kWide), smooth
 // (true), seed, metric.
 //
 // kWide is wide on purpose. Among similar cells, which ones are the very nearest is mostly
 // measurement noise that no map can keep, so with kWide = k even a good UMAP of simulated PBMC
-// scores ~0.33 everywhere. Asking whether map neighbours come from the event's wider
-// neighbourhood (5k) separates real distortion from noise: that UMAP scores a median of 0.74,
+// scores ~0.33 everywhere. Asking whether map neighbors come from the event's wider
+// neighborhood (5k) separates real distortion from noise: that UMAP scores a median of 0.74,
 // a random layout 0.01.
 export const RELIABILITY_THRESHOLD = 0.4;
 
 //
-// The wide neighbourhood must be a similar share of the data whatever the event count (75 of
+// The wide neighborhood must be a similar share of the data whatever the event count (75 of
 // 60 000 events is again mostly noise), so maps of more than options.maxEvents (10 000) events
 // are scored on a seeded subsample of that size, and every other event takes the score of its
-// nearest scored neighbour on the map.
+// nearest scored neighbor on the map.
 export function regionReliability(high, low, n, dimHigh, dimLow, options = {}) {
   checkMatrix(high, n, dimHigh, 'original data');
   checkMatrix(low, n, dimLow, 'embedding');
@@ -621,7 +621,7 @@ export function regionReliability(high, low, n, dimHigh, dimLow, options = {}) {
   const own = new Map();
   for (let r = 0; r < m; r += 1) own.set(sample[r], r);
   const out = { precision: spread(sub.precision), recall: spread(sub.recall), score: spread(sub.score), raw: spread(sub.raw) };
-  // Scored events keep their own values (their nearest scored neighbour could be a tie).
+  // Scored events keep their own values (their nearest scored neighbor could be a tie).
   for (const [i, r] of own) {
     out.precision[i] = sub.precision[r];
     out.recall[i] = sub.recall[r];
@@ -701,7 +701,7 @@ export function assessEmbedding(high, low, n, dimHigh, dimLow, options = {}) {
   const sample = chooseSample(n, options);
   const wantBatch = !!labels;
   const kLisi = Math.min(n - 1, Math.max(1, Math.round(3 * perplexity) - 1));
-  const stats = sampledNeighbourhoods(high, low, n, dimHigh, dimLow, k, sample, {
+  const stats = sampledNeighborhoods(high, low, n, dimHigh, dimLow, k, sample, {
     keepHigh: wantBatch ? kLisi : 0,
     keepLow: wantBatch ? kLisi : 0,
     signal,
@@ -719,21 +719,21 @@ export function assessEmbedding(high, low, n, dimHigh, dimLow, options = {}) {
   };
   const warn = (level, code, message) => result.warnings.push({ level, code, message });
 
-  // Exact neighbours are a strict test: among similar cells, which are the very nearest is largely
+  // Exact neighbors are a strict test: among similar cells, which are the very nearest is largely
   // noise, so t-SNE and UMAP keep only a minority of them even when the map is faithful. A
   // value near chance means the map has lost local structure altogether.
   if (stats.knnPreservation < Math.max(0.05, 10 * result.chance)) {
-    warn('warning', 'neighbourhoods', `Neighbourhoods are lost (${percent(stats.knnPreservation)} of each event's ${k} nearest neighbours stay neighbours in the map, close to chance): read nothing into shapes or positions inside islands.`);
+    warn('warning', 'neighborhoods', `Neighborhoods are lost (${percent(stats.knnPreservation)} of each event's ${k} nearest neighbors stay neighbors in the map, close to chance): read nothing into shapes or positions inside islands.`);
   } else if (stats.knnPreservation < 0.35) {
-    warn('info', 'neighbourhoods', `${percent(stats.knnPreservation)} of each event's ${k} nearest neighbours stay neighbours in the map. That is usual for t-SNE and UMAP: among similar cells the very nearest are largely noise. Islands are meaningful, the arrangement of events within them is not.`);
+    warn('info', 'neighborhoods', `${percent(stats.knnPreservation)} of each event's ${k} nearest neighbors stay neighbors in the map. That is usual for t-SNE and UMAP: among similar cells the very nearest are largely noise. Islands are meaningful, the arrangement of events within them is not.`);
   }
   if (stats.trustworthiness < 0.85) {
-    warn('warning', 'trustworthiness', `Many map neighbours are not true neighbours (trustworthiness ${stats.trustworthiness.toFixed(2)}): islands may merge unrelated events.`);
+    warn('warning', 'trustworthiness', `Many map neighbors are not true neighbors (trustworthiness ${stats.trustworthiness.toFixed(2)}): islands may merge unrelated events.`);
   } else if (stats.trustworthiness < 0.92) {
-    warn('info', 'trustworthiness', `Some map neighbours are not true neighbours (trustworthiness ${stats.trustworthiness.toFixed(2)}).`);
+    warn('info', 'trustworthiness', `Some map neighbors are not true neighbors (trustworthiness ${stats.trustworthiness.toFixed(2)}).`);
   }
   if (stats.continuity < 0.85) {
-    warn('warning', 'continuity', `True neighbours are torn apart (continuity ${stats.continuity.toFixed(2)}): one population may appear as several islands.`);
+    warn('warning', 'continuity', `True neighbors are torn apart (continuity ${stats.continuity.toFixed(2)}): one population may appear as several islands.`);
   }
 
   if (wantBatch) {
@@ -743,8 +743,8 @@ export function assessEmbedding(high, low, n, dimHigh, dimLow, options = {}) {
     for (let c = 0; c < categories; c += 1) ideal += proportions[c] * proportions[c];
     ideal = 1 / ideal;
     const perp = Math.min(perplexity, (kLisi + 1) / 3);
-    const lisiHigh = lisiFromNeighbours(stats.wideHigh.indices, stats.wideHigh.distances, kLisi, codes, categories, perp, Int32Array.from(sample));
-    const lisiLow = lisiFromNeighbours(stats.wideLow.indices, stats.wideLow.distances, kLisi, codes, categories, perp, Int32Array.from(sample));
+    const lisiHigh = lisiFromNeighbors(stats.wideHigh.indices, stats.wideHigh.distances, kLisi, codes, categories, perp, Int32Array.from(sample));
+    const lisiLow = lisiFromNeighbors(stats.wideLow.indices, stats.wideLow.distances, kLisi, codes, categories, perp, Int32Array.from(sample));
     let mh = 0;
     let ml = 0;
     for (let s = 0; s < sample.length; s += 1) {
@@ -769,7 +769,7 @@ export function assessEmbedding(high, low, n, dimHigh, dimLow, options = {}) {
         const cause = mo < 0.3
           ? 'the samples are already separated in the original data (a batch or biological effect), not only in the map'
           : 'the samples mix in the original data, so the map exaggerates their differences';
-        warn('warning', 'batch', `Batch dominates the layout: neighbourhoods in the map are ${percent(me)} as mixed as ideal (LISI ${ml.toFixed(2)} of ${ideal.toFixed(2)}); ${cause}.`);
+        warn('warning', 'batch', `Batch dominates the layout: neighborhoods in the map are ${percent(me)} as mixed as ideal (LISI ${ml.toFixed(2)} of ${ideal.toFixed(2)}); ${cause}.`);
       } else if (me < mo - 0.25) {
         warn('info', 'batch', `The map separates samples more than the data do (mixing ${percent(me)} in the map vs ${percent(mo)} in the original space).`);
       }
@@ -780,7 +780,7 @@ export function assessEmbedding(high, low, n, dimHigh, dimLow, options = {}) {
     throwIfAborted(signal);
     const stability = seedStability(low, other, n, k, { dim: dimLow, signal });
     result.stability = {
-      neighbourOverlap: stability.neighbourOverlap,
+      neighborOverlap: stability.neighborOverlap,
       disparity: stability.disparity,
       rmsd: stability.rmsd,
       perPoint: stability.perPoint,
@@ -788,8 +788,8 @@ export function assessEmbedding(high, low, n, dimHigh, dimLow, options = {}) {
     if (stability.disparity > 0.3) {
       warn('warning', 'seed-global', `Islands differ between seeds: the overall arrangement changes with the random seed (Procrustes disparity ${stability.disparity.toFixed(2)}). Do not interpret positions of islands relative to each other.`);
     }
-    if (stability.neighbourOverlap < 0.5) {
-      warn('warning', 'seed-local', `Local structure differs between seeds: only ${percent(stability.neighbourOverlap)} of map neighbours are shared between the two runs.`);
+    if (stability.neighborOverlap < 0.5) {
+      warn('warning', 'seed-local', `Local structure differs between seeds: only ${percent(stability.neighborOverlap)} of map neighbors are shared between the two runs.`);
     }
   }
 
@@ -804,7 +804,7 @@ export function assessEmbedding(high, low, n, dimHigh, dimLow, options = {}) {
     result.reliability.unreliableFraction = unreliable / n;
     result.reliability.kWide = reliability.kWide;
     if (unreliable / n > 0.1) {
-      warn('info', 'regions', `${percent(unreliable / n)} of events sit in regions where fewer than two in five of their map neighbours come from their ${reliability.kWide} nearest in the data; these are shaded as unreliable.`);
+      warn('info', 'regions', `${percent(unreliable / n)} of events sit in regions where fewer than two in five of their map neighbors come from their ${reliability.kWide} nearest in the data; these are shaded as unreliable.`);
     }
   }
   if (onProgress) onProgress(1, 'Embedding assessed');

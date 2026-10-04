@@ -20,8 +20,9 @@ import { ellipseFromCovariance } from './gatingml.js';
 
 const POPULATION_NODES = ['Population', 'NotNode', 'OrNode', 'AndNode'];
 const BOOLEAN_OPS = { AndNode: 'and', OrNode: 'or', NotNode: 'not' };
-// FlowJo writes "no bound" as a missing attribute, but some versions write huge sentinels.
-const OPEN_BOUND = 1e30;
+// FlowJo writes "no bound" as a missing attribute, but some versions write huge sentinels, and
+// CytoWeave's export writes 1e9 (FlowJo 11 needs every bound written).
+const OPEN_BOUND = 1e9;
 // FlowJo numbers quadrants clockwise from the upper left.
 const FLOWJO_QUADRANTS = { Q1: 'UL', Q2: 'UR', Q3: 'LR', Q4: 'LL' };
 
@@ -200,7 +201,7 @@ export function ellipseFromConjugateDiameters(points) {
 }
 
 // The ends of an ellipse's axes, for remapping it into another scale.
-// A FlowJo ellipse from its foci and edge points (in scale space): the centre between the foci,
+// A FlowJo ellipse from its foci and edge points (in scale space): the center between the foci,
 // the major radius from the edge point farthest along the major axis, the minor radius from
 // a² = b² + c² with c the focal distance.
 export function ellipseFromFlowJo(foci, edges) {
@@ -421,7 +422,15 @@ function importSample(el, index, { warnings, fidelity }) {
           if (which === 'min' && y === -Infinity) return null; // below the scale: every event qualifies
           return Number.isFinite(y) ? y : toScale(k, value, which);
         };
-        if (dims.length === 1) {
+        // A range written for FlowJo 11 as a rectangle whose second dimension is unbounded.
+        const unbounded = (k) => bound(k, 'min') === null && bound(k, 'max') === null;
+        const kept = dims.length === 2 && unbounded(1) && !unbounded(0) ? 0 : dims.length === 2 && unbounded(0) && !unbounded(1) ? 1 : null;
+        if (kept !== null) {
+          out.dims = [out.dims[kept]];
+          out.compensated = [out.compensated[kept]];
+          out.type = 'range';
+          out.geometry = { min: bound(kept, 'min'), max: bound(kept, 'max') };
+        } else if (dims.length === 1) {
           out.type = 'range';
           out.geometry = { min: bound(0, 'min'), max: bound(0, 'max') };
         } else {

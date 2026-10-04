@@ -1,6 +1,6 @@
 # CytoWeave requirements
 
-What CytoWeave must do, and the status of each requirement in 0.3.0.
+What CytoWeave must do, and the status of each requirement in 0.4.0.
 - `research.md` explains why each requirement is here: the methods and
   standards of §3–4 and the design implications of §8.
 - `design.md` explains how the requirements are met.
@@ -23,7 +23,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| P1 | One self-contained program for macOS, Linux and Windows (x64 and ARM64); a one-line install; no licence server, account, Python, R or plugins | done |
+| P1 | One self-contained program for macOS, Linux and Windows (x64 and ARM64); a one-line install; no license server, account, Python, R or plugins | done |
 | P2 | The web application also runs from a static web server, without the Go host | done (library falls back to OPFS and IndexedDB) |
 | P3 | Files never leave the computer; no network requests of its own | done |
 | P4 | Apache-2.0; no third-party runtime dependencies | done |
@@ -67,7 +67,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | S3 | OLS, WLS (fixed and per-event weights) and NNLS unmixing; residual channel | done |
 | S4 | Complexity index, similarity and spreading matrices | done |
 | S5 | Comparison of unmixing models on the user's own sample | done |
-| S6 | Predicted spread for panel design from the user's own references | planned |
+| S6 | Predicted spread for panel design from the user's own references | done: photon and laser noise fitted to the controls, kept per instrument or from bead runs; validated on simulated and real (LSRFortessa) controls |
 | S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
 
 ## Quality control and normalization
@@ -77,7 +77,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | Q1 | PeacoQC (classic and refined), flow rate, margins, drift; a reversible "QC pass" channel | done |
 | Q2 | Cohort QC overview with scores | done |
 | Q3 | CytoNorm with a confounding check; bead normalization; debarcoding | done |
-| Q4 | QC of files as they are acquired (folder watching) | planned |
+| Q4 | QC of files as they are acquired (folder watching) | done: the program watches a folder read-only and hands over complete files; acquisition QC or Q and B as they land; PeacoQC's channels in parallel |
 | Q5 | Instrument characterization (Q and B, Levey–Jennings) | done: Q, B and CV0 from multi-level beads or LED series as flowQB computes them (validation `flowqb`: equal within 6e-9), runs kept per instrument and followed on Levey–Jennings charts with Westgard rules (validation `instrument`) |
 
 ## High-dimensional analysis
@@ -106,6 +106,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | T1 | Group comparisons with tests chosen from the design, nonparametric counterparts, effect sizes and confidence intervals | done |
 | T2 | Screens of every population or cluster with multiple-testing correction | done |
 | T3 | Numbers agree with R | done (validation `reference`) |
+| T4 | Robustness of a comparison to preprocessing choices (counterfactual preprocessing, specification curve) | done: gate boundaries, adapted or shared per-sample gates, QC (removed, re-run), compensation and test, alone and combined; verdict, the choices it depends on, a methods sentence; agent tool `check_robustness`; validation `multiverse` (known artifacts) and `multiverse-ics` (real study) |
 
 ## Output, provenance and reporting
 
@@ -125,7 +126,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | I1 | FlowJo 10 workspaces imported with a per-population fidelity report and count comparison | done (on real workspaces, FlowJo's saved counts reproduced at least as often as FlowKit does; FlowJo's display-resolution gating moves 0.1–0.3% of large populations) |
 | I2 | Gating-ML 2.0 import and export, including spectrum (unmixing) matrices, ratio dimensions and per-dimension compensation | done |
 | I3 | CLR export; ACS containers | done |
-| I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Not yet opened in FlowJo itself |
+| I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Compatibility tested with FlowJo 11.2.0 (build 11.2.0.210156, 2026-10-03): three exports within 0.6 percentage points, most within 0.1; CytoML 2.24 reads every export. Logicle and arcsinh scales are written as FlowJo biex for FlowJo 11. FlowJo 10 not tried |
 
 ## Automation
 
@@ -142,4 +143,4 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | V1 | Unit tests of every analysis module against independently known values | done |
 | V2 | End-to-end validation against simulated truth and published references in CI | done |
 | V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | done: ISAC's Gating-ML suite, FlowKit, FlowIO, FlowJo's saved counts, FACSDiva's spillover, and flowCore, PeacoQC, FlowSOM and CytoNorm in R |
-| V4 | Accessible: keyboard operation, labelled controls, colour maps safe for colour-vision deficiency | partial |
+| V4 | Accessible: keyboard operation, labeled controls, color maps safe for color-vision deficiency | done: color-vision-friendly colors (a setting); WCAG AA contrast in both themes; keyboard tree, list, dialogs and scroll regions; plots described in text; axe-core audit of every documentation scene (`capture.mjs --audit`) and validation `accessibility`. Not done: drawing gates without a pointer; testing by screen-reader users |

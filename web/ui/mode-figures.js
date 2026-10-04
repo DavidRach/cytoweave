@@ -45,7 +45,7 @@ export function mountFiguresMode(app, container) {
   const listHost = h('div');
   const propsHost = h('div');
   const page = h('div.figure-page');
-  const stage = h('div.figure-stage', page);
+  const stage = h('div.figure-stage', { tabIndex: 0, role: 'region', 'aria-label': 'Figure page' }, page);
   const headActions = h('div.btn-row');
   const root = h('div.view',
     h('div.workbench-head', h('h1', icon('figure'), 'Figures'), h('span.spacer'), headActions),

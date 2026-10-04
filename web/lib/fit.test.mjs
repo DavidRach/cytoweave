@@ -127,7 +127,7 @@ test('vector-form models and central differences', () => {
   assert.ok(fit.chiSquare < 1e-12);
 });
 
-test('Nelder–Mead minimises the Rosenbrock function', () => {
+test('Nelder–Mead minimizes the Rosenbrock function', () => {
   const rosen = (p) => 100 * (p[1] - p[0] * p[0]) ** 2 + (1 - p[0]) ** 2;
   const result = nelderMead(rosen, [-1.2, 1], { xtol: 1e-10, ftol: 1e-14, maxIterations: 5000, maxEvaluations: 10000 });
   assert.ok(result.converged);
@@ -164,7 +164,7 @@ test('erfcFast matches known values to its stated accuracy', () => {
   close(normalCdfFast(1.959963984540054), 0.975, 1e-7);
 });
 
-test('addGaussianBins conserves area and centres the peak', () => {
+test('addGaussianBins conserves area and centers the peak', () => {
   const out = new Float64Array(100);
   addGaussianBins(out, 0, 1, 1000, 50.5, 3);
   close(out.reduce((a, b) => a + b, 0), 1000, 1e-4);

@@ -322,30 +322,57 @@ export function robustSlope(xPos, yPos, xNeg = [], yNeg = []) {
 
 // Spillover spreading matrix (Nguyen, Perfetto, Mahnke, Chattopadhyay & Roederer 2013):
 // SS_ij = sqrt(σ²_pos,j − σ²_neg,j) / sqrt(ΔF_i), from compensated single-stain controls,
-// with σ the robust SD. Rows: fluorochromes (controls); columns: detectors.
-export function spilloverSpreading(controls, detectors) {
+// with σ the robust SD. Rows: fluorochromes (controls); columns: detectors. Off-scale events
+// are left out when the controls carry their uncompensated columns (control.raw) and the
+// detectors' ranges are given (options.range, options.ranges[detector]), as in computeSpillover:
+// a clipped event looks like spread in every detector. Also returns, for spread.js, each
+// control's ΔF and per-detector variance difference with its standard error (`observations`).
+export function spilloverSpreading(controls, detectors, options = {}) {
   const n = detectors.length;
   const ssm = new Float64Array(n * n).fill(Number.NaN);
+  const observations = [];
   for (const control of controls) {
     const i = detectors.indexOf(control.channel);
     if (i < 0) continue;
-    const { positive, negative } = control.positive && control.negative ? control : splitControl(control.columns[control.channel]);
     const primary = control.columns[control.channel];
+    let { positive, negative } = control;
+    if (!positive || !negative) {
+      const split = splitControl(primary);
+      positive = positive ?? split.positive;
+      negative = negative ?? split.negative;
+    }
+    if (control.raw) {
+      const limits = detectors.map((d) => saturationOf(options, d));
+      const columns = detectors.map((d) => control.raw[d]);
+      const onScaleAll = (e) => columns.every((c, k) => !c || c[e] < limits[k]);
+      positive = Array.from(positive).filter(onScaleAll);
+      negative = Array.from(negative).filter(onScaleAll);
+    }
     const deltaF = median(select(primary, positive)) - median(select(primary, negative));
     if (!(deltaF > 0)) continue;
+    const rows = [];
     for (let j = 0; j < n; j += 1) {
       if (j === i) {
         ssm[i * n + j] = 0;
         continue;
       }
       const detector = control.columns[detectors[j]];
+      if (!detector) continue;
       const sPos = robustSD(select(detector, positive));
       const sNeg = robustSD(select(detector, negative));
       const spread = sPos * sPos - sNeg * sNeg;
       ssm[i * n + j] = spread > 0 ? Math.sqrt(spread) / Math.sqrt(deltaF) : 0;
+      rows.push({ j, variance: spread, se: robustVarianceSE(sPos, positive.length, sNeg, negative.length) });
     }
+    observations.push({ i, deltaF, positiveEvents: positive.length, rows });
   }
-  return { channels: detectors.slice(), matrix: ssm, n };
+  return { channels: detectors.slice(), matrix: ssm, n, observations };
+}
+
+// The standard error of a difference of two robust variances (σ = p84 − p50 of n normal values):
+// the delta method on the quantiles gives Var(σ̂) ≈ 2.207 σ²/n, so Var(σ̂²) ≈ 8.83 σ⁴/n.
+export function robustVarianceSE(sPos, nPos, sNeg, nNeg) {
+  return Math.sqrt(8.83 * ((sPos ** 4) / Math.max(nPos, 1) + (sNeg ** 4) / Math.max(nNeg, 1)));
 }
 
 // Residual check of a compensated single-stain control: in every other detector, the positive

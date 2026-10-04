@@ -7,16 +7,16 @@
 // potential most). Hamerly G. Making k-means even faster. SDM 2010,
 // doi:10.1137/1.9781611972801.12. Sculley D. Web-scale k-means clustering. WWW 2010,
 // doi:10.1145/1772690.1772862. Convergence and empty-cluster handling follow scikit-learn's
-// KMeans: stop when no label changes or the summed squared centre shift is ≤ tol × the mean
-// per-channel variance; an empty cluster is moved to the event farthest from its centre.
+// KMeans: stop when no label changes or the summed squared center shift is ≤ tol × the mean
+// per-channel variance; an empty cluster is moved to the event farthest from its center.
 //
 // Input: `data` is a dense row-major Float32Array of n × dim values on an analysis scale.
 
 import { createRandom, sampleIndices } from './random.js';
 import { checkMatrix } from './flowsom.js';
 
-function cancelled() {
-  const error = new Error('Clustering was cancelled.');
+function canceled() {
+  const error = new Error('Clustering was canceled.');
   error.name = 'AbortError';
   return error;
 }
@@ -25,7 +25,7 @@ function cancelled() {
 // most 100 passes over the data), tol (1e-4), algorithm ('hamerly' | 'lloyd' | 'minibatch'; default 'hamerly'), batchSize
 // (1024), maxNoImprovement (10, mini-batch early stopping), initSize (events used for k-means++
 // seeding: all for Lloyd/Hamerly, 3 × batchSize for mini-batch), init (Float64Array of k × dim
-// starting centres, used for the first restart), onProgress, signal.
+// starting centers, used for the first restart), onProgress, signal.
 // Returns { labels: Int32Array(n), centers: Float64Array(k × dim), counts: Uint32Array(k),
 // inertia, iterations, converged, seed }.
 export function kmeans(data, n, dim, k, options = {}) {
@@ -46,7 +46,7 @@ export function kmeans(data, n, dim, k, options = {}) {
   const initSize = Math.max(k, Math.min(n, options.initSize ?? defaultInit));
   let best = null;
   for (let run = 0; run < nInit; run += 1) {
-    if (signal?.aborted) throw cancelled();
+    if (signal?.aborted) throw canceled();
     const report = onProgress
       ? (f, message) => onProgress((run + f) / nInit, nInit > 1 ? `${message} (start ${run + 1} of ${nInit})` : message)
       : null;
@@ -130,7 +130,7 @@ export function kmeansPlusPlus(data, n, dim, k, random) {
         }
         index = lo;
       } else {
-        index = random.int(n); // every event coincides with a centre already
+        index = random.int(n); // every event coincides with a center already
       }
       const base = index * dim;
       let p = 0;
@@ -153,7 +153,7 @@ export function kmeansPlusPlus(data, n, dim, k, random) {
   return centers;
 }
 
-// Nearest and second-nearest centre of one event by full scan; writes into out = [label, d1², d2²].
+// Nearest and second-nearest center of one event by full scan; writes into out = [label, d1², d2²].
 function scan(data, base, centers, k, dim, out) {
   let b1 = -1; let d1 = Infinity; let d2 = Infinity;
   for (let c = 0, off = 0; c < k; c += 1, off += dim) {
@@ -199,7 +199,7 @@ function lloyd(data, n, dim, k, centers, options) {
   let iterations = 0;
   let strict = false;
   for (let iter = 0; iter < maxIter; iter += 1) {
-    if (signal?.aborted) throw cancelled();
+    if (signal?.aborted) throw canceled();
     iterations = iter + 1;
     if (iter > 0) {
       // Assignment step.
@@ -245,7 +245,7 @@ function lloyd(data, n, dim, k, centers, options) {
         break;
       }
     }
-    // Update step, with empty clusters moved to the events farthest from their centres.
+    // Update step, with empty clusters moved to the events farthest from their centers.
     relocateEmpty(data, n, dim, k, centers, labels, counts, sums, upper, lower);
     old.set(centers);
     let shift = 0;
@@ -279,7 +279,7 @@ function lloyd(data, n, dim, k, centers, options) {
     if (shift <= tol) break;
   }
   if (!strict) {
-    // Final assignment so the labels match the returned centres.
+    // Final assignment so the labels match the returned centers.
     counts.fill(0);
     for (let i = 0; i < n; i += 1) {
       scan(data, i * dim, centers, k, dim, out);
@@ -320,9 +320,9 @@ function relocateEmpty(data, n, dim, k, centers, labels, counts, sums, upper, lo
   }
 }
 
-// Mini-batch k-means: random batches (with replacement) pull each centre toward its members at
-// a per-centre rate 1 / (events seen), stopping when the smoothed batch inertia has not improved
-// for maxNoImprovement batches or the centres stop moving.
+// Mini-batch k-means: random batches (with replacement) pull each center toward its members at
+// a per-center rate 1 / (events seen), stopping when the smoothed batch inertia has not improved
+// for maxNoImprovement batches or the centers stop moving.
 function miniBatch(data, n, dim, k, centers, random, options) {
   const { tol, report, signal } = options;
   const batchSize = Math.min(n, options.batchSize ?? 1024);
@@ -339,7 +339,7 @@ function miniBatch(data, n, dim, k, centers, random, options) {
   let steps = 0;
   for (let step = 0; step < maxSteps; step += 1) {
     if ((step & 63) === 0) {
-      if (signal?.aborted) throw cancelled();
+      if (signal?.aborted) throw canceled();
       if (report) report(Math.min(0.99, step / maxSteps), 'Mini-batch k-means');
     }
     steps = step + 1;
@@ -396,7 +396,7 @@ function finish(data, n, dim, k, centers, labels, iterations, converged) {
   return { labels, centers, counts, inertia, iterations, converged };
 }
 
-// Labels of new events by their nearest centre (e.g. to apply a clustering to other samples).
+// Labels of new events by their nearest center (e.g. to apply a clustering to other samples).
 export function assignToCenters(data, n, dim, centers, k) {
   const labels = new Int32Array(n);
   const out = new Float64Array(3);

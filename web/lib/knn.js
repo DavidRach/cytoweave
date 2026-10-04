@@ -1,4 +1,4 @@
-// Nearest-neighbour search for dimension reduction, graph clustering and embedding diagnostics.
+// Nearest-neighbor search for dimension reduction, graph clustering and embedding diagnostics.
 //
 //   exactKnn        brute force over all pairs (each pair computed once).
 //   kdTreeKnn       exact k-d tree search (Bentley 1975; Friedman, Bentley & Finkel 1977,
@@ -26,7 +26,7 @@ const RP_EPSILON = 1e-8;
 
 export function throwIfAborted(signal) {
   if (signal && signal.aborted) {
-    const error = new Error('The calculation was cancelled.');
+    const error = new Error('The calculation was canceled.');
     error.name = 'AbortError';
     throw error;
   }
@@ -47,13 +47,13 @@ function checkShape(data, n, dim) {
 }
 
 function checkK(n, k) {
-  if (!Number.isInteger(k) || k < 1) throw new Error('The number of neighbours must be a positive whole number.');
-  if (k > n - 1) throw new Error(`Cannot find ${k} neighbours among ${n} events; use fewer neighbours or more events.`);
+  if (!Number.isInteger(k) || k < 1) throw new Error('The number of neighbors must be a positive whole number.');
+  if (k > n - 1) throw new Error(`Cannot find ${k} neighbors among ${n} events; use fewer neighbors or more events.`);
 }
 
 // The matrix the search runs on: the data itself for Euclidean distance, or unit-length copies for
 // cosine distance (on the unit sphere ‖a − b‖² = 2 − 2 cos θ, so Euclidean machinery finds cosine
-// neighbours). All-zero rows stay zero (cosine distance 0.5 to everything). Non-finite values make
+// neighbors). All-zero rows stay zero (cosine distance 0.5 to everything). Non-finite values make
 // distances undefined, so they are rejected with the offending event's number.
 export function prepareMatrix(data, n, dim, metric = 'euclidean') {
   if (!METRICS.includes(metric)) throw new Error(`Unknown distance "${metric}"; use ${METRICS.join(' or ')}.`);
@@ -173,7 +173,7 @@ export function exactKnn(data, n, dim, k, options = {}) {
   for (let i = 0; i < n; i += 1) {
     if ((i & 127) === 0) {
       throwIfAborted(signal);
-      if (onProgress) onProgress(1 - ((n - i) / n) ** 2, 'Finding nearest neighbours (exact)');
+      if (onProgress) onProgress(1 - ((n - i) / n) ** 2, 'Finding nearest neighbors (exact)');
     }
     const oi = i * dim;
     const bi = i * k;
@@ -283,7 +283,7 @@ export function kdTreeKnn(data, n, dim, k, options = {}) {
   for (let i = 0; i < n; i += 1) {
     if ((i & 1023) === 0) {
       throwIfAborted(signal);
-      if (onProgress) onProgress(i / n, 'Finding nearest neighbours (k-d tree)');
+      if (onProgress) onProgress(i / n, 'Finding nearest neighbors (k-d tree)');
     }
     const oi = i * dim;
     const base = i * k;
@@ -435,7 +435,7 @@ function defaultTrees(n) {
   return Math.min(32, 5 + Math.round(Math.sqrt(Math.sqrt(n))));
 }
 
-// Runs the RP-forest initialisation and NN-Descent on the prepared matrix. Returns squared
+// Runs the RP-forest initialization and NN-Descent on the prepared matrix. Returns squared
 // distances, rows sorted ascending, plus the trees asked to be kept for queries.
 function nnDescent(X, n, dim, k, options) {
   const {
@@ -456,7 +456,7 @@ function nnDescent(X, n, dim, k, options) {
   const flags = new Uint8Array(n * k);
   const trees = [];
 
-  // 1. Random-projection forest: every pair within a leaf is a candidate neighbour.
+  // 1. Random-projection forest: every pair within a leaf is a candidate neighbor.
   for (let tr = 0; tr < nTrees; tr += 1) {
     throwIfAborted(signal);
     const tree = buildRpTree(X, n, dim, leaf, random, tr < keepTrees);
@@ -483,9 +483,9 @@ function nnDescent(X, n, dim, k, options) {
         }
       }
     }
-    if (onProgress) onProgress((0.3 * (tr + 1)) / nTrees, 'Nearest neighbours: random-projection forest');
+    if (onProgress) onProgress((0.3 * (tr + 1)) / nTrees, 'Nearest neighbors: random-projection forest');
   }
-  // Rows not yet full (tiny leaves) get random neighbours, then a scan as a last resort.
+  // Rows not yet full (tiny leaves) get random neighbors, then a scan as a last resort.
   for (let i = 0; i < n; i += 1) {
     const base = i * k;
     let tries = 0;
@@ -500,7 +500,7 @@ function nnDescent(X, n, dim, k, options) {
     }
   }
 
-  // 2. NN-Descent: a neighbour of a neighbour is likely a neighbour. Each round joins sampled "new"
+  // 2. NN-Descent: a neighbor of a neighbor is likely a neighbor. Each round joins sampled "new"
   // candidates (forward and reverse) with each other and with "old" ones (Dong et al. 2011, §2.3).
   const maxC = Math.max(1, maxCandidates);
   const newIdx = new Int32Array(n * maxC);
@@ -534,7 +534,7 @@ function nnDescent(X, n, dim, k, options) {
         }
       }
     }
-    // Neighbours sampled as new candidates become old.
+    // Neighbors sampled as new candidates become old.
     for (let i = 0; i < n; i += 1) {
       stampValue += 1;
       const cb = i * maxC;
@@ -591,7 +591,7 @@ function nnDescent(X, n, dim, k, options) {
         }
       }
     }
-    if (onProgress) onProgress(0.3 + (0.7 * (iter + 1)) / maxIterations, `Nearest neighbours: NN-Descent round ${iter + 1}`);
+    if (onProgress) onProgress(0.3 + (0.7 * (iter + 1)) / maxIterations, `Nearest neighbors: NN-Descent round ${iter + 1}`);
     if (updates <= delta * n * k) break;
   }
   sortRows(idx, dist, n, k);
@@ -617,7 +617,7 @@ function squaredDistance(A, oa, B, ob, dim) {
 
 // Approximate kNN by NN-Descent from a random-projection forest. Typical recall is > 0.95 on
 // cytometry-like data. Options: metric, seed, nTrees, leafSize, maxIterations, delta (early stop
-// when fewer than delta·n·k neighbour lists improve in a round), maxCandidates.
+// when fewer than delta·n·k neighbor lists improve in a round), maxCandidates.
 export function approximateKnn(data, n, dim, k, options = {}) {
   const { metric = 'euclidean' } = options;
   checkK(n, k);
@@ -636,7 +636,7 @@ export function knn(data, n, dim, k, options = {}) {
     return kdTreeKnn(data, n, dim, k, options);
   }
   if (method === 'exact' || (method === 'auto' && n <= exactThreshold)) return exactKnn(data, n, dim, k, options);
-  if (method !== 'approximate' && method !== 'auto') throw new Error(`Unknown neighbour search method "${method}".`);
+  if (method !== 'approximate' && method !== 'auto') throw new Error(`Unknown neighbor search method "${method}".`);
   return approximateKnn(data, n, dim, k, options);
 }
 
@@ -644,7 +644,7 @@ export function knn(data, n, dim, k, options = {}) {
 
 // A reusable search index over a reference set: its kNN graph (which callers such as UMAP need
 // anyway) plus one random-projection tree for entry points. The returned object holds a reference
-// to `data` (or a normalised copy for cosine) and is consumed by queryKnn.
+// to `data` (or a normalized copy for cosine) and is consumed by queryKnn.
 export function createKnnIndex(data, n, dim, k, options = {}) {
   const { metric = 'euclidean', seed = DEFAULT_SEED, exactThreshold = EXACT_THRESHOLD, method = 'auto' } = options;
   checkK(n, k);
@@ -667,7 +667,7 @@ export function createKnnIndex(data, n, dim, k, options = {}) {
   return { data: X, n, dim, k, metric, indices, distances: finishDistances(squared, metric), trees, searchGraph: null };
 }
 
-// Undirected search graph: each point's kNN plus up to k reverse neighbours (pynndescent also adds
+// Undirected search graph: each point's kNN plus up to k reverse neighbors (pynndescent also adds
 // reverse edges so that hubs are reachable).
 function buildSearchGraph(index) {
   const { n, k, indices } = index;
@@ -700,7 +700,7 @@ export function queryKnn(index, queryData, m, k, options = {}) {
   const { epsilon = 0.1, seed = DEFAULT_SEED, method = 'auto', onProgress, signal } = options;
   const { n, dim, metric } = index;
   const X = index.data;
-  if (!Number.isInteger(k) || k < 1 || k > n) throw new Error(`Cannot find ${k} neighbours among ${n} reference events.`);
+  if (!Number.isInteger(k) || k < 1 || k > n) throw new Error(`Cannot find ${k} neighbors among ${n} reference events.`);
   const Q = prepareMatrix(queryData, m, dim, metric);
   const indices = new Int32Array(m * k).fill(-1);
   const dist = new Float64Array(m * k).fill(Infinity);
@@ -808,7 +808,7 @@ function minHeapPop(idx, dist, size) {
   return last;
 }
 
-// Fraction of the true neighbours (rows of `truth`) found in `approx`, both n × k index arrays.
+// Fraction of the true neighbors (rows of `truth`) found in `approx`, both n × k index arrays.
 export function knnRecall(approx, truth, n, k) {
   let size = 1;
   for (let e = 0; e < n * k; e += 1) size = Math.max(size, truth[e] + 1, approx[e] + 1);

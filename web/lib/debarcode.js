@@ -13,7 +13,7 @@ import { quantileSorted } from './stats.js';
 import { columnOf } from './qc.js';
 
 function checkAbort(options) {
-  if (options.signal?.aborted) throw new Error('Debarcoding was cancelled.');
+  if (options.signal?.aborted) throw new Error('Debarcoding was canceled.');
 }
 
 function report(options, fraction, message) {

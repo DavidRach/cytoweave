@@ -489,6 +489,45 @@ export function installRemote(app) {
       return { message: `${label} by ${field}: ${summary.map((s) => `${s.group} median ${s.median} (n=${s.n})`).join(' vs ')}${clean[0]?.p !== undefined ? `; ${clean[0].method} p = ${clean[0].p}` : ''}. Each sample is one observation.`, data: { measure: label, groupBy: field, pairBy: args.pairBy, groups: summary, tests: clean } };
     },
 
+    async check_robustness(args) {
+      const { checkRobustness } = await import('./robustness.js');
+      const { methodsSentence } = await import('../lib/multiverse.js');
+      const w = ws();
+      const id = resolvePopulation(args.population);
+      if (id === ROOT) throw new ActionError('Choose a gated population: the check varies its gates.');
+      const field = String(args.groupBy);
+      const samples = w.samples.filter((s) => (s.role === 'sample' || s.role === 'reference') && s.meta?.[field] !== undefined && s.meta[field] !== '');
+      const levels = args.groups?.length ? args.groups.map(String) : [...new Set(samples.map((s) => String(s.meta[field])))].sort();
+      if (levels.length !== 2) throw new ActionError(`The check compares two groups; "${field}" has ${levels.length} (${levels.join(', ')}). Pass groups: [reference, other].`);
+      const chosen = samples.filter((s) => levels.includes(String(s.meta[field])));
+      for (const sample of chosen) await loadedView(sample);
+      const stat = args.statistic ?? 'freqParent';
+      const statistic = { stat, gateId: id, channel: args.channel ? resolveChannel(await loadedView(chosen[0]), args.channel) : undefined };
+      const design = args.pairBy ? 'paired-two' : 'two';
+      const { summary, choices } = await checkRobustness(app, {
+        statistic,
+        samples: chosen.map((s) => ({ id: s.id, group: levels.indexOf(String(s.meta[field])), pair: args.pairBy ? s.meta?.[args.pairBy] ?? null : null })),
+        design,
+        pairField: args.pairBy,
+        labels: levels,
+        qcReruns: Boolean(args.rerunQC),
+      });
+      const r = summary.declared?.result;
+      const clean = (list) => list.map((d) => ({ choice: d.choice, alternative: d.option, conclusion: d.conclusion, difference: round(d.estimate, 4), p: round(d.p, 6) }));
+      return {
+        message: `${stat} of ${gatePath(w, id)}, ${levels[1]} vs ${levels[0]}${args.pairBy ? `, paired by ${args.pairBy}` : ''}: ${summary.verdict}. ${summary.text}${summary.verdict !== 'undetermined' ? ` ${methodsSentence(summary, choices)}` : ''}`,
+        data: {
+          verdict: summary.verdict,
+          analyses: summary.total,
+          agree: summary.agree,
+          declared: r ? { conclusion: summary.declared.conclusion, difference: round(r.estimate, 4), ci: r.ci.map((v) => round(v, 4)), p: round(r.p, 6) } : null,
+          dependsOn: clean(summary.dependsOn ?? []),
+          sizeDependsOn: clean(summary.sizeDependsOn ?? []),
+          choices: choices.map((c) => ({ choice: c.label, alternatives: c.options.slice(1).map((o) => o.label), omitted: c.omitted ?? undefined })),
+        },
+      };
+    },
+
     async methods() {
       const { writeMethods } = await import('../lib/methods.js');
       const { paragraphs, references } = writeMethods(ws(), { version: app.version });

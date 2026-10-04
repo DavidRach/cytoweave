@@ -2,7 +2,7 @@
 //
 // Matrices are row-major Float64Arrays with explicit dimensions: an m × n matrix A holds A[i][j]
 // at a[i * n + j]. The sizes met in cytometry (a few hundred rows, tens of columns) are small, so
-// the algorithms favour numerical robustness and clarity over blocking. Functions never modify
+// the algorithms favor numerical robustness and clarity over blocking. Functions never modify
 // their inputs unless their name ends in `InPlace`.
 
 export class LinearAlgebraError extends Error {}

@@ -119,10 +119,35 @@ test('spillover spreading grows with spillover', () => {
     }
     return { channel: DETECTORS[i], columns: compensate(raw, { channels: DETECTORS, matrix: S }) };
   });
-  const { matrix } = spilloverSpreading(controls, DETECTORS);
+  const { matrix, observations } = spilloverSpreading(controls, DETECTORS);
   // FITC spills 0.15 into PE but nothing into PerCP: more spreading into PE.
   assert.ok(matrix[0 * 3 + 1] > matrix[0 * 3 + 2], `${matrix[1]} vs ${matrix[2]}`);
   assert.equal(matrix[0], 0);
+  // The variance differences behind it, with standard errors, for fitting the noise (spread.js).
+  const fitc = observations.find((o) => o.i === 0);
+  const pe = fitc.rows.find((r) => r.j === 1);
+  assert.ok(Math.abs(Math.sqrt(pe.variance / fitc.deltaF) - matrix[1]) < 1e-12);
+  assert.ok(pe.se > 0 && pe.se < pe.variance);
+});
+
+test('off-scale events are left out of the spreading matrix when the raw columns are given', () => {
+  // Bright positives with a tenth clipped at the top of the scale in both detectors: the clipped
+  // events look like a huge spread into B after compensation.
+  const random = rng(4);
+  const n = 6000;
+  const a = new Float32Array(n);
+  const b = new Float32Array(n);
+  for (let e = 0; e < n; e += 1) {
+    const value = e % 2 === 0 ? 40000 * (1 + 0.05 * gaussian(random)) : 30 * gaussian(random);
+    const clipped = e % 20 === 0;
+    a[e] = clipped ? 262143 : value + Math.sqrt(Math.max(0, value)) * gaussian(random);
+    b[e] = clipped ? 262143 : 0.1 * value + 20 * gaussian(random);
+  }
+  const spill = { channels: ['A', 'B'], matrix: Float64Array.from([1, 0.1, 0, 1]) };
+  const columns = compensate({ A: a, B: b }, spill);
+  const withClipped = spilloverSpreading([{ channel: 'A', columns }], ['A', 'B']).matrix[1];
+  const without = spilloverSpreading([{ channel: 'A', columns, raw: { A: a, B: b } }], ['A', 'B'], { range: 262144 }).matrix[1];
+  assert.ok(withClipped > 10 * without, `${withClipped} vs ${without}`);
 });
 
 test('off-scale events are left out of spillover from controls', () => {

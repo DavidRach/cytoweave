@@ -65,7 +65,8 @@ function keepKeywords(keywords) {
 // Guesses a sample's role from its name and keywords (controls are named consistently by most
 // instruments and labs): "Unstained", "FITC Stained Control", "Comp …", "FMO CD25".
 export function guessRole(name, keywords = {}) {
-  const text = `${name} ${keywords['TUBE NAME'] ?? ''}`.toLowerCase();
+  // Underscores separate words in file names ("Beads_2026-03-27", "Comp_FITC").
+  const text = `${name} ${keywords['TUBE NAME'] ?? ''}`.toLowerCase().replace(/_/g, ' ');
   if (/\bunstained\b|\bunstain\b|\bblank\b|\bno stain\b|\bus\b/.test(text)) return 'unstained';
   if (/\bfmo\b/.test(text)) return 'fmo';
   if (/\bisotype\b/.test(text)) return 'isotype';

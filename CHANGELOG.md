@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.4.0 (2026-10-03)
+
+CytoWeave 0.4 covers an experiment before, during and after acquisition: it predicts a panel's spread from the instrument's own noise before the panel is run, checks each file as the instrument writes it, and tells you whether a comparison's conclusion would survive the choices another analyst might have made. It can show its colors for every kind of color vision, works from the keyboard and with screen readers, and its FlowJo workspaces now open in FlowJo 11.
+
+### Added
+
+- **Panel design: predicted spread.** Spectral → Panel design predicts a panel's spreading matrix from its spectra and the instrument's noise, so you can try a change before running it. Leave a dye out or add one from the spectral library and the matrix, the complexity index and the spread each channel receives update at once; channels that receive the least spread suit dim markers. The noise has two parts, photon counting in every detector (1/Q) and intensity fluctuations of each laser, which make a dye excited by two lasers spread in proportion to its brightness. It comes from this experiment's controls (fitted when the spreading matrix is computed, with each control's spread predicted from the others as a check), from a model kept for the instrument in the library, or from its bead runs. With no files open, Spectral → Design a panel from the spectral library does the same from an instrument's library alone.
+- **QC as files are acquired.** QC → Live (or `cytoweave --watch <folder>`) watches the folder an instrument exports to. Each FCS file is added to the workspace once the instrument has finished writing it (its size is steady and its header says all its data are there) and checked at once: acquisition QC for samples and controls, Q and B for bead files, added to the instrument's record and checked against the Levey–Jennings rules. A low score or a detector out of control raises a notice, the Live table lists every file with its result, and the status bar shows the watch from any view. The folder is only read; files already there are opened only on request.
+- **Faster acquisition QC of large files.** PeacoQC's per-channel work, nearly all of its time, runs on up to four workers reading the events from shared memory, with exactly the serial result: 3.4 s instead of 10.5 s for two million events in 20 channels.
+- **Robustness to analysis choices.** Compare → Robustness to analysis choices checks whether a two-group comparison's conclusion would change had the data been processed differently in ways another analyst might reasonably have chosen. It moves each gate on the population's path 1% and 2% of the axis, adapts the gates to each sample (one per subject when paired) or removes per-sample adjustments, takes acquisition QC away (or re-runs it stricter and looser), tries the files' and the workspace's other compensation matrices and the rank test, each alone and in random combinations (64 analyses). It says whether the conclusion holds (≥ 90%), mostly holds (≥ 70%) or is fragile, names the choices that change it and those that move the size of a difference found beyond its confidence interval, and draws the specification curve. The methods text and saved comparisons include a sentence on it, and agents have `check_robustness`.
+- **Color-vision-friendly colors.** A setting in the new Appearance menu (the theme button) shows populations, groups and clusters in a palette that stays distinct with protanopia, deuteranopia and tritanopia, draws the rainbow heat maps (Classic, Turbo) as viridis, and turns the green, amber and red status colors into blue, orange and magenta. The workspace is not changed: its own colors return when the setting is off. In the default palette two of the first eight colors look the same with deuteranopia (CIEDE2000 0.8); in the friendly one any two differ by at least 11 in every kind of vision.
+- **Keyboard and screen readers.** The population tree works from the keyboard (arrows, Home, End) and is announced as a tree with each population's frequency and count; the sample list is one stop with the arrow keys; dialogs keep the focus inside and give it back when they close; a focus ring shows where the keyboard is; scrolling regions can be focused; and every plot has a text description (type, axes, population, events and the gates on it with their frequencies). Icon buttons, menus and status dots have names. Docs: a new Accessibility page.
+
+### Changed
+
+- **New logo.** Three emission spectra (violet, teal and coral) woven into a W, the middle one over its left neighbor and under its right: spectral overlap, the thing compensation untangles, and the weave in the name. It replaces the ring of waves, which read as a face and stayed recognizable only at large sizes. The mark is legible down to a 16-pixel browser tab, and it updates the app header, the start page and the website.
+- **FlowJo export scales.** Logicle and arcsinh scales are written as FlowJo's biexponential, the closest FlowJo scale: FlowJo 11 misplaces gates on logicle and arcsinh channels (a Live gate read 4.6% instead of 94%, on FlowJo 10's own workspaces too) but reads the biexponential correctly. Rectangles, ranges, quadrants and splits stay exact; polygons and ellipses on those channels are traced to follow their outline (within 0.5%) and marked as traced in the export report. CytoML now counts exactly what CytoWeave counts on these gates.
+- **Contrast.** Muted text, status text and the dark theme's primary buttons are slightly darker or lighter so that every text color reaches 4.5:1 on every surface it is used on (WCAG AA): muted gray #7b8496 → #636c7e (light) and #808a9d → #8a94a7 (dark); primary buttons in the dark theme #8d7dff → #6b5ae8; status text a shade darker in the light theme and red status text a shade lighter in the dark theme; heat-map cells in Tables switch to dark or white text where the shading would leave too little contrast; hidden entries in plot legends are struck through in muted gray instead of faded. The theme button opens an Appearance menu (light, dark, match the system, color-vision-friendly colors) instead of switching the theme in one click.
+
+### Fixed
+
+- **FlowJo workspace export in FlowJo 11.** Opened in FlowJo 11.2.0 (build 11.2.0.210156) for the first time, CytoWeave's exports crashed it. Each node's plot is now written in full, as FlowJo writes it; rectangles carry both bounds (FlowJo 11 does not import one open on a side); ranges and splits are written as rectangles with an unbounded second dimension (FlowJo 11 counts one-dimensional gates as empty), and import back as ranges; a sample opens on its first gate's plot.
+- **A failed save stayed hidden.** The red dot of a workspace that could not be saved turned back to "unsaved" at the next edit.
+- **Roles from file names with underscores.** "Beads_2026-03-31", "Comp_FITC" and "Unstained_01" were not recognized as bead, single-stain and unstained files, because the underscore joined the words.
+- **Off-scale events in the compensation spreading matrix.** Clipped events in a single-stain control looked like spread in every detector: on a real LSRFortessa control with a sixth of its positives off scale, one entry read 53 instead of 4. They are now left out, as they already were for the spillover values.
+- **BD FACSDiscover and FACSymphony spectral detectors.** Detector names such as `UV1 (375)-A` are recognized, so these instruments' raw files open in the Spectral view.
+
+### Documentation
+
+- The user guide covers the new features, with new screenshots of panel design, QC as files are acquired, robustness to analysis choices and color-vision-friendly colors, and a new Accessibility page; the FlowJo page describes what was tested in FlowJo 11.2.0 (build 11.2.0.210156). Every screenshot is retaken for 0.4.0, with the new logo.
+
+### Validation
+
+- **Predicted spread** (new `spread` and `fortessa` suites):
+  - On simulated controls with known photon noise and laser fluctuations, the fitted photon noise is within 1% of the truth (median over 64 detectors). Each control's spread predicted from the other 24 is within 2× of the observed value for 98% of the pairs measured to 4 standard errors. A 15-dye panel predicted with the noise of the 25-dye controls matches its own unmixed controls within 2× for every pair.
+  - On the 15 bead controls of a BD LSRFortessa (Zenodo 22808501), each control's spread predicted from the other 14 is within 2× for 79% of the pairs measured to 4 standard errors (median ×1.32; with photon noise alone, 67% and ×1.47). The largest misses are BV711 and BV786 into their donor's channel, which a noise model should not absorb. No public spectral data set with single-stain reference controls was found for the same check on a spectral instrument.
+- **Folder watching** (Go tests): a file stopped mid-write for several checks is not handed over until it is finished, also when the modification time does not change (network shares); hidden and temporary names are ignored until renamed; files already in the folder wait to be asked for; offsets kept in TEXT (large files) are read; only this computer may start or stop a watch.
+- **Parallel PeacoQC:** each channel computed apart and combined removes exactly the events of the serial run, refined and classic, on the 6 simulated QC files and on PeacoQC's own 7 files (`qc` and `bioconductor` suites); the benchmark checks the same at 2 million events.
+- **Robustness to analysis choices** (new `multiverse` and `multiverse-ics` suites), on comparisons with known answers in the PBMC example:
+  - a real effect (CD25+ T cells after stimulation) holds in 64 of 64 analyses;
+  - a detector gain in one batch, with a gate drawn close to the negative cells, makes a spurious difference: called fragile, with the adapted gates named as removing it;
+  - clogs in one group: QC named as the choice the conclusion depends on, and stricter and looser QC agree;
+  - one batch compensated with an under-compensating matrix: the compensation named, with which the false CD4+CD8+ difference shrinks from 38.7 to 0.5 points;
+  - with no effect, 6% of comparisons were significant by chance, and half of those held in at least 90% of analyses.
+  On an intracellular cytokine study (4 donors, 4 workspaces), every PMA comparison holds in all analyses; one small peptide response (IL-4, 0.27 points) is fragile.
+- **Accessibility** (new `accessibility` suite and `capture.mjs --audit`): every text color reaches 4.5:1 on every surface in both themes with color-vision-friendly colors off and on; the friendly palette's colors differ by at least 11 (first eight) and 7 (all twenty) in CIEDE2000 with simulated protanopia, deuteranopia and tritanopia (Machado et al. 2009); its status colors by at least 9; viridis gets lighter steadily in every kind of vision (the classic rainbow reverses 10–12 times). axe-core 4.13 (WCAG 2.1 A and AA rules) finds no violations in any of the 33 documentation scenes in either theme (66 pages).
+- **FlowJo 11 and CytoML** (`flowjo` and `flowkit` suites; `reference/flowjo11.json`, `reference/cytoml.json` with `generate_cytoml.R`): compatibility testing used FlowJo 11.2.0 (build 11.2.0.210156) during a trial; the percentages it showed for three exports (the bundled example, the workspace built in CytoWeave, FlowKit's 8-color workspace) are kept, and every population of CytoWeave's is within 0.6 percentage points, most within 0.1. CytoML 2.24 (Bioconductor) reads every export, with 306 of 313 counts equal to CytoWeave's; the others are ellipses, which CytoML reads differently from FlowJo (FlowJo 11 shows 87.2% for the built case's ellipse, CytoWeave 87.1%, CytoML 80.4%).
+- The suite now has 227 checks in 28 suites.
+
 ## 0.3.0 (2026-10-03)
 
 CytoWeave 0.3 works with the rest of the lab: it writes FlowJo workspaces and de-identified FCS files, its figures carry the analysis that made them, it adapts gates to each sample with a confidence for each, and it follows the instrument itself, from detector efficiency to the spectra of its dyes, across experiments.
@@ -58,7 +107,7 @@ CytoWeave 0.3 works with the rest of the lab: it writes FlowJo workspaces and de
   - Events on a polygon's edge are inside it.
 - **Gate boundaries** are decided in double precision, so an event within rounding distance of a boundary falls on the same side as in reference tools.
 - **FCS files:** Guava Muse log channels (log10 values stored as floating point) are read correctly, and a file cut off before its data now says so instead of failing.
-- **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-colour panel the matrix is now within 0.015 of FACSDiva's. Each detector's own range ($PnR) decides what is saturated, rather than 262,144 for every instrument.
+- **Spillover from controls** leaves saturated events (at the top of a detector's range) out of the positives; their clipped values pulled spillover values down. A control with more than 1% of them gets a warning. On a real 15-color panel the matrix is now within 0.015 of FACSDiva's. Each detector's own range ($PnR) decides what is saturated, rather than 262,144 for every instrument.
 - **Logicle width estimates** take the 5th percentile of the negative values, as flowCore's `estimateLogicle` does, rather than of all values, and are no longer held at 0.25 or more when the data have negative values.
 - **Workers on large samples.** Analyses in workers (QC, normalization, clustering) read the sample's events in shared memory instead of a copy. At ten million events the copy failed and the job waited forever; a job whose data cannot be handed over now fails with a message.
 - **Methods.** A result with both a clustering and an embedding (for example FlowSOM and UMAP) now describes both; before, only the clustering was described.
@@ -103,7 +152,7 @@ CytoWeave 0.3 works with the rest of the lab: it writes FlowJo workspaces and de
 
 ## 0.1.0 (2026-10-02)
 
-CytoWeave is a free, open-source (Apache 2.0) workbench for flow cytometry analysis: conventional, spectral and mass cytometry. It runs on your own computer as one self-contained program, with no licence server, account, Python or R. Files are analyzed in the browser and never leave your machine.
+CytoWeave is a free, open-source (Apache 2.0) workbench for flow cytometry analysis: conventional, spectral and mass cytometry. It runs on your own computer as one self-contained program, with no license server, account, Python or R. Files are analyzed in the browser and never leave your machine.
 
 This is the first release.
 
@@ -139,7 +188,7 @@ The binaries are not code-signed, so a file downloaded with a browser triggers a
 Open **Workspace → Example experiments** and pick one of nine simulated experiments. Each is generated in the app with the true identity of every event, so you can check your results against the truth:
 - PBMC immunophenotyping with a deliberate compensation error to find;
 - a FlowJo workspace to migrate;
-- a 25-colour spectral panel;
+- a 25-color spectral panel;
 - cell cycle and proliferation;
 - a two-batch mass cytometry cohort and a barcoded plate;
 - an index sort and a QC plate.

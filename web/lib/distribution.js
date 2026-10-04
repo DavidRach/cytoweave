@@ -31,7 +31,7 @@ function isMultivariate(data) {
 // distribution (Roederer, Treister, Hardy & Herzenberg 2001, Cytometry 45:37–46,
 // doi:10.1002/1097-0320(20010901)45:1<37::AID-CYTO1142>3.0.CO;2-E). T(χ) > 4 corresponds roughly
 // to p < 0.01. `percentPositive` = 100·Σᵢ max(0, sᵢ − cᵢ): the share of test events in excess of
-// the control's probability mass, the probability-binning analogue of Overton subtraction.
+// the control's probability mass, the probability-binning analog of Overton subtraction.
 // Options: bins (default: power of two ≤ N_control/10, at most 1024 in d dimensions and 256 in
 // 1-D), minPerBin (10).
 export function probabilityBinning(control, test, options = {}) {

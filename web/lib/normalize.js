@@ -14,7 +14,7 @@ import { applyTransform, createTransform } from './transforms.js';
 import { columnOf, median, runningMedian } from './qc.js';
 
 function checkAbort(options) {
-  if (options.signal?.aborted) throw new Error('The normalization was cancelled.');
+  if (options.signal?.aborted) throw new Error('The normalization was canceled.');
 }
 
 function report(options, fraction, message) {
@@ -41,7 +41,7 @@ function defaultSpec(options) {
 
 // Fritsch–Carlson monotone cubic Hermite interpolation, as R's splinefun(method = 'monoH.FC')
 // (Fritsch & Carlson 1980, SIAM J Numer Anal, doi:10.1137/0717021): tied x are merged (mean y,
-// as regularize.values), initial slopes are the end secants and the mean of neighbouring
+// as regularize.values), initial slopes are the end secants and the mean of neighboring
 // secants, then monoFC_mod scales slopes back into the monotonicity region (plus a guard pass,
 // below, where R's single pass is not monotone). Outside the knots
 // the spline continues linearly with the end slopes. Returns a plain { x, y, m } object.
@@ -306,7 +306,7 @@ export function trainCytoNorm(references, options = {}) {
 
 // Normalizes one sample of `batch` with a trained CytoNorm model. `labels` (cluster per event)
 // is required when the model was trained per cluster; events in clusters the model does not know
-// (or labelled −1) are left unchanged and counted. Returns { columns } with new Float32Arrays for
+// (or labeled −1) are left unchanged and counted. Returns { columns } with new Float32Arrays for
 // the normalized channels (linear values) and the other columns shared with the input.
 export function applyCytoNorm(model, sample, batch, labels = null, options = {}) {
   if (model?.kind !== 'cytonorm') throw new Error('This is not a CytoNorm model.');

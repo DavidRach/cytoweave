@@ -7,7 +7,7 @@ import { computeStatistic } from '../lib/engine.js';
 import { STATISTICS, formatStatistic } from '../lib/stats.js';
 import { ROOT, channelCatalog, channelLabel, gateById, gatePath, setCollection } from '../lib/workspace.js';
 import { newId } from '../lib/gates.js';
-import { colormapColor, luminance } from '../lib/colormaps.js';
+import { colormapColor, hexToRgb, luminance, rgbToHex } from '../lib/colormaps.js';
 
 export function columnLabel(ws, column) {
   if (column.label) return column.label;
@@ -186,6 +186,19 @@ export function mountTablesMode(app, container) {
       return [lo, hi];
     });
     const metaFields = [...new Set(rows.flatMap((s) => Object.keys(s.meta ?? {})))].slice(0, 3);
+    // Heat-map cells: the shade over the panel, with dark or white text where the theme's text would
+    // fall below 4.5:1 on it.
+    const dark = document.documentElement.dataset.theme === 'dark';
+    const alpha = dark ? 0x88 / 255 : 0x55 / 255;
+    const tokens = getComputedStyle(document.documentElement);
+    const panel = hexToRgb(tokens.getPropertyValue('--panel').trim() || (dark ? '#111620' : '#ffffff'));
+    const textLum = luminance(tokens.getPropertyValue('--text').trim() || (dark ? '#e7eaf1' : '#171b26'));
+    const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const heatText = (color) => {
+      const lum = luminance(rgbToHex(hexToRgb(color).map((c, i) => alpha * c + (1 - alpha) * panel[i])));
+      if (ratio(textLum, lum) >= 4.5) return null;
+      return ratio(0, lum) >= ratio(1, lum) ? '#000000' : '#ffffff';
+    };
     const head = h('tr', h('th', 'Sample'), ...metaFields.map((f) => h('th', f)),
       ...table.columns.map((column) => h('th.r', { title: columnLabel(ws, column), style: { maxWidth: '180px' } },
         h('div', { style: { display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'flex-end' } },
@@ -204,7 +217,9 @@ export function mountTablesMode(app, container) {
           if (table.heatmap !== false && Number.isFinite(v) && ranges[j][1] > ranges[j][0]) {
             const t = (v - ranges[j][0]) / (ranges[j][1] - ranges[j][0]);
             const color = colormapColor('viridis', 0.15 + 0.8 * t);
-            cell.style.background = `${color}${document.documentElement.dataset.theme === 'dark' ? '88' : '55'}`;
+            cell.style.background = `${color}${dark ? '88' : '55'}`;
+            const text = heatText(color);
+            if (text) cell.style.color = text;
           }
           return cell;
         })));

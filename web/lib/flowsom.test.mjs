@@ -25,7 +25,7 @@ function close(actual, expected, tolerance, message = '') {
 }
 
 // Gaussian blobs (sd 0.5), population c bright (5) in marker c only, as cytometry populations
-// that each carry one marker: every pair of centres is 5√2 apart.
+// that each carry one marker: every pair of centers is 5√2 apart.
 function blobs({ k, dim, perCluster, seed = 1 }) {
   const random = createRandom(seed);
   const n = k * perCluster;
@@ -68,7 +68,7 @@ test('SOM updates follow C_SOM: winner-only learning with a linear rate', () => 
   assert.equal(som.codes[1], 10);
 });
 
-test('SOM neighbourhood shrinks linearly and is floored at the winner', () => {
+test('SOM neighborhood shrinks linearly and is floored at the winner', () => {
   // Three nodes in a row, radius 2 → 0 over 4 steps: windows 2, 1, 1, then 0.5 (winner only).
   const som = trainSOM(Float32Array.of(-1), 1, 1, {
     xdim: 3, ydim: 1, rlen: 4, alpha: [0.5, 0.5], radius: [2, 0], codes: Float32Array.of(0, 5, 10),

@@ -9,6 +9,7 @@ import {
   createTransform,
   defaultTransform,
   estimateLogicleW,
+  logicleToBiex,
   powerLabel,
   validateLogicle,
 } from './transforms.js';
@@ -114,6 +115,18 @@ test('FlowJo biex maps onto a valid logicle', () => {
   validateLogicle(params);
   const wide = biexToLogicle({ maxValue: 262144, widthBasis: -1000, positiveDecades: 4.5, extraNegativeDecades: 0 });
   validateLogicle(wide);
+});
+
+test('a logicle maps onto the FlowJo biex it came from, and the biex is close to it', () => {
+  const biex = logicleToBiex({ T: 262144, W: 0.5, M: 4.5, A: 0 });
+  assert.deepEqual(biex, { type: 'biex', maxValue: 262144, widthBasis: -10, positiveDecades: 4.5, extraNegativeDecades: 0 });
+  const back = biexToLogicle(logicleToBiex({ T: 262144, W: 0.8, M: 4.5, A: 0.5 }));
+  close(back.W, 0.8, 1e-12);
+  close(back.A, 0.5, 1e-12);
+  // Within 2% of the axis across the range (BD: biex(−10) is nearly logicle(W 0.5)).
+  const logicle = createTransform({ type: 'logicle', T: 262144, W: 0.5, M: 4.5, A: 0 });
+  const flowjo = createTransform(biex);
+  for (const x of [-100, 0, 100, 1000, 10000, 100000, 250000]) close(flowjo.forward(x), logicle.forward(x), 0.02, `x = ${x}`);
 });
 
 test('FlowJo biex: its table, zero channel, width clamp and inverse', () => {

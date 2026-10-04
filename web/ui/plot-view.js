@@ -2,6 +2,7 @@
 // and lets the user draw, select, move and reshape gates with live statistics.
 
 import { h, icon, formatPercent, formatCount } from './dom.js';
+import { displayColormap, shownColor } from '../lib/colormaps.js';
 import { showMenu, toast } from './overlays.js';
 import { buildPlotScene, drawScene, drawGates, fromPixel, toPixel, withAlpha, PLOT_TYPES } from '../lib/plot.js';
 import { gateOutline, plotPointToGate, simplifyPolyline, pointTest, translateGeometry, quadrantGates, quadrantNames, splitGates, newId } from '../lib/gates.js';
@@ -79,8 +80,8 @@ export function createPlotView(app, initial) {
   let destroyed = false;
   let lastSize = [0, 0];
 
-  const base = h('canvas.base');
-  const overlay = h('canvas.overlay');
+  const base = h('canvas.base', { role: 'img' });
+  const overlay = h('canvas.overlay', { 'aria-hidden': 'true' });
   const readout = h('div.plot-readout');
   const loading = h('div.plot-loading', 'Loading…');
   const wrap = h('div.plot-canvas-wrap', base, overlay, readout, loading);
@@ -95,7 +96,7 @@ export function createPlotView(app, initial) {
     h('button.icon-button.small', { type: 'button', title: 'Swap axes', onclick: () => swapAxes() }, icon('swap')),
     h('button.icon-button.small', { type: 'button', title: 'More', onclick: (e) => moreMenu(e.currentTarget) }, icon('more')));
   const head = h('div.plot-card-head', titleEl, metaEl, initial.hideActions ? null : actions);
-  const el = h(`div.plot-card${compact ? '.compact' : ''}`, { tabIndex: 0 }, head, wrap);
+  const el = h(`div.plot-card${compact ? '.compact' : ''}`, { tabIndex: 0, role: 'group', 'aria-label': 'Plot' }, head, wrap);
   if (initial.height) wrap.style.height = `${initial.height}px`;
 
   const ws = () => store.ws;
@@ -228,7 +229,7 @@ export function createPlotView(app, initial) {
       if (isDescendant) {
         const sub = populationSet(view, ws(), selected);
         const gate = gateById(ws(), selected);
-        if (sub !== undefined && gate) overlays.push({ xs, ys, indices: sub, color: gate.color, label: gate.name });
+        if (sub !== undefined && gate) overlays.push({ xs, ys, indices: sub, color: shownColor(ws(), gate), label: gate.name });
       }
     }
     for (const extra of spec.overlays ?? []) {
@@ -266,11 +267,23 @@ export function createPlotView(app, initial) {
     updateHeader(view, indices);
     positionAxisButtons();
     renderOverlay();
+    describe();
+  }
+
+  // What the plot shows, for screen readers (the canvas is a picture): its type, axes, population,
+  // events and the gates drawn on it with their frequencies.
+  let lastCount = Number.NaN;
+  function describe() {
+    const kind = spec.type === 'histogram' || !spec.y ? 'Histogram' : spec.type === 'cdf' ? 'Cumulative distribution' : `${spec.type[0].toUpperCase()}${spec.type.slice(1)} plot`;
+    const axes = spec.y && spec.type !== 'histogram' && spec.type !== 'cdf' ? `${channelLabel(ws(), spec.x)} against ${channelLabel(ws(), spec.y)}` : `of ${channelLabel(ws(), spec.x)}`;
+    const shown = scene?.gates?.map((g) => `${g.name}${g.label ? ` ${g.label}` : ''}`).filter(Boolean) ?? [];
+    base.setAttribute('aria-label', `${kind} ${axes}: ${titleEl.textContent}${Number.isFinite(lastCount) ? `, ${formatCount(lastCount)} events` : ''}${shown.length ? `. Gates: ${shown.join('; ')}` : ''}.`);
+    el.setAttribute('aria-label', `Plot of ${titleEl.textContent}`);
   }
 
   function populationColor() {
     if (spec.populationId === ROOT) return '#4c78e0';
-    return gateById(ws(), spec.populationId)?.color ?? '#4c78e0';
+    return shownColor(ws(), gateById(ws(), spec.populationId)) ?? '#4c78e0';
   }
 
   function updateHeader(view, indices) {
@@ -278,6 +291,7 @@ export function createPlotView(app, initial) {
     titleEl.textContent = spec.title ?? (gate ? gate.name : 'All events');
     const count = view && indices !== undefined ? countOf(indices, view) : view?.eventCount;
     metaEl.textContent = view && indices !== undefined ? `${formatCount(count)} events` : '';
+    lastCount = count;
     typeButton.replaceChildren(icon(spec.type === 'histogram' || spec.type === 'cdf' || !spec.y ? 'histogram' : spec.type === 'contour' || spec.type === 'zebra' ? 'contour' : spec.type === 'density' ? 'density' : 'dots'));
   }
 
@@ -316,7 +330,7 @@ export function createPlotView(app, initial) {
       name: compact && items.length > 2 ? '' : proposalOfGate(ws(), gate) ? `${gate.name} (proposed)` : gate.name,
       proposed: Boolean(proposalOfGate(ws(), gate)),
       label: parentIndices === undefined ? '' : gateLabel(view, gate, geometry, parentIndices),
-      color: gate.color,
+      color: shownColor(ws(), gate),
       selected: gate.id === selectedId || (gate.linkId && gateById(ws(), selectedId)?.linkId === gate.linkId),
       dashed: Boolean(gate.overrides?.[sampleId]),
       level: 0.55,
@@ -796,7 +810,7 @@ export function createPlotView(app, initial) {
       { label: 'Add to figure', icon: 'figure', onSelect: () => app.addToFigure(spec, sampleId) },
       '-',
       { section: 'Color map' },
-      ...['classic', 'viridis', 'magma', 'turbo', 'blues'].map((name) => ({ label: name[0].toUpperCase() + name.slice(1), checked: (spec.options?.colormap ?? ui().colormap) === name, onSelect: () => setSpec({ options: { ...(spec.options ?? {}), colormap: name } }) })),
+      ...['classic', 'viridis', 'magma', 'turbo', 'blues'].map((name) => ({ label: `${name[0].toUpperCase()}${name.slice(1)}${displayColormap(name) !== name ? ' (drawn as Viridis: color-vision-friendly colors)' : ''}`, checked: (spec.options?.colormap ?? ui().colormap) === name, onSelect: () => setSpec({ options: { ...(spec.options ?? {}), colormap: name } }) })),
       { section: 'Dot size' },
       ...[1, 2, 3].map((size) => ({ label: `${size} px`, checked: (spec.options?.dotSize ?? 1) === size, onSelect: () => setSpec({ options: { ...(spec.options ?? {}), dotSize: size } }) })),
       '-',

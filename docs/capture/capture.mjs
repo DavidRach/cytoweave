@@ -3,16 +3,21 @@
 // the website (docs/site/build.mjs copies them) the one matching the page's. It starts its own
 // CytoWeave (built from source, with an empty library), so every run gives the same pictures.
 //
-//   node docs/capture/capture.mjs [scene …] [--theme light|dark|both]
+//   node docs/capture/capture.mjs [scene …] [--theme light|dark|both] [--audit [--no-shots]]
+//
+// --audit runs axe-core (fetched by node validation/fetch.mjs axe-core) in every scene, with the
+// WCAG 2.1 A and AA rules, and writes the violations to docs/capture/audit.json (one entry per
+// scene and theme) and a summary to the console; with --no-shots, no picture is written.
 //
 // Needs Go (to run CytoWeave from source) and Chrome, Chromium, Edge or Brave (CHROME=path).
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from './cdp.mjs';
+import { generateExample } from '../../web/lib/examples.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const IMAGES = join(ROOT, 'docs/images');
@@ -26,6 +31,10 @@ const option = (name) => {
 };
 const themes = { light: ['light'], dark: ['dark'], both: ['light', 'dark'] }[option('theme') ?? 'both'];
 const wanted = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--theme');
+const audit = args.includes('--audit');
+const shots = !args.includes('--no-shots');
+const AXE = join(ROOT, 'validation/cache/axe-core/axe.min.js');
+if (audit && !existsSync(AXE)) throw new Error('axe-core is missing: run node validation/fetch.mjs axe-core');
 
 // --- CytoWeave ------------------------------------------------------------------------------------
 
@@ -126,7 +135,7 @@ async function addPlot(population, x, y = null, type = 'pseudocolor') {
   await sleep(1500);
 }
 
-// Chooses the option (matching text or value) of the select labelled `label` in the main view.
+// Chooses the option (matching text or value) of the select labeled `label` in the main view.
 async function choose(label, match) {
   const ok = await js(`(() => {
     const select = [...document.querySelectorAll('main select, .dialog select')].find((s) => (s.closest('label, .field')?.querySelector('span, .field-label')?.textContent?.trim() ?? s.getAttribute('aria-label')) === ${JSON.stringify(label)});
@@ -348,6 +357,20 @@ const scenes = {
     await waitFor(`/p = /.test(${mainText})`, 60000);
     await sleep(1500);
   },
+  // Compare: robustness of "monocytes do not change with stimulation" to analysis choices.
+  async 'compare-robustness'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await mode('compare');
+    await choose('Population', 'Monocytes$');
+    await choose('Statistic', 'parent');
+    await waitFor(`/p = /.test(${mainText})`, 60000);
+    await sleep(1000);
+    await js(`[...document.querySelectorAll('.pane')].find((p) => /Robustness/.test(p.querySelector('h3')?.textContent))?.querySelector('h3 button')?.click()`);
+    await waitFor(`Boolean([...document.querySelectorAll('.pane')].find((p) => /Robustness/.test(p.querySelector('h3')?.textContent))?.querySelector('.callout'))`, 300000);
+    await js(`[...document.querySelectorAll('.pane')].find((p) => /Robustness/.test(p.querySelector('h3')?.textContent)).scrollIntoView({ block: 'start' })`);
+    await sleep(1500);
+  },
   // Figures: a publication figure assembled from live plots.
   async figures() {
     await example('pbmc-immunophenotyping');
@@ -363,6 +386,49 @@ const scenes = {
     await scenes.spectral();
     await click('Panel quality');
     await sleep(3000);
+  },
+  // Color-vision-friendly colors: the Gate view with the setting on, the Appearance menu open.
+  async 'color-vision'() {
+    await example('pbmc-immunophenotyping');
+    await selectGate('Lymphocytes');
+    await sleep(1500);
+    await js(`document.getElementById('theme-button').click()`);
+    await sleep(300);
+    await click('Color-vision-friendly colors', '.menu-item');
+    await sleep(1500);
+    await clearToasts();
+    await js(`document.getElementById('theme-button').click()`);
+    await sleep(800);
+  },
+  // QC → Live: the QC showcase's wells written one by one into a watched export folder, and a
+  // fifth file still being written.
+  async 'qc-live'() {
+    const folder = join(mkdtempSync(join(tmpdir(), 'cytoweave-capture-')), 'Fortessa exports');
+    mkdirSync(folder);
+    const { files } = generateExample('qc-showcase', {});
+    // Show an export folder's path rather than this run's temporary one, as for the library.
+    await js(`(() => { const real = window.fetch; window.fetch = async (...args) => { const response = await real(...args); if (!String(args[0]).startsWith('api/watch')) return response; const body = await response.clone().json(); if (body.folder) body.folder = '/Volumes/Cytometry/Fortessa exports'; return new Response(JSON.stringify(body), { status: response.status, headers: response.headers }); }; })()`);
+    // One CytoWeave serves every theme: stop the watch an earlier run left, and start afresh.
+    await app(`if (app.live.status?.watching) await app.live.stop(); while (app.live.busy) await new Promise((r) => setTimeout(r, 200)); await app.newWorkspace(); await app.openLiveQC(); await app.live.start(${JSON.stringify(folder)});`);
+    for (const file of files) {
+      writeFileSync(join(folder, file.name), file.bytes);
+      await sleep(1600);
+    }
+    writeFileSync(join(folder, 'A05.fcs'), files[0].bytes.subarray(0, files[0].bytes.length >> 1));
+    await waitFor(`window.cytoweave.live.queue.length === ${files.length} && window.cytoweave.live.queue.every((q) => q.state === 'checked') && (window.cytoweave.live.status?.pending ?? []).length === 1`, 180000);
+    await sleep(1500);
+  },
+  // Spectral: Panel design, with the noise fitted to the controls and BV711 left out.
+  async 'spectral-design'() {
+    await scenes.spectral();
+    await click('Panel quality');
+    await sleep(1000);
+    await click('Compute');
+    await waitFor(`window.cytoweave.store.ws.derived.some((d) => d.kind === 'spectral-setup' && d.spreading?.noise) && !document.querySelector('.progress-toast')`, 400000);
+    await click('Panel design');
+    await sleep(1000);
+    await click('BV711', '.spectral-legend .chip');
+    await sleep(2500);
   },
   // Explore: the cluster heatmap with marker-enrichment names.
   async 'explore-clusters'() {
@@ -413,7 +479,7 @@ const scenes = {
     await js(`[...document.querySelectorAll('main h3')].find((e) => /Beads_2026/.test(e.textContent))?.scrollIntoView({ block: 'start' })`);
     await sleep(1200);
   },
-  // The Levey–Jennings chart of the ageing detector's Q across the 30 runs.
+  // The Levey–Jennings chart of the aging detector's Q across the 30 runs.
   async 'levey-jennings'() {
     await scenes.instrument();
     await js(`[...document.querySelectorAll('main h3')].find((e) => /Levey–Jennings/.test(e.textContent))?.closest('.pane')?.scrollIntoView({ block: 'end' })`);
@@ -478,6 +544,16 @@ const scenes = {
 
 // --- Run ------------------------------------------------------------------------------------------
 
+// axe-core in the page: violations of the WCAG 2.1 A and AA rules, with up to five elements each.
+async function runAxe() {
+  await js(`if (!window.axe) (0, eval)(${JSON.stringify(readFileSync(AXE, 'utf8'))});`);
+  return js(`(async () => {
+    const result = await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] });
+    return result.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 5).map((n) => ({ target: n.target.join(' '), summary: n.failureSummary?.split('\\n').slice(0, 3).join(' ') })), count: v.nodes.length }));
+  })()`);
+}
+const audits = [];
+
 const names = wanted.length ? wanted : Object.keys(scenes);
 for (const name of names) if (!scenes[name]) throw new Error(`Unknown scene ${name}. Scenes: ${Object.keys(scenes).join(', ')}`);
 mkdirSync(IMAGES, { recursive: true });
@@ -495,16 +571,29 @@ try {
         await scenes[name]();
         await clearToasts();
         await sleep(600);
-        await b.capture(join(IMAGES, `${name}-${theme}.webp`), { format: 'webp', quality: 86 });
-        console.log(`${name} (${theme})`);
+        if (shots) await b.capture(join(IMAGES, `${name}-${theme}.webp`), { format: 'webp', quality: 86 });
+        if (audit) {
+          const found = await runAxe();
+          audits.push({ scene: name, theme, violations: found });
+          console.log(`${name} (${theme}): ${found.length ? found.map((v) => `${v.id} ×${v.count} (${v.impact})`).join(', ') : 'no violations'}`);
+        } else console.log(`${name} (${theme})`);
       } catch (error) {
         console.error(`${name} (${theme}) failed: ${error.message}`);
         process.exitCode = 1;
       } finally {
+        // The watch runs in the program, which serves every later scene: stop it, or their
+        // status bars show it.
+        if (name === 'qc-live') await app(`if (app.live.status?.watching) await app.live.stop();`).catch(() => {});
         await b.close();
       }
     }
   }
 } finally {
   cytoweave.stop();
+  if (audit) {
+    writeFileSync(join(ROOT, 'docs/capture/audit.json'), `${JSON.stringify(audits, null, 1)}\n`);
+    const byRule = new Map();
+    for (const a of audits) for (const v of a.violations) byRule.set(v.id, { ...v, scenes: [...(byRule.get(v.id)?.scenes ?? []), `${a.scene} (${a.theme})`] });
+    console.log(`\naxe-core: ${audits.length} scene captures, ${byRule.size} rules violated${byRule.size ? `: ${[...byRule.values()].map((v) => `${v.id} (${v.impact}) in ${v.scenes.length}`).join('; ')}` : ''}. Details: docs/capture/audit.json`);
+  }
 }

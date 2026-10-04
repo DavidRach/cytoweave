@@ -130,8 +130,14 @@ released as 0.3.0; wave 4 follows in 0.4.
      keywords). Only the TEXT segment is rewritten; the events are copied byte for byte, checked on
      every example and corpus file. It applies to population exports, the FlowJo export, a ZIP of
      the files and an ACS archive whose workspace keeps none of the removed keywords.
-   - **To do:** open an export in FlowJo itself (no FlowJo licence was available while building
-     it): check that FlowJo 10 and 11 open it, find its FCS files, and show the same counts.
+   - Compatibility tested with FlowJo 11.2.0 (build 11.2.0.210156) during a trial (2026-10-03).
+     The exports first crashed it; fixed in 0.4 (full Graph elements, every rectangle bound
+     written, one-dimensional gates written as rectangles, logicle and arcsinh scales written as
+     FlowJo biex, which FlowJo 11 alone reads correctly). Three exports then open with every
+     population within 0.6 percentage points, most within 0.1 (`reference/flowjo11.json`).
+     CytoML 2.24 reads every export (`reference/cytoml.json`). FlowJo 11 needs the files
+     reconnected once and drops Boolean populations, on FlowJo 10's own workspaces too.
+     **To do:** FlowJo 10 has not been tried.
 2. **Provenance in figures (R5): done.** Exported figures and plots (SVG metadata, a PNG iTXt
    chunk, a PDF attachment) embed the samples with their files' checksums, every gate the plots
    depend on with per-sample adjustments, the scales, the compensation each sample was drawn with,
@@ -177,7 +183,7 @@ released as 0.3.0; wave 4 follows in 0.4.
      within 6e-9 in all 36 detectors. flowQB is deprecated in Bioconductor and needs a one-line
      fix to run on R 4 (in `generate_flowqb.R`).
    - The simulator now knows every detector's Q and B (its noise model is the same quadratic), and
-     a new example has 30 daily bead runs with a PMT ageing, a dirty flow cell and a weaker laser:
+     a new example has 30 daily bead runs with a PMT aging, a dirty flow cell and a weaker laser:
      Q within 2% and B within 6% (median), every problem flagged at once on the Levey–Jennings
      charts (Westgard rules against the first 20 runs), nothing in the baseline, 0.8% false flags
      after. The standard errors are somewhat optimistic (87% of the truths within 2 SE): the robust
@@ -192,18 +198,89 @@ released as 0.3.0; wave 4 follows in 0.4.
      PE-Cy7 spectrum cost PE nearly a third of its correlation with the truth (0.68 → 0.48). Real controls will vary
      more than simulated ones; the threshold may need to be per laboratory.
 
-## Next (0.4)
+## 0.4.0: before, during and after acquisition (released 2026-10-03)
+
+Wave 4 follows an experiment from panel design through acquisition to the robustness of its
+conclusions, and makes the workbench accessible. It also fixed the FlowJo export for FlowJo 11,
+after compatibility testing with FlowJo 11.2.0 (build 11.2.0.210156), and gave CytoWeave a new
+logo.
 
 ### Wave 4
 
-1. **Predicted spread for panel design (S6)** from the library of wave 3 and the noise model,
-   validated against observed spread.
-2. **Acquisition-time QC (Q4):** the host watches the instrument's export folder; PeacoQC runs its
-   channels in parallel on the shared columns.
-3. **Counterfactual preprocessing:** whether a comparison's conclusion survives alternative scales,
-   matrices, QC thresholds and gate variants.
-4. **Accessibility (V4):** keyboard-only operation, labels on every control, colour maps checked
-   for colour-vision deficiency.
+1. **Predicted spread for panel design (S6): done.** A dye at brightness ΔF reaching detector d
+   adds photon noise c1_d·ΔF·s_id (c1 = 1/Q); unmixing or compensation (U) carries it into channel
+   j. Real controls showed a second source the plan left out: each laser's intensity fluctuates
+   independently of the others, so a dye excited by two lasers spreads by ΔF²·Σ_L cv_L²(Σ_{d∈L}
+   U_dj s_id)², in proportion to its brightness (only the sum of the two lasers' variances is
+   identifiable from such a dye, which is all a prediction needs). Both are fitted to the
+   controls' variance differences (weighted by their standard errors, shrunk toward a common
+   c1 where a detector gets too little light), kept per instrument in the library, or c1 comes
+   from bead runs (Q5). Spectral → Panel design predicts the matrix, complexity and the spread
+   each channel receives for an edited panel, or for one built from the library with no files.
+   - Validation: on simulated controls the photon noise is recovered within 1%, each control is
+     predicted from the other 24 within 2× for 98% of well-measured pairs, and a 15-dye panel is
+     predicted from the 25-dye fit within 2× for all pairs. On a BD LSRFortessa's 15 bead
+     controls (leave one out) 79% are within 2× (67% with photon noise alone).
+   - No public spectral data set with single-stain controls was found: the BD FACSDiscover
+     cell-line data on Zenodo (19221995) stain every tube with calcein and DRAQ5, have no
+     unstained control, and BD's unmixing in them is not linear, so they could not separate
+     noise from spectral error.
+   - Found on the way: the compensation spreading matrix counted off-scale events (an entry of
+     53 instead of 4 on a real control), and BD FACSDiscover detector names (`UV1 (375)-A`)
+     were not recognized as spectral (both fixed).
+2. **Acquisition-time QC (Q4): done.** The program polls a folder (`--watch`, or QC → Live) and
+   hands over each FCS file once complete: size and modification time steady between two checks
+   and the header's data end (or `$ENDDATA`) within the file. It never writes there; files already
+   present wait to be asked for. The page adds each file (in a group named after the folder) and
+   checks it at once, in any view: acquisition QC for samples and controls, Q and B for bead files,
+   added to the instrument's record and checked against the Levey–Jennings rules. PeacoQC's
+   per-channel work (88–100% of its time) runs on up to four workers on shared columns, identical
+   to the serial run (×3.1 at 2 M events, 20 channels).
+   - Validation: Go tests of slow and paused writers, coarse modification times, temporary names,
+     renames, nested folders, large-file offsets and the API; parallel PeacoQC identical to serial
+     on the simulated QC files and PeacoQC's own 7 files; the benchmark times both.
+   - Found on the way: names with underscores ("Beads_…", "Comp_FITC") were not given their
+     roles, so a watched bead file would have been QC'd as a sample (fixed).
+   - Not done: an agent tool to start a watch, and system notifications outside the window.
+3. **Counterfactual preprocessing: done.** Compare → Robustness to analysis choices repeats a
+   two-group comparison with each gate on the path moved 1% and 2% of the axis, the gates adapted
+   to each sample (as autogating would put them, confident or not; one gate per subject when
+   paired) or without per-sample adjustments, without the QC gate or with QC re-run (MAD 4 and
+   8), with other compensation matrices, and with the rank test when it can reach significance
+   (with 3 + 3 samples or 4 pairs it cannot, and is left out). Each alternative is tried alone,
+   then in seeded random combinations (64 analyses). The verdict comes from the conclusion
+   (holds ≥ 90%, mostly ≥ 70%, fragile); single changes that alter it are named, and so are those
+   that keep a significant difference but move it outside its confidence interval. Scales are not
+   varied (a hand-drawn gate follows its population on any scale). The agent tool
+   `check_robustness` runs the same check.
+   - What the validation changed: boundary moves alone cannot reveal a detector gain that differs
+     between groups (a shared gate moves equally in both), so adapted gates had to be a choice;
+     a stale matrix's effect showed that agreement on the conclusion can hide a 75-fold change
+     in the difference, hence the effect-size check; and an outward monocyte gate in stimulated
+     samples takes in activated T-cell blasts, a real fragility the check reports.
+   - Validation: real effect holds 64/64; gain, clog and compensation artifacts each named; under
+     the null 6% significant by chance, half of them robust; on the cytokine study every PMA
+     comparison holds and one IL-4 peptide response is fragile.
+   - Not done: designs of more than two groups, and cluster abundances (re-clustering each
+     variant).
+4. **Accessibility (V4): done.** Color-vision-friendly colors are a setting (Appearance menu),
+   not a change to the defaults: populations, groups and clusters take a palette chosen for
+   protanopia, deuteranopia and tritanopia (Okabe–Ito, then greedily the color farthest in
+   CIEDE2000 from those chosen, in all four visions simulated per Machado et al. 2009, chroma ≥ 30,
+   visible on light and dark plots), in the gating tree's order whatever colors they were given;
+   rainbow heat maps are drawn as viridis; status colors become blue, orange and magenta. The
+   workspace is not changed. The default palette fails (two of its first eight colors are 0.8
+   apart with deuteranopia); the friendly one keeps ≥ 11 (first eight) and ≥ 7 (twenty).
+   - Contrast fixes were shown before and after and approved: muted text, badge text and the
+     dark theme's primary buttons now reach 4.5:1 on every surface, in both themes, setting on
+     or off (validation `accessibility`, from the CSS tokens).
+   - Keyboard: the population tree (WAI-ARIA tree pattern), the sample list as one stop, focus
+     kept in dialogs and given back, focus rings for keyboard use only, scroll regions focusable.
+     Screen readers: plots described in text, statuses in words, labeled icon buttons and menus.
+   - axe-core 4.13 runs in every documentation scene (`capture.mjs --audit`; fetched, not
+     shipped).
+   - Not done: drawing a new gate without a pointer, exploring a plot's events without one, and
+     testing by people who use screen readers (a walkthrough is in the docs).
 
 ## Later
 - Branches of an analysis, three-way merge of non-conflicting edits, and

@@ -15,6 +15,8 @@ import {
   makeBins,
   marginEvents,
   peacoQC,
+  peacoQCChannel,
+  peacoQCLayout,
   qcSummary,
   runningMedian,
   signalDrift,
@@ -204,6 +206,27 @@ test('PeacoQC removes the injected clog and burst and spares clean events', () =
   // FL1-A is bimodal: two peak trajectories.
   assert.equal(PEACO.channelTracks['FL1-A'].peaks.length, 2);
   assert.equal(PEACO.channelTracks['FSC-A'].peaks[0].length, PEACO.bins.length);
+});
+
+test('PeacoQC computed channel by channel apart (as in parallel workers) equals the serial run', () => {
+  for (const mode of ['refined', 'classic']) {
+    const serial = peacoQC(RUN.sample, { mode });
+    const layout = peacoQCLayout(RUN.sample, { mode });
+    // Two "workers": alternate channels, each with its own scratch space, computed in reverse
+    // order and passed through a structured clone, as postMessage does.
+    const groups = [layout.channels.filter((_, c) => c % 2 === 0), layout.channels.filter((_, c) => c % 2 === 1)];
+    const byName = new Map();
+    for (const group of groups) {
+      for (const name of [...group].reverse()) byName.set(name, structuredClone(peacoQCChannel(RUN.sample, name, layout.bins, { mode })));
+    }
+    const parallel = peacoQC(RUN.sample, { mode, channelResults: layout.channels.map((name) => byName.get(name)) });
+    assert.deepEqual(parallel.mask, serial.mask, mode);
+    assert.deepEqual(parallel.byMethod, serial.byMethod, mode);
+    assert.deepEqual(parallel.episodes, serial.episodes, mode);
+    assert.deepEqual(parallel.channelTracks, serial.channelTracks, mode);
+    assert.deepEqual(parallel.warnings, serial.warnings, mode);
+  }
+  assert.throws(() => peacoQC(RUN.sample, { channelResults: [] }), /one channel result/);
 });
 
 test('PeacoQC removes almost nothing from a clean acquisition', () => {

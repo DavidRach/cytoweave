@@ -1,4 +1,4 @@
-// DNA-content histogram (cell-cycle) modelling of a single population.
+// DNA-content histogram (cell-cycle) modeling of a single population.
 //
 // Input values are a linear DNA-dye parameter (PI-A, DAPI-A, DRAQ5-A, …) of singlet nuclei or
 // cells. Two classical models are provided:
@@ -426,7 +426,7 @@ function fitFlank(counts, edge0, bw, from, to, start, options) {
 
 // Watson pragmatic fit. Options: ratio (fixed G2/G1 ratio), equalCV (default true: the G2 SD is
 // G1 CV × G2 mean), flankCorrection (default true: the broadened edge of the S-phase plateau is
-// modelled inside each flank window, its level taken from a straight line through the residual
+// modeled inside each flank window, its level taken from a straight line through the residual
 // S region and extrapolated to each mean, and the windows extend 1 SD past each mean; without it
 // — Watson's original outer-half fits — S cells near G2 inflate the G2 area by ~3 points at 4% CV),
 // peaks.
@@ -450,7 +450,7 @@ export function fitWatsonPragmatic(histogram, options = {}) {
   let g1;
   let g2;
   // Flank windows: from 4 SD outside each peak to `inner` SD past its mean (Watson et al. use
-  // the outer half; with the S-phase edge modelled, a little of the inner side pins the mean).
+  // the outer half; with the S-phase edge modeled, a little of the inner side pins the mean).
   const inner = flankCorrection ? 1 : 0;
   const rounds = flankCorrection ? 3 : 1;
   for (let round = 0; round < rounds; round += 1) {

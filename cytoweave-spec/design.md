@@ -12,7 +12,7 @@ these choices, see `research.md`.
    that agreement must be checked automatically (`validation/`).
 2. **The everyday workbench, fast.** Gating, compensation, statistics and
    figures for conventional, spectral and mass cytometry. Built for 30+
-   samples and millions of events, without a licence server, account,
+   samples and millions of events, without a license server, account,
    install step or plugin dependencies.
 3. **Trust in the analysis, not just the result.** Show how sensitive each
    number is to analyst choices: where a gate was drawn, which matrix was
@@ -250,7 +250,7 @@ is `{id, type, payload}` → progress* → result | error. Event columns on shar
 memory are shared, not copied. Without isolation, a browser refuses to copy
 much more than a gigabyte to a worker. Other large arrays are transferred.
 A payload that cannot be handed over fails the job with a message. Jobs can
-be cancelled. Long loops check an abort signal and report progress.
+be canceled. Long loops check an abort signal and report progress.
 
 ## Interoperability
 
@@ -262,7 +262,7 @@ be cancelled. Long loops check an abort signal and report progress.
 - **Gating-ML 2.0** import and export. Covers all gate types, transformations
   (flin, flog, fasinh, logicle, hyperlog, fratio), compensation as
   `spectrumMatrix`, and quadrant gates. A CytoWeave `custom_info` block
-  restores names, colours and exact transform specs on re-import. FlowJo's
+  restores names, colors and exact transform specs on re-import. FlowJo's
   biex has no Gating-ML form, so it is written as its closest logicle, with
   gate coordinates converted and a warning.
 - **FlowJo workspaces (.wsp).** Imported with a fidelity report. FlowJo
@@ -311,7 +311,7 @@ be cancelled. Long loops check an abort signal and report progress.
   Adjusting a sample from the queue creates an override for that sample only.
 - **Refined acquisition QC.** This is PeacoQC's peak tracking and outlier
   detection with three changes:
-  - peaks are tracked with a tolerance tied to neighbouring populations;
+  - peaks are tracked with a tolerance tied to neighboring populations;
   - a MAD outlier must also stand out from the track's robust (Theil–Sen)
     trend, by more than 4 noise SDs (estimated from successive differences)
     and at least 1.5% of the axis. A steady drift is then left alone; drift
@@ -343,13 +343,13 @@ be cancelled. Long loops check an abort signal and report progress.
   cells), and it is reported as such instead of as a correction.
 - **Embedding honesty.** Every t-SNE or UMAP map comes with:
   - trustworthiness and continuity, and kNN preservation;
-  - seed stability (neighbourhood overlap and Procrustes disparity);
+  - seed stability (neighborhood overlap and Procrustes disparity);
   - mixing (LISI, entropy) by sample or batch;
   - per-event reliability, which can shade unreliable regions;
   - plain-language warnings.
 
   Samples left out of a UMAP can be placed on it afterwards with UMAP's
-  transform (each event among its nearest neighbours of the map's own events;
+  transform (each event among its nearest neighbors of the map's own events;
   the map does not change). Placed events get no quality measures of their
   own: a sample unlike any on the map lands on its nearest look-alikes, which
   the dialog and the methods paragraph say.

@@ -55,12 +55,12 @@ export function installExportDialogs(app) {
     const notExact = [...byPath.values()].filter((p) => p.status !== 'exact');
     const options = { counts: true, files: false, deidentify: false };
     const content = [
-      h('p', 'FlowJo 10 and 11 open FlowJo workspaces (.wsp). Each sample gets its own gating tree: the gates that apply to it, with its own adjustments. FlowJo finds the FCS files by name, so keep them in the same folder as the workspace, or include them below.'),
+      h('p', 'FlowJo 10 and 11 open FlowJo workspaces (.wsp). Each sample gets its own gating tree: the gates that apply to it, with its own adjustments. Keep the FCS files in the same folder as the workspace, or include them below. FlowJo 11 (File → Import FlowJo v10 Workspace) asks to reconnect the files the first time: choose that folder.'),
       h('div.stat-grid', { style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
         statTile('Exact', formatCount(report.summary.exact), 'ok'),
         statTile('Traced on another scale', formatCount(report.summary.approximated), report.summary.approximated ? 'accent' : null),
         statTile('Not exported', formatCount(report.summary.omitted), report.summary.omitted ? 'warn' : null)),
-      h('p.muted', { style: { fontSize: '12px' } }, 'Counts are per population and sample. "Traced" gates were drawn on a different scale than FlowJo will show: their outlines are written with enough vertices to follow the original. Gates FlowJo cannot evaluate (on channels CytoWeave computed, such as QC pass, clusters or unmixed channels, and gates of three or more dimensions) are left out with their children.'),
+      h('p.muted', { style: { fontSize: '12px' } }, 'Counts are per population and sample. "Traced" gates were drawn on a different scale than FlowJo will show (logicle and arcsinh scales are written as FlowJo\'s biexponential, the only one FlowJo 11 reads correctly): their outlines are written with enough vertices to follow the original. Gates FlowJo cannot evaluate (on channels CytoWeave computed, such as QC pass, clusters or unmixed channels, and gates of three or more dimensions) are left out with their children.'),
       notExact.length
         ? h('div', { style: { maxHeight: '220px', overflow: 'auto', margin: '6px 0 12px' } }, h('table.data',
           h('thead', h('tr', h('th', 'Population'), h('th', 'Status'), h('th.r', 'Samples'), h('th', 'Why'))),

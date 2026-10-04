@@ -6,9 +6,10 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, compensation, gating, qc, spectral, cellcycle, proliferation, clustering,
+// Suites: fcs, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
-// experts, flowqb, gatingml, flowkit, fcsparser, diva, bioconductor
+// multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, diva, fortessa,
+// bioconductor
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -16,7 +17,7 @@
 
 import { generateExample } from '../web/lib/examples.js';
 import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
-import { compensate, computeSpillover, controlResiduals, leanCheck } from '../web/lib/compensation.js';
+import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
 import { SampleView, countOf, population } from '../web/lib/engine.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
 import { builtCase, bundledCase, flowKitCases } from './flowjo-export-cases.mjs';
@@ -26,13 +27,20 @@ import { writePDF } from '../web/lib/pdf.js';
 import { characterize, findBeadPeaks, REJECT_RULES } from '../web/lib/qb.js';
 import { beadRun, runFlags, seriesRun } from '../web/lib/instrument-record.js';
 import { compareWithLibrary, latestEntries, libraryEntry, spectrumOn, withEntries as withSpectra } from '../web/lib/spectral-library.js';
+import { textPairs, themeTokens } from './accessibility-cases.mjs';
+import { VISIONS, lab as labOf, paletteReport, simulate } from '../web/lib/colorvision.js';
+import { CATEGORICAL, CATEGORICAL_CVD, colormapColor } from '../web/lib/colormaps.js';
+import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositive, withQCGate } from './multiverse-cases.mjs';
+import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
 import { EXPERT_GATES, ORDER, TRUTH, adaptTopDown, againstExperts, buildCohort, expertCorrection, expertWorkspace, f1 as truthF1, randomGains } from './autogating-cases.mjs';
 import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
-import { peacoQC, flowRateCheck } from '../web/lib/qc.js';
-import { autoGateControl, referenceSpectrum, extractAutofluorescence, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
+import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
+import { autoGateControl, referenceSpectrum, extractAutofluorescence, spectralSpreading, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
+import { agreement, crossValidate, fitNoise, predictedSpreading, spreadModel } from '../web/lib/spread.js';
+import { INSTRUMENTS } from '../web/lib/simulate.js';
 import { dnaHistogram, fitDeanJettFox, fitWatsonPragmatic } from '../web/lib/cellcycle.js';
 import { fitProliferation } from '../web/lib/proliferation.js';
 import { flowsom, mapToSOM, hclust, cutTree, distanceMatrix } from '../web/lib/flowsom.js';
@@ -92,6 +100,21 @@ function median(values) {
 // External data (validation/sources.json, fetched into validation/cache/ by fetch.mjs).
 const sources = JSON.parse(readFileSync(new URL('./sources.json', import.meta.url), 'utf8'));
 class MissingData extends Error {}
+// PeacoQC as the app runs a large sample: each channel's work done apart (in parallel workers, here
+// one after another, each with fresh scratch space and through a structured clone, as postMessage
+// passes it), then combined. Must equal the serial run event for event.
+function splitPeacoQC(sample, options) {
+  const layout = peacoQCLayout(sample, options);
+  const channelResults = layout.channels.map((name) => structuredClone(peacoQCChannel(sample, name, layout.bins, options)));
+  return peacoQC(sample, { ...options, eventsPerBin: layout.eventsPerBin, channelResults });
+}
+
+function sameMask(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 function dataset(name) {
   const set = sources.datasets[name];
   const root = new URL(`./cache/${name}/`, import.meta.url);
@@ -215,6 +238,62 @@ function flowKitExportChecks(c, ref, originals) {
     else worse.push(`${k}: ${before} → ${n} (FlowJo ${saved})`);
   }
   check('flowkit', `${c.name}: FlowKit's counts on the export vs on the original workspace`, `${unchanged} unchanged${closer ? `, ${closer} closer to FlowJo's saved counts (time gates, which the export writes in $TIMESTEP units)` : ''}${worse.length ? `; ${worse.slice(0, 2).join('; ')}` : ''}`, !worse.length && unchanged + closer === original.size, 'each unchanged or closer to FlowJo');
+}
+
+// FlowJo 11 itself on the exports (reference/flowjo11.json, read from FlowJo 11.2 during a trial):
+// each population's percentage of its parent against CytoWeave's, for the cases in `cases`.
+function flowJo11Checks(suite, cases) {
+  const fj11 = JSON.parse(readFileSync(new URL('./reference/flowjo11.json', import.meta.url), 'utf8'));
+  for (const ref of fj11.cases) {
+    const c = cases.find((x) => x.name === ref.case);
+    if (!c) continue;
+    const ours = new Map(c.rows.filter((r) => r.sampleName === ref.sample).map((r) => [r.path, r.cytoweave]));
+    const file = c.files.find((f) => f.name === ref.sample);
+    const total = file ? parseFCS(file.bytes).datasets[0].eventCount : null;
+    const gaps = Object.entries(ref.percentOfParent).map(([path, pct]) => {
+      const parent = path.includes('/') ? ours.get(path.slice(0, path.lastIndexOf('/'))) : total;
+      return { path, gap: parent ? Math.abs((100 * ours.get(path)) / parent - pct) : Number.NaN };
+    });
+    const worst = gaps.reduce((a, b) => (b.gap > a.gap || Number.isNaN(b.gap) ? b : a));
+    check(suite, `FlowJo ${fj11.flowjoVersion} (${fj11.flowjoBuild}) opens the export of ${ref.case}: populations of ${ref.sample} within ${ref.tolerance} percentage points of FlowJo's (FlowJo evaluates gates at its display resolution)`, `${gaps.filter((g) => g.gap <= ref.tolerance).length} of ${gaps.length}; largest ${worst.gap.toFixed(3)} (${worst.path.split('/').pop()})`, gaps.every((g) => g.gap <= ref.tolerance), 'all');
+  }
+}
+
+// CytoML's counts on the FlowJo exports (reference/cytoml.json, written by generate_cytoml.R):
+// Bioconductor's FlowJo reader against CytoWeave. CytoML reads FlowJo's ellipses differently from
+// FlowJo (on the built case FlowJo 11 shows 87.2% for the ellipse, CytoWeave 87.1%, CytoML 80.4%),
+// so ellipses are reported, not required.
+function cytomlChecks(cases) {
+  let ref;
+  try {
+    ref = JSON.parse(readFileSync(new URL('./reference/cytoml.json', import.meta.url), 'utf8'));
+  } catch {
+    check('flowkit', 'CytoML reads CytoWeave\'s FlowJo exports', 'not generated (run write_flowjo_exports.mjs and generate_cytoml.R)', false, 'read');
+    return;
+  }
+  const sample = (name) => name.replace(/_\d+$/, '').replace(/\.fcs$/i, '');
+  const failed = cases.filter((c) => !ref.exports[c.name] || ref.exports[c.name].error);
+  check('flowkit', `CytoML ${ref.versions.CytoML} (flowWorkspace ${ref.versions.flowWorkspace}) reads every CytoWeave FlowJo export`, failed.length ? failed.map((c) => `${c.name}: ${ref.exports[c.name]?.error ?? 'missing'}`).slice(0, 2).join('; ') : `${cases.length} of ${cases.length}`, !failed.length, 'all');
+  let same = 0;
+  let total = 0;
+  const ellipses = [];
+  const differ = [];
+  for (const c of cases) {
+    const counts = new Map((ref.exports[c.name]?.populations ?? []).map((p) => [`${sample(p.sample)}|${p.path}`, p.count]));
+    for (const r of c.rows) {
+      const n = counts.get(`${sample(r.sampleName)}|${r.path}`);
+      total += 1;
+      if (n === r.cytoweave) same += 1;
+      else if (n !== undefined && isEllipseGate(c, r.path)) ellipses.push(`${r.path.split('/').pop()} ${n} vs ${r.cytoweave}`);
+      else differ.push(`${c.name} ${r.sampleName} ${r.path}: CytoML ${n} vs CytoWeave ${r.cytoweave}`);
+    }
+  }
+  check('flowkit', `CytoML on CytoWeave's FlowJo exports: populations whose count equals CytoWeave's (${cases.length} workspaces)`, `${same} of ${total}${ellipses.length ? `; ${ellipses.length} ellipses differ (CytoML reads FlowJo ellipses differently; FlowJo 11 agrees with CytoWeave)` : ''}${differ.length ? `; ${differ.slice(0, 2).join('; ')}` : ''}`, !differ.length && same > 0, 'all (ellipses reported)');
+}
+
+// Whether a population of an export case is an ellipse in CytoWeave's workspace.
+function isEllipseGate(c, path) {
+  return (c.ellipses ?? []).includes(path.split('/').pop());
 }
 
 // De-identified files: the same events as the original, and only allowlisted keywords.
@@ -356,6 +435,7 @@ const suites = {
     // Each file with its example's display scales, which the QC view passes to PeacoQC.
     const withScales = ({ files, workspaceHints }) => files.map((file) => ({ file, transforms: Object.fromEntries(Object.entries(workspaceHints?.channelSettings ?? {}).map(([name, setting]) => [name, setting.transform])) }));
     const cases = [...withScales(generateExample('qc-showcase', {})), ...withScales(generateExample('pbmc-immunophenotyping', { samples: ['D05_Unstim.fcs', 'D02_Unstim.fcs'] })).filter(({ file }) => /^D0/.test(file.name))];
+    const splitRuns = [];
     for (const { file, transforms } of cases) {
       const d = load(file);
       const time = d.data[d.parameters.findIndex((p) => p.type === 'time')];
@@ -368,6 +448,10 @@ const suites = {
       if (spill) sample.columns = { ...sample.columns, ...compensate(sample.columns, spill) };
       const channels = d.parameters.filter((p) => p.type === 'scatter' || p.type === 'fluorescence').map((p) => p.name);
       const pq = peacoQC(sample, { channels, transforms });
+      for (const mode of ['refined', 'classic']) {
+        const serial = mode === 'refined' ? pq : peacoQC(sample, { channels, transforms, mode });
+        splitRuns.push({ same: sameMask(serial.mask, splitPeacoQC(sample, { channels, transforms, mode }).mask), events: d.eventCount });
+      }
       const fr = flowRateCheck(sample, { timestep: Number(d.keywords.$TIMESTEP) });
       let anomalous = 0; let caught = 0; let falseRemoved = 0;
       for (let i = 0; i < d.eventCount; i += 1) {
@@ -379,6 +463,8 @@ const suites = {
       if (anomalous) check('qc', `${label}: anomalous events removed`, pct(caught / anomalous), caught / anomalous > 0.95, '> 95%');
       check('qc', `${label}: clean events removed`, pct(falseRate), falseRate < (anomalous ? 0.06 : 0.01), anomalous ? '< 6%' : '< 1%');
     }
+    const differ = splitRuns.filter((r) => !r.same).length;
+    check('qc', `PeacoQC with each channel computed apart (as on parallel workers) vs the serial run: ${splitRuns.length} runs (${cases.length} files, refined and classic)`, differ ? `${differ} runs differ` : 'identical masks', differ === 0, 'identical');
   },
 
   spectral() {
@@ -466,6 +552,63 @@ const suites = {
     const staleResult = unmixWithAutofluorescence(dCols, stale, dAF.signatures, { detectors });
     check('spectral', 'degraded PE-Cy7 unmixed with its stale library spectrum vs its own control: Pearson r of PE (whose detectors the donor emission reaches) and PE-Cy7', `PE ${fmt(rOf(staleResult, 'PE'), 3)} vs ${fmt(rOf(fresh, 'PE'), 3)}; PE-Cy7 ${fmt(rOf(staleResult, 'PE-Cy7'), 3)} vs ${fmt(rOf(fresh, 'PE-Cy7'), 3)}`, rOf(staleResult, 'PE') < rOf(fresh, 'PE'), 'the stale spectrum is worse for PE');
   },
+  // Predicted spread (S6) on the spectral example with known noise: every detector's photon noise
+  // (c1 = k) and each laser's intensity CV. The noise is fitted to the controls, each control's
+  // spread is predicted from the others, and a panel that was never fitted (15 of the 25 dyes) is
+  // predicted and compared with its controls unmixed with its own spectra.
+  spread() {
+    const laserCV = { UV: 0.03, V: 0.02, B: 0.015, YG: 0.025, R: 0.02 };
+    const fluorochromes = ['BUV395', 'BUV496', 'BUV563', 'BUV615', 'BUV661', 'BUV737', 'BUV805', 'BV421', 'BV480', 'Aqua', 'BV570', 'BV605', 'BV650', 'BV711', 'BV750', 'BV786', 'FITC', 'PerCP-Cy5.5', 'PE', 'PE-CF594', 'PE-Cy5', 'PE-Cy7', 'APC', 'Alexa Fluor 700', 'APC-Cy7'];
+    const generated = generateExample('spectral-25color', { laserCV, samples: fluorochromes.map((f) => `Ref_${f}.fcs`) });
+    const detectors = generated.workspaceHints.spectral.detectors;
+    const controls = generated.files.filter((f) => f.meta.role === 'single-stain').map((file) => {
+      const cols = columnsOf(load(file));
+      const gate = autoGateControl(cols, detectors, {});
+      const ref = referenceSpectrum(cols, detectors, gate.positive, gate.negative, {});
+      return { name: file.meta.stain, cols, gate, spectrum: ref.spectrum };
+    });
+    const observe = (list) => {
+      const spectra = list.map((c) => ({ name: c.name, spectrum: c.spectrum, detectors }));
+      const unmixed = list.map((c, i) => ({ fluorochrome: i, abundances: unmixOLS(c.cols, spectra, { residuals: false }), positive: c.gate.positive, negative: c.gate.negative }));
+      return spectralSpreading(unmixed, list.map((c) => c.name));
+    };
+    const modelOf = (list) => spreadModel({ names: list.map((c) => c.name), detectors, spectra: list.map((c) => c.spectrum) });
+    const compare = (predicted, observed, F) => {
+      const rows = [];
+      for (let i = 0; i < F; i += 1) {
+        const o = observed.observations.find((x) => x.i === i);
+        for (const r of o?.rows ?? []) if (r.variance > 4 * r.se) rows.push({ observed: Math.sqrt(r.variance / o.deltaF), predicted: predicted.matrix[i * F + r.j] });
+      }
+      const a = agreement(rows);
+      return { n: rows.length, median: a.medianRatio, within2x: a.within2x, r: a.correlation };
+    };
+    const full = observe(controls);
+    const model = modelOf(controls);
+    const brightness = (obs, F) => Array.from({ length: F }, (_, i) => obs.observations.find((o) => o.i === i)?.deltaF ?? Number.NaN);
+
+    // The model itself: the true noise predicts the observed spread.
+    const truth = { c1: Float64Array.from(detectors, (d) => INSTRUMENTS.aurora.detectors.find((x) => x.name === d).k), laserCV: Float64Array.from(model.lasers, (l) => laserCV[l]) };
+    const exact = compare(predictedSpreading(model, truth, brightness(full, model.F)), full, model.F);
+    check('spread', `spread predicted from the true noise vs the 25 unmixed controls (${exact.n} entries measured to 4 SE, median factor)`, `×${fmt(exact.median, 3)}, ${fmt(100 * exact.within2x, 0)}% within 2×, r = ${fmt(exact.r, 3)}`, exact.median < 1.15 && exact.within2x > 0.95, '< ×1.15, > 95% within 2×');
+
+    const noise = fitNoise(model, full.observations);
+    const ratios = Array.from(noise.c1).filter((_, d) => noise.identified[d]).map((v) => v / truth.c1[0]).sort((a, b) => a - b);
+    check('spread', `photon noise fitted to the controls vs the truth (${ratios.length} of ${detectors.length} detectors identified, median ratio)`, `${fmt(ratios[Math.floor(ratios.length / 2)], 3)} (IQR ${fmt(ratios[Math.floor(ratios.length / 4)], 2)}–${fmt(ratios[Math.floor((3 * ratios.length) / 4)], 2)})`, Math.abs(ratios[Math.floor(ratios.length / 2)] - 1) < 0.15, 'within 15%');
+
+    const loo = crossValidate(model, full.observations);
+    check('spread', `each control's spread predicted from the other 24 (${loo.measurable} entries measured to 4 SE)`, `×${fmt(loo.medianRatio, 3)}, ${fmt(100 * loo.within2x, 0)}% within 2×, r = ${fmt(loo.correlation, 3)}`, loo.within2x > 0.9 && loo.correlation > 0.9, '> 90% within 2×, r > 0.9');
+
+    // A panel never fitted: 15 of the 25 dyes, unmixed with only their spectra.
+    const keep = ['BUV395', 'BUV496', 'BUV661', 'BUV805', 'BV421', 'BV480', 'BV605', 'BV711', 'BV786', 'FITC', 'PE', 'PE-Cy5', 'PE-Cy7', 'APC', 'APC-Cy7'];
+    const sub = controls.filter((c) => keep.includes(c.name));
+    const subObserved = observe(sub);
+    const subModel = modelOf(sub);
+    const whatIf = compare(predictedSpreading(subModel, noise, brightness(subObserved, subModel.F)), subObserved, subModel.F);
+    check('spread', `a ${sub.length}-dye panel predicted with the noise of the 25-dye controls vs its own unmixed controls (${whatIf.n} entries)`, `×${fmt(whatIf.median, 3)}, ${fmt(100 * whatIf.within2x, 0)}% within 2×, r = ${fmt(whatIf.r, 3)}`, whatIf.within2x > 0.9, '> 90% within 2×');
+    const photonOnly = compare(predictedSpreading(subModel, { c1: noise.c1, laserCV: new Float64Array(model.lasers.length) }, brightness(subObserved, subModel.F)), subObserved, subModel.F);
+    check('spread', 'the same without laser fluctuations (photon noise only)', `×${fmt(photonOnly.median, 3)}, ${fmt(100 * photonOnly.within2x, 0)}% within 2×, r = ${fmt(photonOnly.r, 3)}`, true, 'reported');
+  },
+
 
   cellcycle() {
     const { files } = generateExample('cell-cycle', {});
@@ -628,7 +771,11 @@ const suites = {
 
     // FlowJo export: each workspace is exported with CytoWeave's counts and imported back, with
     // every population recomputed from the re-imported gates.
-    for (const c of [bundledCase(), builtCase()]) exportChecks('flowjo', c);
+    const bundled = bundledCase();
+    const built = builtCase();
+    for (const c of [bundled, built]) exportChecks('flowjo', c);
+
+    flowJo11Checks('flowjo', [bundled, built]);
   },
   // Figure provenance: a gating-strategy figure of every PBMC sample, exported, read back from
   // SVG, PNG and PDF, and rebuilt in a new workspace from the same files.
@@ -817,8 +964,121 @@ const suites = {
   },
 
   // Instrument characterization: 30 daily runs of 8-peak beads whose detectors' true Q, B and
-  // CV0 are known, with three planted problems (a PMT ageing from run 21, a dirty flow cell on
+  // CV0 are known, with three planted problems (a PMT aging from run 21, a dirty flow cell on
   // run 25, a weaker violet laser from run 27) against a baseline of the first 20 runs.
+  // Counterfactual preprocessing (web/lib/multiverse.js) on the PBMC example, six donors
+  // unstimulated and stimulated, with known answers: a real effect that must hold, a null, and
+  // artifacts that one choice removes (a detector gain in one batch, clogs in one group, one batch
+  // compensated with the wrong matrix), which must be named; then how often a chance difference
+  // passes as robust.
+  multiverse() {
+    const describe = (s) => `${s.declared.conclusion}, ${s.agree}/${s.total} specifications agree (${s.verdict})`;
+    const depends = (s) => s.dependsOn.map((d) => `${d.choice}: ${d.option} → ${d.conclusion}`).join('; ') || 'nothing alone';
+    const plain = buildCohort({ scale: 0.25, gainOf: () => null });
+    plain.ws = withCD25(plain.ws, plain.views, 'D01_Unstim');
+    // 1. Stimulation activates 20–50% of each T subset (CD25 ×8): a real, large effect.
+    const real = multiverseOf(plain, byDonor(plain.ws), 'paired-two', 'CD25+').summary;
+    check('multiverse', 'real effect: CD25+ of T cells, stimulated vs unstimulated (paired, 6 donors)', describe(real), real.declared.conclusion === 'higher' && real.verdict === 'holds', 'higher, holds (≥ 90%)');
+    // 2. Monocytes do not change with stimulation; activated T cells (larger, blasts) enter a
+    // monocyte gate drawn wider.
+    const none = multiverseOf(plain, byDonor(plain.ws), 'paired-two', 'Monocytes').summary;
+    check('multiverse', 'null: monocytes, stimulated vs unstimulated', `${describe(none)}; depends on ${depends(none)}`, none.declared.conclusion === 'none' && none.share >= 0.7, 'none, ≥ 70% agree');
+
+    // 3. Batch B (D04–D06) acquired with PE ×1.6, no true difference; the CD25+ gate cuts into the
+    // CD25-dim tail. Adapting the gates to each sample removes the spurious difference.
+    const batchB = (name) => ['D04', 'D05', 'D06'].includes(name.slice(0, 3));
+    const shifted = buildCohort({ scale: 0.25, gainOf: (name, p) => (p.name === 'PE-A' && batchB(name) ? 1.6 : null) });
+    shifted.ws = withCD25(shifted.ws, shifted.views, 'D01_Unstim', 0.9);
+    const batches = shifted.ws.samples.filter((s) => /Unstim/.test(s.name)).map((s) => ({ id: s.id, group: batchB(s.name) ? 1 : 0, pair: null }));
+    const gain = multiverseOf(shifted, batches, 'two', 'CD25+').summary;
+    const adaptedRow = gain.dependsOn.find((d) => d.choice === 'Gates per sample' && /adapted/.test(d.option));
+    check('multiverse', 'detector gain in one batch (PE ×1.6, unstimulated, 3 vs 3): spurious CD25+ difference, named', `${describe(gain)}; ${adaptedRow ? `adapted gates → ${adaptedRow.conclusion} (${fmt(adaptedRow.estimate, 2)} points, p = ${fmt(adaptedRow.p, 2)})` : 'adaptation not named'}`, gain.declared.conclusion === 'higher' && gain.verdict !== 'holds' && adaptedRow?.conclusion === 'none', 'flagged; adapted gates remove it');
+
+    // 4. Clogs in every stimulated sample, QC applied (refined PeacoQC and flow rate; re-run with
+    // MAD 4 and 8 as alternatives). Without QC, clog events (debris-like) make fewer cells.
+    const clogged = buildCohort({ scale: 0.25, gainOf: () => null, example: { clogs: ['D01', 'D02', 'D03', 'D04', 'D05', 'D06'].map((d) => `${d}_Stim.fcs`) } });
+    setChannel(clogged.views, qcMasks(clogged.ws, clogged.views), 'QC pass');
+    setChannel(clogged.views, qcMasks(clogged.ws, clogged.views, { mad: 4 }), 'QC pass · MAD 4');
+    setChannel(clogged.views, qcMasks(clogged.ws, clogged.views, { mad: 8 }), 'QC pass · MAD 8');
+    clogged.ws = withQCGate(clogged.ws);
+    const qcVariants = [{ id: 'mad4', label: 'stricter (MAD 4)', channel: 'QC pass · MAD 4' }, { id: 'mad8', label: 'looser (MAD 8)', channel: 'QC pass · MAD 8' }];
+    const clog = multiverseOf(clogged, byDonor(clogged.ws), 'paired-two', 'Cells', { qcVariants }).summary;
+    const qcRow = clog.dependsOn.find((d) => d.choice === 'Acquisition QC' && d.option === 'not applied');
+    check('multiverse', 'clogs in the stimulated samples, QC applied: cells', `${describe(clog)}; ${qcRow ? `without QC → ${qcRow.conclusion} (p = ${qcRow.p < 0.001 ? qcRow.p.toExponential(1) : fmt(qcRow.p, 2)})` : 'QC not named'}; stricter and looser QC agree: ${clog.dependsOn.some((d) => /MAD/.test(d.option)) ? 'no' : 'yes'}`, clog.declared.conclusion === 'none' && qcRow?.conclusion === 'lower' && !clog.dependsOn.some((d) => /MAD/.test(d.option)), 'none; without QC lower; QC settings agree');
+
+    // 5. Batch B compensated with the files' matrix (APC → Alexa Fluor 700 under-compensated),
+    // batch A with the true one: CD8 T cells look CD4+. With the true matrix for every sample the
+    // difference shrinks to what the donors really differ by.
+    const comp = buildCohort({ scale: 0.25, gainOf: () => null });
+    const matrices = (view) => {
+      const spill = readSpillover(view.dataset.keywords, view.parameters);
+      const n = spill.channels.length;
+      const truth = Array.from(spill.matrix);
+      truth[spill.channels.indexOf('APC-A') * n + spill.channels.indexOf('Alexa Fluor 700-A')] /= 0.7;
+      return { channels: spill.channels, file: Array.from(spill.matrix), truth };
+    };
+    const nameOf = (id) => comp.ws.samples.find((s) => s.id === id).name;
+    const setCompensation = (views, id) => {
+      for (const [sampleId, view] of views) {
+        const m = matrices(view);
+        const file = id === 'declared' && batchB(nameOf(sampleId));
+        view.setCompensation({ id: file ? 'file' : 'controls', channels: m.channels, matrix: file ? m.file : m.truth });
+      }
+    };
+    setCompensation(comp.views, 'declared');
+    comp.ws = withDoublePositive(comp.ws, comp.views, 'D01_Unstim');
+    const compGroups = comp.ws.samples.map((s) => ({ id: s.id, group: batchB(s.name) ? 1 : 0, pair: null }));
+    const wrong = multiverseOf(comp, compGroups, 'two', 'CD4+CD8+', { compensations: [{ id: 'controls', label: 'the controls\' matrix for every sample' }], setCompensation }).summary;
+    const compRow = [...wrong.sizeDependsOn, ...wrong.dependsOn].find((d) => d.choice === 'Compensation');
+    check('multiverse', 'one batch compensated with the files\' matrix: CD4+CD8+ T cells (12 samples, 6 vs 6)', `${describe(wrong)}; ${compRow ? `with the controls' matrix ${fmt(wrong.declared.result.estimate, 3)} → ${fmt(compRow.estimate, 2)} points` : 'compensation not named'}`, Boolean(compRow) && Math.abs(compRow.estimate) < 0.1 * Math.abs(wrong.declared.result.estimate), 'named; difference shrinks > 10×');
+
+    // 6. No effect: the labels swapped within donors in every distinct way (32), T cells and
+    // lymphocytes; how often the declared test is significant, and how often that passes as robust.
+    let significant = 0;
+    let robust = 0;
+    let runs = 0;
+    for (const name of ['T cells', 'Lymphocytes']) {
+      const gate = plain.ws.gates.find((g) => g.name === name);
+      const adapted = adaptPath(plain.ws, pathOf(plain.ws, gate.id, gate.parentId), plain.views);
+      const choices = choicesFor({ ws: plain.ws, gateId: gate.id, ancestorId: gate.parentId, design: 'paired-two', adapted, counts: [6] });
+      const specs = specifications(choices, { max: 32 });
+      for (let mask = 0; mask < 32; mask += 1) {
+        const flipped = (name6) => Boolean(mask & (1 << ['D01', 'D02', 'D03', 'D04', 'D05'].indexOf(name6.slice(0, 3)))) && name6.slice(0, 3) !== 'D06';
+        const samples = plain.ws.samples.filter((s) => /^D0/.test(s.name)).map((s) => ({ id: s.id, group: (/_Stim/.test(s.name) !== flipped(s.name)) ? 1 : 0, pair: s.name.slice(0, 3) }));
+        const sum = summarizeMultiverse(runMultiverse({ ws: plain.ws, views: plain.views, samples, design: 'paired-two', statistic: { stat: 'freqParent', gateId: gate.id }, choices, specs, gateId: gate.id, ancestorId: gate.parentId, adapted }), choices);
+        runs += 1;
+        if (sum.declared.conclusion !== 'none') {
+          significant += 1;
+          if (sum.verdict === 'holds') robust += 1;
+        }
+      }
+    }
+    check('multiverse', `no effect, labels swapped within donors (${runs} analyses): significant by chance, and of those holding in ≥ 90% of specifications`, `${significant} (${pct(significant / runs)}); ${robust} hold`, significant / runs <= 0.1 && robust <= significant, '≤ 10%; no more than significant');
+  },
+  // External data: the intracellular cytokine study (als-ics), four donors × negative, peptide
+  // and PMA/ionomycin wells, the expert's gates adjusted per donor. Each comparison is checked
+  // against boundaries, the per-donor adjustments (removed, or adapted) and the test.
+  'multiverse-ics'() {
+    const data = dataset('als-ics');
+    const rows = [];
+    for (const screen of ['screen3', 'screen4']) {
+      for (const set of ['ALS', 'HC']) {
+        const c = expertWorkspace((name) => data.read(`${screen}/${set}/${name === 'workspace' ? `${set}.wsp` : name}`), 'workspace');
+        const cd4 = c.ws.gates.find((g) => g.name === 'CD4 Single Positive');
+        for (const [cytokine, well] of [['IFNy FITC +', 'PMA'], ['IFNy FITC +', 'peptide'], ['IL-4 BV421 +', 'peptide']]) {
+          const gate = c.ws.gates.find((g) => g.name === cytokine && g.parentId === cd4.id);
+          const samples = c.ws.samples.filter((s) => s.meta.well === 'negative' || s.meta.well === well).map((s) => ({ id: s.id, group: s.meta.well === well ? 1 : 0, pair: s.meta.donor }));
+          const ws = { ...c.ws, gates: [gate, ...c.ws.gates.filter((g) => g !== gate)] };
+          const { summary } = multiverseOf({ ws, views: c.views }, samples, 'paired-two', cytokine);
+          rows.push({ label: `${screen} ${set} CD4 ${cytokine.split(' ')[0]} ${well}`, well, summary });
+        }
+      }
+    }
+    const pma = rows.filter((r) => r.well === 'PMA');
+    check('multiverse-ics', `IFNγ+ CD4 T cells, PMA vs negative (4 workspaces): every specification agrees`, pma.map((r) => `${r.label.split(' CD4')[0]}: ${r.summary.declared.conclusion} ${r.summary.agree}/${r.summary.total}`).join('; '), pma.every((r) => r.summary.share === 1), 'all agree');
+    const fragile = rows.filter((r) => r.summary.verdict !== 'holds');
+    check('multiverse-ics', `peptide vs negative (8 comparisons): fragile conclusions and what they depend on`, fragile.length ? fragile.map((r) => `${r.label}: ${r.summary.declared.conclusion} in ${r.summary.agree}/${r.summary.total}, depends on ${r.summary.dependsOn.slice(0, 2).map((d) => `${d.choice.toLowerCase()} ${d.option}`).join(', ')}`).join('; ') : 'none', true, 'reported');
+  },
   instrument() {
     const { files } = generateExample('bead-qc');
     const runs = files.map((file) => {
@@ -851,7 +1111,7 @@ const suites = {
     const pmt = firstFlag((f) => f.channel === 'BV421-A' && f.metric === 'Q');
     const flowCell = firstFlag((f) => f.channel === 'FITC-A' && f.metric === 'B');
     const laser = flags.findIndex((list) => ['BV421-A', 'BV510-A', 'BV605-A', 'BV650-A', 'BV711-A', 'BV786-A'].every((ch) => list.some((f) => f.channel === ch && f.metric === 'level'))) + 1;
-    check('instrument', 'Levey–Jennings: first run flagged for each planted problem (PMT ageing from run 21, dirty flow cell from 25, weaker violet laser from 27, all six violet detectors)', `PMT run ${pmt}; flow cell run ${flowCell}; laser run ${laser}`, pmt >= 21 && pmt <= 23 && flowCell === 25 && laser === 27, 'within 2 runs, at once, at once');
+    check('instrument', 'Levey–Jennings: first run flagged for each planted problem (PMT aging from run 21, dirty flow cell from 25, weaker violet laser from 27, all six violet detectors)', `PMT run ${pmt}; flow cell run ${flowCell}; laser run ${laser}`, pmt >= 21 && pmt <= 23 && flowCell === 25 && laser === 27, 'within 2 runs, at once, at once');
     let falseFlags = 0;
     let series = 0;
     for (let i = 20; i < runs.length; i += 1) {
@@ -1134,11 +1394,15 @@ const suites = {
 
     // FlowJo export of FlowKit's workspaces and of the bundled and built cases: the round trip in
     // CytoWeave, and FlowKit's reading of each export.
-    for (const c of flowKitCases()) {
+    const kitCases = flowKitCases();
+    for (const c of kitCases) {
       exportChecks('flowkit', c);
       flowKitExportChecks(c, ref, c.original);
     }
-    for (const c of [bundledCase(), builtCase()]) flowKitExportChecks(c, ref, c.original ?? { rows: [] });
+    const ownCases = [bundledCase(), builtCase()];
+    for (const c of ownCases) flowKitExportChecks(c, ref, c.original ?? { rows: [] });
+    cytomlChecks([...ownCases, ...kitCases]);
+    flowJo11Checks('flowkit', kitCases);
     deidentifyChecks('flowkit', `${fcsFiles.size} FlowKit FCS files`, [...fcsFiles.values()]);
   },
   // External data: FCS files from several instruments and deliberately malformed files
@@ -1255,6 +1519,44 @@ const suites = {
       check('diva', `spillover from ${inputs.length} real single-stain controls (${method}, no manual gating) vs BD FACSDiva's matrix (${n * (n - 1)} entries)`, `largest difference ${fmt(worst, 4)} (${where})`, inputs.length === 15 && worst < tolerance, `< ${tolerance}`);
     }
   },
+  // External data: the 15 single-stain bead controls of a BD LSRFortessa (Zenodo 22808501), each
+  // gated on bead singlets and compensated with FACSDiva's matrix. Each control's spreading is
+  // predicted from a noise model fitted to the other 14, and off-scale events are left out.
+  fortessa() {
+    const data = dataset('zenodo-skull');
+    const sample = parseFCS(data.read('Skull BM Broad_Tube_017.fcs')).datasets[0];
+    const spill = readSpillover(sample.keywords, sample.parameters);
+    const detectors = spill.channels;
+    const controls = data.files.filter((f) => f.startsWith('Compensation Controls_')).map((f) => {
+      const d = parseFCS(data.read(f)).datasets[0];
+      const [laser, filter] = f.replace('Compensation Controls_', '').split(' ');
+      const [wavelength, , width] = filter.split(',');
+      const columns = columnsOf(d);
+      // Bead singlets: within 4 robust SDs of the median FSC-A and SSC-A.
+      const center = (values) => {
+        const sorted = Float64Array.from(values).sort();
+        return [sorted[Math.floor(sorted.length / 2)], (sorted[Math.floor(sorted.length * 0.75)] - sorted[Math.floor(sorted.length * 0.25)]) / 1.349];
+      };
+      const [fm, fs] = center(columns['FSC-A']);
+      const [sm, ss] = center(columns['SSC-A']);
+      const keep = [];
+      for (let e = 0; e < d.eventCount; e += 1) if (Math.abs(columns['FSC-A'][e] - fm) < 4 * fs && Math.abs(columns['SSC-A'][e] - sm) < 4 * ss) keep.push(e);
+      const use = keep.length >= 500 ? keep : null;
+      const raw = Object.fromEntries(detectors.map((name) => [name, use ? Float32Array.from(use, (e) => columns[name][e]) : columns[name]]));
+      return { channel: detectors.find((c) => c.startsWith(`${laser} ${wavelength}/${width}`)), raw, columns: compensate(raw, spill) };
+    });
+    const clipped = spilloverSpreading(controls.map(({ channel, columns }) => ({ channel, columns })), detectors);
+    const observed = spilloverSpreading(controls, detectors, { range: 262144 });
+    const at = (m, a, b) => m.matrix[detectors.indexOf(a) * detectors.length + detectors.indexOf(b)];
+    check('fortessa', 'off-scale events left out of the spreading matrix (B 710/50 → V 710/50, a sixth of its positives clipped)', `${fmt(at(observed, 'B 710/50-A', 'V 710/50-A'), 2)} (with them ${fmt(at(clipped, 'B 710/50-A', 'V 710/50-A'), 1)})`, at(observed, 'B 710/50-A', 'V 710/50-A') < 5, '< 5');
+    const model = spreadModel({ names: detectors, detectors, spectra: spill.matrix });
+    const noise = fitNoise(model, observed.observations);
+    check('fortessa', `photon noise fitted to the controls is physical in every detector (c1, units per photoelectron)`, `${fmt(Math.min(...noise.c1), 2)}–${fmt(Math.max(...noise.c1), 2)}`, noise.c1.every((v) => v > 0), '> 0');
+    const loo = crossValidate(model, observed.observations);
+    check('fortessa', `each control's spread predicted from the other 14 (${loo.measurable} entries measured to 4 SE)`, `×${fmt(loo.medianRatio, 3)}, ${fmt(100 * loo.within2x, 0)}% within 2×, r = ${fmt(loo.correlation, 3)}`, loo.within2x > 0.7 && loo.correlation > 0.8, '> 70% within 2×, r > 0.8');
+    const photon = crossValidate(model, observed.observations, { laser: false });
+    check('fortessa', 'the same without laser fluctuations (photon noise only)', `×${fmt(photon.medianRatio, 3)}, ${fmt(100 * photon.within2x, 0)}% within 2×, r = ${fmt(photon.correlation, 3)}`, true, 'reported');
+  },
   // External data: the Bioconductor packages flowCore, PeacoQC, FlowSOM and CytoNorm, run by
   // reference/generate_r.R on their own example files, a FACSDiva file, a FlowKit file and the
   // simulated QC wells; their results (reference/r.json) beside CytoWeave's on the same input.
@@ -1344,6 +1646,7 @@ const suites = {
       for (const channel of p.channels) transforms[channel] ??= { type: 'linear', min: 0, max: 1 };
       const sample = { eventCount: d.eventCount, channels: d.parameters.map((q) => ({ name: q.name, type: q.type, range: q.range })), columns: compensated, keywords: d.keywords };
       const result = peacoQC(sample, { channels: p.channels, transforms, mode: 'classic', method: 'all' });
+      const split = splitPeacoQC(sample, { channels: p.channels, transforms, mode: 'classic', method: 'all' });
       const removedByR = new Uint8Array(d.eventCount);
       for (const [a, b] of p.removed) removedByR.fill(1, a, b + 1);
       let differing = 0;
@@ -1353,10 +1656,11 @@ const suites = {
         removed += out;
         if (out !== removedByR[e]) differing += 1;
       }
-      peaco.push({ file: p.file.split('/').pop(), differing, ours: (100 * removed) / d.eventCount, theirs: p.percentageRemoved, binsAgree: result.eventsPerBin === p.eventsPerBin });
+      peaco.push({ file: p.file.split('/').pop(), differing, ours: (100 * removed) / d.eventCount, theirs: p.percentageRemoved, binsAgree: result.eventsPerBin === p.eventsPerBin, split: sameMask(split.mask, result.mask) });
     }
     const differing = peaco.reduce((s, p) => s + p.differing, 0);
     check('bioconductor', `PeacoQC ${versions.PeacoQC} (all checks, isolation tree and MAD) and CytoWeave's classic mode remove the same events (${peaco.length} files: 3 real and 4 simulated wells with clogs, bubbles and drift)`, `${differing} events differ; removed ${peaco.map((p) => `${p.file} ${p.ours.toFixed(2)}% vs ${p.theirs.toFixed(2)}%`).join(', ')}`, differing === 0 && peaco.every((p) => p.binsAgree) && peaco.length === 7, '0 events differ, same bins');
+    check('bioconductor', `the same with each channel computed apart, as on parallel workers (${peaco.length} files)`, peaco.every((p) => p.split) ? 'identical masks' : `${peaco.filter((p) => !p.split).length} files differ`, peaco.every((p) => p.split), 'identical');
 
     // FlowSOM: mapping to R's own map and R's metaclustering of it are deterministic and must agree;
     // whole runs depend on each implementation's random numbers, so they are compared as R compares
@@ -1417,6 +1721,45 @@ const suites = {
       const clusters = run.files[0].clusters ? `, given R's metacluster of each event` : '';
       check('bioconductor', `${run.method} of CytoNorm ${versions.CytoNorm}: normalized values agree (${run.files.length} files, ${cn.channels.length} channels, ${run.nQ} quantiles${clusters})`, `within ${worst.worst.toExponential(1)} (worst ${worst.where})`, worst.worst < tolerance, required);
     }
+  },
+  // Colors anyone can read and tell apart: every text color on every surface it is used on
+  // (WCAG AA, 4.5:1), in both themes with color-vision-friendly colors off and on; and how far
+  // apart the palettes' colors look with protanopia, deuteranopia and tritanopia (Machado et al.
+  // 2009; CIEDE2000). The interface itself is audited in the browser (docs/capture/capture.mjs
+  // --audit, axe-core).
+  accessibility() {
+    const css = readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8');
+    for (const [name, tokens] of Object.entries(themeTokens(css))) {
+      const pairs = textPairs(tokens);
+      const failing = pairs.filter((p) => p.ratio < 4.5);
+      const worst = pairs.reduce((a, b) => (b.ratio < a.ratio ? b : a));
+      check('accessibility', `text contrast, ${name} theme${name.includes('cvd') ? ' (color-vision-friendly colors)' : ''}: ${pairs.length} text-on-surface pairs`, failing.length ? failing.map((p) => `${p.use} ${fmt(p.ratio, 3)}`).join('; ') : `lowest ${fmt(worst.ratio, 3)} (${worst.use})`, !failing.length, '≥ 4.5:1');
+    }
+    const describe = (report) => VISIONS.map((v) => `${v} ${fmt(report[v].min, 3)}`).join(', ');
+    const friendly8 = paletteReport(CATEGORICAL_CVD, 8);
+    const friendly20 = paletteReport(CATEGORICAL_CVD);
+    check('accessibility', 'color-vision-friendly palette: smallest CIEDE2000 between any two of the first 8 colors', describe(friendly8), VISIONS.every((v) => friendly8[v].min >= 10), '≥ 10 in every vision');
+    check('accessibility', 'color-vision-friendly palette: the same for all 20 colors', describe(friendly20), VISIONS.every((v) => friendly20[v].min >= 7), '≥ 7 in every vision');
+    const default8 = paletteReport(CATEGORICAL, 8);
+    check('accessibility', 'default palette, first 8 colors (why the setting exists)', describe(default8), true, 'reported');
+    // Status colors: ok, warning and danger apart from each other.
+    for (const name of ['light', 'dark', 'light+cvd', 'dark+cvd']) {
+      const t = themeTokens(css)[name];
+      const report = paletteReport([t.ok, t.warn, t.danger]);
+      const required = name.includes('cvd');
+      check('accessibility', `status colors (ok, warning, danger), ${name}: smallest CIEDE2000`, describe(report), !required || VISIONS.every((v) => report[v].min >= 9), required ? '≥ 9 in every vision' : 'reported');
+    }
+    // Heat maps: a map read as "more" must get lighter steadily in every vision. Viridis (drawn
+    // instead of the rainbow maps with the setting on) does; the classic rainbow does not.
+    const monotone = (name) => VISIONS.map((v) => {
+      const L = Array.from({ length: 33 }, (_, i) => labOf(simulate(colormapColor(name, i / 32), v))[0]);
+      let reversals = 0;
+      for (let i = 1; i < L.length; i += 1) if (L[i] < L[i - 1] - 0.5) reversals += 1;
+      return reversals;
+    });
+    const viridis = monotone('viridis');
+    const classic = monotone('classic');
+    check('accessibility', 'viridis: lightness never falls along the map, in every vision', `${viridis.reduce((a, b) => a + b, 0)} reversals (classic rainbow: ${classic.join(', ')} in ${VISIONS.join(', ')})`, viridis.every((r) => r === 0), '0');
   },
   reference() {
     // R: t.test / wilcox.test on the sleep data set (extra sleep, group 1 vs group 2).

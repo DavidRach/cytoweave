@@ -1,4 +1,4 @@
-// Dye-dilution proliferation modelling (CFSE, CellTrace Violet, …), after FlowJo's proliferation
+// Dye-dilution proliferation modeling (CFSE, CellTrace Violet, …), after FlowJo's proliferation
 // platform and Roederer 2011 ("Interpretation of cellular proliferation data: avoid the
 // panglossian", Cytometry A 79:95–101, doi:10.1002/cyto.a.21010).
 //
@@ -277,7 +277,7 @@ export function fitProliferation(values, options = {}) {
   const z = new Float64Array(K);
   const inv = 1 / (2 * sd * sd);
   for (let i = 0; i < sorted.length; i += 1) {
-    if ((i & 0xffff) === 0 && options.signal?.aborted) throw new Error('The fit was cancelled.');
+    if ((i & 0xffff) === 0 && options.signal?.aborted) throw new Error('The fit was canceled.');
     const y = sorted[i];
     let max = -Infinity;
     for (let g = 0; g < K; g += 1) {
@@ -316,7 +316,7 @@ export function fitProliferation(values, options = {}) {
   if (excluded > 0) warnings.push(`${excluded} events with non-positive dye intensity were left out of the log scale; use a logicle transform to include them.`);
   if (!fixed[1] && fit.atBound[1]) warnings.push('The generation spacing ran to its limit; check the undivided peak or set the dilution ratio.');
   if (sd > 0.4 * spacing) warnings.push('Generations overlap heavily (peak width > 40% of the spacing); per-generation counts are uncertain.');
-  if (G === maxGenerations && generations[K - 1].fraction > 0.05) warnings.push(`More than 5% of cells fall in the last modelled generation (${G}); cells may have divided further than the dye resolves.`);
+  if (G === maxGenerations && generations[K - 1].fraction > 0.05) warnings.push(`More than 5% of cells fall in the last modeled generation (${G}); cells may have divided further than the dye resolves.`);
   if (indices.percentDivided < 1) warnings.push('Less than 1% of the original cells divided.');
   if (!fit.converged) warnings.push('The fit did not converge; results may be unreliable.');
   return {

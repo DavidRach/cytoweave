@@ -29,7 +29,7 @@ import {
   updateGate,
   updateSample,
 } from '../lib/workspace.js';
-import { CATEGORICAL } from '../lib/colormaps.js';
+import { CATEGORICAL, CATEGORICAL_CVD, colorVisionFriendly, shownColor } from '../lib/colormaps.js';
 
 function rasterImage(raster) {
   const canvas = new OffscreenCanvas(raster.width, raster.height);
@@ -180,7 +180,7 @@ export function installActions(app) {
       const outline = gateOutline(gate, effectiveGeometry(gate, view.id), dims);
       if (!outline) continue;
       const members = populationSet(view, ws, gate.id);
-      gates.push({ id: gate.id, outline, name: gate.name, label: members === undefined ? '' : formatPercent((100 * countOf(members, view)) / (parentCount || 1)), color: gate.color, level: 0.55 });
+      gates.push({ id: gate.id, outline, name: gate.name, label: members === undefined ? '' : formatPercent((100 * countOf(members, view)) / (parentCount || 1)), color: shownColor(ws, gate), level: 0.55 });
     }
     const popName = gateById(ws, spec.populationId)?.name ?? 'All events';
     return buildPlotScene({
@@ -193,7 +193,7 @@ export function installActions(app) {
       ys,
       indices: indices ?? null,
       gates,
-      options: { ...(spec.options ?? {}), theme: options.theme, title: options.title ?? popName, colormap: spec.options?.colormap ?? store.ui.colormap, color: gateById(ws, spec.populationId)?.color ?? '#4c78e0' },
+      options: { ...(spec.options ?? {}), theme: options.theme, title: options.title ?? popName, colormap: spec.options?.colormap ?? store.ui.colormap, color: shownColor(ws, gateById(ws, spec.populationId)) ?? '#4c78e0' },
     });
   }
   app.buildExportScene = buildExportScene;
@@ -207,7 +207,7 @@ export function installActions(app) {
     if (gate) {
       items.push(
         { label: 'Rename…', icon: 'edit', hint: 'F2', onSelect: () => app.renameGateInline(gate.id) },
-        { label: 'Color', icon: 'tag', onSelect: () => showMenu(anchor, CATEGORICAL.map((color) => ({ label: color, swatch: color, onSelect: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate') }))) },
+        { label: 'Color', icon: 'tag', disabled: colorVisionFriendly(), hint: colorVisionFriendly() ? 'color-vision palette on' : undefined, onSelect: () => showMenu(anchor, CATEGORICAL.map((color) => ({ label: color, swatch: color, onSelect: () => store.commit(updateGate(store.ws, gate.id, { color }), 'Recolor gate') }))) },
         { label: store.ui.backgate ? 'Stop backgating' : 'Backgate on ancestors', icon: 'backgate', hint: 'B', onSelect: () => { app.selectGate(gate.id); store.setUI({ backgate: !store.ui.backgate }, ['backgate']); } },
         '-',
         gate.type === 'boolean' ? { label: 'Edit Boolean population…', icon: 'edit', onSelect: () => import('./boolean-gate.js').then((m) => m.openBooleanGate(app, { gateId: gate.id })) } : null,
@@ -266,7 +266,7 @@ export function installActions(app) {
     const ws = store.ws;
     showMenu(anchor, [
       { label: 'All samples', checked: !gate.scope, onSelect: () => store.commit(updateGate(store.ws, gate.id, { scope: null }), 'Gate applies to all samples') },
-      ...ws.groups.map((group) => ({ label: `Group: ${group.name}`, swatch: group.color, checked: gate.scope?.groupId === group.id, onSelect: () => store.commit(updateGate(store.ws, gate.id, { scope: { groupId: group.id } }), `Gate applies to ${group.name}`) })),
+      ...ws.groups.map((group) => ({ label: `Group: ${group.name}`, swatch: shownColor(ws, group, 'groups'), checked: gate.scope?.groupId === group.id, onSelect: () => store.commit(updateGate(store.ws, gate.id, { scope: { groupId: group.id } }), `Gate applies to ${group.name}`) })),
     ]);
   }
 
@@ -579,7 +579,7 @@ export function installActions(app) {
       checked: current.has(sample.id),
       onSelect: () => {
         const overlays = (plotView.spec.overlays ?? []).filter((o) => o.sampleId !== sample.id);
-        if (!current.has(sample.id)) overlays.push({ sampleId: sample.id, color: CATEGORICAL[(overlays.length + 1) % CATEGORICAL.length], label: sample.name });
+        if (!current.has(sample.id)) overlays.push({ sampleId: sample.id, color: (colorVisionFriendly() ? CATEGORICAL_CVD : CATEGORICAL)[(overlays.length + 1) % CATEGORICAL.length], label: sample.name });
         plotView.setSpec({ overlays });
       },
     })), { search: true });

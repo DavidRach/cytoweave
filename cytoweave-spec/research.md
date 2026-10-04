@@ -13,7 +13,7 @@
 ## 0. Summary
 
 1. **Numerical agreement with FlowJo needs care.**
-   - BD published FlowJo's transform lookup tables under the **MIT licence** (2020).
+   - BD published FlowJo's transform lookup tables under the **MIT license** (2020).
    - Measured against them, FlowJo's *logicle* departs from the Moore–Parks reference by up to about 108 of 4096 channels at W = 1. FlowJo's *biex* is a table algorithm of its own, not a logicle.
    - CytoWeave therefore reproduces FlowJo's biexponential exactly (`validation/`), and uses the published tables as golden tests (§3A.2–3A.3).
 2. **Standards facts that implementations often get wrong:**
@@ -193,7 +193,7 @@ Notation: y ∈ R^d is the raw detector vector for one event. M ∈ R^(d×p) hol
 
 *Sources: reference code read directly from saeyslab/PeacoQC, SofieVG/FlowSOM, the Bioconductor mirrors (ConsensusClusterPlus, sva, edgeR, limma, flowAI, flowClean, flowDensity, flowStats), saeyslab/CytoNorm, biosurf/cyCombine, lmweber/diffcyt, uwot, umap-learn, umap-js, openTSNE, FIt-SNE, bhtsne, Multicore-opt-SNE, PaCMAP, TriMap, PhenoGraph, openCyto and R itself (wch/r-source). Also open-access papers and the npm registry. "(unverified)" marks claims not confirmed from a primary source. FlowSOM SOM, metaclustering and PeacoQC defaults were independently re-checked from source in this session.*
 
-**Licence reminder:** FlowSOM, PeacoQC, CytoNorm, CATALYST and leidenalg are GPL. Implement from these formula descriptions, not by translating code (§8 licensing guardrails).
+**License reminder:** FlowSOM, PeacoQC, CytoNorm, CATALYST and leidenalg are GPL. Implement from these formula descriptions, not by translating code (§8 licensing guardrails).
 
 #### 3B.0 Cross-cutting
 
@@ -240,13 +240,13 @@ Most of these packages sit on base R. Source lives in wch/r-source.
 - **`quantile` type 7.** h=(n−1)p+1 and Q = x⌊h⌋ + (h−⌊h⌋)(x⌊h⌋+1 − x⌊h⌋).
 - **`median`** averages the two middle values; **`sd`/`var`** use n−1.
 - **`mad`** = 1.4826·median|x−median(x)|.
-- **`scale()`** centres by the mean and divides by sd (n−1).
+- **`scale()`** centers by the mean and divides by sd (n−1).
 - **`smooth.spline`** (R/smspline.R plus Fortran `sbart`). Used by PeacoQC (spar=0.5) and flowDensity (spar=0.4).
   - x is scaled to [0,1]; knots are all unique x if n<50, otherwise `.nknots.smspl(n)`:
     - a_i = log2(50, 100, 140, 200);
     - n<200: 2^(a1+(a2−a1)(n−50)/150); n<800: 2^(a2+(a3−a2)(n−200)/600); n<3200: 2^(a3+(a4−a3)(n−800)/2400); else 200+(n−3200)^0.2; then truncated.
   - λ = r·256^(3·spar−1) with r = tr(XᵀWX)/tr(Ω). The ratio form is from memory of sbart.c (unverified).
-  - Penalised cubic B-spline. A generic Reinsch smoother will **not** reproduce R.
+  - Penalized cubic B-spline. A generic Reinsch smoother will **not** reproduce R.
 - **`splinefun(method="monoH.FC")`** (R/splinefun.R, src/monoSpl.c). Used by CytoNorm and cyCombine.
   - x/y are first passed through `regularize.values(ties=mean)`, so duplicate x values collapse to mean y. This matters with many tied quantiles.
   - Secant slopes: Sx = Δy/Δx.
@@ -256,7 +256,7 @@ Most of these packages sit on base R. Source lives in wch/r-source.
     - else α=m_k/Sk and β=m_{k+1}/Sk; if (2α+β−3>0 && α+2β−3>0 && α(4α+... ) i.e. α·(a2b3+ab23) < a2b3²) then τ = 3Sk/√(α²+β²), m_k=τα, m_{k+1}=τβ.
   - Evaluation is cubic Hermite (`splinefunH0`) with **linear extrapolation** outside the knots using end slopes (default `extrapol="linear"`).
 - **`lowess`** (Cleveland, iter=3, delta=0.01·range). Used by voom.
-- **`hclust`** (Fortran hclust.f, nearest-neighbour list).
+- **`hclust`** (Fortran hclust.f, nearest-neighbor list).
   - Ties: the first minimal pair by index wins (strict `.LT.` comparisons, from memory; verify).
   - **`cutree`** numbers clusters in order of first appearance of observations.
 - **`nls`** (Gauss–Newton) in uwot versus scipy `curve_fit` (Levenberg–Marquardt) in umap-learn. The a,b values for UMAP differ at about 1e-6.
@@ -375,7 +375,7 @@ Monaco et al. 2016, DOI 10.1093/bioinformatics/btw191. Source: bioc/flowAI v1.43
 - **Flow rate.**
   - Count events in 0.1 s bins. `timestep` comes from the $TIMESTEP keyword; the fallback is 0.01, or 1/1024 in one branch.
   - Christiano–Fitzgerald band-pass filter `cffilter(pl=2, pu=200, type="symmetric")` splits counts into trend + cycle. Zero-count bins are dropped.
-  - Then a generalised ESD test (S-H-ESD style; `R/anomaly-detection.R`):
+  - Then a generalized ESD test (S-H-ESD style; `R/anomaly-detection.R`):
     - Iterate i = 1..⌊0.49n⌋.
     - R_i = max|v − median(v)|/mad(cycle), where v = (|x−trend| + |cycle|)·sign(cycle).
     - p = 1 − α/(2(n−i+1)); λ_i = t_{p, n−i−1}·(n−i)/√((n−i−1+t²)(n−i+1)).
@@ -406,7 +406,7 @@ Meskas et al. 2023, DOI 10.1002/cyto.a.24670. Source: jmeskas/flowCut v1.5.2.
 Fletez-Brant 2016, DOI 10.1002/cyto.a.22837. Source: `clean(binSize=0.01, nCellCutoff=500, cutoff="median", fcMax=1.3, nstable=5)`.
 
 - Requires ≥30,000 events; uses 100 equal time bins.
-- Each marker is binarised at its median (if more than 90% of events are above, use the median anyway).
+- Each marker is binarized at its median (if more than 90% of events are above, use the median anyway).
 - Populations are the 2^p bit patterns with ≥500 events; at least 5 required, otherwise the quantile grid 0.5…0.05 is tried.
 - Per-bin population frequencies are CLR-transformed; the per-bin Lp norm feeds `cpt.mean(method="PELT", penalty="Manual", pen.value=1)`.
 - Segments are flagged by fold change > 1.3. "Weird" bins are found with seeds 37/42/51.
@@ -436,7 +436,7 @@ SOM(data, xdim=10, ydim=10, rlen=10, mst=1, alpha=c(0.05,0.01),
     distf=2, codes=NULL, importance=NULL)
 ```
 
-**Grid, radius and initialisation**
+**Grid, radius and initialization**
 - grid = expand.grid(1:xdim, 1:ydim), so x varies fastest.
 - nhbrdist = Chebyshev ("maximum") grid distance matrix.
 - Default start radius = type-7 quantile at 0.67 of the full n×n matrix, diagonal zeros included. I computed: 10×10 → **6**; 7×7 → 4; 12×12 → 7; 14×14 → 8; 15×15 → 9; 20×20 → 11.
@@ -452,12 +452,12 @@ SOM(data, xdim=10, ydim=10, rlen=10, mst=1, alpha=c(0.05,0.01),
   - BMU = argmin distance over codes, strict "<" (first index wins). distf: 1 Manhattan, **2 Euclidean (with sqrt)**, 3 Chebyshev, 4 cosine (1−cos).
   - If threshold < 1, threshold = 0.5. Since the next decrement drops it below 1 again, this is effectively a floor of 0.5: only the BMU is updated at the end.
   - alpha = a0 − (a0−a1)·k/niter (linear 0.05 → 0.01).
-  - For every code cd with nhbrdist[cd, BMU] ≤ threshold, i.e. a **bubble/step neighbourhood with no Gaussian**: code += alpha·(x − code) and change += |x − code|.
+  - For every code cd with nhbrdist[cd, BMU] ≤ threshold, i.e. a **bubble/step neighborhood with no Gaussian**: code += alpha·(x − code) and change += |x − code|.
   - threshold −= thresholdStep (linear radius 6 → 0).
 - **mst > 1:** radius and alpha are split into mst linear segments. After each segment, nhbrdist = hop distance on the MST of the current codes (`Dist.MST`, igraph).
 - **Mapping (`C_mapDataToCodes`):** nearest code, strict "<", returns 1-based id and distance.
 - **Derived values (`UpdateDerivedValues`):** per-node median, CV (sd/mean), sd, mad, percentages. Outlier test: distance to node > median + 4·MAD.
-- **MST (`BuildMST`):** igraph `minimum.spanning.tree` on the complete Euclidean graph of codes; weights normalised by their mean; Kamada–Kawai layout seeded with grid coordinates. This layout will not be bit-reproducible in JS and is display only.
+- **MST (`BuildMST`):** igraph `minimum.spanning.tree` on the complete Euclidean graph of codes; weights normalized by their mean; Kamada–Kawai layout seeded with grid coordinates. This layout will not be bit-reproducible in JS and is display only.
 
 **Metaclustering (`metaClustering_consensus`)**
 - Call: `ConsensusClusterPlus(t(codes), maxK=k, reps=100, pItem=0.9, pFeature=1, clusterAlg="hc", distance="euclidean", seed=seed)`. Defaults used: innerLinkage="average", finalLinkage="average", corUse="everything".
@@ -469,7 +469,7 @@ SOM(data, xdim=10, ydim=10, rlen=10, mst=1, alpha=c(0.05,0.01),
   - Final classes: hclust(as.dist(1−C_k), "average") → **cutree(·, k)**, then labels via `as.factor`.
 - **`maxMeta` (`MetaClustering` → `DetermineNumberOfClusters`):**
   - Within-cluster SSE for k = 1..max, smoothed for i = 2..max−1: res_i = 0.8·res_i + 0.1·res_{i−1} + 0.1·res_{i+1}.
-  - `findElbow`: for each split point i, fit two lm lines (1..i−1 and i..n) and pick i minimising the sum of absolute residuals.
+  - `findElbow`: for each split point i, fit two lm lines (1..i−1 and i..n) and pick i minimizing the sum of absolute residuals.
 
 **Parity and JS notes**
 - FlowSOM is deterministic given seed. Bit-exact agreement with R is achievable by porting R's MT19937 seeding, `unif_rand`, `R_unif_index` and `SampleNoReplace`, `hclust` average linkage and `cutree` (§0.2).
@@ -489,16 +489,16 @@ McInnes et al., arXiv:1802.03426. Sources: lmcinnes/umap 0.5.12 `umap/umap_.py`,
 
 **Graph construction (`smooth_knn_dist`)**
 - target = log2(k)·bandwidth.
-- ρ_i = distance to the local_connectivity-th nonzero neighbour, interpolated for fractional values.
+- ρ_i = distance to the local_connectivity-th nonzero neighbor, interpolated for fractional values.
 - Binary search for σ_i (≤64 iterations, tolerance 1e-5) so that Σ_{j≥1} exp(−max(0, d_ij−ρ_i)/σ_i) = target. Terms with d−ρ ≤ 0 contribute 1.
 - Floor: σ_i ≥ 1e-3·mean(d_i·), or 1e-3·mean of all distances if ρ_i = 0.
 - Weights w_ij = exp(−(d_ij−ρ_i)/σ_i).
-- Symmetrise: W = A + Aᵀ − A∘Aᵀ (set_op_mix_ratio=1).
+- Symmetrize: W = A + Aᵀ − A∘Aᵀ (set_op_mix_ratio=1).
 - Prune: edges with w < max(w)/n_epochs are set to 0.
 
-**Layout optimisation**
+**Layout optimization**
 - Spectral init:
-  - Eigenvectors 2..d+1 of the normalised Laplacian I − D^{−½}WD^{−½} (multi-component layout if disconnected).
+  - Eigenvectors 2..d+1 of the normalized Laplacian I − D^{−½}WD^{−½} (multi-component layout if disconnected).
   - Then `noisy_scale_coords`: scale so max|coord| = 10, then add N(0, 1e-4) noise.
 - a,b: fit 1/(1+a·x^{2b}) to the offset-exponential curve on 300 points in [0, 3·spread]. Values I computed with LM:
 
@@ -531,7 +531,7 @@ McInnes et al., arXiv:1802.03426. Sources: lmcinnes/umap 0.5.12 `umap/umap_.py`,
 - umap-learn:
   - kNN query of the training index (k = n_neighbors, epsilon 0.12).
   - `smooth_knn_dist` with local_connectivity = max(0, lc−1).
-  - Init = membership-weighted average of neighbour embeddings (`init_graph_transform`).
+  - Init = membership-weighted average of neighbor embeddings (`init_graph_transform`).
   - Epochs = 100 if n ≤ 10k, 30 otherwise; if the user set n_epochs, use ⌊n_epochs/3⌋. Prune edges < max/n_epochs.
   - SGD with move_other=False and **initial α = α0/4**. Training points stay fixed.
 - uwot `umap_transform`: init "weighted" (default) or "average"; epochs = max(2, round(model_epochs/3)), else 100/30; initial_alpha = α/4.
@@ -549,12 +549,12 @@ McInnes et al., arXiv:1802.03426. Sources: lmcinnes/umap 0.5.12 `umap/umap_.py`,
 
 **Core (bhtsne `tsne.cpp`; Rtsne uses the same code)**
 - Input is zero-meaned then divided by max|x|. This is scale-irrelevant to P apart from numerics.
-- K = 3·perplexity neighbours via a VP-tree.
+- K = 3·perplexity neighbors via a VP-tree.
 - p_{j|i} ∝ exp(−β_i·d_ij²). Binary search on β (start 1, ×2 / ÷2 or bisection; |H − log(perp)| < 1e-5 in nats; up to 200 iterations).
-- P = (P + Pᵀ) normalised to sum 1.
+- P = (P + Pᵀ) normalized to sum 1.
 - Gradient **without the factor 4**: F_i = Σ_j p_ij q_ij Z (y_i−y_j) − Σ_j q_ij² Z (y_i−y_j).
 - Barnes–Hut quadtree acceptance: max_cell_width/√(d²) < θ, with **θ = 0.5**.
-- Update: gains += 0.2 if sign(grad) ≠ sign(update), else gains ×= 0.8; gains ≥ 0.01. uY = mom·uY − η·gains·dY; Y is re-centred each iteration.
+- Update: gains += 0.2 if sign(grad) ≠ sign(update), else gains ×= 0.8; gains ≥ 0.01. uY = mom·uY − η·gains·dY; Y is re-centered each iteration.
 - Schedule: η=200, momentum 0.5 → 0.8 at iteration 250, early exaggeration 12 until iteration 250, max_iter 1000.
 - Init: randn·1e-4.
 - Rtsne additionally defaults to pca=TRUE with initial_dims=50 and normalize=TRUE (unverified details).
@@ -589,10 +589,10 @@ Belkina 2019 Nat Commun, DOI 10.1038/s41467-019-13055-y (PMC6882880). Source: om
 - Gains: +0.2 / ×0.8 + 0.01.
 
 **Kobak & Berens 2019 recommendations**
-- PCA initialisation (scaled to sd 1e-4).
+- PCA initialization (scaled to sd 1e-4).
 - Learning rate n/12.
 - Multi-scale affinities: perplexity combination 30 and n/100.
-- For very large n: exaggeration of about 4, or downsampling-based initialisation.
+- For very large n: exaggeration of about 4, or downsampling-based initialization.
 - They note UMAP behaves like t-SNE with exaggeration ≈ 4.
 
 **JS**
@@ -610,18 +610,18 @@ Belkina 2019 Nat Commun, DOI 10.1038/s41467-019-13055-y (PMC6882880). Source: om
 - If n_neighbors=None: 10 when n ≤ 10k, else round(10+15(log10 n − 4)). n_MN = round(n_nb·0.5); n_FP = round(n_nb·2).
 
 **Preprocessing**
-- If d > 100 and apply_pca: centre, then TruncatedSVD to 100 dims.
-- Otherwise: X −= min, X /= max, then centre; a PCA is fitted for init.
+- If d > 100 and apply_pca: center, then TruncatedSVD to 100 dims.
+- Otherwise: X −= min, X /= max, then center; a PCA is fitted for init.
 
 **Pairs**
-- Fetch kNN with n_neighbors+50 extra neighbours.
-- σ_i = mean distance to neighbours 4–6 (columns 3:6).
+- Fetch kNN with n_neighbors+50 extra neighbors.
+- σ_i = mean distance to neighbors 4–6 (columns 3:6).
 - Scaled distance d²_ij/(σ_iσ_j); keep the n_neighbors smallest.
 - Mid-near (MN) pairs: sample 6 random points, drop the closest, take the second-closest.
-- Further pairs (FP): random non-neighbours.
+- Further pairs (FP): random non-neighbors.
 
 **Loss** (d̃ = 1 + ‖y_i−y_j‖²)
-- Neighbours: w_NB·d̃/(10+d̃).
+- Neighbors: w_NB·d̃/(10+d̃).
 - Mid-near: w_MN·d̃/(10000+d̃).
 - Further: w_FP/(1+d̃).
 
@@ -633,7 +633,7 @@ Belkina 2019 Nat Commun, DOI 10.1038/s41467-019-13055-y (PMC6882880). Source: om
 | 100–199 | 3 | 3 | 1 |
 | 200–449 | 0 | 1 | 1 |
 
-**Optimiser and init**
+**Optimizer and init**
 - Adam with β1=0.9, β2=0.999, lr=1, eps=1e-7, bias-corrected lr_t.
 - Init "pca": 0.01·PCA coordinates. A random init is N(0,1)·1e-4.
 
@@ -650,9 +650,9 @@ Belkina 2019 Nat Commun, DOI 10.1038/s41467-019-13055-y (PMC6882880). Source: om
 - Defaults: `cluster(k=30, clustering_algo="louvain", directed=False, prune=False, min_cluster_size=10, jaccard=True, primary_metric="euclidean", q_tol=1e-3, louvain_time_limit=2000, nn_method="kdtree", resolution_parameter=1, n_iterations=-1, use_weights=True, seed=None)`.
 
 **Steps**
-1. Exact kNN via sklearn with k+1 neighbours, dropping self.
+1. Exact kNN via sklearn with k+1 neighbors, dropping self.
 2. Jaccard weight: s_ij = |N(i)∩N(j)|/(2k − |N(i)∩N(j)|), only for j ∈ N(i).
-3. Symmetrise: (G + Gᵀ)/2; with prune=True use G∘Gᵀ instead. Keep the lower triangle.
+3. Symmetrize: (G + Gᵀ)/2; with prune=True use G∘Gᵀ instead. Keep the lower triangle.
 4. Louvain: the Blondel C++ binary, repeated random restarts. Stop when there is no modularity gain > 1e-3 in 20 runs, after 100 runs, or after 2000 s. Keep the best partition.
 5. `sort_by_size`: labels ordered by descending size; clusters < 10 cells become −1.
 
@@ -696,7 +696,7 @@ CytoNorm: Van Gassen 2020, DOI 10.1002/cyto.a.23904. CytoNorm 2.0: Quintelier et
    - A numeric vector of length nQ, or an nQ×channels matrix.
    - 2.x adds a per-metacluster list, e.g. from `getCytoNormQuantiles` of another model, for "normalising towards a model/distribution".
 7. Spline per (cluster, label, channel): `splinefun(labelQ, refQ, method="monoH.FC")` (§0.2: ties averaged, linear extrapolation). If there are fewer than 2 unique quantiles, use identity.
-8. **Normalise:** map cells to a metacluster and apply that metacluster's spline per channel. Infinite outputs are replaced by sign·max|finite|.
+8. **Normalize:** map cells to a metacluster and apply that metacluster's spline per channel. Infinite outputs are replaced by sign·max|finite|.
 
 **New in 2.0** (paper, vignettes and code)
 - Use without controls: the aggregate of each batch serves as a proxy control.
@@ -719,20 +719,20 @@ Pedersen 2022 Nat Commun 13:1698, DOI 10.1038/s41467-022-29383-5. Source: biosur
 **Wrapper:** `batch_correct(df, xdim=8, ydim=8, rlen=10, mode="online", parametric=TRUE, method="ComBat", cluster_method="kohonen", distf="euclidean", nClus=NULL, seed=473, covar=NULL, anchor=NULL, ref.batch=NULL, norm_method="scale", ties.method="average")`.
 
 **Steps**
-1. **Per-batch normalisation, used only for clustering:**
+1. **Per-batch normalization, used only for clustering:**
    - `scale`: per-batch, per-marker z-score; the default.
    - `rank`: rank/n.
    - `CLR` variants.
    - `qnorm`: monoH.FC spline mapping 5 quantiles (0, .25, .5, .75, 1) per batch to the global quantiles, ties=min.
 2. **SOM clustering:** kohonen::som on an 8×8 grid, rlen=10, online, `set.seed(473)`; labels = unit.classif. FlowSOM, FuseSOM and kmeans are alternatives.
-3. **Per SOM node,** on the un-normalised transformed data:
+3. **Per SOM node,** on the un-normalized transformed data:
    - Nodes with a single batch are skipped.
    - The covariate model matrix is used only if it is not confounded with batch and has enough cells (sum < max + 5·levels gives 1 level).
    - Run `sva::ComBat(t(x), batch, mod, par.prior=TRUE, ref.batch)`.
    - Corrected values are **capped to the node's input min/max per marker**.
 
 **ComBat** (Johnson 2007; bioc/sva `R/ComBat.R`, `R/helper.R`). Genes = markers, samples = cells.
-- Standardise:
+- Standardize:
   - B̂ = (XᵀX)⁻¹XᵀY with X = [batch indicators, mod].
   - Grand mean = Σ_b (n_b/n)·B̂_b.
   - var_pooled = mean over cells of residual² (**divides by n**, not n−1).
@@ -745,7 +745,7 @@ Pedersen 2022 Nat Commun 13:1698, DOI 10.1038/s41467-022-29383-5. Source: biosur
 - Adjust: y* = (z − γ*)/√δ*² · √var_pooled + stand.mean.
 - If any batch has a single sample, mean.only=TRUE.
 
-**JS:** easy. The kohonen SOM schedule differs from FlowSOM's (defaults unverified: radius = quantile(nhbrdist, 2/3), bubble neighbourhood, Euclidean/sum-of-squares), so node labels will not match R unless kohonen is ported.
+**JS:** easy. The kohonen SOM schedule differs from FlowSOM's (defaults unverified: radius = quantile(nhbrdist, 2/3), bubble neighborhood, Euclidean/sum-of-squares), so node labels will not match R unless kohonen is ported.
 
 ---
 
@@ -799,7 +799,7 @@ Weber 2019 Commun Biol 2:183, DOI 10.1038/s42003-019-0415-5. Source: lmweber/dif
 
 **Feasibility in JS**
 - DS-limma and DA-voom: straightforward. Needs WLS/QR, lowess, `ns` basis, digamma/trigamma/trigammaInverse (Newton) and a Student-t CDF.
-- DA-edgeR (LRT): feasible but substantial. Needs NB IRLS, Cox–Reid APL, the 21-point grid with spline maximisation, WLEB and squeezeVar. trend="none" simplifies it.
+- DA-edgeR (LRT): feasible but substantial. Needs NB IRLS, Cox–Reid APL, the 21-point grid with spline maximization, WLEB and squeezeVar. trend="none" simplifies it.
 - edgeR quasi-likelihood (`glmQLFit`): not used by diffcyt; skip.
 - GLMM/LMM (lme4 Laplace/REML plus glht): not worth parity; offer an approximation.
 
@@ -820,18 +820,18 @@ Y(X) = A₁/(√(2π)σ₁)·exp(−(X−X₁)²/(2σ₁²)) + A₂/(√(2π)σ�
 - The S phase is extracted by subtracting the fitted G1/G2 Gaussians from the whole histogram.
 
 **FlowJo implementation** (docs.flowjo.com cell-cycle-univariate pages)
-- Initialisation:
+- Initialization:
   - The G1 mean starts at the mode of the left part of the data.
   - SD is taken from the width at 60% of peak height. For a Gaussian this half-width is σ√(−2 ln 0.6) ≈ 1.011σ.
   - Least-squares refinement over −3 to +1 SD around the G1 mean.
-  - The G2 mean is initialised at **1.75×G1** and fitted the same way.
+  - The G2 mean is initialized at **1.75×G1** and fitted the same way.
 - Watson and DJF differ only in the S-phase model: DJF uses Ax²+Bx+C, optionally plus a Gaussian for synchronous S.
 - Constraints:
   - CV: "= n", or "= G1 CV" / "= G2 CV" (equal CVs).
   - Means: G2 = G1×n (FlowJo suggests 1.95, nominally 2) or G1 = G2×n (about 0.5), or a range.
 - Phase % = sum over events of membership probabilities, remapped to sum to about 100%; small negatives are possible.
 - Goodness of fit is RMSD. Gates are placed at Gaussian intersection points.
-- ModFit (Bagwell) adds debris and aggregate modelling and broadened-trapezoid S phase (unverified).
+- ModFit (Bagwell) adds debris and aggregate modeling and broadened-trapezoid S phase (unverified).
 
 **JS:** Levenberg–Marquardt (ml-levenberg-marquardt) on histogram bins. Implement the broadened polynomial as a discrete convolution per channel.
 
@@ -882,23 +882,23 @@ Univariate paper DOI …<37…>; multivariate DOI …<47…>. Formulas verified 
 - **Interpretation (FlowJo v9 docs):** T=0 means indistinguishable (p=0.5); T=1 means p<0.17; **T>4 means p<0.01**. The paper uses T=4 as its significance cut-off. Establish an empirical baseline, e.g. alternate-event halves of the same file.
 - **flowStats implementation** (`R/pbin.R`):
   - `proBin(m, minEvents=500)` splits while a node has more than 500 events, on the max-variance channel; the right child gets x > median (ties go left).
-  - `calcPBChiSquare` uses **Baggerly's normalisation**: pbStat = (2·C·S·Σ(ĉ−ŝ)²/(ĉ+ŝ)/(C+S) − (B−1))/√(2(B−1)). This differs from Roederer's T.
+  - `calcPBChiSquare` uses **Baggerly's normalization**: pbStat = (2·C·S·Σ(ĉ−ŝ)²/(ĉ+ŝ)/(C+S) − (B−1))/√(2(B−1)). This differs from Roederer's T.
 
-**JS:** O(n log n·d). Implement both normalisations.
+**JS:** O(n log n·d). Implement both normalizations.
 
 ---
 
 #### 3B.14 Overton, SED (FlowJo ENS) and K-S
 
 **FlowJo's description** (docs.flowjo.com, plat-comparison-univariate):
-- **Overton:** normalise each histogram by its **mode** (bin count / mode count), it subtracts the control histogram from the test histogram and counts the events remaining per bin as positive. In other words: %pos = Σ_b max(0, T̂_b − Ĉ_b)/Σ T̂_b on mode-normalised histograms. The exact "cumulative" modification in Overton 1988 is unverified; it is commonly described as cumulative-frequency subtraction, i.e. a max difference of cumulative distributions.
+- **Overton:** normalize each histogram by its **mode** (bin count / mode count), it subtracts the control histogram from the test histogram and counts the events remaining per bin as positive. In other words: %pos = Σ_b max(0, T̂_b − Ĉ_b)/Σ T̂_b on mode-normalized histograms. The exact "cumulative" modification in Overton 1988 is unverified; it is commonly described as cumulative-frequency subtraction, i.e. a max difference of cumulative distributions.
 - **SED (Bagwell, unpublished):** FlowJo describes its SED as essentially Enhanced Normalized Subtraction (ENS) without the correction factor.
-  - Control and test are normalised to **equal area**, not mode.
+  - Control and test are normalized to **equal area**, not mode.
   - The positive population's PDF is estimated and aligned at the point of maximum difference.
 - **K-S:** D = max|F_T − F_C|. Standard p-value (Numerical Recipes form; FlowJo's exact form is unverified):
   - n_e = n₁n₂/(n₁+n₂); λ = (√n_e + 0.12 + 0.11/√n_e)·D; Q(λ) = 2Σ_{j≥1}(−1)^{j−1}e^{−2j²λ²}.
   - FlowJo warns it over-calls significance at flow-cytometry sample sizes.
-- **R reference:** flowStats `overton_like(ref, test, twosided=FALSE)` (`R/ovtsub.R`) is a KDE-based variant (density n=1024, normalised by Σmax(ref,test)). It is not Overton's original.
+- **R reference:** flowStats `overton_like(ref, test, twosided=FALSE)` (`R/ovtsub.R`) is a KDE-based variant (density n=1024, normalized by Σmax(ref,test)). It is not Overton's original.
 
 ---
 
@@ -950,7 +950,7 @@ Nguyen 2013, DOI 10.1002/cyto.a.22251 (PMC3678531). Equations verified.
 - Rows are fluorochromes (P); columns are detectors (C); diagonal entries are meaningless.
 - Theory (Eq 9): SS = √(U_C·X_CP + U_P·X_CP²), with X_CP the spillover coefficient and U the detector constants (inverse Q).
 - **FlowJo:** computes the square root of the difference in squared robust SDs (84th−50th percentile) between the comp controls' positive and negative populations.
-  - FlowJo's **Total Spreading Matrix** is the SSM without normalisation to probe intensity, i.e. Δσ_C.
+  - FlowJo's **Total Spreading Matrix** is the SSM without normalization to probe intensity, i.e. Δσ_C.
   - For AutoSpill matrices FlowJo uses "AutoSpread … a linear model" (details unpublished).
 - Handling of σ²_S < σ²_R (clip to 0?) is undocumented; choose and document.
 - **Spectral:** apply the same formula to unmixed single-stain controls. Spreading then depends on the unmixing matrix (OLS/WLS).
@@ -958,11 +958,11 @@ Nguyen 2013, DOI 10.1002/cyto.a.22251 (PMC3678531). Equations verified.
 ---
 
 #### 3B.18 EMD and QF distances
-- **Orlova 2016** (DOI 10.1371/journal.pone.0151859): signatures are bin centroids with normalised weights (total mass 1); ground distance is Euclidean between centroids; transport LP; EMD = Σd_ij·f_ij/Σf_ij (the Mallows distance).
+- **Orlova 2016** (DOI 10.1371/journal.pone.0151859): signatures are bin centroids with normalized weights (total mass 1); ground distance is Euclidean between centroids; transport LP; EMD = Σd_ij·f_ij/Σf_ij (the Mallows distance).
 - **1D closed form:** W₁ = Σ_k |P_k − Q_k|·h, using cumulative bin masses and bin width h. For raw samples of equal size, mean |x₍ᵢ₎ − y₍ᵢ₎|.
 - **CytoNorm `emdEvaluation`:** hist with breaks seq(−100, 100, by=0.1), counts/n, `emdist::emd2d` on n×1 matrices. The ground distance is in **bin-index units**, so multiply by binSize to get data units (unverified).
 - **QFMatch** (Orlova 2018):
-  - D²(h,f) = (h−f)ᵀA(h−f), with a_ij = 1 − d_ij/d_max, d = Euclidean distance between bin centres of mass on the combined sample.
+  - D²(h,f) = (h−f)ᵀA(h−f), with a_ij = 1 − d_ij/d_max, d = Euclidean distance between bin centers of mass on the combined sample.
   - Bins come from adaptive (probability) binning: split on the max-variance dimension at the median on the merged samples.
   - The paper compares this with the χ² distance Σ(h−f)²/(h+f).
 - Cytobank's "Earth mover's" and Jensen–Shannon in its QF tables: unverified.
@@ -974,7 +974,7 @@ Nguyen 2013, DOI 10.1002/cyto.a.22251 (PMC3678531). Equations verified.
   - Contours are **equal-probability contours**. Options "2%/5%/10%" give 50/20/10 levels, with equal numbers of cells between consecutive lines. "Logarithmic": each line encloses twice as many events as the previous.
   - "Show outliers" draws events outside the lowest level as dots.
   - Density plots use the same contouring.
-  - Pseudocolor colours each dot by local density; "Smooth" renders a density image.
+  - Pseudocolor colors each dot by local density; "Smooth" renders a density image.
   - FlowJo's kernel and bandwidth are unpublished (unverified).
 - **Implementation:**
   - Grid KDE, then density at each event (bilinear interpolation).
@@ -1006,7 +1006,7 @@ Nguyen 2013, DOI 10.1002/cyto.a.22251 (PMC3678531). Equations verified.
   - `gate_flowclust_1d`: K required unless a prior is given; trans=0; criterion BIC; cutpoint "boundary"; quantile 0.99.
   - `gate_flowclust_2d`: K=2, quantile 0.9 ellipse.
   - `gate_singlet`: robust linear model of FSC-H on FSC-A, prediction level 0.99, maxit 5.
-- **FlowJo magnetic gates (docs):** when copied or re-applied, the gate moves to the nearby area of maximum event density relative to its original position; works for 1D and 2D; draws an arrow showing the shift. The algorithm is unpublished. A JS approximation: local search over translations maximising the enclosed count, using a summed-area table on a binned grid (unverified equivalence).
+- **FlowJo magnetic gates (docs):** when copied or re-applied, the gate moves to the nearby area of maximum event density relative to its original position; works for 1D and 2D; draws an arrow showing the shift. The algorithm is unpublished. A JS approximation: local search over translations maximizing the enclosed count, using a summed-area table on a binned grid (unverified equivalence).
 - **FlowJo autogate:** equal-probability contour level sets.
 - **FMO thresholds:** convention is a threshold at the 99th–99.9th percentile of the FMO control in that channel on the same transform (unverified as a standard; openCyto `gate_quantile` defaults to 0.999).
 
@@ -1223,8 +1223,8 @@ CytoWeave's reader should implement "scalpel" (repair while preserving metadata)
 - **Gate coordinates are stored in untransformed (compensated) data units**, and the dimension names carry the compensation prefix (`Comp-FITC-A`).
   - Transforms are per-sample, in `<Transformations>`.
   - Polygon edges are straight in *transformed display space*. FlowKit therefore transforms the vertices into display space and evaluates there. This reproduces FlowJo counts exactly in FlowKit's small test workspaces, but not universally: flow-atlas found 332/1067 exact and 953/1067 within 1% on a large real workspace, with residuals at polygon edges near the biex zero region.
-- **Ellipses** (`gating:EllipsoidGate` with `gating:foci` (2 vertices), `gating:edge` (4 vertices) and a `gating:distance` attribute) are stored in **256×256 display-bin space**. FlowKit converts them to 128-vertex polygons, taking the major radius from the edge points and the minor from the foci; this reproduces FlowJo's count on FlowKit's synthetic ellipse and is within 2–3% of it on the real 8-colour workspace.
-- **Time** is shown and gated in seconds: the stored value × the time parameter's linear `gain` attribute (0.0102654811 in FlowKit's 8-colour workspace, where $TIMESTEP is 0.01), or × $TIMESTEP without one. FlowIO and FlowKit use $TIMESTEP, which misses a few events at a time gate's edges (measured, 2026-10).
+- **Ellipses** (`gating:EllipsoidGate` with `gating:foci` (2 vertices), `gating:edge` (4 vertices) and a `gating:distance` attribute) are stored in **256×256 display-bin space**. FlowKit converts them to 128-vertex polygons, taking the major radius from the edge points and the minor from the foci; this reproduces FlowJo's count on FlowKit's synthetic ellipse and is within 2–3% of it on the real 8-color workspace.
+- **Time** is shown and gated in seconds: the stored value × the time parameter's linear `gain` attribute (0.0102654811 in FlowKit's 8-color workspace, where $TIMESTEP is 0.01), or × $TIMESTEP without one. FlowIO and FlowKit use $TIMESTEP, which misses a few events at a time gate's edges (measured, 2026-10).
 - **Linear gains:** on any `transforms:linear` axis with `gain`, FlowJo's coordinates are gain × the stored value.
 - **Biex beyond the table:** values outside the 4097-point table are clamped to its ends (as cytolib and FlowKit do). The table stops just short of the top of scale (261 622 for width −10), so saturated events sit on the top edge.
 - **Display resolution:** polygon vertices are snapped to the 256-bin grid (multiples of 1024 on a 0–262144 linear axis) and `gateResolution="256"`. FlowJo's counts on real workspaces differ from an exact evaluation (CytoWeave's or FlowKit's) by 0.1–0.3% on large populations, presumably from evaluation at this resolution; rounding each axis to the grid did not reproduce them (measured, 2026-10).
@@ -1300,20 +1300,20 @@ Kinetics, cell cycle, proliferation and cloud collaboration already exist in shi
 
 ---
 
-## 6. Public, redistributable example datasets (licence audit)
+## 6. Public, redistributable example datasets (license audit)
 
-**Method.** Checked live via the Zenodo, Mendeley, Dryad and GitHub APIs, FCS header reads, and the repositories' terms pages. Zenodo licences for 22808501, 19221995, 13928969 and 4984659 were re-verified via the Zenodo API on 2026-10-02.
+**Method.** Checked live via the Zenodo, Mendeley, Dryad and GitHub APIs, FCS header reads, and the repositories' terms pages. Zenodo licenses for 22808501, 19221995, 13928969 and 4984659 were re-verified via the Zenodo API on 2026-10-02.
 
 **Rules applied.**
-- Data files keep their own licence inside an Apache-2.0 binary.
-- CC BY 4.0 requires credit, a licence link and a note of any changes (e.g., "subset extracted").
+- Data files keep their own license inside an Apache-2.0 binary.
+- CC BY 4.0 requires credit, a license link and a note of any changes (e.g., "subset extracted").
 - CC BY-SA imposes share-alike on modified data.
 - Prefer non-human data (bead, mouse, worm, bacterial) for anything bundled.
 
 ### 6.1 Repositories and terms
 
 **FlowRepository** (https://flowrepository.org/terms_of_service)
-- Terms: ISAC places *no restrictions on use or redistribution*, **requires attribution**, and warns that third parties may hold IP rights. There is no named licence (re3data lists "Public Domain; Copyrights").
+- Terms: ISAC places *no restrictions on use or redistribution*, **requires attribution**, and warns that third parties may hold IP rights. There is no named license (re3data lists "Public Domain; Copyrights").
 - Not suited to automated in-app downloads: downloads require interactive steps (a CAPTCHA, a login, an API client ID), and new deposits are no longer accepted.
 - No successor exists. New OMIP and other deposits (2025–26) go to **Zenodo under CC BY 4.0**.
 - **Plan:** host your own mirror (Zenodo or GitHub Releases) of selected FlowRepository sets, with ISAC and author attribution. Precedent: readfcs (Apache-2.0) re-hosts FR-FCM-ZYQ9 on S3.
@@ -1321,8 +1321,8 @@ Kinetics, cell cycle, proliferation and cloud collaboration already exist in shi
 **Other repositories**
 - **ImmPort** (https://docs.immport.org/home/agreement/): login required; no re-identification; redistribution must stay under terms commensurate with ImmPort's agreement. **Do not bundle; link out.**
 - **Cytobank Community**: terms require permission for redistribution. **Link out only.**
-- **Vendor tutorial data**: no redistribution licence found. **Link out only.**
-- **OMIP-069** has no public FCS deposit found **(unverified)**. Note FR-FCM-Z3WR is a COVID-19 36-colour Duke set, *not* OMIP-069.
+- **Vendor tutorial data**: no redistribution license found. **Link out only.**
+- **OMIP-069** has no public FCS deposit found **(unverified)**. Note FR-FCM-Z3WR is a COVID-19 36-color Duke set, *not* OMIP-069.
 - **Dryad**: always CC0, but anonymous API downloads returned 401, so mirror. **Zenodo and Mendeley S3** allow anonymous per-file and HTTP Range downloads, which makes them the best in-app sources.
 
 **ISAC Gating-ML 2.0 compliance suite** (`data1.fcs`, `data2.fcs`, gates, per-event truth)
@@ -1333,31 +1333,31 @@ Kinetics, cell cycle, proliferation and cloud collaboration already exist in shi
 
 **Small conformance / tutorial files**
 
-| Dataset | Content | Licence | Bundle? | Use |
+| Dataset | Content | License | Bundle? | Use |
 |---|---|---|---|---|
 | **FlowCal examples** (taborlab/FlowCal `examples/FCFiles`) | 15 FCS, 11.6 MB; E. coli sfGFP induction + calibration beads; Cytek xP3 (upgraded FACScan), FCS 3.0, 33,024 ev, 8 par; `test/Data001–005` FCS 2.0 | **MIT** (© 2015 Sexton, Landry, Castillo-Hair) | **Yes** | Tutorials, bead/MEF calibration |
 | **fcsparser test files** (eyurtsev/fcsparser) | 19 files, ~21 MB; Cytek xP5, FACSCalibur, Fortessa/LSRII, MACSQuant FCS 2.0/3.0/3.1, Guava Muse, CyFlow Cube 8, corrupted, fake-large | **MIT** | Test dir only | Reader robustness. Exclude `facs_diva_test.fcs` (apparent clinical B-ALL panel, unknown origin) |
-| **flowCore extdata** | `0877408774.*` (FACSCalibur FCS 2.0, 10k ev) and `compdata/060909.001–005` comp controls (~0.1 MB each) | **Artistic-2.0** | Yes (include licence) | Legacy FCS 2.0, compensation |
+| **flowCore extdata** | `0877408774.*` (FACSCalibur FCS 2.0, 10k ev) and `compdata/060909.001–005` comp controls (~0.1 MB each) | **Artistic-2.0** | Yes (include license) | Legacy FCS 2.0, compensation |
 | **FlowKit synthetic** (`test_data_2d_01.fcs`, `test_data_diamond_01.fcs`) | 10k / 200k events | BSD-3 | Yes | Gate-semantics tests |
-| FlowKit real files (8-colour ICS + `.wsp`, 1007xx FACSAria, `test_comp_example` exported from Cytobank) | — | BSD-3 repo, **undocumented provenance** | Test dir only (risk) | WSP parity tests: valuable, but verify provenance |
+| FlowKit real files (8-color ICS + `.wsp`, 1007xx FACSAria, `test_comp_example` exported from Cytobank) | — | BSD-3 repo, **undocumented provenance** | Test dir only (risk) | WSP parity tests: valuable, but verify provenance |
 | **FR-FCM-ZZZ4** "FCS collection for software testing" | 39 files, 331 MB, ~15 vendors incl. LMD and FCS 3.0/3.1 pairs | FlowRepository ToS | Mirror and download | The reference multi-vendor reader suite |
 | GPL/AGPL package data: flowWorkspaceData, FlowSOM `68983.fcs`, PeacoQC `111.fcs`, CytoNorm extdata, CytoExploreRData, cytoflow, CytometryInR (AGPL + CC BY-SA) | — | GPL / AGPL | **No** | Oracle comparisons in CI only |
 
 **Spectral, with raw detector channels and reference controls**
 
-| Dataset | Content | Licence | Bundle? |
+| Dataset | Content | License | Bundle? |
 |---|---|---|---|
-| **AutoSpectral example** (Mendeley ch5dnspd79 v1, doi:10.17632/ch5dnspd79.1) | 2.12 GB; Aurora 5L, mouse 9-colour; SpectroFlo .Expt; raw and unmixed; 8 bead + 8 cell raw controls; unstained spleen/lung/liver; fixative series | **CC BY 4.0** | **Yes**: bead-control subset ~12 MB (mark "subset extracted"); full set as download |
-| **CELeidoscope ZAM47** (Zenodo 19221995) | BD FACSDiscover S8, **FCS 3.2, 440 parameters**; single-colour controls 18.3 MB each; FlowJo .wsp; C. elegans | **CC BY 4.0** | Optional (one 18 MB control); the only real FCS 3.2 files found |
-| CLL 42-colour OMIP (Zenodo 19485511) | Raw 2.17 GB, refs 2.98 GB, unmixed 1.58 GB; human | CC BY 4.0 | Download |
-| 41-colour whole-blood OMIP (Zenodo 19452540) | 2.48 GB + refs 6.32 GB | CC BY 4.0 | Download |
-| Petti OMIP mouse tumour/LN (Zenodo 17568671, 20644656) | Unmixed 1.3 GB; raw zip 7.19 GB with 25 bead controls and 50 FMOs | CC BY 4.0 | Download |
+| **AutoSpectral example** (Mendeley ch5dnspd79 v1, doi:10.17632/ch5dnspd79.1) | 2.12 GB; Aurora 5L, mouse 9-color; SpectroFlo .Expt; raw and unmixed; 8 bead + 8 cell raw controls; unstained spleen/lung/liver; fixative series | **CC BY 4.0** | **Yes**: bead-control subset ~12 MB (mark "subset extracted"); full set as download |
+| **CELeidoscope ZAM47** (Zenodo 19221995) | BD FACSDiscover S8, **FCS 3.2, 440 parameters**; single-color controls 18.3 MB each; FlowJo .wsp; C. elegans | **CC BY 4.0** | Optional (one 18 MB control); the only real FCS 3.2 files found |
+| CLL 42-color OMIP (Zenodo 19485511) | Raw 2.17 GB, refs 2.98 GB, unmixed 1.58 GB; human | CC BY 4.0 | Download |
+| 41-color whole-blood OMIP (Zenodo 19452540) | 2.48 GB + refs 6.32 GB | CC BY 4.0 | Download |
+| Petti OMIP mouse tumor/LN (Zenodo 17568671, 20644656) | Unmixed 1.3 GB; raw zip 7.19 GB with 25 bead controls and 50 FMOs | CC BY 4.0 | Download |
 | CytoBatchFlagR (Zenodo 15388817) | 74 Aurora unmixed files, 3.69 GB; batch controls | CC BY 4.0 | Download |
 | Roet 2024 (FR-FCM-Z78C, 459 MB); den Braanker 2021 (FR-FCM-Z4KT, 516 MB); FR-FCM-Z3YL; FR-FCM-Z3WR | Aurora, single stains | FlowRepository ToS | Mirror |
 
 **Mass cytometry**
 
-| Dataset | Licence | Use |
+| Dataset | License | Use |
 |---|---|---|
 | ImmunoCluster (Zenodo 4719468; FR-FCM-Z244 derivative) | CC BY 4.0, with a chain-of-title caveat | Download |
 | Zenodo 10510047 (microglia, 138 MB), 13147938, 19653078, 17238592 | CC BY 4.0 | Download |
@@ -1366,7 +1366,7 @@ Kinetics, cell cycle, proliferation and cloud collaboration already exist in shi
 
 **Conventional flow**
 
-| Dataset | Content | Licence | Bundle? |
+| Dataset | Content | License | Bundle? |
 |---|---|---|---|
 | **Mouse skull BM chimera** (Zenodo 22808501, 2026-09-17) | LSRFortessa/Diva 9; **15 single-stain comp controls, 3 MB total**, 15 FMOs, 46 samples; 319 MB | **CC BY 4.0** | **Yes** (comp controls + a few samples) |
 | **CytoNorm 2.0 use-case data** (Zenodo 13928969) | 48 FCS, 80 MB; FACSymphony A5; 2 panels × 8 patients × 3 timepoints | **CC BY 4.0** | Subset (< 5 MB) for the batch-normalization tutorial |
@@ -1388,18 +1388,18 @@ Kinetics, cell cycle, proliferation and cloud collaboration already exist in shi
 7. FlowKit synthetic files (BSD-3).
 8. Optionally one CELeidoscope FCS 3.2 control (CC BY).
 
-**(b) In-app downloads with licence display**, via direct Zenodo and Mendeley per-file URLs plus Range requests:
-- AutoSpectral full, CELeidoscope, CLL-42, 41-colour OMIP, Petti, CytoBatchFlagR, CytoNorm 2.0 full, skull chimera full, CyTOF Zenodo sets.
+**(b) In-app downloads with license display**, via direct Zenodo and Mendeley per-file URLs plus Range requests:
+- AutoSpectral full, CELeidoscope, CLL-42, 41-color OMIP, Petti, CytoBatchFlagR, CytoNorm 2.0 full, skull chimera full, CyTOF Zenodo sets.
 - A **CytoWeave-hosted mirror** of FlowRepository classics with attribution: ZZPH, ZYL8, FlowCAP-I, ZZZ4, Z78C, Z4KT, AutoSpill sets.
 
 **(c) Avoid, or link out only:**
-- Cytobank Community data and vendor tutorial data (no redistribution licence).
+- Cytobank Community data and vendor tutorial data (no redistribution license).
 - ImmPort-only data.
 - GPL/AGPL package data.
 - The Gating-ML suite inside the binary.
 - FlowKit/FlowIO real files of undocumented provenance.
 - fcsparser `facs_diva_test.fcs`.
-- tlnagy/fcsexamples (no licence).
+- tlnagy/fcsexamples (no license).
 
 ## 7. Corrections to the original product brief
 
@@ -1464,7 +1464,7 @@ The ordering principle is **trust first** (numbers that match the standards, Flo
    - Server-side streaming of columns via HTTP range requests from the Go binary.
    - WebGPU as optional acceleration only.
    - Rationale: large spectral cohorts; WebGPU is not yet available in every browser (§3C).
-7. **Comparison-first organisation.**
+7. **Comparison-first organization.**
    - Groups, populations and samples as separate axes.
    - Keyword/metadata manager with CSV import.
    - Template propagation with per-sample overrides.
@@ -1550,12 +1550,12 @@ The ordering principle is **trust first** (numbers that match the standards, Flo
 
 ### Licensing guardrails for implementation
 
-Licences were verified from GitHub and DESCRIPTION files on 2026-10-01.
+Licenses were verified from GitHub and DESCRIPTION files on 2026-10-01.
 
 - **OK to port or adapt with notice:**
   - FlowKit, FlowUtils, FlowIO (BSD-3).
   - BD FlowJo LUTs (MIT).
-  - Several MIT-licensed open-source cytometry projects (check each licence).
+  - Several MIT-licensed open-source cytometry projects (check each license).
   - diffcyt (MIT).
   - cyCombine (MIT + file).
   - umap-js (repo LICENSE Apache-2.0; package.json says MIT, so confirm).

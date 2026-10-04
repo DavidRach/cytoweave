@@ -7,7 +7,7 @@
     <meta name="description" content="CytoWeave: open-source flow cytometry analysis" />
     <title>CytoWeave</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=0.3.0" />
+    <link rel="stylesheet" href="styles.css?v=0.4.0" />
   </head>
   <body>
     <div id="app" class="app" data-mode="gate">
@@ -18,7 +18,7 @@
         </div>
         <button id="workspace-menu" class="workspace-title" type="button" title="Workspace menu">
           <span id="workspace-name">Untitled workspace</span>
-          <span id="save-state" class="save-state" title="Saved"></span>
+          <span id="save-state" class="save-state" title="Saved" role="img" aria-label="Saved"></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5" /></svg>
         </button>
         <nav id="mode-switcher" class="mode-switcher" role="tablist" aria-label="Views"></nav>
@@ -30,7 +30,7 @@
           </button>
           <button id="undo-button" class="icon-button" type="button" title="Undo (⌘Z)" aria-label="Undo"></button>
           <button id="redo-button" class="icon-button" type="button" title="Redo (⇧⌘Z)" aria-label="Redo"></button>
-          <button id="theme-button" class="icon-button" type="button" title="Light or dark theme" aria-label="Theme"></button>
+          <button id="theme-button" class="icon-button" type="button" title="Appearance: theme and color-vision-friendly colors" aria-label="Appearance" aria-haspopup="menu"></button>
           <button id="help-button" class="icon-button" type="button" title="Help and keyboard shortcuts (?)" aria-label="Help"></button>
         </div>
       </header>
@@ -58,6 +58,6 @@
     <div id="overlay-root"></div>
     <input id="file-input" type="file" multiple hidden accept=".fcs,.lmd,.cwz,.json,.wsp,.wspt,.xml,.csv,.acs,.zip" />
     <input id="folder-input" type="file" webkitdirectory multiple hidden />
-    <script type="module" src="app.js?v=0.3.0"></script>
+    <script type="module" src="app.js?v=0.4.0"></script>
   </body>
 </html>

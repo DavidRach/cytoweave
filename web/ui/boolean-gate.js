@@ -2,6 +2,7 @@
 // under a parent, with the count on the current sample shown as the choice changes.
 
 import { h, formatCount, formatPercent } from './dom.js';
+import { shownColor } from '../lib/colormaps.js';
 import { showDialog, toast } from './overlays.js';
 import { countOf, populationSet } from '../lib/engine.js';
 import { BOOLEAN_OPS, ROOT, booleanCandidates, booleanName, gateById, gatePath, setBooleanGate } from '../lib/workspace.js';
@@ -47,7 +48,7 @@ export function openBooleanGate(app, options = {}) {
         else state.operands.delete(g.id);
         refresh();
       });
-      return h('label.boolean-option', box, h('span.swatch', { style: { background: g.color } }), h('span', { title: gatePath(ws, g.id) }, gatePath(ws, g.id)));
+      return h('label.boolean-option', box, h('span.swatch', { style: { background: shownColor(ws, g) } }), h('span', { title: gatePath(ws, g.id) }, gatePath(ws, g.id)));
     }));
   }
   search.addEventListener('input', renderList);

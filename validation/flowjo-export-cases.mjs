@@ -93,7 +93,8 @@ const countsFor = (ws, views) => (sample) => {
 function exportAndBack(name, kind, ws, views, files, extra = {}) {
   const { xml, report } = exportFlowJo(ws, { counts: countsFor(ws, views), version: 'validation' });
   const back = importWithFiles(xml, files);
-  return { name, kind, xml, report, files, rows: back.rows, fidelity: back.result.fidelity, ...extra };
+  const ellipses = ws.gates.filter((g) => g.type === 'ellipse').map((g) => g.name);
+  return { name, kind, xml, report, files, rows: back.rows, fidelity: back.result.fidelity, ellipses, ...extra };
 }
 
 export function bundledCase() {

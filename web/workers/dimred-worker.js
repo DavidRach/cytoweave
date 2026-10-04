@@ -22,7 +22,7 @@
 //   mixingEntropy    { low, n, labels, k, options }
 //   lisi             { low, n, labels, options }
 //
-// The UMAP model (reference data, embedding and neighbour index) stays in this worker under its
+// The UMAP model (reference data, embedding and neighbor index) stays in this worker under its
 // modelId so new samples can be projected without sending the reference again; a modelId is lost
 // if the worker is terminated (WorkerClient.cancel does that). Long loops check `signal.aborted`:
 // pass payload.abortBuffer (a SharedArrayBuffer whose first Int32 the page sets to 1) when the
@@ -131,7 +131,7 @@ const handlers = {
   assessEmbedding(p, o) {
     const options = { ...o };
     if (p.modelId && !options.highKnn) {
-      // Reuse the UMAP neighbour table of the same events.
+      // Reuse the UMAP neighbor table of the same events.
       const model = getModel(p.modelId);
       if (model.n === p.n) options.highKnn = { indices: model.index.indices, distances: model.index.distances };
     }
@@ -165,7 +165,7 @@ self.onmessage = (event) => {
     if (!handler) throw new Error(`Unknown request ${type}`);
     const options = { ...(payload.options ?? {}), onProgress: reporter(id), signal: makeSignal(payload) };
     const result = handler(payload, options);
-    // Neighbour tables shared with a stored model must not be transferred (they would detach).
+    // Neighbor tables shared with a stored model must not be transferred (they would detach).
     const keep = new Set();
     for (const model of models.values()) {
       for (const array of [model.data, model.embedding, model.index?.data, model.index?.indices, model.index?.distances]) {

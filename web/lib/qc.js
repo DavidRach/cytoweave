@@ -19,7 +19,7 @@ const MAD_SCALE = 1.4826;
 // --- Shared helpers -------------------------------------------------------------------------
 
 function checkAbort(options) {
-  if (options.signal?.aborted) throw new Error('The quality-control analysis was cancelled.');
+  if (options.signal?.aborted) throw new Error('The quality-control analysis was canceled.');
 }
 
 function report(options, fraction, message) {
@@ -121,7 +121,7 @@ function sortedRemove(window, size, value) {
 }
 
 // Running median of odd width k (as R's runmed). Ends: 'median' (default) uses the largest
-// centred window that fits, with Tukey's end-point rule at the first and last point (as R's
+// centered window that fits, with Tukey's end-point rule at the first and last point (as R's
 // smoothEnds, which keeps a linear trend unbiased at the ends); 'constant' repeats the first and
 // last full-window medians.
 export function runningMedian(values, k, options = {}) {
@@ -149,7 +149,7 @@ export function runningMedian(values, k, options = {}) {
     }
     return out;
   }
-  // Shrinking centred windows 2j + 1 for j = 1 … half − 1, built incrementally.
+  // Shrinking centered windows 2j + 1 for j = 1 … half − 1, built incrementally.
   for (const side of [0, 1]) {
     const at = (i) => (side === 0 ? i : n - 1 - i);
     const grow = new Float64Array(width);
@@ -221,7 +221,7 @@ export function bandwidthNrd0(sorted) {
   return 0.9 * lo * n ** -0.2;
 }
 
-function createDensityWorkspace(lambda = DEFAULT_DENSITY_SMOOTHING) {
+export function createDensityWorkspace(lambda = DEFAULT_DENSITY_SMOOTHING) {
   const n = DENSITY_POINTS;
   return {
     binned: new Float64Array(n),
@@ -365,7 +365,7 @@ export function averagePathLength(n) {
 //
 // With `coherence` (CytoWeave's refinement), a split is accepted only if the smaller side is
 // coherent in time: at least that fraction of its rows (bins, in acquisition order) have a
-// neighbouring row on the same side. Clogs and bursts span consecutive, half-overlapping bins;
+// neighboring row on the same side. Clogs and bursts span consecutive, half-overlapping bins;
 // a split on a peak that flickers between bins scatters its smaller side through the whole run.
 // PeacoQC 1.22's isolationTreeSD as written (classic mode), including its particulars: after each
 // split the gain limit rises to that split's gain, so every later split must gain more; within a
@@ -549,7 +549,7 @@ export function isolationTreeSD(columns, options = {}) {
   return { nodes, leafOf, good, largestLeaf: largest };
 }
 
-// The fraction of the smaller side of a split whose rows have a neighbouring row (in row order)
+// The fraction of the smaller side of a split whose rows have a neighboring row (in row order)
 // on the same side.
 function timeCoherence(rows, column, value, nRows) {
   let nLeft = 0;
@@ -679,7 +679,7 @@ export function makeBins(nEvents, eventsPerBin) {
 // bin's peaks; per cluster and bin the peak nearest the cluster median is kept, and bins without
 // a peak in a cluster get the cluster median.
 // With `tolerance` (CytoWeave's refinement, on by default), a bin's peak joins a trajectory only
-// when it lies closer to that trajectory's median than half the distance to the neighbouring
+// when it lies closer to that trajectory's median than half the distance to the neighboring
 // trajectory (and within `maxJump` of the axis); otherwise the bin counts as having no such peak.
 // Without it, a peak of another population in a bin where the minor peak was not found is
 // assigned to the minor peak's trajectory as its nearest cluster, and the jump looks like an
@@ -1060,6 +1060,70 @@ function madOutliers(track, madLimit, bandwidth, options = {}) {
   return { flagged: refined, smooth, lower, upper, skipped: false, noise };
 }
 
+// The bins PeacoQC uses for a sample: { nEvents, channels, eventsPerBin, bins } (bins as
+// makeBins gives them), the same for the whole file and for each channel computed apart.
+export function peacoQCLayout(sample, options = {}) {
+  const nEvents = eventCountOf(sample);
+  const channels = options.channels?.length ? options.channels : signalChannels(sample);
+  let countForBins = nEvents;
+  if (options.removeZeros) {
+    for (const name of channels) {
+      const column = columnOf(sample, name);
+      let nonZero = 0;
+      for (let i = 0; i < column.length; i += 1) if (column[i] !== 0) nonZero += 1;
+      countForBins = Math.min(countForBins, nonZero);
+    }
+  }
+  const eventsPerBin = options.eventsPerBin ?? findEventsPerBin(countForBins, options);
+  return { nEvents, channels, eventsPerBin, bins: makeBins(nEvents, eventsPerBin) };
+}
+
+// PeacoQC's work on one channel: its density peaks over the whole file and in every bin, tracked
+// across the bins. Channels are independent, so they can be computed in parallel (one worker per
+// group of channels, reading shared columns) and passed to peacoQC as options.channelResults.
+// Returns { track: { transform, fullPeaks, medians, peaks, present, trajectories } | null,
+// warning }. shared: { ws, buffer } scratch space reused between channels (optional).
+export function peacoQCChannel(sample, name, bins, options = {}, shared = null) {
+  const classic = options.mode === 'classic';
+  const removeZeros = options.removeZeros ?? false;
+  const ws = shared?.ws ?? createDensityWorkspace(options.densitySmoothing);
+  let maxBin = 0;
+  for (const bin of bins) maxBin = Math.max(maxBin, bin.end - bin.start);
+  const binBuffer = shared?.buffer && shared.buffer.length >= maxBin ? shared.buffer : new Float64Array(maxBin);
+  const peakOptions = { peakRemoval: options.peakRemoval ?? 1 / 3, exact: classic };
+  const { values, spec } = displayValues(sample, name, options);
+  const keep = (v) => Number.isFinite(v) && (!removeZeros || v !== 0);
+  const raw = columnOf(sample, name);
+  let full = new Float64Array(values.length);
+  let k = 0;
+  for (let i = 0; i < values.length; i += 1) if (keep(raw[i]) && Number.isFinite(values[i])) full[k++] = values[i];
+  full = full.subarray(0, k).sort();
+  const fullPeaks = findPeaks(full, peakOptions, ws);
+  if (!fullPeaks.length) return { track: null, warning: `No density peak was found in ${name}; it was left out.` };
+  const binPeaks = bins.map((bin) => {
+    let m = 0;
+    for (let i = bin.start; i < bin.end; i += 1) if (keep(raw[i]) && Number.isFinite(values[i])) binBuffer[m++] = values[i];
+    // Fewer than 3 events: no density (PeacoQC's NA).
+    if (classic && m < 3) return null;
+    return findPeaks(binBuffer.subarray(0, m).sort(), peakOptions, ws);
+  });
+  const tracked = classic
+    ? trackPeaksClassic(binPeaks, options.minPeakBinsPercent ?? 10)
+    : trackPeaks(binPeaks, options.minPeakBinsPercent ?? 10, { tolerance: true, maxJump: options.maxJump });
+  if (!tracked) return { track: null, warning: `No stable peaks were found in ${name}; it was left out.` };
+  return {
+    track: {
+      transform: spec,
+      fullPeaks,
+      medians: tracked.medians,
+      peaks: tracked.trajectories.map((t) => Float32Array.from(t)),
+      present: tracked.present,
+      trajectories: tracked.trajectories,
+    },
+    warning: null,
+  };
+}
+
 // PeacoQC (Emmaneel et al. 2022). Events are split into overlapping bins of consecutive events;
 // in each bin and channel the density peaks are found; the peak trajectories over the bins are
 // screened by an isolation tree (IT) and by MAD on smoothed trajectories; good stretches shorter
@@ -1071,10 +1135,10 @@ function madOutliers(track, madLimit, bandwidth, options = {}) {
 // (peak_removal = 1/3), minPeakBinsPercent (min_nr_bins_peakdetection = 10), removeZeros
 // (remove_zeros = false), method ('all' | 'IT' | 'MAD', determine_good_cells), isolation
 // ('sd-tree' = PeacoQC's isolationTreeSD | 'forest' = seeded Isolation Forest, score > itLimit),
-// madBandwidth (ksmooth bandwidth 50), densitySmoothing, seed, timestep, onProgress, signal.
+// madBandwidth (ksmooth bandwidth 50), densitySmoothing, seed, timestep, onProgress, signal,
+// channelResults (the per-channel work done beforehand, see peacoQCChannel).
 export function peacoQC(sample, options = {}) {
-  const nEvents = eventCountOf(sample);
-  const channels = options.channels?.length ? options.channels : signalChannels(sample);
+  const { nEvents, channels, eventsPerBin, bins } = peacoQCLayout(sample, options);
   if (!channels.length) throw new Error('PeacoQC needs at least one scatter or fluorescence channel.');
   const madLimit = options.mad ?? 6;
   const itLimit = options.itLimit ?? 0.6;
@@ -1086,18 +1150,6 @@ export function peacoQC(sample, options = {}) {
   // 'classic' follows PeacoQC as published.
   const classic = options.mode === 'classic';
   const warnings = [];
-
-  let countForBins = nEvents;
-  if (removeZeros) {
-    for (const name of channels) {
-      const column = columnOf(sample, name);
-      let nonZero = 0;
-      for (let i = 0; i < column.length; i += 1) if (column[i] !== 0) nonZero += 1;
-      countForBins = Math.min(countForBins, nonZero);
-    }
-  }
-  const eventsPerBin = options.eventsPerBin ?? findEventsPerBin(countForBins, options);
-  const bins = makeBins(nEvents, eventsPerBin);
   const nBins = bins.length;
   const mask = new Uint8Array(nEvents).fill(1);
 
@@ -1126,53 +1178,29 @@ export function peacoQC(sample, options = {}) {
     return empty(`PeacoQC needs more events: ${nEvents} events make only ${nBins} bins of ${eventsPerBin}.`);
   }
 
-  // Peak trajectories per channel.
-  const ws = createDensityWorkspace(options.densitySmoothing);
-  const peakOptions = { peakRemoval: options.peakRemoval ?? 1 / 3, exact: classic };
+  // Peak trajectories per channel (computed here, or in parallel and passed as
+  // options.channelResults, one per channel in order: see peacoQCChannel).
   const channelTracks = {};
   const features = [];
   const featureColumns = [];
-  const binBuffer = new Float64Array(eventsPerBin);
-  channels.forEach((name, c) => {
-    checkAbort(options);
-    report(options, (0.8 * c) / channels.length, `Finding peaks in ${name}`);
-    const { values, spec } = displayValues(sample, name, options);
-    const keep = (v) => Number.isFinite(v) && (!removeZeros || v !== 0);
-    const raw = columnOf(sample, name);
-    let full = new Float64Array(values.length);
-    let k = 0;
-    for (let i = 0; i < values.length; i += 1) if (keep(raw[i]) && Number.isFinite(values[i])) full[k++] = values[i];
-    full = full.subarray(0, k).sort();
-    const fullPeaks = findPeaks(full, peakOptions, ws);
-    if (!fullPeaks.length) {
-      warnings.push(`No density peak was found in ${name}; it was left out.`);
-      return;
-    }
-    const binPeaks = bins.map((bin) => {
-      let m = 0;
-      for (let i = bin.start; i < bin.end; i += 1) if (keep(raw[i]) && Number.isFinite(values[i])) binBuffer[m++] = values[i];
-      // Fewer than 3 events: no density (PeacoQC's NA).
-      if (classic && m < 3) return null;
-      return findPeaks(binBuffer.subarray(0, m).sort(), peakOptions, ws);
+  const results = options.channelResults ?? (() => {
+    const shared = { ws: createDensityWorkspace(options.densitySmoothing), buffer: new Float64Array(eventsPerBin) };
+    return channels.map((name, c) => {
+      checkAbort(options);
+      report(options, (0.8 * c) / channels.length, `Finding peaks in ${name}`);
+      return peacoQCChannel(sample, name, bins, options, shared);
     });
-    const tracked = classic
-      ? trackPeaksClassic(binPeaks, options.minPeakBinsPercent ?? 10)
-      : trackPeaks(binPeaks, options.minPeakBinsPercent ?? 10, { tolerance: true, maxJump: options.maxJump });
-    if (!tracked) {
-      warnings.push(`No stable peaks were found in ${name}; it was left out.`);
-      return;
-    }
-    channelTracks[name] = {
-      transform: spec,
-      fullPeaks,
-      medians: tracked.medians,
-      peaks: tracked.trajectories.map((t) => Float32Array.from(t)),
-      present: tracked.present,
-      madContribution: 0,
-    };
-    tracked.trajectories.forEach((track, j) => {
+  })();
+  if (results.length !== channels.length) throw new Error('PeacoQC: one channel result is needed per channel.');
+  results.forEach((result, c) => {
+    if (result.warning) warnings.push(result.warning);
+    if (!result.track) return;
+    const name = channels[c];
+    const { trajectories, ...track } = result.track;
+    channelTracks[name] = { ...track, madContribution: 0 };
+    trajectories.forEach((trajectory, j) => {
       features.push({ channel: name, peak: j });
-      featureColumns.push(track);
+      featureColumns.push(trajectory);
     });
   });
   if (!featureColumns.length) return empty('No channel had density peaks to follow.');
@@ -1276,7 +1304,7 @@ export function peacoQC(sample, options = {}) {
     warnings,
     timeChannel: timeName,
     timestep,
-    parameters: { mode: classic ? 'classic' : 'refined', mad: madLimit, itLimit, consecutiveBins, forceIT, method, removeZeros, peakRemoval: peakOptions.peakRemoval },
+    parameters: { mode: classic ? 'classic' : 'refined', mad: madLimit, itLimit, consecutiveBins, forceIT, method, removeZeros, peakRemoval: options.peakRemoval ?? 1 / 3 },
   };
 }
 
@@ -1405,7 +1433,7 @@ export function studentTQuantile(p, df) {
 }
 
 // Generalized ESD test for up to `maxOutliers` outliers (Rosner 1983, Technometrics,
-// doi:10.1080/00401706.1983.10487848). With robust = true (default) the centre and spread are
+// doi:10.1080/00401706.1983.10487848). With robust = true (default) the center and spread are
 // the median and MAD, as in flowAI's anomaly_detection (after Twitter's S-H-ESD).
 export function generalizedESD(values, options = {}) {
   const n = values.length;

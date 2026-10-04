@@ -40,7 +40,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, and `adapt_gate` 0.3.0.
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, and `check_robustness` 0.4.0.
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the
@@ -97,6 +97,7 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `review_gate` | A gate's frequency on every sample with a robust z-score and its boundary robustness, outliers first. |
 | `adapt_gate` | Adapts a gate to every sample (density landmark registration) with a confidence for each: confident adjustments are proposed, uncertain samples listed for you to check. `groupBy` keeps one gate per donor or subject. |
 | `compare` | Tests a statistic between groups of samples defined by metadata, optionally paired. |
+| `check_robustness` | Repeats a two-group comparison under other reasonable analysis choices (gate boundaries, adapted gates, QC, compensation, test) and reports whether the conclusion holds, mostly holds or is fragile, and which choices change it. |
 | `methods` | A methods paragraph with numbered references. |
 | `export_gating_ml` | The gating strategy as Gating-ML 2.0. |
 

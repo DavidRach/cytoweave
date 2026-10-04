@@ -3,14 +3,14 @@
 //   pca            covariance (or correlation) matrix + Jacobi eigen-decomposition (Pearson 1901;
 //                  Hotelling 1933).
 //   tsne           Barnes-Hut t-SNE (van der Maaten 2014, JMLR 15:3221) on a 3·perplexity kNN
-//                  graph, PCA initialisation with PC1 sd = 1e-4 (Kobak & Linderman 2021,
+//                  graph, PCA initialization with PC1 sd = 1e-4 (Kobak & Linderman 2021,
 //                  doi:10.1038/s41587-020-00809-z), learning rate n / early exaggeration (Belkina
 //                  et al. 2019, doi:10.1038/s41467-019-13055-y; Kobak & Berens 2019), optional
 //                  opt-SNE stopping rules (Belkina et al. 2019).
 //   umap           UMAP (McInnes, Healy & Melville 2018, arXiv:1802.03426) following umap-learn
-//                  0.5 defaults: fuzzy simplicial set, spectral initialisation, SGD with negative
+//                  0.5 defaults: fuzzy simplicial set, spectral initialization, SGD with negative
 //                  sampling. transformUmap places new events into an existing embedding.
-//   spectralEmbedding  normalised-Laplacian eigenvectors of a sparse graph by Chebyshev-filtered
+//   spectralEmbedding  normalized-Laplacian eigenvectors of a sparse graph by Chebyshev-filtered
 //                  subspace iteration (Zhou & Saad 2007, doi:10.1016/j.jcp.2006.06.033).
 //
 // Input is a dense row-major Float32Array (n × dim) of transformed values (e.g. arcsinh or
@@ -119,7 +119,7 @@ export function pcaTransform(model, data, m) {
 
 // Conditional probabilities p(j|i) ∝ exp(−β_i d_ij²) over each row's kNN, β_i found by bisection so
 // that the entropy equals log(perplexity) (van der Maaten & Hinton 2008), then P = (P + Pᵀ) / 2n.
-export function tsneAffinities(neighbours, n, k, perplexity) {
+export function tsneAffinities(neighbors, n, k, perplexity) {
   const target = Math.log(perplexity);
   const values = new Float32Array(n * k);
   const d2 = new Float64Array(k);
@@ -128,7 +128,7 @@ export function tsneAffinities(neighbours, n, k, perplexity) {
     const base = i * k;
     let dmin = Infinity;
     for (let t = 0; t < k; t += 1) {
-      const d = neighbours.distances[base + t];
+      const d = neighbors.distances[base + t];
       d2[t] = d * d;
       if (d2[t] < dmin) dmin = d2[t];
     }
@@ -157,15 +157,15 @@ export function tsneAffinities(neighbours, n, k, perplexity) {
     }
     for (let t = 0; t < k; t += 1) values[base + t] = p[t] / sum;
   }
-  const P = symmetrize(neighbours.indices, values, n, k, 'sum');
+  const P = symmetrize(neighbors.indices, values, n, k, 'sum');
   const scale = 1 / (2 * n);
   for (let e = 0; e < P.weights.length; e += 1) P.weights[e] *= scale;
   return P;
 }
 
 // Quadtree for the Barnes-Hut approximation, in flat typed arrays reused between iterations.
-// Each node has a square cell (centre cx, cy and half-width hw, used while building) and, packed
-// in `node` with stride 4, its centre of mass, mass and squared cell width. Leaves chain their
+// Each node has a square cell (center cx, cy and half-width hw, used while building) and, packed
+// in `node` with stride 4, its center of mass, mass and squared cell width. Leaves chain their
 // points through `next` (several only at MAX_DEPTH, i.e. coincident points). `order` lists the
 // points depth-first, so consecutive force evaluations walk similar paths (cache locality).
 const MAX_DEPTH = 48;
@@ -296,7 +296,7 @@ function buildTree(tree, Y, n) {
 // t-SNE gradient (without the conventional factor 4, as bhtsne/openTSNE, so learning rates are
 // comparable with theirs): ∂C/∂y_i = α Σ_j p_ij q̃_ij (y_i − y_j) − (1/Z) Σ_j q̃_ij² (y_i − y_j),
 // q̃_ij = 1/(1 + ‖y_i − y_j‖²), Z = Σ q̃. Repulsion by Barnes-Hut: a cell of width w at distance d
-// from its centre of mass is summarised when w < θ·d. Returns KL(P‖Q) when withKl.
+// from its center of mass is summarized when w < θ·d. Returns KL(P‖Q) when withKl.
 function tsneGradient(Y, n, P, exaggeration, theta2, tree, grad, negX, negY, sumPLogP, withKl) {
   buildTree(tree, Y, n);
   const { child, first, node, next, order } = tree;
@@ -400,12 +400,12 @@ export function tsne(data, n, dim, options = {}) {
   if ((options.nComponents ?? 2) !== 2) throw new Error('t-SNE here embeds into two dimensions only.');
   const perp = Math.max(1, Math.min(perplexity, (n - 1) / 3));
   let k = Math.min(n - 1, Math.floor(3 * perp));
-  let neighbours = options.knn;
-  if (neighbours) k = neighbours.indices.length / n;
-  else neighbours = knn(data, n, dim, k, { metric, seed, onProgress: progressRange(onProgress, 0, 0.2), signal });
+  let neighbors = options.knn;
+  if (neighbors) k = neighbors.indices.length / n;
+  else neighbors = knn(data, n, dim, k, { metric, seed, onProgress: progressRange(onProgress, 0, 0.2), signal });
   throwIfAborted(signal);
   if (onProgress) onProgress(0.2, 't-SNE: calibrating perplexity');
-  const P = tsneAffinities(neighbours, n, k, perp);
+  const P = tsneAffinities(neighbors, n, k, perp);
   let sumPLogP = 0;
   for (let e = 0; e < P.weights.length; e += 1) if (P.weights[e] > 0) sumPLogP += P.weights[e] * Math.log(P.weights[e]);
 
@@ -458,7 +458,7 @@ export function tsne(data, n, dim, options = {}) {
       update[c] = mom * update[c] - lr * gains[c] * g;
       Y[c] += update[c];
     }
-    // Keep the embedding centred (bhtsne does the same).
+    // Keep the embedding centered (bhtsne does the same).
     let mx = 0;
     let my = 0;
     for (let i = 0; i < n; i += 1) {
@@ -573,7 +573,7 @@ export function findAbParams(spread = 1, minDist = 0.1) {
   return { a, b };
 }
 
-// --- Spectral initialisation --------------------------------------------------------------------
+// --- Spectral initialization --------------------------------------------------------------------
 
 function orthonormalize(X, n, p, v0) {
   for (let pass = 0; pass < 2; pass += 1) {
@@ -598,7 +598,7 @@ function orthonormalize(X, n, p, v0) {
   return true;
 }
 
-// Y = M X for the n × p block X, M = D^{-1/2} W D^{-1/2} with normalised weights wn.
+// Y = M X for the n × p block X, M = D^{-1/2} W D^{-1/2} with normalized weights wn.
 function blockMultiply(offsets, targets, wn, X, Y, n, p) {
   for (let i = 0; i < n; i += 1) {
     const yb = i * p;
@@ -644,7 +644,7 @@ function rayleighRitz(X, MX, n, p) {
   return values;
 }
 
-// The nComponents eigenvectors of the normalised Laplacian L = I − D^{-1/2} W D^{-1/2} with the
+// The nComponents eigenvectors of the normalized Laplacian L = I − D^{-1/2} W D^{-1/2} with the
 // smallest non-zero eigenvalues (Belkin & Niyogi 2003), as umap-learn's spectral_layout. Uses
 // Chebyshev-filtered subspace iteration on M = I − L with a few guard vectors, deflating the
 // trivial eigenvector D^{1/2}1. Returns null for a disconnected graph (umap-learn then lays out
@@ -733,7 +733,7 @@ export function spectralEmbedding(graph, nComponents = 2, options = {}) {
   return { embedding, eigenvalues, converged, iterations };
 }
 
-// --- UMAP: layout optimisation ---------------------------------------------------------------------
+// --- UMAP: layout optimization ---------------------------------------------------------------------
 
 function clip4(v) {
   return v > 4 ? 4 : v < -4 ? -4 : v;
@@ -907,7 +907,7 @@ export function umap(data, n, dim, options = {}) {
   const { a, b } = options.a !== undefined && options.b !== undefined ? { a: options.a, b: options.b } : findAbParams(spread, minDist);
   const random = createRandom(seed);
 
-  // 1. Neighbours: umap-learn's n_neighbors counts the point itself.
+  // 1. Neighbors: umap-learn's n_neighbors counts the point itself.
   const index = options.index ?? createKnnIndex(data, n, dim, nNeighbors - 1, {
     metric, seed, onProgress: progressRange(onProgress, 0, 0.3), signal,
   });
@@ -931,7 +931,7 @@ export function umap(data, n, dim, options = {}) {
       initial = scaleInitialLayout(spectral.embedding, n, nComponents, random, 1e-4);
       if (!spectral.converged) initUsed = 'spectral (approximate)';
     } else {
-      initUsed = 'pca (no spectral layout: the neighbour graph is disconnected or too small)';
+      initUsed = 'pca (no spectral layout: the neighbor graph is disconnected or too small)';
     }
   }
   if (!initial) {
@@ -996,7 +996,7 @@ function csrToEdges(graph) {
 // Places m new events (newData: Float32Array m × dim, same channels and transforms as the model's
 // data) into an existing UMAP embedding without moving it, as umap-learn's transform: kNN against
 // the reference, membership weights with local connectivity − 1, a weighted-average start, then
-// n_epochs/3 epochs (100 for m ≤ 10 000, else 30, by default) of optimisation at a quarter of the
+// n_epochs/3 epochs (100 for m ≤ 10 000, else 30, by default) of optimization at a quarter of the
 // learning rate with the reference fixed.
 export function transformUmap(model, newData, m, options = {}) {
   const { seed = model.seed ?? DEFAULT_SEED, onProgress, signal } = options;
@@ -1004,23 +1004,23 @@ export function transformUmap(model, newData, m, options = {}) {
   const { n, nComponents: nc, nNeighbors, a, b } = model;
   checkMatrix(newData, m, model.dim, 1);
   const k = Math.min(nNeighbors, n);
-  const neighbours = queryKnn(model.index, newData, m, k, { seed, onProgress: progressRange(onProgress, 0, 0.3), signal });
-  const { sigmas, rhos } = smoothKnnDist(neighbours.distances, m, k, { localConnectivity: Math.max(0, model.localConnectivity - 1) });
-  const values = membershipStrengths(neighbours.indices, neighbours.distances, m, k, sigmas, rhos, true);
+  const neighbors = queryKnn(model.index, newData, m, k, { seed, onProgress: progressRange(onProgress, 0, 0.3), signal });
+  const { sigmas, rhos } = smoothKnnDist(neighbors.distances, m, k, { localConnectivity: Math.max(0, model.localConnectivity - 1) });
+  const values = membershipStrengths(neighbors.indices, neighbors.distances, m, k, sigmas, rhos, true);
   const ref = Float64Array.from(model.embedding);
-  // Weighted average of the neighbours' positions; an exact match (weight 1 at distance 0) wins.
+  // Weighted average of the neighbors' positions; an exact match (weight 1 at distance 0) wins.
   const emb = new Float64Array(m * nc);
   for (let i = 0; i < m; i += 1) {
     let rowSum = 0;
     for (let t = 0; t < k; t += 1) rowSum += values[i * k + t];
     if (!(rowSum > 0)) {
-      for (let d = 0; d < nc; d += 1) emb[i * nc + d] = ref[neighbours.indices[i * k] * nc + d];
+      for (let d = 0; d < nc; d += 1) emb[i * nc + d] = ref[neighbors.indices[i * k] * nc + d];
       continue;
     }
     for (let t = 0; t < k; t += 1) {
       const w = values[i * k + t];
-      const j = neighbours.indices[i * k + t];
-      if (w === 1 && neighbours.distances[i * k + t] === 0) {
+      const j = neighbors.indices[i * k + t];
+      if (w === 1 && neighbors.distances[i * k + t] === 0) {
         for (let d = 0; d < nc; d += 1) emb[i * nc + d] = ref[j * nc + d];
         break;
       }
@@ -1042,7 +1042,7 @@ export function transformUmap(model, newData, m, options = {}) {
       const v = values[i * k + t];
       if (v >= threshold && v > 0) {
         head[p] = i;
-        tail[p] = neighbours.indices[i * k + t];
+        tail[p] = neighbors.indices[i * k + t];
         w[p++] = v;
       }
     }

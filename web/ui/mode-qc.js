@@ -6,7 +6,6 @@
 
 import { h, icon, clear, debounce, formatBytes, formatCount, formatPercent } from './dom.js';
 import { confirmDialog, progressToast, toast } from './overlays.js';
-import { channelTransform } from '../lib/engine.js';
 import { ROOT, addDerived, addGates, addGroup, channelLabel, setCollection, updateSample } from '../lib/workspace.js';
 import { writeFCS } from '../lib/fcs.js';
 import { combinationKey, normalizeKey } from '../lib/debarcode.js';
@@ -16,8 +15,9 @@ import { histogram } from '../lib/density.js';
 import { categoricalColor } from '../lib/colormaps.js';
 import { createRandom, sampleIndices } from '../lib/random.js';
 import { createInstrumentSection } from './qc-instrument.js';
+import { createLiveSection } from './live-qc.js';
+import { DEFAULT_SETTINGS, QC_CHANNEL, binSpan, runQC, saveDerivedMergedIn, saveQCResults, timeDomain } from './qc-run.js';
 
-const QC_CHANNEL = 'QC pass';
 const BEAD_CHANNEL = 'Bead';
 const BARCODE_CHANNEL = 'Barcode';
 const NORM_SUFFIX = ' (norm)';
@@ -26,23 +26,11 @@ const PALLADIUM = ['Pd102', 'Pd104', 'Pd105', 'Pd106', 'Pd108', 'Pd110'];
 const CLUSTER_PATTERN = /cluster|flowsom|\bsom\b|leiden|louvain|phenograph|k-?means/i;
 const QC_GREEN = '#1f9d55';
 
+// PeacoQC and flowAI are cited in qc-run.js, with the acquisition QC.
 const CITE = {
-  peacoqc: 'PeacoQC: Emmaneel et al., Cytometry A 2022, doi:10.1002/cyto.a.24501',
-  flowai: 'flowAI: Monaco et al., Bioinformatics 2016, doi:10.1093/bioinformatics/btw191',
   cytonorm: 'CytoNorm: Van Gassen et al., Cytometry A 2020, doi:10.1002/cyto.a.23904',
   beads: 'Bead normalization: Finck et al., Cytometry A 2013, doi:10.1002/cyto.a.22271',
   debarcode: 'Single-cell debarcoding: Zunder et al., Nat Protoc 2015, doi:10.1038/nprot.2014.090',
-};
-
-const DEFAULT_SETTINGS = {
-  scope: 'all',
-  includeControls: false,
-  channels: 'auto',
-  methods: { peacoQC: true, flowRate: true, margins: true, drift: true },
-  mad: 6,
-  itLimit: 0.6,
-  consecutiveBins: 5,
-  variant: 'refined',
 };
 
 const SECTIONS = [
@@ -50,6 +38,7 @@ const SECTIONS = [
   { id: 'normalize', label: 'Normalize', icon: 'layers', title: 'Batch normalization with reference samples' },
   { id: 'debarcode', label: 'Debarcode', icon: 'tag', title: 'Split barcoded samples' },
   { id: 'instrument', label: 'Instrument', icon: 'gauge', title: 'Detector efficiency Q and background B from beads, and Levey–Jennings charts across runs' },
+  { id: 'live', label: 'Live', icon: 'play', title: 'QC of files as they are acquired, from a watched folder' },
 ];
 
 // --- Small helpers ------------------------------------------------------------------------------
@@ -95,30 +84,6 @@ function scoreBadge(score) {
   return h(`span.badge.qc-score.${scoreKind(score)}`, { title: 'Quality score, 0–100 (100 = nothing to flag)' }, String(score));
 }
 
-function downsample(values, n) {
-  if (values.length <= n) return Array.from(values, (v) => +Number(v).toPrecision(4));
-  const out = [];
-  for (let i = 0; i < n; i += 1) {
-    const a = Math.floor((i * values.length) / n);
-    const b = Math.max(a + 1, Math.floor(((i + 1) * values.length) / n));
-    let sum = 0;
-    for (let k = a; k < b; k += 1) sum += values[k];
-    out.push(+(sum / (b - a)).toPrecision(4));
-  }
-  return out;
-}
-
-function mergeSpans(spans) {
-  const sorted = spans.filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b)).sort((x, y) => x[0] - y[0]);
-  const out = [];
-  for (const [a, b] of sorted) {
-    const last = out[out.length - 1];
-    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
-    else out.push([a, b]);
-  }
-  return out;
-}
-
 function choose(n, k) {
   let result = 1;
   for (let i = 1; i <= k; i += 1) result = (result * (n - k + i)) / i;
@@ -127,79 +92,6 @@ function choose(n, k) {
 
 function naturalCompare(a, b) {
   return String(a).localeCompare(String(b), undefined, { numeric: true });
-}
-
-function sameSet(a = [], b = []) {
-  return a.length === b.length && a.every((x) => b.includes(x));
-}
-
-// The x domain of a QC result: seconds when the file has a time channel, else event numbers.
-function timeDomain(result) {
-  const flow = result.flowRate;
-  if (flow) return { lo: flow.start, hi: flow.end, unit: 's' };
-  const bins = result.peacoQC?.bins ?? [];
-  if (bins.length && bins[0].time) return { lo: bins[0].time[0], hi: bins[bins.length - 1].time[1], unit: 's' };
-  return { lo: 0, hi: bins.length ? bins[bins.length - 1].end : 1, unit: 'events' };
-}
-
-function binSpan(bin, unit) {
-  return unit === 's' && bin.time ? bin.time : [bin.start, bin.end];
-}
-
-// A small, persistable sparkline: the event rate (or, without time, the most variable peak
-// trajectory) and the stretches QC removed.
-function sparklineOf(result) {
-  const domain = timeDomain(result);
-  let values = null;
-  let kind = 'rate';
-  if (result.flowRate) values = downsample(result.flowRate.rate, 96);
-  else if (result.peacoQC) {
-    kind = 'signal';
-    const tracks = Object.values(result.peacoQC.channelTracks).sort((a, b) => b.madContribution - a.madContribution);
-    if (tracks[0]) values = downsample(tracks[0].peaks[0], 96);
-  }
-  if (!values) return null;
-  const spans = [];
-  for (const bin of result.peacoQC?.bins ?? []) if (bin.removedBy.length) spans.push(binSpan(bin, domain.unit).slice());
-  for (const episode of result.flowRate?.episodes ?? []) spans.push([episode.startTime, episode.endTime]);
-  const removed = mergeSpans(spans).slice(0, 80).map(([a, b]) => [+a.toPrecision(7), +b.toPrecision(7)]);
-  return { kind, unit: domain.unit, lo: domain.lo, hi: domain.hi, values, removed };
-}
-
-function paramsOf(settings) {
-  return {
-    methods: { ...settings.methods },
-    channels: settings.channels,
-    peacoQC: { variant: settings.variant ?? 'refined', MAD: settings.mad, IT_limit: settings.itLimit, consecutive_bins: settings.consecutiveBins, peak_removal: 1 / 3, min_nr_bins_peakdetection: 10, isolation: 'isolationTreeSD' },
-    flowRate: { second_fraction: 0.1, alpha: 0.01, test: 'robust generalized ESD' },
-    margins: { limit: '$PnR − 1', minPile: 2, values: 'uncompensated' },
-    drift: { bins: 20, foldThreshold: 1.2 },
-  };
-}
-
-// The part of a QC result kept in the workspace (the tracks stay in memory for the session).
-function summaryOf(result, sample, params) {
-  const s = result.summary;
-  const findings = [
-    ...s.findings,
-    ...result.notes.map((text) => ({ method: 'note', severity: 'info', text })),
-    ...(result.peacoQC?.warnings ?? []).map((text) => ({ method: 'peacoQC', severity: 'info', text })),
-  ];
-  return {
-    name: sample.name,
-    at: new Date().toISOString(),
-    eventCount: s.kept + s.removed,
-    removed: s.removed,
-    percentRemoved: s.percentRemoved,
-    score: s.score,
-    grade: s.grade,
-    byMethod: s.byMethod,
-    findings,
-    drifted: result.drift?.drifted ?? [],
-    hasTime: result.hasTime,
-    sparkline: sparklineOf(result),
-    params,
-  };
 }
 
 function toInt32(column) {
@@ -619,6 +511,10 @@ export function mountQCMode(app, container) {
     beads: { sampleId: null, scope: 'sample', baseline: 'file', results: new Map(), shownId: null },
     debarcode: { sampleId: null, channels: null, k: 3, keyMode: 'combination', csv: '', cofactor: 10, cutoff: 0.3, mahalanobis: 30, run: null, updating: false },
   });
+  if (app.qcStartSection) {
+    S.section = app.qcStartSection;
+    app.qcStartSection = null;
+  }
   const worker = app.worker('qc');
   const jobs = new Set();
   const live = new Set();
@@ -679,6 +575,17 @@ export function mountQCMode(app, container) {
   }
 
   const instrumentSection = createInstrumentSection({ app, chart, alpha, rerender: () => scheduleRender() });
+  const liveSection = createLiveSection({
+    app,
+    rerender: () => { if (S.section === 'live') scheduleRender(); },
+    open: (sampleId, section) => {
+      S.section = section;
+      if (section === 'clean') S.selectedId = sampleId;
+      else if (app.qcState.instrument) app.qcState.instrument.sampleIds = null;
+      app.selectSample?.(sampleId);
+      scheduleRender();
+    },
+  });
 
   // --- Rendering ------------------------------------------------------------------------------
 
@@ -704,6 +611,11 @@ export function mountQCMode(app, container) {
     renderTabs();
     const scroll = root.querySelector('.view-body')?.scrollTop ?? 0;
     clear(sectionHost);
+    // Watching can start before any file is open.
+    if (S.section === 'live') {
+      liveSection.render(sectionHost);
+      return;
+    }
     if (!store.ws.samples.length) {
       sectionHost.append(h('div.empty', icon('qc'), h('h3', 'Quality control, batch normalization and debarcoding'),
         h('p', 'Check every sample for acquisition problems (clogs, bubbles, bursts, drifting signal and saturated events), align batches with reference samples, and split barcoded mass-cytometry samples. Add FCS files to begin: drag them onto the window or use Open.')));
@@ -1052,7 +964,7 @@ export function mountQCMode(app, container) {
         h(`td.r${counts.lower ? '' : '.muted'}`, counts.lower ? `${formatCount(counts.lower)} (${formatPercent(counts.percentLower)})` : '0'),
         h('td', flagged && counts.percentUpper + counts.percentLower >= 1 ? h('span.badge.warn', 'check') : null)));
     }
-    host.append(h('div.qc-table-scroll', h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Saturated'), h('th.r', 'Piled low'), h('th'))), body)),
+    host.append(h('div.qc-table-scroll', { tabIndex: 0 }, h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Saturated'), h('th.r', 'Piled low'), h('th'))), body)),
       h('p.muted.qc-small', 'Saturated: at or above $PnR − 1 on the uncompensated values. Piled low: at least two events share the channel minimum.'));
     return host;
   }
@@ -1071,7 +983,7 @@ export function mountQCMode(app, container) {
         h('td.r', `${d.percentChange >= 0 ? '+' : '−'}${Math.abs(d.percentChange).toFixed(1)}%`),
         h('td', d.drifted ? h('span.badge.warn', 'drifts') : h('span.badge.ok', 'stable'))));
     }
-    host.append(h('div.qc-table-scroll', h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Start → end'), h('th'))), body)),
+    host.append(h('div.qc-table-scroll', { tabIndex: 0 }, h('table.data', h('thead', h('tr', h('th', 'Channel'), h('th.r', 'Start → end'), h('th'))), body)),
       h('p.muted.qc-small', `Change of the median signal between the first and last tenth of the ${result.drift.timeUnit === 's' ? 'acquisition time' : 'events'}, from a robust (Theil–Sen) trend over 20 bins. Drift beyond ±20% is flagged; it is reported, not removed.`));
     return host;
   }
@@ -1091,7 +1003,7 @@ export function mountQCMode(app, container) {
       h('div.section-title', { style: { marginTop: '14px' } }, 'Sensitivity'),
       explain('How much does the result depend on PeacoQC\'s settings? Re-run this sample with other values and compare before keeping anything. Lower MAD or IT limit = stricter.'),
       h('div.qc-toolbar',
-        h('label.field', { title: 'Refined adds three safeguards to PeacoQC: a bin\'s peak joins a trajectory only when it is nearer to it than to the neighbouring one; MAD flags are narrowed to bins whose own value deviates (the smoother otherwise spreads a short clog over ±25 bins); and the isolation tree only isolates bins that are contiguous in time. Classic reproduces the published algorithm.' }, h('span', 'Variant'), variant),
+        h('label.field', { title: 'Refined adds three safeguards to PeacoQC: a bin\'s peak joins a trajectory only when it is nearer to it than to the neighboring one; MAD flags are narrowed to bins whose own value deviates (the smoother otherwise spreads a short clog over ±25 bins); and the isolation tree only isolates bins that are contiguous in time. Classic reproduces the published algorithm.' }, h('span', 'Variant'), variant),
         number('MAD threshold', 'mad', 0.5, 1, 20, 'Bins whose smoothed peak trajectory is more than this many MADs from the median are removed (PeacoQC default 6).'),
         number('IT limit', 'itLimit', 0.05, 0.1, 0.99, 'Minimum gain for the isolation tree to split (PeacoQC default 0.6).'),
         number('Consecutive bins', 'consecutiveBins', 1, 1, 50, 'Good stretches shorter than this are removed too (PeacoQC default 5).'),
@@ -1131,68 +1043,20 @@ export function mountQCMode(app, container) {
 
   // --- Running QC -----------------------------------------------------------------------------
 
-  function qcPayload(view, settings) {
-    const ws = store.ws;
-    const technology = view.record.technology;
-    let signal = view.parameters.filter((p) => p.type === 'scatter' || p.type === 'fluorescence');
-    if (settings.channels === 'markers' || (settings.channels === 'auto' && technology === 'mass')) {
-      const marked = signal.filter((p) => p.type === 'scatter' || p.marker);
-      if (marked.length >= 2) signal = marked;
-    }
-    if (!signal.length) throw new Error('The sample has no scatter or fluorescence channels to check.');
-    const time = view.parameters.find((p) => p.type === 'time');
-    const columns = {};
-    const rawColumns = {};
-    for (const p of signal) {
-      columns[p.name] = view.column(p.name);
-      const raw = view.raw.get(p.name);
-      if (raw && raw !== columns[p.name]) rawColumns[p.name] = raw;
-    }
-    if (time) columns[time.name] = view.column(time.name);
-    const names = signal.map((p) => p.name);
-    const transforms = Object.fromEntries(names.map((name) => [name, channelTransform(ws, view, name)]));
-    return {
-      sample: {
-        eventCount: view.eventCount,
-        channels: view.parameters.filter((p) => columns[p.name]).map((p) => ({ name: p.name, type: p.type, range: p.range })),
-        columns,
-        keywords: { $TIMESTEP: view.dataset.keywords?.$TIMESTEP },
-      },
-      rawColumns,
-      options: {
-        methods: { ...settings.methods },
-        peacoQC: { mode: settings.variant ?? 'refined', channels: names, transforms, technology, mad: settings.mad, itLimit: settings.itLimit, consecutiveBins: settings.consecutiveBins, removeZeros: technology === 'mass' },
-        flowRate: {},
-        margins: { channels: names },
-        drift: { bins: 20 },
-        driftChannels: names,
-      },
-    };
-  }
-
   async function runOne(sample, settings, onProgress) {
-    const view = await data.ensure(sample.id);
-    const payload = qcPayload(view, settings);
-    const job = track(worker.run('acquisitionQC', payload, { onProgress }));
-    if (running) running.job = job;
-    const result = await job.promise;
-    const params = paramsOf(settings);
-    result.sampleId = sample.id;
-    result.params = params;
-    result.persisted = summaryOf(result, sample, params);
-    return result;
+    return runQC(app, sample, settings, { onProgress, track, onJob: (job) => { if (running) running.job = job; } });
   }
 
   async function runSamples(list) {
     if (running || !list.length) return;
     const settings = structuredClone(S.settings);
-    const token = { cancelled: false, job: null, sampleId: null };
+    const token = { canceled: false, job: null, sampleId: null };
     running = token;
     renderControls();
     const progress = progressToast(`Checking ${list.length} sample${list.length === 1 ? '' : 's'}…`, () => cancelRun());
     const done = [];
     const failures = [];
-    for (let i = 0; i < list.length && !token.cancelled; i += 1) {
+    for (let i = 0; i < list.length && !token.canceled; i += 1) {
       const sample = list[i];
       token.sampleId = sample.id;
       scheduleCards();
@@ -1202,7 +1066,7 @@ export function mountQCMode(app, container) {
         S.results.set(sample.id, result);
         done.push(sample.id);
       } catch (error) {
-        if (error.cancelled || token.cancelled) break;
+        if (error.canceled || token.canceled) break;
         failures.push(`${sample.name}: ${error.message}`);
       }
       token.job = null;
@@ -1216,7 +1080,7 @@ export function mountQCMode(app, container) {
       }
     }
     running = null;
-    const message = token.cancelled
+    const message = token.canceled
       ? `Stopped after ${done.length} of ${list.length} samples; their results were saved.`
       : `Checked ${done.length} sample${done.length === 1 ? '' : 's'}; “QC pass” saved.${failures.length ? ` ${failures.length} failed.` : ''}`;
     if (failures.length && !done.length) progress.fail(failures[0]);
@@ -1230,58 +1094,23 @@ export function mountQCMode(app, container) {
 
   function cancelRun() {
     if (!running) return;
-    running.cancelled = true;
+    running.canceled = true;
     running.job?.cancel();
   }
 
   // Saves the "QC pass" masks of `ids`, merging with the samples checked earlier.
-  async function saveQC(ids, settings, options = {}) {
-    const perSample = new Map();
-    const summaries = {};
-    for (const id of ids) {
-      const result = S.results.get(id);
-      perSample.set(id, { [QC_CHANNEL]: Float32Array.from(result.mask) });
-      summaries[id] = result.persisted;
-    }
-    const record = {
-      kind: 'qc',
-      name: 'Acquisition QC',
-      method: 'PeacoQC + flow rate + margins',
-      params: paramsOf(settings),
-      seed: 1,
-      outputs: [QC_CHANNEL],
-      summary: { version: 1, software: `CytoWeave ${app.version ?? ''}`.trim(), references: [CITE.peacoqc, CITE.flowai], perSample: summaries },
-    };
-    await saveDerivedMerged(record, perSample, `Acquisition QC (${ids.length} sample${ids.length === 1 ? '' : 's'})`, options);
+  function saveQC(ids, settings, options = {}) {
+    return saveQCResults(app, S.results, ids, settings, options);
   }
 
-  // As app.saveDerived, but a record with the same kind and outputs keeps its other samples
-  // (QC and debarcoding run on a few samples at a time).
-  async function saveDerivedMerged(record, perSample, label, options = {}) {
-    const existing = store.ws.derived.find((d) => d.kind === record.kind && sameSet(d.outputs, record.outputs));
-    if (!existing) return app.saveDerived({ ...record, perSample }, label);
-    const files = { ...(existing.files ?? {}) };
-    for (const [sampleId, columns] of perSample) {
-      files[sampleId] = {};
-      for (const [name, column] of Object.entries(columns)) {
-        data.setDerived(sampleId, name, column);
-        files[sampleId][name] = await data.persistColumn(column);
-      }
-    }
-    const summary = {
-      ...(existing.summary ?? {}),
-      ...(record.summary ?? {}),
-      perSample: { ...(existing.summary?.perSample ?? {}), ...(record.summary?.perSample ?? {}) },
-    };
-    const merged = { ...existing, ...record, params: options.keepParams ? existing.params : record.params, id: existing.id, created: existing.created, files, summary };
-    store.commit(addDerived(store.ws, merged).ws, label, ['derived', 'data']);
-    return merged;
+  function saveDerivedMerged(record, perSample, label, options = {}) {
+    return saveDerivedMergedIn(app, record, perSample, label, options);
   }
 
   async function compare(sample, params) {
     if (running) return;
     const settings = { ...structuredClone(S.settings), ...params };
-    const token = { cancelled: false, job: null, sampleId: sample.id };
+    const token = { canceled: false, job: null, sampleId: sample.id };
     running = token;
     const progress = progressToast(`Re-running ${sample.name} (${params.variant === 'classic' ? 'classic' : 'refined'}) with MAD ${params.mad}, IT ${params.itLimit}, ${params.consecutiveBins} bins…`, () => cancelRun());
     try {
@@ -1289,7 +1118,7 @@ export function mountQCMode(app, container) {
       S.comparison = { sampleId: sample.id, params: { ...params }, settings, after };
       progress.done();
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress.done('Cancelled.', 'ok');
+      if (error.canceled || token.canceled) progress.done('Canceled.', 'ok');
       else progress.fail(error.message);
     }
     running = null;
@@ -1427,7 +1256,7 @@ export function mountQCMode(app, container) {
           ...conditions.map((c) => { const n = study.filter((s) => String(s.meta?.condition) === c).length; return h(`td.r${n ? '' : '.muted'}`, String(n)); }),
           conditions.length ? h('td.r.muted', String(study.filter((s) => s.meta?.condition === undefined || String(s.meta.condition).trim() === '').length)) : null));
       }
-      design.append(h('div.qc-table-scroll', h('table.data', h('thead', head), body)));
+      design.append(h('div.qc-table-scroll', { tabIndex: 0 }, h('table.data', h('thead', head), body)));
       if (without.length) {
         design.append(h('div.callout.warn', { style: { marginTop: '8px' } }, icon('warning'),
           h('span.grow', `${without.length} sample(s) have no batch and will not be normalized: ${without.slice(0, 5).map((s) => s.name).join(', ')}${without.length > 5 ? ', …' : ''}.`),
@@ -1472,7 +1301,7 @@ export function mountQCMode(app, container) {
     const blockers = [];
     if (anchored.length < 2) blockers.push('at least two batches with a reference sample');
     if (!chosen.length) blockers.push('at least one channel');
-    if (check.warnings.length && !N.acknowledged) blockers.push('the confounding acknowledgement');
+    if (check.warnings.length && !N.acknowledged) blockers.push('the confounding acknowledgment');
     const goalSelect = h('select.input.small', { onchange: (event) => { N.goal = event.target.value; } },
       h('option', { value: 'mean', selected: N.goal === 'mean' }, 'Mean of the batches (CytoNorm default)'),
       h('option', { value: 'median', selected: N.goal === 'median' }, 'Median of the batches'),
@@ -1520,7 +1349,7 @@ export function mountQCMode(app, container) {
   async function runNormalization({ channels, anchored, targets, references }) {
     if (running) return;
     const N = S.norm;
-    const token = { cancelled: false, job: null };
+    const token = { canceled: false, job: null };
     running = token;
     const transforms = Object.fromEntries(channels.map((name) => [name, normTransform(name)]));
     const clustering = N.clustering || null;
@@ -1543,7 +1372,7 @@ export function mountQCMode(app, container) {
     try {
       const refPayloads = [];
       for (const ref of references) {
-        if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+        if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
         advance(`Loading reference ${ref.name}`);
         const view = await data.ensure(ref.id);
         const missing = channels.filter((c) => !view.hasChannel(c));
@@ -1559,7 +1388,7 @@ export function mountQCMode(app, container) {
       const skipped = [];
       let unmatched = 0;
       for (const sample of targets) {
-        if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+        if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
         advance(`Normalizing ${sample.name}`);
         const view = await data.ensure(sample.id);
         const missing = channels.filter((c) => !view.hasChannel(c));
@@ -1613,7 +1442,7 @@ export function mountQCMode(app, container) {
       const s = diagnostics.summary;
       progress.done(`Normalized ${perSample.size} samples; mean batch distance ${s.meanEmdBefore.toFixed(3)} → ${s.meanEmdAfter.toFixed(3)}.`);
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress.done('Normalization stopped; nothing was saved.', 'ok');
+      if (error.canceled || token.canceled) progress.done('Normalization stopped; nothing was saved.', 'ok');
       else progress.fail(error.message);
     }
     running = null;
@@ -1637,7 +1466,7 @@ export function mountQCMode(app, container) {
     for (const entry of diagnostics.channels) for (const b of batches) top = Math.max(top, entry.before[b]?.emd ?? 0, entry.after?.[b]?.emd ?? 0);
     top = top || 1;
     pane.append(h('div.section-title', { style: { marginTop: '14px' } }, 'Distance of each batch to the pooled distribution'),
-      explain('Earth mover\'s distance between each batch and all batches pooled, in fractions of the transformed axis (0 = identical). Grey: before; colored: after. Bars share one scale across channels.'),
+      explain('Earth mover\'s distance between each batch and all batches pooled, in fractions of the transformed axis (0 = identical). Gray: before; colored: after. Bars share one scale across channels.'),
       h('div.qc-multiples', diagnostics.channels.map((entry) => {
         const delta = entry.meanEmdBefore > 0 ? (100 * (entry.meanEmdAfter - entry.meanEmdBefore)) / entry.meanEmdBefore : 0;
         return h('div.qc-multiple',
@@ -1654,7 +1483,7 @@ export function mountQCMode(app, container) {
       const values = Array.from(hist.smoothed, (v) => v / (hist.total || 1));
       return { values, color: categoricalColor(batches.indexOf(d.batch)) };
     });
-    const select = h('select.input.small', { style: { width: 'auto' }, onchange: (event) => { S.norm.histChannel = event.target.value; render(); } },
+    const select = h('select.input.small', { 'aria-label': 'Channel shown', style: { width: 'auto' }, onchange: (event) => { S.norm.histChannel = event.target.value; render(); } },
       channels.map((name) => h('option', { value: name, selected: name === channel }, channelLabel(store.ws, name))));
     pane.append(h('div.section-title', { style: { marginTop: '14px' } }, 'Reference samples before and after'),
       h('div.row', { style: { marginBottom: '8px', flexWrap: 'wrap' } }, select,
@@ -1726,7 +1555,7 @@ export function mountQCMode(app, container) {
     const B = S.beads;
     const list = B.scope === 'all' ? massSamples() : massSamples().filter((s) => s.id === B.sampleId);
     if (!list.length) return;
-    const token = { cancelled: false, job: null };
+    const token = { canceled: false, job: null };
     running = token;
     const progress = progressToast('Bead normalization…', () => cancelRun());
     const total = list.length * (B.baseline === 'mean' && list.length > 1 ? 2 : 1);
@@ -1744,7 +1573,7 @@ export function mountQCMode(app, container) {
       if (B.baseline === 'mean' && list.length > 1) {
         const sums = {};
         for (const sample of list) {
-          if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+          if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
           const view = await data.ensure(sample.id);
           const one = await run('beadBaseline', { samples: [beadPayload(view)] }, `Bead medians of ${sample.name}`);
           for (const [key, value] of Object.entries(one)) sums[key] = (sums[key] ?? 0) + value / list.length;
@@ -1755,7 +1584,7 @@ export function mountQCMode(app, container) {
       const outputs = new Set([BEAD_CHANNEL]);
       const summaries = {};
       for (const sample of list) {
-        if (token.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true });
+        if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
         const view = await data.ensure(sample.id);
         const result = await run('beadNormalize', { sample: beadPayload(view), options: baseline ? { baseline } : {} }, `Normalizing ${sample.name}`);
         const columns = { [BEAD_CHANNEL]: Float32Array.from(result.beadMask) };
@@ -1779,7 +1608,7 @@ export function mountQCMode(app, container) {
       B.shownId = list.find((s) => s.id === B.sampleId)?.id ?? list[0].id;
       progress.done(`Bead-normalized ${list.length} sample${list.length === 1 ? '' : 's'}; new channels end in “(beads)”.`);
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress.done('Bead normalization stopped; nothing was saved.', 'ok');
+      if (error.canceled || token.canceled) progress.done('Bead normalization stopped; nothing was saved.', 'ok');
       else progress.fail(error.message);
     }
     running = null;
@@ -1840,7 +1669,7 @@ export function mountQCMode(app, container) {
     const sample = debarcodeSample();
     const pane = h('div.pane');
     pane.append(h('h3', icon('tag'), 'Debarcoding'),
-      explain('Barcoding pools many samples into one tube: each sample is labelled with its own combination of k of n barcode channels (for mass cytometry, palladium isotopes Pd102–Pd110), stained and acquired together, then split again. ',
+      explain('Barcoding pools many samples into one tube: each sample is labeled with its own combination of k of n barcode channels (for mass cytometry, palladium isotopes Pd102–Pd110), stained and acquired together, then split again. ',
         'Each event is assigned to the code whose positive channels are its k brightest barcode channels. The ', h('b', 'separation'), ' — the gap between the weakest positive and the strongest negative channel after scaling each population to its 95th percentile — says how sure that call is: doublets of two codes and debris have small separations. Events below the cutoff, or far from their population (Mahalanobis distance), stay unassigned.'));
     if (!sample) {
       pane.append(h('div.empty', icon('tag'), h('h3', 'No sample'), h('p', 'Add the barcoded FCS file first.')));
@@ -1916,9 +1745,9 @@ export function mountQCMode(app, container) {
       toast(error.message, { kind: 'error' });
       return;
     }
-    const token = { cancelled: false, job: null };
+    const token = { canceled: false, job: null };
     if (!options.quiet) running = token;
-    const progress = options.quiet ? null : progressToast(`Debarcoding ${sample.name}…`, () => { token.cancelled = true; token.job?.cancel(); });
+    const progress = options.quiet ? null : progressToast(`Debarcoding ${sample.name}…`, () => { token.canceled = true; token.job?.cancel(); });
     try {
       const view = await data.ensure(sample.id);
       const params = { cofactor: D.cofactor, separationCutoff: D.cutoff, mahalanobisCutoff: D.mahalanobis };
@@ -1928,7 +1757,7 @@ export function mountQCMode(app, container) {
       D.run = { sampleId: sample.id, key, params, result, at: new Date().toISOString() };
       progress?.done(`${formatPercent(result.percentAssigned)} of events assigned to a code.`);
     } catch (error) {
-      if (error.cancelled || token.cancelled) progress?.done('Cancelled.', 'ok');
+      if (error.canceled || token.canceled) progress?.done('Canceled.', 'ok');
       else if (progress) progress.fail(error.message);
       else toast(error.message, { kind: 'error' });
     }
@@ -1967,7 +1796,7 @@ export function mountQCMode(app, container) {
           h('td.r', formatPercent((100 * result.counts[p]) / (totalAssigned || 1))),
           h('td.r.muted', { title: 'Events above the cutoff on the yield curve (before the Mahalanobis filter)' }, formatCount(result.yields.counts[p][j]))));
       });
-      tableHost.append(h('div.qc-table-scroll.tall', h('table.data', h('thead', h('tr', h('th', 'Code'), h('th', 'Positive channels'), h('th.r', 'Events'), h('th.r', '% of assigned'), h('th.r', `At ${grid[j].toFixed(2)}`))), body)));
+      tableHost.append(h('div.qc-table-scroll.tall', { tabIndex: 0 }, h('table.data', h('thead', h('tr', h('th', 'Code'), h('th', 'Positive channels'), h('th.r', 'Events'), h('th.r', '% of assigned'), h('th.r', `At ${grid[j].toFixed(2)}`))), body)));
     };
     const plot = chart(230, (ctx, w, hgt, c) => drawYield(ctx, w, hgt, c, run, D.cutoff), 'qc-yield');
     let dragging = false;
@@ -2115,6 +1944,7 @@ export function mountQCMode(app, container) {
     },
     destroy() {
       destroyed = true;
+      liveSection.dispose();
       if (running) cancelRun();
       for (const job of jobs) job.cancel();
       rerunDebarcode.cancel();

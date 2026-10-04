@@ -127,7 +127,7 @@ test('Jensen–Shannon divergence', () => {
   close(jensenShannon([1, 0], [0, 1], { base: Math.E }).divergence, Math.LN2, 1e-15);
 });
 
-test('kernel density estimate: bandwidth rules and normalisation', () => {
+test('kernel density estimate: bandwidth rules and normalization', () => {
   const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   // SD = √(55/6), IQR (type 7) = 7.75 − 3.25 = 4.5, so min(SD, IQR/1.34) = SD.
   const sd = Math.sqrt(55 / 6);

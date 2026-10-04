@@ -44,7 +44,7 @@ function distinctMatrices(samples) {
 // --- Import dialog -------------------------------------------------------------------------------
 
 // Shows what a parsed FlowJo workspace (importFlowJo's result) holds and imports it on request.
-// Resolves to the migration record, or null when cancelled.
+// Resolves to the migration record, or null when canceled.
 export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
   const { store } = app;
   return new Promise((resolve) => {
@@ -213,12 +213,12 @@ export async function runMigrationComparison(app, migrationId) {
   if (!migration) return false;
   const targets = migration.samples.filter((s) => s.sampleId && store.ws.samples.some((w) => w.id === s.sampleId));
   if (!targets.length) return false;
-  let cancelled = false;
-  const progress = progressToast(`Comparing counts with FlowJo on ${plural(targets.length, 'sample')}…`, () => { cancelled = true; });
+  let canceled = false;
+  const progress = progressToast(`Comparing counts with FlowJo on ${plural(targets.length, 'sample')}…`, () => { canceled = true; });
   const counts = {};
   const errors = {};
   for (const [i, target] of targets.entries()) {
-    if (cancelled) break;
+    if (canceled) break;
     const record = store.ws.samples.find((s) => s.id === target.sampleId);
     progress.update(i / targets.length, `Recomputing populations on ${record?.name ?? target.flowJoName} (${i + 1}/${targets.length})`);
     try {
@@ -242,11 +242,11 @@ export async function runMigrationComparison(app, migrationId) {
   }
   const compared = Object.keys(counts).length;
   if (!compared) {
-    progress.fail(cancelled ? 'Comparison cancelled.' : `No sample could be loaded: ${Object.values(errors)[0] ?? 'unknown error'}`);
+    progress.fail(canceled ? 'Comparison canceled.' : `No sample could be loaded: ${Object.values(errors)[0] ?? 'unknown error'}`);
     return false;
   }
   progress.done(`Compared ${plural(compared, 'sample')} with FlowJo.`);
-  const comparison = { time: new Date().toISOString(), counts, errors, partial: cancelled || compared < targets.length };
+  const comparison = { time: new Date().toISOString(), counts, errors, partial: canceled || compared < targets.length };
   const current = find();
   if (current) store.replace({ ...store.ws, migrations: store.ws.migrations.map((m) => (m.id === migrationId ? { ...m, comparison } : m)) }, ['migration']);
   return true;

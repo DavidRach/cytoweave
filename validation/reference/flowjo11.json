@@ -1,0 +1,81 @@
+{
+  "about": "FlowJo 11.2.0 (build 11.2.0.210156, macOS, trial license) opening CytoWeave's FlowJo exports with File > Import FlowJo v10 Workspace, on 2026-10-03. Percentages are FlowJo's %Events column (of the parent population), read from the population tree. FlowJo was available only for a trial, so these numbers are kept here; validation/run.mjs compares CytoWeave's counts with them. FlowJo evaluates gates at its display resolution, so events near a boundary in a dense region can fall on the other side (most visibly the quadrant divider near zero in the built case).",
+  "flowjoVersion": "11.2.0",
+  "flowjoBuild": "11.2.0.210156",
+  "cases": [
+    {
+      "case": "bundled FlowJo example",
+      "sample": "D01_Stim.fcs",
+      "tolerance": 0.15,
+      "percentOfParent": {
+        "Cells": 93.544,
+        "Cells/Single Cells": 96.0575,
+        "Cells/Single Cells/Live": 94.7561,
+        "Cells/Single Cells/Live/Lymphocytes": 76.501,
+        "Cells/Single Cells/Live/Lymphocytes/B cells": 14.3208,
+        "Cells/Single Cells/Live/Lymphocytes/NK cells": 17.2562,
+        "Cells/Single Cells/Live/Lymphocytes/T cells": 55.2813,
+        "Cells/Single Cells/Live/Lymphocytes/T cells/Q1: CD4- , CD8+": 40.9465,
+        "Cells/Single Cells/Live/Lymphocytes/T cells/Q2: CD4+ , CD8+": 0,
+        "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-": 56.3208,
+        "Cells/Single Cells/Live/Lymphocytes/T cells/Q3: CD4+ , CD8-/Tregs": 11.1637,
+        "Cells/Single Cells/Live/Lymphocytes/T cells/Q4: CD4- , CD8-": 2.7327,
+        "Cells/Single Cells/Live/Monocytes": 20.1823
+      }
+    },
+    {
+      "case": "workspace built in CytoWeave",
+      "sample": "D02_Stim.fcs",
+      "tolerance": 0.6,
+      "note": "Read from the export with logicle and arcsinh scales written as FlowJo biex. D01_Stim's per-sample Lymphocytes adjustment was widened from 0.01 to 100 units for FlowJo 11 to import the file (it fails on a near-identical per-sample gate); D02_Stim's gates are the export's own.",
+      "percentOfParent": {
+        "Cells": 93.585,
+        "Cells/Single cells": 95.9342,
+        "Cells/Single cells/Live": 94.3807,
+        "Cells/Single cells/Live/Lymphocytes": 78.1849,
+        "Cells/Single cells/Live/Lymphocytes/Ellipse": 87.2302,
+        "Cells/Single cells/Live/Lymphocytes/T cells": 64.1208,
+        "Cells/Single cells/Live/Lymphocytes/T cells/CD25 high": 41.855,
+        "Cells/Single cells/Live/Lymphocytes/T cells/CD25 low": 58.145,
+        "Cells/Single cells/Live/Lymphocytes/T cells/Polygon on arcsinh": 6.4854,
+        "Cells/Single cells/Live/Lymphocytes/T cells/Q LL": 1.8597,
+        "Cells/Single cells/Live/Lymphocytes/T cells/Q LR": 67.6318,
+        "Cells/Single cells/Live/Lymphocytes/T cells/Q UL": 20.5391,
+        "Cells/Single cells/Live/Lymphocytes/T cells/Q UR": 9.9694,
+        "Cells/Single cells/Live/Monocytes": 18.8057
+      }
+    },
+    {
+      "case": "8_color_ICS.wsp",
+      "sample": "101_DEN084Y5_15_E01_008_clean.fcs",
+      "tolerance": 0.6,
+      "note": "FlowKit's FlowJo 10 workspace, imported into CytoWeave and exported (logicle scales written as biex). FlowJo 11 shows the original FlowJo 10 workspace's aAmine- as 0.836% (it misreads the logicle scales); the export reads 68.73%. FlowJo 11 shows Singlets as 82.90% on the original too (FlowJo 10 saved 82.60%).",
+      "percentOfParent": {
+        "Time": 100.0,
+        "Time/Singlets": 82.9039,
+        "Time/Singlets/aAmine-": 68.7314,
+        "Time/Singlets/aAmine-/CD3+": 81.1247,
+        "Time/Singlets/aAmine-/CD3+/CD4+": 61.7904,
+        "Time/Singlets/aAmine-/CD3+/CD4+/CD107a+": 0.0893,
+        "Time/Singlets/aAmine-/CD3+/CD4+/IFNg+": 0.0048,
+        "Time/Singlets/aAmine-/CD3+/CD4+/IL2+": 0.0084,
+        "Time/Singlets/aAmine-/CD3+/CD4+/TNFa+": 0.0265,
+        "Time/Singlets/aAmine-/CD3+/CD8+": 35.3542,
+        "Time/Singlets/aAmine-/CD3+/CD8+/CD107a+": 0.1645,
+        "Time/Singlets/aAmine-/CD3+/CD8+/IFNg+": 0.0042,
+        "Time/Singlets/aAmine-/CD3+/CD8+/IL2+": 0.0295,
+        "Time/Singlets/aAmine-/CD3+/CD8+/TNFa+": 0.0232
+      }
+    }
+  ],
+  "observations": [
+    "Before the fixes in CytoWeave 0.4 FlowJo 11 crashed (engine SIGSEGV) on every CytoWeave export: it needs GraphSettings and GraphEnvironment in each node's Graph.",
+    "FlowJo 11 does not import a two-dimensional rectangle open on a side, and evaluates one-dimensional gates as empty; CytoWeave writes every bound, and ranges and splits as rectangles with an unbounded second dimension.",
+    "FlowJo 11 misplaces gates on channels with Gating-ML logicle or arcsinh scales (its log: Unsupported Transforms/@type Logicle, ArcSinh), in FlowJo 10's own workspaces too: a Live gate read 4.6% instead of 94%. It reads FlowJo biex correctly, so CytoWeave writes those scales as the closest biex; after that the same gate read 94.38% (CytoWeave 94.36%).",
+    "FlowJo 11 gives CytoWeave's exports the same numbers as FlowJo-written originals of the same workspaces (FlowKit's single_ellipse_51_events, simple_diamond_example_quad_gate, 8_color_ICS_boolean_gate_testing).",
+    "FlowJo 11 does not import Boolean (And/Or/Not) populations, from FlowJo 10's own workspaces either.",
+    "FlowJo 11 fails to import a workspace in which one gate differs between samples by a minute amount (0.01 units at 33,000); a difference of 100 units imports.",
+    "FlowJo 11 does not resolve a relative file reference (file:name.fcs); its 'reconnect your missing files' link, pointed at the workspace's folder, finds them.",
+    "Ellipses: FlowJo 11 shows 87.23% for the built case's ellipse, CytoWeave 87.09%, CytoML 2.24 80.44% (CytoML reads FlowJo ellipses differently, on FlowJo's own workspaces too)."
+  ]
+}

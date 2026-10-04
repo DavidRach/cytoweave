@@ -351,6 +351,12 @@ export function biexToLogicle({ maxValue = 262144, widthBasis = -10, positiveDec
   return { T: maxValue, W, M, A };
 }
 
+// The FlowJo biex closest to a logicle (for FlowJo workspaces, which FlowJo 11 reads only with
+// biex scales): the inverse of biexToLogicle, |wb| = 10^(2W).
+export function logicleToBiex({ T = 262144, W = 0.5, M = 4.5, A = 0 }) {
+  return { type: 'biex', maxValue: T, widthBasis: -(10 ** (2 * W)), positiveDecades: M, extraNegativeDecades: Math.max(A, 0) };
+}
+
 const cache = new Map();
 
 const DEFAULTS = {

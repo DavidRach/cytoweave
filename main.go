@@ -24,7 +24,7 @@ import (
 //go:embed web/index.html web/styles.css web/app.js web/favicon.svg web/lib/*.js web/ui/*.js web/workers/*.js
 var content embed.FS
 
-var version = "0.3.0"
+var version = "0.4.0"
 
 type config struct {
 	remote      bool
@@ -38,6 +38,8 @@ type config struct {
 	dev         bool
 	showVersion bool
 	files       []string
+	watch       string
+	watchEvery  time.Duration
 }
 
 type app struct {
@@ -48,6 +50,7 @@ type app struct {
 	assets   fs.FS
 	files    *localFiles
 	store    *store
+	watch    *folderWatch
 }
 
 func init() {
@@ -190,6 +193,8 @@ func parseConfig(args []string) (config, error) {
 	flags.BoolVar(&cfg.noStore, "no-library", false, "do not keep a workspace library on disk (the browser's own storage is used)")
 	flags.BoolVar(&cfg.dev, "dev", false, "serve web/ from the working directory instead of the embedded copy")
 	flags.BoolVar(&cfg.showVersion, "version", false, "print the version and exit")
+	flags.StringVar(&cfg.watch, "watch", "", "watch a folder for FCS files as they are acquired (QC → Live), for example the instrument's export folder; it is only read")
+	flags.DurationVar(&cfg.watchEvery, "watch-interval", defaultWatchInterval, "how often the watched folder is checked")
 	flags.BoolVar(&cfg.remote, "remote-control", false, "accept actions from programs on this computer at /api/remote/action (for example Python or Jupyter)")
 	noOpen := flags.Bool("no-open", false, "same as --window none")
 	flags.Usage = func() {
@@ -242,6 +247,12 @@ func newApp(cfg config) (*app, error) {
 		assets:  content,
 		files:   newLocalFiles(),
 	}
+	a.watch = newFolderWatch(a.files)
+	if cfg.watch != "" {
+		if err := a.watch.start(cfg.watch, cfg.watchEvery); err != nil {
+			return nil, err
+		}
+	}
 	if problems := a.files.add(cfg.files); len(problems) > 0 {
 		for _, problem := range problems {
 			log.Print(problem)
@@ -285,8 +296,11 @@ func (a *app) printBanner(out io.Writer, url string) {
 	} else {
 		fmt.Fprintln(out, "Workspace library: kept by the browser")
 	}
-	if n := len(a.files.list()); n > 0 {
+	if n := len(a.files.opened()); n > 0 {
 		fmt.Fprintf(out, "Opening %d file(s) named on the command line\n", n)
+	}
+	if status := a.watch.status(0); status.Watching {
+		fmt.Fprintf(out, "Watching %s for new FCS files (QC → Live); %d already there\n", status.Folder, status.Existing)
 	}
 	if a.control != nil && a.control.scripts {
 		fmt.Fprintf(out, "Remote control: POST {\"action\": ..., \"args\": {...}} to %s/api/remote/action\n", url)
@@ -320,11 +334,12 @@ type info struct {
 	DataDir       string      `json:"dataDir,omitempty"`
 	Files         []localFile `json:"files"`
 	Platform      string      `json:"platform"`
+	Watching      string      `json:"watching,omitempty"`
 }
 
 func (a *app) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
-		body := info{Name: "CytoWeave", Session: a.session, RemoteControl: a.control != nil, Version: version, Mode: "desktop", Files: a.files.list(), Platform: platformName()}
+		body := info{Name: "CytoWeave", Session: a.session, RemoteControl: a.control != nil, Version: version, Mode: "desktop", Files: a.files.opened(), Platform: platformName(), Watching: a.watch.status(0).Folder}
 		if a.store != nil {
 			body.Library = true
 			body.DataDir = a.store.dir
@@ -333,6 +348,7 @@ func (a *app) registerAPI(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/local/{index}", a.files.serve)
 	mux.HandleFunc("POST /api/open", a.openPaths)
+	a.watch.register(mux)
 	if a.control != nil {
 		a.control.register(mux)
 	}
@@ -366,7 +382,7 @@ func (a *app) openPaths(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	problems := a.files.add(body.Paths)
-	writeJSON(w, map[string]any{"files": a.files.list(), "problems": problems})
+	writeJSON(w, map[string]any{"files": a.files.opened(), "problems": problems})
 }
 
 func listen(host string, port int) (net.Listener, int, error) {

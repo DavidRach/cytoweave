@@ -33,10 +33,34 @@ export function rgbToHex([r, g, b]) {
   return `#${[r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
 }
 
+// --- Color-vision-friendly colors (a setting) ---------------------------------------------------
+//
+// With the setting on, categorical colors come from CATEGORICAL_CVD, colors of the default
+// palette stored in a workspace (gates, groups) are shown as their counterparts (displayColor),
+// and the rainbow maps (classic, turbo), whose red and green ends look alike to many people, are
+// drawn as viridis. The workspace is not changed: turning the setting off restores every color.
+let friendly = false;
+
+export function setColorVisionFriendly(on) {
+  friendly = Boolean(on);
+}
+
+export function colorVisionFriendly() {
+  return friendly;
+}
+
+const RAINBOW = new Set(['classic', 'turbo']);
+
+// The map actually drawn for a requested one.
+export function displayColormap(name) {
+  return friendly && RAINBOW.has(name) ? 'viridis' : name;
+}
+
 const lutCache = new Map();
 
 // A Uint8Array of 256 × 3 RGB values.
-export function colormapLUT(name = 'viridis', reversed = false) {
+export function colormapLUT(requested = 'viridis', reversed = false) {
+  const name = displayColormap(requested);
   const key = `${name}:${reversed}`;
   let lut = lutCache.get(key);
   if (lut) return lut;
@@ -73,9 +97,44 @@ export const CATEGORICAL = [
   '#7e57c2', '#c0ca33', '#d84315', '#546e7a',
 ];
 
+// The color-vision-friendly counterpart: Okabe & Ito's six colors (2008, without black and
+// yellow, which do not show as lines on white), then colors chosen one at a time to be as far as
+// possible (CIEDE2000) from those already chosen as seen with normal vision, protanopia,
+// deuteranopia and tritanopia (colorvision.js), among colors with a chroma of at least 30 that
+// show on light and dark plots (contrast ≥ 2.5). Any two of the first eight differ by ≥ 11 in
+// every vision, any two of the twenty by ≥ 7 (the default palette: 0.8 with deuteranopia).
+export const CATEGORICAL_CVD = [
+  '#0072b2', '#e69f00', '#009e73', '#d55e00', '#cc79a7', '#56b4e9', '#993366', '#bb0000',
+  '#226644', '#8877ff', '#cc1199', '#6611ff', '#99aa66', '#aa6688', '#bb2244', '#888844',
+  '#ee6688', '#6655ff', '#995566', '#aa77cc',
+];
+
+const TO_FRIENDLY = new Map(CATEGORICAL.map((c, i) => [c, CATEGORICAL_CVD[i]]));
+const FROM_FRIENDLY = new Map(CATEGORICAL_CVD.map((c, i) => [c, CATEGORICAL[i]]));
+
+// A stored color as shown: one of either palette as its counterpart in the palette in use; any
+// other color (chosen by the user) as it is.
+export function displayColor(color) {
+  if (typeof color !== 'string') return color;
+  const key = color.toLowerCase();
+  return (friendly ? TO_FRIENDLY.get(key) : FROM_FRIENDLY.get(key)) ?? color;
+}
+
+// The color a workspace item (a gate or a group; kind 'gates' or 'groups') is shown in: its own,
+// or with color-vision-friendly colors on, the friendly palette in the workspace's order, so that
+// every population stays distinguishable whatever colors it was given (they return when the
+// setting is off).
+export function shownColor(ws, item, kind = 'gates') {
+  if (!item) return undefined;
+  if (!friendly) return item.color;
+  const index = (ws?.[kind] ?? []).findIndex((x) => x.id === item.id);
+  return index >= 0 ? categoricalColor(index) : displayColor(item.color);
+}
+
 export function categoricalColor(index) {
-  const n = CATEGORICAL.length;
-  if (index < n) return CATEGORICAL[index];
+  const palette = friendly ? CATEGORICAL_CVD : CATEGORICAL;
+  const n = palette.length;
+  if (index < n) return palette[index];
   // Beyond the palette: golden-angle hues.
   const hue = (index * 137.508) % 360;
   return hslToHex(hue, 62, 52);
