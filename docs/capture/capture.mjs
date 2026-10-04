@@ -479,6 +479,28 @@ const scenes = {
     await js(`[...document.querySelectorAll('main h3')].find((e) => /Beads_2026/.test(e.textContent))?.scrollIntoView({ block: 'start' })`);
     await sleep(1200);
   },
+  // Workspace → Apply a template: OMIP-101 on the PBMC example, its gates to be placed on
+  // D01_Unstim's events.
+  async strategy() {
+    await example('pbmc-immunophenotyping', { gates: false });
+    await selectSample('D01_Unstim');
+    await app(`app.applyTemplateDialog();`);
+    await sleep(1000);
+    await click('Choose', '.dialog button');
+    await waitFor(`/OMIP-101: major leukocyte populations/.test(document.querySelector('.dialog')?.innerText ?? '') && /populations will be added/.test(document.querySelector('.dialog')?.innerText ?? '')`, 60000);
+    await sleep(1500);
+  },
+  // The cell type the inspector suggests for NK cells placed by OMIP-101.
+  async 'cell-types'() {
+    await scenes.strategy();
+    await click('Apply', '.dialog-foot button');
+    await sleep(2500);
+    await mode('gate');
+    await selectGate('NK cells');
+    await sleep(2000);
+    await js(`[...document.querySelectorAll('.section-title')].find((e) => /Cell type/.test(e.textContent))?.scrollIntoView({ block: 'center' })`);
+    await sleep(800);
+  },
   // QC → Titration: the CD4-PE titration within the lymphocytes, with the recommended amount.
   async titration() {
     await example('titration-voltage');

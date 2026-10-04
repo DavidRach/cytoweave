@@ -25,6 +25,7 @@ lede: Reuse an analysis on the next experiment, start from a published gating st
       <p>Gates keep their position in data values. On another instrument or with other voltages a gate may need moving: <a href="gating.html#review">review it across samples</a>, or <a href="gating.html#adapt">adapt it to each sample</a>.</p>
 
       <h2 id="strategies">Published gating strategies</h2>
+      <shot name="strategy" alt="Applying OMIP-101 to the PBMC example: its citation, the differences from the article, every channel matched by marker, and 25 populations to be added">OMIP-101 applied to the PBMC example: the article, its differences, and every channel matched by marker.</shot>
       <p>Two published gating strategies come with CytoWeave, in the same dialog:</p>
       <div class="table-wrap">
         <table>
@@ -55,6 +56,7 @@ lede: Reuse an analysis on the next experiment, start from a published gating st
       <p>On the PBMC example, placed on one sample and shared by all twelve, the strategies' populations match the simulator's true cell types with a median F1 of 0.96–0.99 for the lineages, 0.88–0.96 for the memory subsets, NK cells and classical and non-classical monocytes, and 0.91 for Tregs (0.82–0.85 in the stimulated samples, where conventional T cells raise CD25). Intermediate monocytes, which lie between the classical and non-classical ones on CD16, reach 0.76. See <a href="../science.html#validation">Validation</a>.</p>
 
       <h2 id="cell-types">Cell types (Cell Ontology)</h2>
+      <shot name="cell-types" alt="The inspector of NK cells placed by OMIP-101: the gate's explanation, and the Cell Ontology term natural killer cell (CL:0000623) suggested by OMIP-101 and agreed by the phenotype CD3− CD19− CD56+, with its definition and Confirm and Other terms buttons">NK cells placed by OMIP-101: the term the strategy suggests, agreed by the phenotype, to confirm.</shot>
       <p>The <a href="https://obofoundry.org/ontology/cl.html">Cell Ontology</a> gives cell types identifiers that databases, repositories and other tools share: "CD4-positive, alpha-beta T cell" is CL:0000624 whatever the gate is called. Select a population, and the inspector's <strong>Cell type</strong> section suggests a term from the population's phenotype:</p>
       <ul>
         <li>which side of each gate's markers the population lies on along its path (CD3+, CD4+, CD8−), read from the gates and the data;</li>

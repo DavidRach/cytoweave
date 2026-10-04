@@ -59,7 +59,7 @@ node validation/run.mjs
 already present are not downloaded again. The data are not part of the
 repository or of the CytoWeave program. Without them, the suites that need them
 are skipped and the others still run; the run needs no network and takes about
-a minute without them, and about 200 seconds with them.
+a minute without them, and about four minutes with them.
 
 | Option | Effect |
 | --- | --- |

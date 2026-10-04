@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-10-04)
+
+CytoWeave 0.5 is sturdier, more automatable and reusable. Its FCS reader was hardened with a fuzzer and checked on files from 42 more instrument models; an AI agent can run the whole pipeline, from QC and unmixing to clusters, figures and exports, with every change a proposal you review; an analysis becomes a template that applies to another experiment by marker, published OMIP gating strategies are placed on your own data, and every population gets a Cell Ontology term to confirm; and a new Titration view finds the amount of antibody and the detector voltage to use.
 
 ### Added
 
@@ -28,6 +30,10 @@
 - **A broken later data set no longer hides the earlier ones.** In a file with several data sets (`$NEXTDATA`), one that cannot be read is left out with a warning, and the data sets before it open.
 - **Long TEXT segments read 6× faster.** The keyword parser copies text between delimiters in one piece instead of a character at a time.
 
+### Documentation
+
+- A new page, Templates and cell types; the QC page covers titration and voltage walks, with a new screenshot; the AI agents page and the MCP guide list the 34 tools; the Tables docs say how CytoWeave's robust SD (BD FACSDiva's) differs from FlowJo's, which is 1.4826 × the median absolute deviation (the docs had said FlowJo used the same one); the Science page credits the Cell Ontology (CC BY 4.0). Every screenshot is retaken for 0.5.0.
+
 ### Validation
 
 - **Fuzzing** (new `fuzz` and `fuzz-corpus` suites; `fuzz-cases.mjs`, `fuzz.mjs`): 21 generated files in every layout the reader decodes hold exactly the values written; 20,000 seeded mutations of them (HEADER offsets, keyword values, deleted and duplicated keywords, delimiters, flipped bytes, the version line, truncation) and 10,000 of 73 real instruments' files each open with consistent data or are refused with a message, never crash, hang or allocate more than the file could hold, and the in-memory and streaming readers agree. `node validation/fuzz.mjs` runs longer campaigns (0 failures in 310,000 cases) and replays any case from its seed.
@@ -38,6 +44,7 @@
 - **A scripted agent session** (`validation/agent-session.mjs`, run in CI): every new tool driven through remote control in the program and headless Chrome, with no model. Agent QC equals the QC view's run on every event of three samples; agent clusters equal a direct run on 120,000 T cells and follow the true cell types (adjusted Rand index 0.39); agent unmixing equals the same unmixing run directly on every channel; the FlowJo export carries every population's count; the de-identified files, figure and table read back as written; a template saved and applied to another experiment, every channel matched; OMIP-101 placed by an agent exactly as placing it directly, its 19 terms suggested; a titration and a voltage walk by an agent equal to the analysis run directly; proposals held, accepted and rejected as described. Go tests check that exports go only where asked and never replace a file unless told to.
 - **FCS files from 42 more instrument models** (new `instruments` suite; external data `cytoflow-instruments`, `flowio`, `flowcal`, `zenodo-instruments`, `zenodo-nanofcm`, `rosettax`; `reference/instruments.json` with `generate_instruments.py`): 47 public files from BD (including the FACSDiscover S8 in FCS 3.2 and the FACSymphony A5 SE), Beckman Coulter (CytoFLEX, DxFLEX, CyAn, Gallios, MoFlo), Cytek (raw Aurora, Northern Lights), Sony, Agilent, Thermo Fisher, Bio-Rad, Millipore, Amnis, Partec, Stratedigm, Apogee, NanoFCM, BeamCyte and Helios all read; stored and scaled values within 3.7e-7 of FlowIO 1.4 (41 files) and fcsparser 0.2.8 (44); where CytoWeave departs from them, the reason is checked (offsets, FCS 3.2 integer channels, log channels stored as decades, gain not applied to log channels); three files neither reads are read, one checked against FlowIO's own published test values. The fuzzer uses all 73 instrument files of up to 4 MB as seeds. The public test data grew to about 540 MB.
 - The validation guide now describes the suites added in 0.4 (`spread`, `fortessa`, `multiverse`, `multiverse-ics`, `accessibility`).
+- The suite now has 262 checks in 35 suites, and the agent session 18 checks. axe-core finds no violations in any of the 36 documentation scenes in either theme (72 pages).
 
 ## 0.4.0 (2026-10-03)
 

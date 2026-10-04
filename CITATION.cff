@@ -8,8 +8,8 @@ authors:
     given-names: Robert
 repository-code: "https://github.com/robert-mcdermott/cytoweave"
 license: Apache-2.0
-version: 0.4.0
-date-released: "2026-10-03"
+version: 0.5.0
+date-released: "2026-10-04"
 keywords:
   - flow cytometry
   - spectral cytometry

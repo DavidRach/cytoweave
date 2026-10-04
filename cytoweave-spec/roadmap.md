@@ -282,13 +282,12 @@ logo.
    - Not done: drawing a new gate without a pointer, exploring a plot's events without one, and
      testing by people who use screen readers (a walkthrough is in the docs).
 
-## Next (0.5)
+## 0.5.0: a sturdier reader, agents for the whole pipeline, reusable analyses (released 2026-10-04)
 
-The order of waves 5–8 comes from `research.md` §8 and a parity and differentiation study
-(October 2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza, SpectroFlo, CellEngine,
-Floreada and the open-source tools, and of what users asked for in 2024–2026. Within each wave:
-trust first, then the daily workbench, then what no single tool combines. Waves 6–8 are a plan,
-to be revised as each wave lands.
+Wave 5 hardens the FCS reader with a fuzzer and files from 42 more instrument models, lets AI
+agents run the whole pipeline as proposals, turns an analysis into a template applied by marker
+(with the OMIP-101 and OMIP-090 strategies placed on the data and Cell Ontology terms for every
+population), and adds titration and voltage walks for setting up a panel.
 
 ### Wave 5
 
@@ -397,6 +396,13 @@ to be revised as each wave lands.
      CV method of the voltage walk are left for later.
 
 ## Then (0.6–0.8)
+
+The order of waves 5–8 (wave 5 released as 0.5.0) comes from `research.md` §8 and a parity and
+differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza,
+SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users asked for in
+2024–2026. Within each wave:
+trust first, then the daily workbench, then what no single tool combines. Waves 6–8 are a plan,
+to be revised as each wave lands.
 
 ### Wave 6: the bench, batch by batch
 
