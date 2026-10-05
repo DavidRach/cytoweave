@@ -151,9 +151,12 @@ export function installRemote(app) {
         items.push(Object.assign(new File([await response.arrayBuffer()], file.name), { folder: file.folder ?? null }));
       }
       const before = ws().samples.length;
-      await app.importFiles(items);
+      const opened = await app.importFiles(items, { interactive: false });
       const added = ws().samples.slice(before);
-      return { message: `Opened ${items.length} file(s); ${added.length} new sample(s).`, data: { samples: added.map((s) => ({ name: s.name, events: s.eventCount, role: s.role })) } };
+      // CSV files of events: how each was read, each column's kind and scale, and the checks.
+      const csv = opened?.csv ?? [];
+      const csvNote = csv.length ? ` CSV events: ${csv.map((c) => `${c.file} (${c.rows} rows; ${c.columns.length} columns imported${c.dropped ? `; ${c.dropped} rows with missing values left out` : ''}${c.problems.length ? `; ${c.problems.join(' ')}` : ''})`).join('; ')}. Each column's kind, scale and check are in data.csv; tell the user about columns that look wrong (the scales can be changed in the Gate view).` : '';
+      return { message: `Opened ${items.length} file(s); ${added.length} new sample(s).${csvNote}`, data: { samples: added.map((s) => ({ name: s.name, events: s.eventCount, role: s.role })), ...(csv.length ? { csv } : {}) } };
     },
 
     async open_example(args) {
@@ -933,6 +936,39 @@ export function installRemote(app) {
       const columns = rows.length ? Object.keys(rows[0].values) : [];
       const lines = [['Sample', ...fields, ...columns].map(quote).join(separator), ...rows.map((r) => [r.sample, ...fields.map((f) => r.meta?.[f] ?? ''), ...columns.map((c) => r.values[c])].map(quote).join(separator))];
       return { file: `${lines.join('\n')}\n`, message: `${table.message} ${rows.length} rows, ${columns.length} population column${columns.length === 1 ? '' : 's'}.` };
+    },
+
+    async export_events(args) {
+      const extension = requireExtension(args.path, ['.fcs', '.zip', '.h5ad'], 'events (.fcs: the samples concatenated; .zip: an FCS file per sample; .h5ad: AnnData)');
+      const w = ws();
+      const group = args.group ? w.groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase()) : null;
+      if (args.group && !group) throw new ActionError(`No group "${args.group}". Groups: ${w.groups.map((g) => g.name).join(', ') || 'none'}.`);
+      const sampleIds = args.samples?.length ? args.samples.map((x) => resolveSample(x).id) : w.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : s.role === 'sample')).map((s) => s.id);
+      if (!sampleIds.length) throw new ActionError('No samples to export.');
+      const count = Number(args.eventsPerSample);
+      const fraction = Number(args.fraction);
+      if (args.eventsPerSample !== undefined && args.fraction !== undefined) throw new ActionError('Give eventsPerSample or fraction, not both.');
+      if (args.eventsPerSample !== undefined && !(count > 0)) throw new ActionError('eventsPerSample must be a positive number.');
+      if (args.fraction !== undefined && !(fraction > 0 && fraction <= 1)) throw new ActionError('fraction is a share of each sample\'s events, between 0 and 1.');
+      const downsample = args.eventsPerSample !== undefined ? { mode: 'count', value: count, seed: Number(args.seed) || 1 } : args.fraction !== undefined ? { mode: 'fraction', value: fraction, seed: Number(args.seed) || 1 } : { mode: 'none' };
+      let channels;
+      if (args.channels?.length) {
+        const view = await loadedView(w.samples.find((s) => s.id === sampleIds[0]));
+        channels = args.channels.map((c) => resolveChannel(view, c));
+      }
+      const format = extension === '.h5ad' ? 'h5ad' : extension === '.zip' ? 'zip' : 'fcs';
+      if (args.values && !['raw', 'compensated'].includes(args.values)) throw new ActionError('values is raw or compensated.');
+      let out;
+      try {
+        out = await app.buildEventsExport({ sampleIds, populationId: args.population ? resolvePopulation(args.population) : ROOT, downsample, format, values: args.values, channels, xValues: args.x === 'compensated' ? 'compensated' : 'arcsinh', cofactor: args.cofactor ? Number(args.cofactor) : undefined });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const r = out.report;
+      const what = format === 'h5ad' ? `AnnData: X ${r.events} events × ${r.X.length} channels (${r.values === 'arcsinh' ? `arcsinh, cofactor ${r.cofactor}` : 'compensated values'}); obs ${r.obs.join(', ')}${r.obsm.length ? `; obsm ${r.obsm.join(', ')}` : ''}`
+        : format === 'zip' ? `${r.samples.length} FCS files (raw values with each sample's spillover)`
+          : `one FCS file of ${r.events} events: ${r.channels.length} channels (${r.values} values${r.spillover ? ', with the spillover matrix' : ''}), SampleID numbering the samples and SourceEvent each event's index in its own file${r.dropped.length ? `; left out, as not in every sample: ${r.dropped.join(', ')}` : ''}`;
+      return { file: out.bytes, message: `${what}. ${r.samples.map((x) => `${x.sample} ${x.events} of ${x.of}`).join(', ')}.${out.notes.length ? ` ${out.notes.join(' ')}` : ''}`, data: { report: r, notes: out.notes } };
     },
 
     async export_report(args) {

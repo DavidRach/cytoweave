@@ -487,12 +487,29 @@ combines. Waves 7–8 are a plan, to be revised as each wave lands.
    - Not done: plots in PowerPoint are pictures (3×), not vector; PDF text is limited to
      WinAnsi characters (others written as their nearest ASCII); opening the files in Microsoft
      PowerPoint and Excel themselves is a manual check.
-4. **Data in and out (I6):** concatenated FCS export with a sample-identifier channel, seeded
-   downsampling (equal numbers or a fraction), CSV event import with checks and scale guesses, and
-   AnnData export as `.h5ad` (events as the matrix; sample, population and cluster columns in
-   `obs`; markers in `var`) through a minimal HDF5 writer of our own.
-   - Validation: `.h5ad` files read back by `anndata` and `h5py`; concatenations against their
-     source files; CSV round trips.
+4. **Data in and out (I6): done.** CSV event import (`csv-events.js`, `events-io.js`): the
+   delimiter and decimal mark found, FlowJo's `name :: marker` headers, every column checked
+   (non-numbers with the first row, empty cells, short rows, constant columns, an event number
+   left out, label columns that can split a file into samples), kinds and scales guessed
+   (logicle, arcsinh cofactor 5 for mass counts, linear for scatter, time and already-transformed
+   values) and adjustable; each file stored as an FCS file. Events out (`events.js`): a
+   population's events in chosen samples, every event or downsampled (count or share, seeded per
+   sample from its checksum), as one concatenated FCS file (common channels, raw with the shared
+   spillover or compensated, `SampleID` and `SourceEvent`, the samples named and checksummed in
+   keywords), one FCS file per sample, or AnnData (`anndata.js`: X arcsinh or compensated; obs
+   sample, annotations, event, populations as True/False columns and the deepest as a category,
+   clusters, QC, scatter and time; var; obsm maps; uns provenance; encodings readable by anndata
+   0.8 and later) through our own HDF5 writer (`hdf5.js`: superblock 0, version 1 object headers,
+   symbol-table groups, contiguous datasets, enum booleans, variable-length UTF-8 strings in global
+   heaps). Agent tool `export_events` (40 tools); `open_files` opens CSV events.
+   - Validation: `events` (downsampling exact, reproducible, independent and uniform; every event
+     of a concatenated file its source's and every population counted alike per SampleID; CSV
+     round trips exact, a damaged file's faults reported; anndata 0.13.4 and 0.10.9, h5py 3.16
+     with HDF5 2.0, pyfive 1.2.1, fcsparser 0.2.8 and FlowIO 1.4.0 read the files' values exactly),
+     agent session (25 checks).
+   - Not done: AnnData files are written uncompressed (a group holds at most 256 members); sparse
+     layers and other AnnData readers (R's anndata, Julia) are not tested; a concatenated file
+     keeps each sample's time values as they were.
 5. **Differential state and R and Python clients (H6, M5):** diffcyt-DS-limma (marker medians
    per cluster or population and sample, limma's moderated t with cell-count weights) in Compare
    beside differential abundance, with a methods sentence; an R package and a Python package in

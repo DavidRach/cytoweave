@@ -195,6 +195,7 @@ export function installActions(app) {
       { label: 'Export events as FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs') },
       { label: 'Export events as de-identified FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs', { deidentify: true }) },
       { label: 'Export events as CSV…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'csv') },
+      { label: 'Export events of several samples…', icon: 'download', onSelect: () => app.exportEventsDialog({ populationId: gateId ?? ROOT }) },
       { label: 'Add statistics to a table', icon: 'table', onSelect: () => { app.setMode('tables'); setTimeout(() => app.addPopulationToTable?.(gateId), 50); } },
       '-',
       { section: 'Model this population' },

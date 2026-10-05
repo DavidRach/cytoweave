@@ -264,6 +264,37 @@ try {
   const deck = await readPPTX(new Uint8Array(readFileSync(deckPath)));
   check('export_report: the figure by subject as a PDF (a page per subject, every gate label traced and equal to its population\'s % of parent) and by sample as a PowerPoint deck', `${pdf.pages.length} pages for ${subjects.size} subjects; ${labelState.n} gate labels, ${labelState.differ} differ; deck ${deck.slides.length} slides of ${deck.slides[0]?.pictures.length} pictures (${deckResult.data.pages.length} samples)`, pdf.pages.length === subjects.size && reported.data.pages.length === subjects.size && labelState.n > 0 && labelState.differ === 0 && deck.slides.length === deckResult.data.pages.length && deck.slides.every((x) => x.pictures.length === fig.plots.length && x.pictures.every((p) => p.present)), 'a page per subject; 0 differ; a slide per sample');
 
+  // Events of every sample, downsampled and concatenated; the T cells counted per SampleID as the
+  // app counts them in each sample's chosen events. Then a CSV of events opened by path.
+  const eventsPath = join(figureDir, 'tcells.fcs');
+  const exported = await tool('export_events', { path: eventsPath, population: 'T cells', eventsPerSample: 2000, seed: 4 });
+  const concatenated = parseFCS(new Uint8Array(readFileSync(eventsPath))).datasets[0];
+  const at = (name) => concatenated.data[concatenated.parameters.find((p) => p.name === name).index];
+  const perSample = exported.data.report.samples.map((x, k) => Array.from(at('SampleID')).filter((v) => v === k + 1).length);
+  const eventsState = await page(`
+    const { selectEvents } = await import('/lib/events.js');
+    const ws = app.store.ws;
+    const gate = ws.gates.find((g) => g.name === 'T cells');
+    const ids = ws.samples.filter((s) => s.role === 'sample').map((s) => s.id);
+    const { items } = selectEvents(ws, (id) => app.data.view(id), { sampleIds: ids, populationId: gate.id, downsample: { mode: 'count', value: 2000, seed: 4 } });
+    return items.map((it) => ({ n: it.indices.length, first: it.indices[0], last: it.indices[it.indices.length - 1] }));`);
+  const source = at('SourceEvent');
+  let offset = 0;
+  const eventsAgree = eventsState.every((x, k) => {
+    const ok = perSample[k] === x.n && source[offset] === x.first && source[offset + x.n - 1] === x.last;
+    offset += x.n;
+    return ok;
+  });
+  const h5adPath = join(figureDir, 'tcells.h5ad');
+  const h5 = await tool('export_events', { path: h5adPath, population: 'T cells', eventsPerSample: 500, channels: ['CD3', 'CD4', 'CD8'] });
+  const h5Bytes = readFileSync(h5adPath);
+  check('export_events: T cells of every sample, 2,000 each with a seed, concatenated (SampleID and SourceEvent the events the app picks with the same seed), and as AnnData with three markers', `${concatenated.eventCount} events, ${perSample.join('/')}; ${eventsAgree ? 'the same events' : 'DIFFERENT events'}; h5ad ${h5Bytes.length} bytes, X ${h5.data.report.events} × ${h5.data.report.X.join(', ')}`, eventsAgree && perSample.every((n) => n === 2000) && h5Bytes.subarray(1, 4).toString() === 'HDF' && h5.data.report.X.join() === 'CD3,CD4,CD8', 'the same events; 2,000 each; HDF5');
+  const eventsCSV = join(figureDir, 'events.csv');
+  writeFileSync(eventsCSV, ['FSC-A,SSC-A,Comp-FITC-A :: CD3,Comp-PE-A :: CD4', ...Array.from({ length: 500 }, (_, e) => [60000 + e * 7, 20000 + e * 3, (e * 37) % 9000 - 100, (e * 101) % 20000].join(','))].join('\n'));
+  const opened = await tool('open_files', { paths: [eventsCSV] });
+  const csvRead = opened.data.csv?.[0];
+  check('open_files with a CSV of events: a sample added, its columns\' kinds, markers and scales reported', `${opened.data.samples.map((x) => `${x.name} ${x.events} events`).join(', ')}; ${csvRead?.columns.map((c) => `${c.name}${c.marker ? ` (${c.marker})` : ''} ${c.kind}/${c.scale}`).join(', ')}`, opened.data.samples.length === 1 && opened.data.samples[0].events === 500 && csvRead?.columns.length === 4 && csvRead.columns[2].marker === 'CD3' && csvRead.columns[0].kind === 'scatter' && csvRead.columns[2].scale === 'logicle', 'one sample of 500 events; CD3 read');
+
   // After the QC gate, the FlowJo export says the gates on QC pass (a computed channel) are left out.
   const wspAfter = join(figureDir, 'pbmc-qc.wsp');
   const flowjoAfter = await tool('export_flowjo', { path: wspAfter, counts: false });

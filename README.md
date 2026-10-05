@@ -187,6 +187,11 @@ guides to every view, with screenshots.
   - De-identified FCS files: only technical keywords kept, the events copied
     byte for byte.
   - Gating-ML 2.0 in and out, and classification results (CLR).
+  - Events in CSV files, checked column by column with each column's kind
+    and scale guessed; a population's events in several samples out as one
+    concatenated FCS file (with a sample identifier), one file per sample or
+    an AnnData file (`.h5ad`) for scanpy and R, optionally downsampled with a
+    seed.
   - Archival Cytometry Standard containers that bundle the workspace with its
     FCS files.
   - FCS 2.0 to 3.2.
@@ -322,7 +327,7 @@ Press ⌘K (Ctrl+K) to search samples, populations, channels and commands, and
 | `.acs`, `.zip` | An Archival Cytometry Standard container: a workspace with its FCS files |
 | `.wsp` | A FlowJo 10 workspace (see [below](#working-with-flowjo-and-other-tools)) |
 | `.xml` | Gating-ML 2.0 gates and compensation |
-| `.csv`, `.tsv` | Sample annotations: the first column names the sample or file, the other columns become fields |
+| `.csv`, `.tsv`, `.txt` | Events, a row per event and a column per channel (checked before import, below); or, when the first column names samples, sample annotations |
 | `.svg`, `.png`, `.pdf` | A figure or plot CytoWeave exported: where it came from, what changed since, and a rebuild (see [Figures](#figures)) |
 
 Drag files onto the window, use the **+** button of the sample list, or name
@@ -337,6 +342,16 @@ the inspector:
 - log-amplified integer data.
 
 Spillover is read from `$SPILLOVER`, `SPILL`, `$SPILL` or `$COMP`.
+
+**Events in CSV files** (FlowJo's *Export CSV*, FCS Express, R, Python) open
+in a dialog that checks each column first: the delimiter and decimal mark,
+FlowJo's `Comp-PE-A :: CD25` headers, cells that are not numbers (with the row
+of the first), empty cells and short rows, an event number column (left out)
+and label columns such as clusters or sample numbers (which can split the file
+into one sample per value). Each column's kind and scale are guessed (logicle
+for intensities, arcsinh for mass cytometry counts, linear for scatter, time
+and values that are already transformed) and can be changed. Each file becomes
+a sample stored as an FCS file of 32-bit floats.
 
 ## The views
 
@@ -963,6 +978,23 @@ does this.
 **CLR** (classification results) exports a column per population or cluster
 for every event, for tools that read memberships.
 
+**Events for other tools.** **Workspace → Export → Events…** writes a
+population's events in chosen samples, every event or downsampled (up to a
+number per sample, or a share; seeded, each sample drawn on its own, the seed
+recorded):
+- one concatenated FCS file of the channels every sample has (raw values with
+  the shared spillover matrix, or compensated values), with `SampleID`
+  numbering the samples (named in its keywords) and `SourceEvent` giving each
+  event's index in its own file;
+- one FCS file per sample, in a ZIP;
+- an AnnData file (`.h5ad`) for scanpy, muon and R (zellkonverter): `X` the
+  chosen channels as arcsinh(x / cofactor) or compensated values; `obs` the
+  sample, its annotations, each event's populations (a True/False column per
+  gate and the deepest as a category), clusters, QC, scatter and time; `var`
+  the channels and markers; `obsm` the maps (`X_umap`, `X_tsne`); `uns` where
+  it came from. CytoWeave writes the HDF5 itself (uncompressed); anndata 0.10
+  and 0.13, h5py and pyfive read it in the validation suite.
+
 ## Command-line options
 
 ```text
@@ -1023,7 +1055,7 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 39 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 40 tools, other clients
 and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
@@ -1060,10 +1092,11 @@ pipelines, as the app does, against answers known in advance:
 | Formula channels | R evaluating the same 7 formulas on 10 tubes; Gating-ML and a template | Medians within 5e-8, single events within 2e-14; a ratio gate the same through Gating-ML (fratio) and on renamed detectors |
 | Calibrated units (MEF) | FlowCal 1.3.1 on its own bead and cell files; simulated beads of known response | The same levels left out, medians within one step of the log channel, cells' MEFL within 1.6% of FlowCal's; a known slope within 0.001 |
 | Absolute counts | 40 simulated tubes of known concentration with counting beads | Within 1% on average, scattered as Poisson counting predicts |
+| Events in and out | Concatenated, downsampled and per-sample FCS files against their sources; CSV files from CytoWeave, FlowJo and European locales, and a damaged one; AnnData files read by anndata 0.10 and 0.13, h5py, pyfive, fcsparser and FlowIO | Every event its source's; every population counted alike per SampleID; seeded downsampling exact and uniform; CSV values back exactly, every fault reported; X, obs and maps read exactly by every reader |
 | Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
-| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 80 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
+| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 84 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
 | Titration and voltage walks | A simulated CD4-PE titration and PE voltage walk with known binding, noise and gain | Stain index within 4.4% of the true cells' at every step; the recommended amount the binding's; the voltage range within 1 V of the truth; medians equal to FlowJo 11's on the same files |
 | Templates | A 19-population analysis applied to the same events with every detector renamed and reordered | Every population holds the same events in all 12 samples; with two markers unnamed, only the gate on them left out |
 | Published strategies | OMIP-101 and OMIP-090 placed on one sample of the PBMC example, against the true cell types | Median F1 0.96–0.99 for lineages, 0.88–0.96 for memory subsets, NK cells and classical and non-classical monocytes; Tregs 0.91; intermediate monocytes 0.76 |

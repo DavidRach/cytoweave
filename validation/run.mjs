@@ -38,6 +38,11 @@ import { binomialInterval, detectionLimits, poissonInterval } from '../web/lib/r
 import { poisson } from '../web/lib/simulate.js';
 import { BEAD_TRUTH, COUNTING, countingTubes, simulatedBeads } from './calibration-cases.mjs';
 import { REPORT_DATE, buildReports } from './report-cases.mjs';
+import { EVENT_EXPORTS, buildEventDocuments, csvCases } from './event-cases.mjs';
+import { downsample as downsampleIndices, selectEvents } from '../web/lib/events.js';
+import { analyzeCSV, csvDatasets, scaleFor } from '../web/lib/csv-events.js';
+import { readZip } from '../web/lib/zip.js';
+import { createHash } from 'node:crypto';
 import { fingerprint, readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
 import { columnLabel, columnValue, columnLimits, LIMIT_STATUS } from '../web/lib/tables.js';
 import { formatPercent, formatStatistic } from '../web/lib/stats.js';
@@ -884,6 +889,200 @@ const suites = {
       });
     });
     check('reports', `R pzfx ${refPzfx.pzfx} reads the Prism project: the same tables, column names and values (exact)`, `${refPzfx.tables.length} tables${rBad.length ? `; differ: ${rBad.slice(0, 3).join(', ')}` : ', all the same'}`, refPzfx.tables.length === prism.length && !rBad.length, 'all the same');
+  },
+  // Events in and out (event-cases.mjs): seeded downsampling (exact sizes, reproducible, uniform),
+  // concatenated and per-sample FCS files (every event its source's, populations counted the same
+  // per SampleID), CSV import (CytoWeave's, FlowJo's and European files back exactly; scales
+  // guessed; a damaged file's faults reported), and AnnData files whose values the formats' readers
+  // read as CytoWeave computes them (reference/events.json: anndata 0.13.4 and 0.10.9, h5py, pyfive,
+  // fcsparser, FlowIO; matched to the files written here by their SHA-256).
+  async events() {
+    const built = await buildEventDocuments();
+    const { ws, views, viewOf } = built.experiment;
+    const samples = ws.samples;
+    const hash = (array) => createHash('sha256').update(Buffer.from(array.buffer, array.byteOffset, array.byteLength)).digest('hex');
+    const textHash = (values) => createHash('sha256').update(values.join('\n')).digest('hex');
+    const gateId = (name) => ws.gates.find((g) => g.name === name).id;
+    // Downsampling.
+    const all = Uint32Array.from({ length: 1000 }, (_, i) => i);
+    const sizes = [[{ mode: 'count', value: 100, seed: 1 }, 100], [{ mode: 'count', value: 5000, seed: 1 }, 1000], [{ mode: 'fraction', value: 0.1234, seed: 1 }, 123], [{ mode: 'fraction', value: 0.1235, seed: 1 }, 124]];
+    const sizeOk = sizes.every(([spec, k]) => downsampleIndices(all, spec, 'x').length === k);
+    const a = downsampleIndices(all, { mode: 'count', value: 100, seed: 7 }, 'x');
+    const again = downsampleIndices(all, { mode: 'count', value: 100, seed: 7 }, 'x');
+    const other = downsampleIndices(all, { mode: 'count', value: 100, seed: 8 }, 'x');
+    const alone = selectEvents(ws, viewOf, { sampleIds: [samples[3].id], downsample: { mode: 'count', value: 500, seed: 3 } }).items[0].indices;
+    const together = selectEvents(ws, viewOf, { downsample: { mode: 'count', value: 500, seed: 3 } }).items.find((it) => it.sample.id === samples[3].id).indices;
+    const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+    // Uniformity: 4,000 draws of 100 of 1,000 events; each event's count against Binomial(4000, 0.1).
+    const counts = new Float64Array(1000);
+    for (let s = 1; s <= 4000; s += 1) for (const e of downsampleIndices(all, { mode: 'count', value: 100, seed: s }, 'u')) counts[e] += 1;
+    const expected = 400;
+    const chi2 = counts.reduce((sum, c) => sum + ((c - expected) ** 2) / (expected * 0.9), 0);
+    const z = (chi2 - 999) / Math.sqrt(2 * 999);
+    check('events', 'seeded downsampling: exact sizes (up to a number, or a share rounded to the nearest event), the same events for the same seed and others for another, a sample\'s events the same exported alone or with others, and every event equally likely (4,000 draws of 100 of 1,000)', `sizes ${sizeOk ? 'exact' : 'WRONG'}; same seed ${same(a, again) ? 'identical' : 'differs'}, another seed ${same(a, other) ? 'identical' : 'differs'}; alone ${same(alone, together) ? 'identical' : 'differs'}; χ² ${chi2.toFixed(0)} on 999 df (z ${z.toFixed(2)})`, sizeOk && same(a, again) && !same(a, other) && same(alone, together) && Math.abs(z) < 3.3, 'exact; identical; differs; identical; |z| < 3.3');
+    // The concatenated FCS file, read back.
+    const doc = (name) => parseFCS(built.files[name]).datasets[0];
+    const cat = doc('concatenated.fcs');
+    const col = (d, name) => d.data[d.parameters.find((p) => p.name === name).index];
+    const sid = col(cat, 'SampleID');
+    const src = col(cat, 'SourceEvent');
+    const channels = views.get(samples[0].id).parameters.map((p) => p.name);
+    let differ = 0;
+    for (let i = 0; i < cat.eventCount; i += 1) {
+      const view = views.get(samples[sid[i] - 1].id);
+      for (const name of channels) if (!Object.is(col(cat, name)[i], view.raw.get(name)[src[i]])) differ += 1;
+    }
+    const spill = readSpillover(cat.keywords, cat.parameters);
+    const comp = views.get(samples[0].id).compensation;
+    const spillSame = spill.channels.join() === comp.channels.join() && Array.from(spill.matrix).every((v, i) => v === comp.matrix[i]);
+    check('events', `the concatenated FCS file read back: every event the raw event of the sample SampleID names, at the index SourceEvent gives (${samples.length} samples, ${cat.eventCount.toLocaleString('en-US')} events), with the samples' shared spillover matrix`, `${differ} values differ; spillover ${spillSame ? 'the same' : 'DIFFERS'}; names ${cat.keywords.CYTOWEAVE_SAMPLE_1}…${cat.keywords[`CYTOWEAVE_SAMPLE_${samples.length}`]}`, differ === 0 && cat.eventCount === samples.reduce((n, x) => n + x.eventCount, 0) && spillSame && cat.keywords.CYTOWEAVE_SAMPLE_1 === samples[0].name, 'none differ; the same');
+    // Gated in CytoWeave, the concatenated file counts every population as the samples do.
+    const catRecord = { id: 'cat', name: 'concatenated', compensationId: 'file' };
+    const catView = new SampleView(catRecord, cat);
+    catView.setCompensation({ id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) });
+    const catWs = { ...ws, samples: [...ws.samples, { ...catRecord, channels: cat.parameters }] };
+    let pairs = 0;
+    let wrong = 0;
+    for (const gate of ws.gates) {
+      const members = population(catView, catWs, gate.id);
+      const perSample = new Map();
+      for (const e of members ?? []) perSample.set(sid[e], (perSample.get(sid[e]) ?? 0) + 1);
+      samples.forEach((sample, k) => {
+        pairs += 1;
+        if ((perSample.get(k + 1) ?? 0) !== countOf(population(views.get(sample.id), ws, gate.id), views.get(sample.id))) wrong += 1;
+      });
+    }
+    check('events', 'the concatenated file opened and gated with the workspace\'s gates (its spillover applied): every population holds, per SampleID, the events it holds in that sample', `${pairs - wrong} of ${pairs} population × sample counts equal (${ws.gates.length} populations)`, wrong === 0 && pairs > 0, 'all');
+    const down = doc('downsampled.fcs');
+    const dsid = col(down, 'SampleID');
+    const dsrc = col(down, 'SourceEvent');
+    const tcells = gateId('T cells');
+    let dDiffer = 0;
+    let outside = 0;
+    const tMembers = new Map(samples.map((x) => [x.id, new Set(population(views.get(x.id), ws, tcells))]));
+    for (let i = 0; i < down.eventCount; i += 1) {
+      const sample = samples[dsid[i] - 1];
+      if (!tMembers.get(sample.id).has(dsrc[i])) outside += 1;
+      for (const name of channels) if (!Object.is(col(down, name)[i], views.get(sample.id).column(name)[dsrc[i]])) dDiffer += 1;
+    }
+    const perSampleDown = samples.map((x, k) => Array.from(dsid).filter((v) => v === k + 1).length);
+    check('events', 'the downsampled file (T cells, up to 1,000 per sample, compensated values): every event a T cell of its sample, its values the sample\'s compensated values, no spillover written', `${perSampleDown.join(', ')} events; ${outside} outside T cells; ${dDiffer} values differ; spillover ${down.keywords.$SPILLOVER ? 'written' : 'none'}`, outside === 0 && dDiffer === 0 && !down.keywords.$SPILLOVER && perSampleDown.every((n, k) => n === Math.min(1000, tMembers.get(samples[k].id).size)), 'none outside; none differ; none');
+    const zip = await readZip(built.files['tregs.zip']);
+    const tregs = gateId('Tregs');
+    const zipRows = samples.map((sample) => {
+      const d = parseFCS(zip.get(`${sample.name}.fcs`)).datasets[0];
+      const view = views.get(sample.id);
+      const members = population(view, ws, tregs);
+      const picked = downsampleIndices(members, { mode: 'fraction', value: 0.5, seed: 2 }, sample.sha256 ?? sample.id);
+      let bad = 0;
+      for (let i = 0; i < d.eventCount; i += 1) for (const name of channels) if (!Object.is(col(d, name)[i], view.raw.get(name)[picked[i]])) bad += 1;
+      return { n: d.eventCount, of: members.length, ok: d.eventCount === Math.round(members.length / 2) && bad === 0 && Boolean(d.keywords.$SPILLOVER) };
+    });
+    check('events', 'one FCS file per sample (Tregs, half of each sample\'s): each file the sample\'s chosen events, raw, with its spillover matrix', zipRows.map((r) => `${r.n} of ${r.of}`).join(', '), zipRows.every((r) => r.ok), 'all');
+    // CSV import.
+    const view0 = views.get(samples[0].id);
+    const cases = Object.fromEntries(csvCases(view0).map((c) => [c.name, { ...c, analysis: analyzeCSV(c.text, c.name) }]));
+    const back = (c) => {
+      const { datasets } = csvDatasets(c.analysis);
+      const d = parseFCS(writeFCS(datasets[0])).datasets[0];
+      return { d, datasets };
+    };
+    let csvDiffer = 0;
+    let csvValues = 0;
+    for (const name of ['cytoweave_export.csv', 'flowjo_export.csv']) {
+      const c = cases[name];
+      const { d } = back(c);
+      view0.parameters.forEach((p, j) => {
+        const column = d.data[j];
+        for (let e = 0; e < c.expect.rows; e += 1) {
+          csvValues += 1;
+          if (!Object.is(column[e], c.expect.values[j][e])) csvDiffer += 1;
+        }
+      });
+    }
+    const fj = cases['flowjo_export.csv'].analysis;
+    const fjOk = fj.columns[0].eventNumber && !fj.columns[0].include && fj.columns.slice(1).every((col2, j) => col2.name === cases['flowjo_export.csv'].expect.names[j] && col2.marker === cases['flowjo_export.csv'].expect.markers[j]);
+    check('events', 'CSV events back exactly: CytoWeave\'s own CSV export and FlowJo\'s format ("Comp-PE-A :: CD25" headers, an event number column), as FCS data', `${csvValues - csvDiffer} of ${csvValues} values identical; FlowJo: ${fjOk ? 'channels and markers read, the event number left out' : 'headers misread'}`, csvDiffer === 0 && fjOk, 'all; read');
+    const eu = cases['european.csv'];
+    const euBack = back(eu).d;
+    let euDiffer = 0;
+    eu.expect.values.forEach((values, j) => { for (let e = 0; e < eu.expect.rows; e += 1) if (!Object.is(euBack.data[j][e], Math.fround(values[e]))) euDiffer += 1; });
+    check('events', 'a European CSV (semicolons, decimal commas) read with its format found, every value the number written (as a 32-bit float)', `delimiter "${eu.analysis.format.delimiter}", decimal commas ${eu.analysis.format.decimalComma}; ${euDiffer} values differ`, eu.analysis.format.delimiter === ';' && eu.analysis.format.decimalComma && euDiffer === 0, 'found; none differ');
+    const scales = (c) => Object.fromEntries(c.analysis.columns.map((x) => [x.name, x.scale]));
+    const asinhScales = Object.values(scales(cases['arcsinh.csv']));
+    const massScales = scales(cases['mass.csv']);
+    const flowScales = cases['cytoweave_export.csv'].analysis.columns.map((x) => `${x.kind}:${x.scale}`);
+    const asinhRange = scaleFor(cases['arcsinh.csv'].analysis.columns[0]);
+    check('events', 'scales guessed from the values: arcsinh-transformed values shown linear over their range, mass cytometry counts on arcsinh (cofactor 5) and its time linear, flow intensities logicle and scatter linear', `arcsinh file: ${[...new Set(asinhScales)].join(', ')} (${asinhRange.type} ${asinhRange.min} to ${asinhRange.max}); mass: ${Object.entries(massScales).map(([k, v]) => `${k} ${v}`).join(', ')}; flow: ${[...new Set(flowScales)].join(', ')}`, asinhScales.every((x) => x === 'transformed') && asinhRange.type === 'linear' && massScales.Yb176Di === 'arcsinh' && massScales.Nd142Di === 'arcsinh' && massScales.Time === 'linear' && flowScales.every((x) => x === 'scatter:linear' || x === 'fluorescence:logicle' || x === 'time:linear'), 'as guessed');
+    const dmg = cases['damaged.csv'].analysis;
+    const fitc = dmg.columns.find((x) => x.name === 'FITC-A');
+    const split = csvDatasets(dmg, { splitBy: dmg.columns.findIndex((x) => x.name === 'Cluster') });
+    const whole = csvDatasets(dmg);
+    check('events', 'a damaged CSV: the faults found and reported (3 words in FITC-A with the first one\'s row, 3 empty cells, 1 short row), the event number left out, the cluster column recognized as labels, the 6 incomplete rows left out; split by cluster, 3 samples', `${fitc.note}; ${fitc.missing} empty; ${dmg.problems[0] ?? 'no row problem'}; event number ${dmg.columns[0].eventNumber}; labels ${dmg.columns[3].labels}; ${whole.dropped} rows left out; split: ${split.datasets.map((x) => `${x.name} ${x.rows}`).join(', ')}`, fitc.bad === 3 && /row 12/.test(fitc.note) && fitc.missing === 3 && /1 row has/.test(dmg.problems[0] ?? '') && dmg.columns[0].eventNumber && dmg.columns[3].labels && whole.dropped === 6 && split.datasets.length === 3 && split.datasets.reduce((n, x) => n + x.rows, 0) === 594, 'all reported; 6 left out; 3 samples');
+    // AnnData: what the readers read against CytoWeave's own values.
+    const ref = JSON.parse(readFileSync(new URL('./reference/events.json', import.meta.url), 'utf8'));
+    const stale = Object.keys(built.files).filter((name) => {
+      const sha = createHash('sha256').update(built.files[name]).digest('hex');
+      const entry = ref.files[name];
+      return !entry || Object.values(entry).filter((v) => v && typeof v === 'object' && v.sha256).some((v) => v.sha256 !== sha) || (entry.sha256 && entry.sha256 !== sha);
+    });
+    check('events', 'the files written here are those the readers read (SHA-256 against reference/events.json; when one differs, rerun reference/write_events.mjs and read_events.py)', stale.length ? `differ: ${stale.join(', ')}` : `all ${Object.keys(built.files).length} the same`, !stale.length, 'the same');
+    for (const spec of EVENT_EXPORTS.filter((x) => x.format === 'h5ad')) {
+      const { items, populationId } = built.selections[spec.file];
+      const xChannels = views.get(samples[0].id).parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name);
+      const n = items.reduce((sum, it) => sum + it.indices.length, 0);
+      const X = new Float32Array(n * xChannels.length);
+      const names = [];
+      const sampleCodes = new Int32Array(n);
+      const events = new Int32Array(n);
+      const tregFlags = new Uint8Array(n);
+      const clusters = new Int32Array(n);
+      const fsc = new Float32Array(n);
+      const umap = new Float32Array(n * 2);
+      let r = 0;
+      items.forEach((it, k) => {
+        const tregSet = new Set(population(it.view, ws, tregs));
+        for (const e of it.indices) {
+          xChannels.forEach((c, j) => {
+            const v = it.view.column(c)[e];
+            X[r * xChannels.length + j] = spec.xValues === 'arcsinh' ? Math.asinh(v / spec.cofactor) : v;
+          });
+          names.push(`${it.sample.name}:${e}`);
+          sampleCodes[r] = k;
+          events[r] = e;
+          tregFlags[r] = tregSet.has(e) ? 1 : 0;
+          const cl = it.view.column('FlowSOM cluster')[e];
+          clusters[r] = cl >= 0 ? cl : -1;
+          fsc[r] = it.view.column('FSC-A')[e];
+          const emb = it.view.column('Embedded')[e] > 0.5;
+          umap[r * 2] = emb ? it.view.column('UMAP 1')[e] : Number.NaN;
+          umap[r * 2 + 1] = emb ? it.view.column('UMAP 2')[e] : Number.NaN;
+          r += 1;
+        }
+      });
+      const want = { X: hash(X), obs_names: textHash(names), sample: hash(sampleCodes), event: hash(events), Tregs: hash(tregFlags), cluster: hash(clusters), fsc: hash(fsc), umap: hash(umap) };
+      const entry = ref.files[spec.file];
+      const readers = Object.keys(entry).filter((k) => /^(anndata|h5py|pyfive)/.test(k));
+      const rows = readers.map((reader) => {
+        const got = entry[reader];
+        const fine = [got.X === want.X, got.obs_names === want.obs_names];
+        if (reader.startsWith('anndata')) {
+          fine.push(got.shape[0] === n && got.shape[1] === xChannels.length, got.obs.sample.codes === want.sample && got.obs.sample.categories.join() === samples.map((x) => x.name).join(), got.obs.event.values === want.event, got.obs.Tregs.values === want.Tregs, got.obs['FlowSOM cluster'].codes === want.cluster, got.obs['FSC-A'].values === want.fsc, got.obsm.X_umap === want.umap, got.var_names.join() === xChannels.map((c) => views.get(samples[0].id).parameters.find((p) => p.name === c).marker || c).join(), got.uns.samples.join() === samples.map((x) => x.name).join(), got.obs.subject?.categories.length === new Set(samples.map((x) => x.meta.subject)).size);
+        }
+        return { reader, ok: fine.every(Boolean), failed: fine.map((f, i) => (f ? null : i)).filter((x) => x !== null) };
+      });
+      check('events', `${spec.file} (${populationId === 'root' ? 'all events' : spec.population}, ${spec.downsample.value} per sample, X ${spec.xValues === 'arcsinh' ? `arcsinh(x / ${spec.cofactor})` : 'compensated'}): every reader reads X and the event names as CytoWeave computes them (SHA-256 of the values), and anndata the sample, annotations, event index, a population's True/False column, the clusters (missing where unassigned), scatter, the UMAP (NaN where not embedded), var and uns`, rows.map((x) => `${x.reader} ${x.ok ? 'exact' : `differs (${x.failed.join(',')})`}`).join('; '), rows.length === 4 && rows.every((x) => x.ok), 'all exact');
+    }
+    const fcsRows = ['concatenated.fcs', 'downsampled.fcs'].map((name) => {
+      const d = doc(name);
+      const m = new Float32Array(d.eventCount * d.parameters.length);
+      for (let e = 0; e < d.eventCount; e += 1) for (let j = 0; j < d.parameters.length; j += 1) m[e * d.parameters.length + j] = d.data[j][e];
+      const files = ref.files[name].files[name];
+      return { name, ok: files.fcsparser.data === hash(m) && files.flowio.data === hash(m) && files.fcsparser.shape[0] === d.eventCount };
+    });
+    const zipRef = ref.files['tregs.zip'];
+    const zipOk = Object.keys(zipRef.files).length === samples.length && Object.values(zipRef.files).every((f) => f.fcsparser.data === f.flowio.data && Boolean(f.fcsparser.spillover));
+    check('events', `fcsparser ${ref.files['concatenated.fcs'].fcsparser} and FlowIO ${ref.files['concatenated.fcs'].flowio} read the concatenated and downsampled files as written (every value, SHA-256), and the per-sample files with their spillover`, `${fcsRows.map((x) => `${x.name} ${x.ok ? 'exact' : 'differs'}`).join('; ')}; ZIP ${zipOk ? `${Object.keys(zipRef.files).length} files agree` : 'differs'}`, fcsRows.every((x) => x.ok) && zipOk, 'exact');
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});

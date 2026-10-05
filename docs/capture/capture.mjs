@@ -422,6 +422,31 @@ const scenes = {
     await choose('Repeat for', 'subject');
     await sleep(800);
   },
+  // Export events: lymphocytes of every sample, 5,000 each, as AnnData.
+  async 'export-events'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await app(`app.exportEventsDialog({ populationId: app.store.ws.gates.find((g) => g.name === 'Lymphocytes').id, format: 'h5ad' });`);
+    await sleep(600);
+    await choose('Events', 'number');
+    await js(`(() => { const input = [...document.querySelectorAll('.dialog input[type=number]')][0]; input.value = 5000; input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await sleep(600);
+  },
+  // Events from a CSV file exported by FlowJo, checked before import.
+  async 'csv-import'() {
+    await example('pbmc-immunophenotyping');
+    await app(`
+      const s = app.store.ws.samples.find((x) => x.name === 'D01_Unstim');
+      const v = await app.data.ensure(s.id);
+      const head = ['Event #', ...v.parameters.map((p) => (p.type === 'fluorescence' ? 'Comp-' + p.name + ' :: ' + (p.marker || p.name) : p.name))];
+      const cols = v.parameters.map((p) => v.column(p.name));
+      const lines = [head.join(',')];
+      for (let e = 0; e < 3000; e += 1) lines.push([e + 1, ...cols.map((c) => c[e])].join(','));
+      app.importEventCSVs([{ name: 'D01_Unstim_export.csv', text: lines.join(String.fromCharCode(10)) }]);
+    `);
+    await waitFor(`/Import events/.test(document.querySelector('.dialog')?.innerText ?? '')`, 30000);
+    await sleep(800);
+  },
   // Spectral panel quality: similarity of the reference spectra and the complexity index.
   async 'spectral-quality'() {
     await scenes.spectral();
