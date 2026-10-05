@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-10-05)
+
+CytoWeave 0.6 brings a lab's routine bench work into one place, batch by batch. Samples are compared with a control (% positive by SED, Overton and probability binning) and rare populations reported with exact intervals and detection limits; formula channels, calibrated MEF units from beads and absolute counts add the numbers a core reports; a figure becomes a batch report for every sample or subject as a PDF or a PowerPoint deck, and tables go to Excel and Prism with every number traced; events come in from CSV files and go out concatenated, downsampled or as AnnData for scanpy; Compare tests differential state with diffcyt-DS-limma, giving diffcyt's numbers in R; and R and Python clients drive CytoWeave from scripts.
 
 ### Added
 
@@ -38,6 +40,10 @@
 - Compare's cluster screen named clusters "Cluster k" instead of the names Explore gave them.
 - Mass cytometry channels labeled only with their isotope (such as 102Pd) were taken as markers, so Explore proposed palladium barcode channels among the markers to cluster on.
 
+### Documentation
+
+- The user guide covers the new features, with seven new screenshots (a sample against a control, formula channels, calibration, batch reports, CSV import, event export and differential state); the Scripting page leads with the R and Python clients and the connection file; the AI agents page and the MCP guide list the 41 tools; the Science page credits limma and statmod (whose sources the moderated t-statistics follow), diffcyt and FlowCal, and the AnnData, HDF5 and Prism formats. Every screenshot is retaken for 0.6.0.
+
 ### Validation
 
 - **Comparisons and rare events** (new `comparisons` suite; `comparison-cases.mjs`; `reference/flowstats.json` with `generate_flowstats.R`): probability binning gives the same bins, χ² and Baggerly's statistic as flowStats 4.24.0 in 36 cases (to 9e-15); the K-S D equals R's, and its p-value R's to R's own tolerance of 1e-6; on tubes with 5–40% positive cells SED is within 2 points of the truth while Overton falls 2–8 points short where the populations overlap; Bagwell's (1996) simulation ranks Dmax, enhanced Dmax and ENS as he did (mean errors −12.7%, −4.9% and −1.3%; his −7.7%, −2.7% and −0.85%); T(χ) exceeds 4 in 0.5% of pairs of samples of the same cells; the exact intervals equal R's poisson.test and binom.test and cover the truth at least 95% of the time; limits from 60 simulated blanks and 60 low-level samples flag 4% of new blanks and detect 98% of samples at the limit of detection. FlowJo 11.2 has no population comparison platform (a FlowJo 10 feature), so it could not serve as a reference.
@@ -48,6 +54,7 @@
 - **Differential state** (new `differential` suite; `differential-cases.mjs`; `reference/diffcyt.json` with `write_differential.mjs` and `generate_diffcyt.R`): the limma port equals limma 3.68.5 on 11 synthetic cases that take each of its paths (residual df equal, with a spline trend of 2 to 4 df or none; unequal, with the lowess trend and the prior df by maximum likelihood; weighted and unweighted; rank-deficient rows and rows without residual df) within 4e-11; diffcyt-DS-limma end to end equals diffcyt 1.32.1 in R on the mass cytometry cohort (8 samples, batch in the design) and on the barcoded plate split by well (20 samples paired by donor): every cell count and median identical (medians within 5e-15), and all 1,150 tests' logFC, average, moderated t, p and adjusted p within 3e-11. Against the truth: no call in the cohort, where no marker differs (4.5% of p-values below 0.05); on the plate, CD25, HLA-DR and CD38 called in all five T-cell populations with 40–50% of cells activated, 50 of 70 changed cluster × marker pairs called, and 3 of 53 calls false.
 - The agent session checks the new tools against the statistics computed directly and the truth of simulated beads, the Excel, Prism, report and event exports read back, a CSV of events opened by path, and `differential_analysis` against diffcyt-DS-limma and the abundance model run in the page, with stimulation's CD25 and HLA-DR on T cells found (27 checks).
 - The R and Python clients' tests run in CI against CytoWeave in headless Chrome: each client's results equal the HTTP API's for the same actions, the connection is found through `remote.json`, exports need the token and never replace a file, plots save as PNG and errors carry CytoWeave's reason; the R package passes R CMD check.
+- The suite now has 310 checks in 41 suites, and the agent session 27 checks. axe-core finds no violations in any of the 43 documentation scenes in either theme (86 pages).
 
 ## 0.5.0 (2026-10-04)
 

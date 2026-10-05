@@ -395,13 +395,12 @@ population), and adds titration and voltage walks for setting up a panel.
    - Not done: titration plates with several antibodies in one file (by well) and the dim-bead
      CV method of the voltage walk are left for later.
 
-## Next (0.6)
+## 0.6.0: the bench, batch by batch (released 2026-10-05)
 
-The order of waves 5–8 (wave 5 released as 0.5.0) comes from `research.md` §8 and a parity and
-differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza,
-SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users asked for in
-2024–2026. Within each wave: trust first, then the daily workbench, then what no single tool
-combines. Waves 7–8 are a plan, to be revised as each wave lands.
+Wave 6 adds what a lab does every week: comparisons with a control and rare-event limits,
+formula channels, MEF units and absolute counts, batch reports with every number traced, Excel
+and Prism, events in from CSV and out as concatenated FCS or AnnData, differential state equal to
+diffcyt in R, and R and Python clients.
 
 ### Wave 6: the bench, batch by batch
 
@@ -540,7 +539,13 @@ combines. Waves 7–8 are a plan, to be revised as each wave lands.
 Left for later: kinetics, plates and titration plates stay in wave 7; drawing a gate from the
 keyboard (V4) stays open.
 
-## Then (0.7–0.8)
+## Next (0.7–0.8)
+
+The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0) comes from `research.md` §8
+and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
+Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
+asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
+single tool combines. Waves 7–8 are a plan, to be revised as each wave lands.
 
 ### Wave 7: plates, migration and the spectral doctor
 
