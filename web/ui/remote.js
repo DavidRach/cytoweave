@@ -2,7 +2,7 @@
 // or scripts through /api/remote/action) are performed here, in the open window, where the user
 // sees them and can undo them. Each action returns { ok, message, data }.
 
-import { channelTransform, computeStatistic, countOf, describePopulation, gateRobustness, population, populationSet } from '../lib/engine.js';
+import { COMPARISONS, channelTransform, computeStatistic, countOf, describePopulation, gateRobustness, population, populationColumns, populationSet } from '../lib/engine.js';
 import { createTransform } from '../lib/transforms.js';
 import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
@@ -82,12 +82,18 @@ export function installRemote(app) {
       ?? params.find((p) => p.marker && p.marker.toLowerCase() === lower) ?? params.find((p) => p.label && p.label.toLowerCase() === lower)
       ?? params.find((p) => p.marker && p.marker.toLowerCase().startsWith(lower));
     if (found) return found.name;
-    for (const name of view.derived.keys()) if (name.toLowerCase() === lower) return name;
-    throw new ActionError(`No channel "${ref}" in ${view.record.name}. Channels: ${params.map((p) => (p.marker ? `${p.name} (${p.marker})` : p.name)).join(', ')}`);
+    // Derived and computed channels (clusters, formulas, calibrated channels) by name.
+    const computed = [...view.computed.keys()].filter((name) => view.hasChannel(name));
+    for (const name of [...view.derived.keys(), ...computed]) if (name.toLowerCase() === lower) return name;
+    throw new ActionError(`No channel "${ref}" in ${view.record.name}. Channels: ${[...params.map((p) => (p.marker ? `${p.name} (${p.marker})` : p.name)), ...computed].join(', ')}`);
   }
 
   async function loadedView(sample) {
-    return data.ensure(sample.id);
+    const view = await data.ensure(sample.id);
+    // Derived channels kept in the library (clusters, maps, QC) arrive after the sample loads.
+    await data.restoreDerived(view);
+    view.syncWorkspace?.(ws());
+    return view;
   }
 
   function populationRows(view) {
@@ -147,9 +153,12 @@ export function installRemote(app) {
         items.push(Object.assign(new File([await response.arrayBuffer()], file.name), { folder: file.folder ?? null }));
       }
       const before = ws().samples.length;
-      await app.importFiles(items);
+      const opened = await app.importFiles(items, { interactive: false });
       const added = ws().samples.slice(before);
-      return { message: `Opened ${items.length} file(s); ${added.length} new sample(s).`, data: { samples: added.map((s) => ({ name: s.name, events: s.eventCount, role: s.role })) } };
+      // CSV files of events: how each was read, each column's kind and scale, and the checks.
+      const csv = opened?.csv ?? [];
+      const csvNote = csv.length ? ` CSV events: ${csv.map((c) => `${c.file} (${c.rows} rows; ${c.columns.length} columns imported${c.dropped ? `; ${c.dropped} rows with missing values left out` : ''}${c.problems.length ? `; ${c.problems.join(' ')}` : ''})`).join('; ')}. Each column's kind, scale and check are in data.csv; tell the user about columns that look wrong (the scales can be changed in the Gate view).` : '';
+      return { message: `Opened ${items.length} file(s); ${added.length} new sample(s).${csvNote}`, data: { samples: added.map((s) => ({ name: s.name, events: s.eventCount, role: s.role })), ...(csv.length ? { csv } : {}) } };
     },
 
     async open_example(args) {
@@ -205,15 +214,208 @@ export function installRemote(app) {
       const samples = w.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : s.role === 'sample' || s.role === 'reference'));
       const gateIds = args.populations?.length ? args.populations.map(resolvePopulation) : w.gates.map((g) => g.id);
       const stat = args.statistic ?? 'freqParent';
+      // Absolute counts need the counting beads; concentration and absolute counts take a dilution.
+      let counting;
+      if (stat === 'absoluteCount') {
+        if (!args.beadPopulation || !(Number(args.beadsPerTube) > 0) || !(Number(args.sampleVolume) > 0)) throw new ActionError('absoluteCount needs beadPopulation (the counting beads\' gate), beadsPerTube and sampleVolume (µL of sample in the tube).');
+        counting = { beadGateId: resolvePopulation(args.beadPopulation), beads: Number(args.beadsPerTube), volume: Number(args.sampleVolume) };
+      }
+      const dilution = args.dilution === undefined || args.dilution === null || args.dilution === '' ? undefined : Number.isFinite(Number(args.dilution)) ? Number(args.dilution) : { field: String(args.dilution) };
+      // Comparison statistics (overton, sed, pbPositive, pbT, ksD) need a control sample.
+      let control;
+      let context = {};
+      if (COMPARISONS.has(stat)) {
+        if (!args.control) throw new ActionError(`${stat} compares each sample with a control sample: name it with control (e.g. an FMO).`);
+        const controlSample = resolveSample(args.control);
+        const controlView = await loadedView(controlSample);
+        control = { sampleId: controlSample.id, ...(args.controlPopulation ? { gateId: resolvePopulation(args.controlPopulation) } : {}) };
+        context = { viewOf: (id) => (id === controlSample.id ? controlView : null) };
+      }
       const rows = [];
       for (const sample of samples) {
         const view = await loadedView(sample);
         const channel = args.channel ? resolveChannel(view, args.channel) : undefined;
         const values = {};
-        for (const id of gateIds) values[id === ROOT ? 'All events' : gatePath(w, id)] = round(computeStatistic(view, w, { stat, gateId: id, channel }), 6);
+        for (const id of gateIds) values[id === ROOT ? 'All events' : gatePath(w, id)] = round(computeStatistic(view, w, { stat, gateId: id, channel, control, counting, dilution }, context), 6);
         rows.push({ sample: sample.name, meta: sample.meta, values });
       }
-      return { message: `${stat}${args.channel ? ` of ${args.channel}` : ''} for ${gateIds.length} population(s) in ${samples.length} sample(s).`, data: { statistic: stat, channel: args.channel, rows } };
+      return { message: `${stat}${args.channel ? ` of ${args.channel}` : ''}${control ? ` against ${args.control}` : ''} for ${gateIds.length} population(s) in ${samples.length} sample(s).`, data: { statistic: stat, channel: args.channel, control: args.control, rows } };
+    },
+
+    async add_formula_channel(args) {
+      const { resolveFormula, evaluateColumns } = await import('../lib/formula.js');
+      const w = ws();
+      const { channelCatalog } = await import('../lib/workspace.js');
+      const catalog = channelCatalog(w).filter((c) => c.type !== 'time');
+      let resolved;
+      try {
+        resolved = resolveFormula(String(args.expression ?? ''), catalog);
+      } catch (error) {
+        throw new ActionError(`${error.message}${Number.isFinite(error.position) ? ` (at character ${error.position + 1})` : ''} Channels go in square brackets by marker or detector, as in [CD4] / [CD8].`);
+      }
+      const name = String(args.name ?? '').trim() || resolved.text.replace(/[[\]]/g, '').slice(0, 40);
+      if (catalog.some((c) => c.name === name)) throw new ActionError(`A channel is already called "${name}".`);
+      const record = { kind: 'formula', name, inputs: resolved.inputs, outputs: [name], params: { expression: resolved.text, source: String(args.expression) } };
+      store.commit(proposeDerived(w, author, record).ws, `${author} proposed the formula channel ${name}`);
+      const sample = w.samples.find((x) => x.id === store.ui.sampleId) ?? w.samples[0];
+      let summary = '';
+      if (sample) {
+        const view = await loadedView(sample);
+        const values = evaluateColumns(resolved.tree, (input) => view.column(input), view.eventCount);
+        const finite = Float64Array.from(values.filter(Number.isFinite)).sort();
+        summary = ` On ${sample.name}: median ${round(finite[Math.floor(finite.length / 2)])}${finite.length < values.length ? `, ${values.length - finite.length} events without a value (division by zero or the log of a value ≤ 0)` : ''}.`;
+      }
+      return { message: `Proposed the formula channel "${name}" = ${resolved.text}, computed for every event of every sample from the compensated values; it can be used in gates, plots and statistics at once.${summary}`, data: { name, expression: resolved.text, inputs: resolved.inputs } };
+    },
+
+    async calibrate_beads(args) {
+      const lib = await import('../lib/calibration.js');
+      const { defaultUnit } = await import('./qc-calibration.js');
+      const w = ws();
+      const beads = resolveSample(args.sample);
+      const view = await loadedView(beads);
+      const given = args.values ?? {};
+      const channels = Object.keys(given).map((c) => resolveChannel(view, c));
+      if (!channels.length) throw new ActionError('Give values: { channel: [value of each level, dimmest first; null for a level without one] } from the beads\' datasheet.');
+      const values = Object.fromEntries(Object.entries(given).map(([c, v]) => [resolveChannel(view, c), v.map((x) => (x === null || x === undefined ? null : Number(x)))]));
+      const clustering = (args.clustering?.length ? args.clustering.map((c) => resolveChannel(view, c)) : channels);
+      const needed = [...new Set([...clustering, ...channels])];
+      const columns = Object.fromEntries(needed.map((c) => [c, view.column(c)]));
+      const scatter = ['FSC-A', 'FSC', 'FSC-H'].find((c) => view.hasChannel(c));
+      const side = ['SSC-A', 'SSC', 'SSC-H'].find((c) => view.hasChannel(c));
+      if (scatter && side) Object.assign(columns, { [scatter]: view.column(scatter), [side]: view.column(side) });
+      let events = null;
+      if (args.population) {
+        const set = populationSet(view, w, resolvePopulation(args.population));
+        events = set === null || set === undefined ? null : typeof set.toIndices === 'function' ? set.toIndices() : set;
+      }
+      const bounds = Object.fromEntries(channels.map((c) => {
+        const p = view.parameters.find((x) => x.name === c);
+        return [c, lib.channelBounds(view.dataset.keywords, p.index, p.range)];
+      }));
+      const units = Object.fromEntries(channels.map((c) => [c, args.unit?.[c] ?? (typeof args.unit === 'string' ? args.unit : defaultUnit(c, view.channelInfo(c)?.marker))]));
+      let result;
+      try {
+        result = lib.calibrateBeads(columns, { channels, values, clustering, events, scatter: scatter && side ? [scatter, side] : null, bounds, unit: units });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const targets = args.applyTo?.length ? args.applyTo.map((ref) => resolveSample(ref).id) : null;
+      const r4 = (v) => (Number.isFinite(v) ? +v.toPrecision(4) : null);
+      const out = {};
+      let next = ws();
+      for (const channel of channels) {
+        const c = result.channels[channel];
+        out[channel] = { unit: units[channel], levels: c.levels.map((l) => ({ events: l.n, median: r4(l.median), value: l.value, used: l.used, ...(l.why ? { why: l.why } : {}) })), slope: r4(c.fit?.m), intercept: r4(c.fit?.b), beadAutofluorescence: r4(c.fit?.autofluorescence), error: c.error ?? undefined };
+        if (c.fit && targets) next = proposeDerived(next, author, lib.calibrationRecord(channel, c, { unit: units[channel], beads: beads.name, samples: targets })).ws;
+      }
+      if (targets) store.commit(next, `${author} proposed calibrated channels from ${beads.name}`);
+      const lines = channels.map((ch) => (out[ch].slope ? `${ch} → ${out[ch].unit}: slope ${out[ch].slope} from ${result.channels[ch].levels.filter((l) => l.used).length} of ${result.levels} levels` : `${ch}: ${out[ch].error}`));
+      return { message: `${beads.name}: ${result.levels} bead levels in ${result.events.length} events. ${lines.join('; ')}.${targets ? ` Proposed "<channel> <unit>" channels for ${targets.length} sample(s).` : ' Give applyTo (the samples acquired with the beads\' settings) to add the calibrated channels.'}`, data: { sample: beads.name, events: result.events.length, channels: out, appliedTo: targets ? targets.length : 0 } };
+    },
+
+    async compare_distributions(args) {
+      const { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } = await import('../lib/distribution.js');
+      const w = ws();
+      if (!args.control) throw new ActionError('Name the control sample (an FMO, isotype or unstained sample, or a reference sample).');
+      const controlSample = resolveSample(args.control);
+      const controlView = await loadedView(controlSample);
+      const names = args.channels?.length ? args.channels : args.channel ? [args.channel] : null;
+      if (!names) throw new ActionError('Name the channel (or channels) to compare.');
+      const channels = names.map((c) => resolveChannel(controlView, c));
+      const populationId = resolvePopulation(args.population);
+      const controlPopulationId = args.controlPopulation ? resolvePopulation(args.controlPopulation) : populationId;
+      const control = populationColumns(controlView, w, controlPopulationId, channels);
+      if (!control || control[0].length < 2) throw new ActionError(`The control's population has fewer than two events.`);
+      const samples = args.samples?.length ? args.samples.map(resolveSample) : w.samples.filter((s) => s.id !== controlSample.id && (s.role === 'sample' || s.role === 'reference'));
+      const r = (v) => (Number.isFinite(v) ? +v.toPrecision(5) : null);
+      const rows = [];
+      for (const sample of samples) {
+        const view = await loadedView(sample);
+        const test = populationColumns(view, w, populationId, channels.map((c) => resolveChannel(view, c)));
+        if (!test || !test[0].length) {
+          rows.push({ sample: sample.name, events: 0, note: 'The population is empty or does not apply.' });
+          continue;
+        }
+        const pb = probabilityBinning(channels.length > 1 ? control : control[0], channels.length > 1 ? test : test[0]);
+        const row = { sample: sample.name, events: test[0].length, probabilityBinning: { T: r(pb.T), pbStat: r(pb.pbStat), percentPositive: r(pb.percentPositive), bins: pb.bins } };
+        if (channels.length === 1) {
+          const sed = sedSubtraction(control[0], test[0]);
+          const ks = ksTest(control[0], test[0]);
+          Object.assign(row, { overton: r(overtonSubtraction(control[0], test[0]).percentPositive), sed: r(sed.percentPositive), enhancedDmax: r(sed.enhancedDmax), ksD: r(ks.D), ksP: ks.p < 1e-300 ? 0 : r(ks.p) });
+        }
+        rows.push(row);
+      }
+      const what = `${channels.join(' × ')} of ${populationId === ROOT ? 'all events' : gatePath(w, populationId)}`;
+      const lines = rows.filter((x) => x.events).map((x) => (channels.length === 1 ? `${x.sample}: ${x.sed}% positive (SED), ${x.overton}% (Overton), T(χ) ${x.probabilityBinning.T}` : `${x.sample}: T(χ) ${x.probabilityBinning.T}, ${x.probabilityBinning.percentPositive}% in excess of the control`));
+      return {
+        message: `${what} against ${controlSample.name}. ${lines.join('; ')}. T(χ) above 4 means the distributions differ (p < 0.01, Roederer 2001); SED is Bagwell's enhanced normalized subtraction, Overton's cumulative subtraction is the K-S Dmax and underestimates the positive fraction. With many events the K-S p-value calls trivial differences significant.`,
+        data: { control: controlSample.name, controlPopulation: controlPopulationId === ROOT ? 'All events' : gatePath(w, controlPopulationId), population: populationId === ROOT ? 'All events' : gatePath(w, populationId), channels, controlEvents: control[0].length, rows },
+      };
+    },
+
+    async rare_events(args) {
+      const { binomialInterval, classifyValue, countPrecision, detectionLimits, eventsNeeded, poissonInterval } = await import('../lib/rare-events.js');
+      const w = ws();
+      const populationId = resolvePopulation(args.population);
+      if (populationId === ROOT) throw new ActionError('Name the rare population (a gate).');
+      const gate = gateById(w, populationId);
+      const statistic = args.statistic === 'count' ? 'count' : 'freqParent';
+      const cv = Number(args.cv) > 0 ? Number(args.cv) : 20;
+      const measure = async (sample) => {
+        const view = await loadedView(sample);
+        const members = populationSet(view, w, populationId);
+        if (members === undefined) return null;
+        const count = countOf(members, view);
+        const parentCount = countOf(populationSet(view, w, gate.parentId ?? ROOT), view);
+        return { count, parentCount, value: statistic === 'count' ? count : parentCount ? (100 * count) / parentCount : Number.NaN };
+      };
+      const r = (v) => (Number.isFinite(v) ? +v.toPrecision(5) : null);
+      let limits = null;
+      if (args.blanks?.length) {
+        const blanks = [];
+        for (const ref of args.blanks) {
+          const m = await measure(resolveSample(ref));
+          if (m) blanks.push(m.value);
+        }
+        const groups = new Map();
+        for (const ref of args.low ?? []) {
+          const sample = resolveSample(ref);
+          const m = await measure(sample);
+          if (!m) continue;
+          const key = args.lowGroupBy ? String(sample.meta?.[args.lowGroupBy] ?? '') : 'low';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(m.value);
+        }
+        limits = detectionLimits(blanks, [...groups.values()], { method: args.method === 'nonparametric' ? 'nonparametric' : 'parametric', cvTarget: cv });
+      }
+      const excluded = new Set([...(args.blanks ?? []), ...(args.low ?? [])].map((ref) => resolveSample(ref).id));
+      const samples = args.samples?.length ? args.samples.map(resolveSample) : w.samples.filter((s) => !excluded.has(s.id) && (s.role === 'sample' || s.role === 'reference'));
+      const rows = [];
+      for (const sample of samples) {
+        const m = await measure(sample);
+        if (!m) {
+          rows.push({ sample: sample.name, note: 'The population does not apply.' });
+          continue;
+        }
+        const [lo, hi] = poissonInterval(m.count);
+        const [flo, fhi] = binomialInterval(m.count, m.parentCount);
+        const need = eventsNeeded(cv, m.parentCount ? (100 * m.count) / m.parentCount : null);
+        const row = { sample: sample.name, count: m.count, countInterval: [r(lo), r(hi)], parentEvents: m.parentCount, percentOfParent: r((100 * m.count) / m.parentCount), percentInterval: [r(100 * flo), r(100 * fhi)], countingCV: r(countPrecision(m.count, m.parentCount)), parentEventsForTargetCV: need.parentEvents };
+        if (limits) {
+          const poissonLimit = statistic === 'count' ? need.events : (100 * need.events) / m.parentCount;
+          const loq = Math.max(...[limits.loq, limits.lod, poissonLimit].filter(Number.isFinite));
+          row.lloq = r(loq);
+          row.status = classifyValue(m.value, { lob: limits.lob, loq });
+        }
+        rows.push(row);
+      }
+      const name = gatePath(w, populationId);
+      const limitText = limits ? ` Limit of blank ${r(limits.lob)}${statistic === 'count' ? ' events' : '%'} from ${limits.blankCount} blank(s)${Number.isFinite(limits.lod) ? `, limit of detection ${r(limits.lod)}` : ''}; each sample's lower limit of quantification is the larger of the limit of detection and the ${eventsNeeded(cv).events} events that give a ${cv}% counting CV.${limits.notes.length ? ` ${limits.notes.join(' ')}` : ''}` : '';
+      return {
+        message: `${name}: counts with exact Poisson 95% intervals, ${statistic === 'count' ? 'counts' : 'frequencies'} with exact binomial intervals, and the parent events needed for a ${cv}% CV (${eventsNeeded(cv).events} events of the population).${limitText}`,
+        data: { population: name, statistic, targetCV: cv, limits: limits && { method: limits.method, lob: r(limits.lob), lod: r(limits.lod), loq: r(limits.loq), blanks: limits.blankCount, blankMean: r(limits.blankMean), blankSD: r(limits.blankSD), lowSD: r(limits.lowSD), lowGroups: limits.lowGroups.map((g) => ({ n: g.n, mean: r(g.mean), sd: r(g.sd), cv: r(g.cv) })), notes: limits.notes }, rows },
+      };
     },
 
     async render_plot(args) {
@@ -719,11 +921,12 @@ export function installRemote(app) {
       const exporter = await import('./figure-export.js');
       const provenance = args.provenance !== false;
       const file = extension === '.svg' ? await exporter.figureSVG(app, fig, { provenance }) : extension === '.png' ? await exporter.figurePNG(app, fig, { provenance }) : await exporter.figurePDF(app, fig, { provenance });
-      return { file, message: `The figure "${fig.name}" as ${extension.slice(1).toUpperCase()}${extension === '.pdf' ? ' (300 dpi)' : extension === '.png' ? ' (3×)' : ''}${provenance ? ', carrying the analysis behind its plots (opening it in CytoWeave shows what changed since)' : ''}.${fig.proposal ? ' The figure is still part of your proposal.' : ''}` };
+      return { file, message: `The figure "${fig.name}" as ${extension.slice(1).toUpperCase()}${extension === '.pdf' ? ' (vector)' : extension === '.png' ? ' (3×)' : ''}${provenance ? ', carrying the analysis behind its plots (opening it in CytoWeave shows what changed since)' : ''}.${fig.proposal ? ' The figure is still part of your proposal.' : ''}` };
     },
 
     async export_table(args) {
-      const extension = requireExtension(args.path, ['.csv', '.tsv'], 'a table');
+      const extension = requireExtension(args.path, ['.csv', '.tsv', '.xlsx', '.pzfx'], 'a table');
+      if (extension === '.xlsx' || extension === '.pzfx') return exportSpreadsheet(args, extension);
       const table = await actions.statistics_table(args);
       const separator = extension === '.tsv' ? '\t' : ',';
       const quote = (v) => {
@@ -735,6 +938,77 @@ export function installRemote(app) {
       const columns = rows.length ? Object.keys(rows[0].values) : [];
       const lines = [['Sample', ...fields, ...columns].map(quote).join(separator), ...rows.map((r) => [r.sample, ...fields.map((f) => r.meta?.[f] ?? ''), ...columns.map((c) => r.values[c])].map(quote).join(separator))];
       return { file: `${lines.join('\n')}\n`, message: `${table.message} ${rows.length} rows, ${columns.length} population column${columns.length === 1 ? '' : 's'}.` };
+    },
+
+    async export_events(args) {
+      const extension = requireExtension(args.path, ['.fcs', '.zip', '.h5ad'], 'events (.fcs: the samples concatenated; .zip: an FCS file per sample; .h5ad: AnnData)');
+      const w = ws();
+      const group = args.group ? w.groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase()) : null;
+      if (args.group && !group) throw new ActionError(`No group "${args.group}". Groups: ${w.groups.map((g) => g.name).join(', ') || 'none'}.`);
+      const sampleIds = args.samples?.length ? args.samples.map((x) => resolveSample(x).id) : w.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : s.role === 'sample')).map((s) => s.id);
+      if (!sampleIds.length) throw new ActionError('No samples to export.');
+      const count = Number(args.eventsPerSample);
+      const fraction = Number(args.fraction);
+      if (args.eventsPerSample !== undefined && args.fraction !== undefined) throw new ActionError('Give eventsPerSample or fraction, not both.');
+      if (args.eventsPerSample !== undefined && !(count > 0)) throw new ActionError('eventsPerSample must be a positive number.');
+      if (args.fraction !== undefined && !(fraction > 0 && fraction <= 1)) throw new ActionError('fraction is a share of each sample\'s events, between 0 and 1.');
+      const downsample = args.eventsPerSample !== undefined ? { mode: 'count', value: count, seed: Number(args.seed) || 1 } : args.fraction !== undefined ? { mode: 'fraction', value: fraction, seed: Number(args.seed) || 1 } : { mode: 'none' };
+      let channels;
+      if (args.channels?.length) {
+        const view = await loadedView(w.samples.find((s) => s.id === sampleIds[0]));
+        channels = args.channels.map((c) => resolveChannel(view, c));
+      }
+      const format = extension === '.h5ad' ? 'h5ad' : extension === '.zip' ? 'zip' : 'fcs';
+      if (args.values && !['raw', 'compensated'].includes(args.values)) throw new ActionError('values is raw or compensated.');
+      let out;
+      try {
+        out = await app.buildEventsExport({ sampleIds, populationId: args.population ? resolvePopulation(args.population) : ROOT, downsample, format, values: args.values, channels, xValues: args.x === 'compensated' ? 'compensated' : 'arcsinh', cofactor: args.cofactor ? Number(args.cofactor) : undefined });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const r = out.report;
+      const what = format === 'h5ad' ? `AnnData: X ${r.events} events × ${r.X.length} channels (${r.values === 'arcsinh' ? `arcsinh, cofactor ${r.cofactor}` : 'compensated values'}); obs ${r.obs.join(', ')}${r.obsm.length ? `; obsm ${r.obsm.join(', ')}` : ''}`
+        : format === 'zip' ? `${r.samples.length} FCS files (raw values with each sample's spillover)`
+          : `one FCS file of ${r.events} events: ${r.channels.length} channels (${r.values} values${r.spillover ? ', with the spillover matrix' : ''}), SampleID numbering the samples and SourceEvent each event's index in its own file${r.dropped.length ? `; left out, as not in every sample: ${r.dropped.join(', ')}` : ''}`;
+      return { file: out.bytes, message: `${what}. ${r.samples.map((x) => `${x.sample} ${x.events} of ${x.of}`).join(', ')}.${out.notes.length ? ` ${out.notes.join(' ')}` : ''}`, data: { report: r, notes: out.notes } };
+    },
+
+    async export_report(args) {
+      const extension = requireExtension(args.path, ['.pdf', '.pptx'], 'a report');
+      const figures = ws().figures;
+      if (!figures.length) throw new ActionError('The workspace has no figures; build_figure or apply_template makes one.');
+      let fig = args.figure ? figures.find((f) => f.name.toLowerCase() === String(args.figure).toLowerCase()) ?? figures.find((f) => f.name.toLowerCase().includes(String(args.figure).toLowerCase())) : figures.at(-1);
+      if (!fig) throw new ActionError(`No figure "${args.figure}". Figures: ${figures.map((f) => f.name).join(', ')}.`);
+      const { reportFields } = await import('../lib/reports.js');
+      const by = args.by ? String(args.by) : fig.batch?.by ?? 'sample';
+      const fields = reportFields(ws());
+      const field = by.toLowerCase() === 'sample' ? 'sample' : fields.find((f) => f.toLowerCase() === by.toLowerCase());
+      if (!field) throw new ActionError(`by is sample or an annotation field; the samples have ${fields.length ? fields.join(', ') : 'no annotations (annotate_samples sets them)'}.`);
+      const group = args.group ? ws().groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase()) : null;
+      if (args.group && !group) throw new ActionError(`No group "${args.group}". Groups: ${ws().groups.map((g) => g.name).join(', ') || 'none'}.`);
+      const sampleId = args.sample ? resolveSample(args.sample).id : undefined;
+      // A table to list on each page, below the plots, when the figure has none.
+      if (args.table && !fig.items.some((i) => i.kind === 'stats')) {
+        const table = ws().tables.find((t) => t.name.toLowerCase() === String(args.table).toLowerCase());
+        if (!table) throw new ActionError(`No table "${args.table}". Tables: ${ws().tables.map((t) => t.name).join(', ') || 'none'}.`);
+        const bottom = Math.max(0, ...fig.items.map((i) => i.y + i.h));
+        fig = { ...fig, height: Math.max(fig.height, bottom + 240), items: [...fig.items, { id: 'agent-stats', kind: 'stats', x: 40, y: bottom + 20, w: fig.width - 80, h: 200, tableId: table.id, rows: 'page', size: 11 }] };
+      }
+      const exporter = await import('./figure-export.js');
+      const options = { by: field, groupId: group?.id ?? null, ...(sampleId ? { sampleId } : {}), provenance: args.provenance !== false };
+      let out;
+      try {
+        out = extension === '.pptx' ? await exporter.reportPPTX(app, fig, options) : await exporter.reportPDF(app, fig, options);
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const { report, trace } = out;
+      const fromTables = trace.filter((t) => t.source === 'table').length;
+      return {
+        file: out.bytes,
+        message: `"${fig.name}" by ${field}: ${report.pages.length} page${report.pages.length === 1 ? '' : 's'} as ${extension === '.pptx' ? 'a PowerPoint deck (statistics as native tables)' : 'a PDF'}; ${trace.length} numbers traced (${fromTables} to table columns, ${trace.length - fromTables} gate labels to their gates' % of parent)${options.provenance ? ', with the analysis and the record embedded' : ''}.${report.notes.length ? ` Notes: ${report.notes.join(' ')}` : ''}`,
+        data: { pages: report.pages.slice(0, 100).map((p) => ({ page: p.index + 1, label: p.label, samples: p.sampleIds.map((id) => ws().samples.find((x) => x.id === id)?.name) })), notes: report.notes, numbers: trace.length },
+      };
     },
 
     async list_templates() {
@@ -933,11 +1207,20 @@ export function installRemote(app) {
       const field = String(args.groupBy);
       const samples = w.samples.filter((s) => (s.role === 'sample' || s.role === 'reference') && s.meta?.[field] !== undefined && s.meta[field] !== '');
       if (!samples.length) throw new ActionError(`No sample has the metadata field "${field}". Annotate samples first (fields in use: ${[...new Set(w.samples.flatMap((s) => Object.keys(s.meta ?? {})))].join(', ') || 'none'}).`);
+      let control;
+      let context = {};
+      if (COMPARISONS.has(stat)) {
+        if (!args.control) throw new ActionError(`${stat} compares each sample with a control sample: name it with control.`);
+        const controlSample = resolveSample(args.control);
+        const controlView = await loadedView(controlSample);
+        control = { sampleId: controlSample.id };
+        context = { viewOf: (sampleId) => (sampleId === controlSample.id ? controlView : null) };
+      }
       const groups = new Map();
       for (const sample of samples) {
         const view = await loadedView(sample);
         const channel = args.channel ? resolveChannel(view, args.channel) : undefined;
-        const value = computeStatistic(view, w, { stat, gateId: id, channel });
+        const value = computeStatistic(view, w, { stat, gateId: id, channel, control }, context);
         if (!Number.isFinite(value)) continue;
         const key = String(sample.meta[field]);
         if (!groups.has(key)) groups.set(key, []);
@@ -971,6 +1254,106 @@ export function installRemote(app) {
       const label = `${stat}${args.channel ? ` of ${args.channel}` : ''} of ${id === ROOT ? 'all events' : gatePath(w, id)}`;
       const clean = JSON.parse(JSON.stringify(tests, (k, v) => (typeof v === 'number' ? round(v, 6) : v)));
       return { message: `${label} by ${field}: ${summary.map((s) => `${s.group} median ${s.median} (n=${s.n})`).join(' vs ')}${clean[0]?.p !== undefined ? `; ${clean[0].method} p = ${clean[0].p}` : ''}. Each sample is one observation.`, data: { measure: label, groupBy: field, pairBy: args.pairBy, groups: summary, tests: clean } };
+    },
+
+    // Differential state (diffcyt-DS-limma: marker medians per cluster or population and sample)
+    // or abundance (cluster counts, quasi-binomial GLM) between groups of samples.
+    async differential_analysis(args) {
+      const differential = await import('../lib/differential.js');
+      const hypothesis = await import('../lib/hypothesis.js');
+      const w = ws();
+      const test = args.test ?? 'state';
+      if (!['state', 'abundance'].includes(test)) throw new ActionError('test is "state" (marker medians) or "abundance" (cluster frequencies).');
+      const field = String(args.groupBy ?? '');
+      const inGroups = w.samples.filter((s) => (s.role === 'sample' || s.role === 'reference') && s.meta?.[field] !== undefined && String(s.meta[field]).trim() !== '');
+      if (!inGroups.length) throw new ActionError(`No sample has the metadata field "${field}". Annotate samples first (fields in use: ${[...new Set(w.samples.flatMap((s) => Object.keys(s.meta ?? {})))].join(', ') || 'none'}).`);
+      const levels = args.groups?.length ? args.groups.map(String) : [...new Set(inGroups.map((s) => String(s.meta[field])))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+      if (levels.length < 2) throw new ActionError(`"${field}" needs at least two groups; it has ${levels.join(', ')}.`);
+      const contrast = args.contrast !== undefined ? String(args.contrast) : levels[1];
+      if (!levels.includes(contrast) || contrast === levels[0]) throw new ActionError(`contrast must be one of ${levels.slice(1).join(', ')} (tested against ${levels[0]}, the first group).`);
+      let chosen = inGroups.filter((s) => levels.includes(String(s.meta[field])));
+      // The views themselves are kept: a large cohort can push early samples out of memory.
+      let views = [];
+      for (const sample of chosen) views.push(await loadedView(sample));
+      const pairField = args.pairBy ? String(args.pairBy) : null;
+      const covariates = (args.covariates ?? []).map(String).filter((f) => f !== field);
+      const parentId = args.parent ? resolvePopulation(args.parent) : ROOT;
+      let units;
+      let unitName;
+      let channel = null;
+      let unitsLabel;
+      if (args.populations?.length) {
+        if (test === 'abundance') throw new ActionError('Differential abundance tests clusters; for populations use compare (a frequency per sample).');
+        const gateIds = args.populations.map((p) => resolvePopulation(p));
+        // Only the samples where the populations apply take part (a gate beneath a QC result
+        // applies only to the samples checked).
+        const apply = views.map((view) => gateIds.some((id) => population(view, w, id) !== undefined));
+        chosen = chosen.filter((_, i) => apply[i]);
+        views = views.filter((_, i) => apply[i]);
+        if (chosen.length < 3) throw new ActionError(`The populations apply to only ${chosen.length} of the samples in these groups.`);
+        units = { kind: 'populations', gateIds };
+        unitName = (id) => (id === ROOT ? 'All events' : gatePath(w, id));
+        unitsLabel = `${gateIds.length} populations`;
+      } else {
+        const channels = differential.clusterChannels(w, app.data.views.values());
+        channel = args.clusters ? channels.find((c) => c.name.toLowerCase() === String(args.clusters).toLowerCase()) : channels[0];
+        if (!channel) throw new ActionError(channels.length ? `No cluster channel "${args.clusters}". Cluster channels: ${channels.map((c) => c.name).join(', ')}.` : 'There is no cluster channel: cluster the samples first (explore), or test populations.');
+        // Only the samples that carry the clusters (with events in the parent) take part.
+        const carry = views.map((view) => differential.clusterCounts(view, w, channel.name, parentId)?.total > 0);
+        chosen = chosen.filter((_, i) => carry[i]);
+        views = views.filter((_, i) => carry[i]);
+        if (chosen.length < 3) throw new ActionError(`Only ${chosen.length} of the samples in these groups carry the channel "${channel.name}" with events in the parent population.`);
+        const labels = new Set();
+        for (const view of views) for (const k of differential.clusterCounts(view, w, channel.name, parentId)?.counts.keys() ?? []) labels.add(k);
+        units = { kind: 'clusters', channel: channel.name, parentId, labels: [...labels].sort((a, b) => a - b) };
+        unitName = (k) => differential.clusterNameOf(channel.record, k);
+        unitsLabel = `${units.labels.length} clusters (${channel.name}${parentId !== ROOT ? ` of ${gatePath(w, parentId)}` : ''})`;
+      }
+      const designSamples = chosen.map((s) => ({ group: String(s.meta[field]), meta: s.meta }));
+      let built;
+      try {
+        built = differential.buildDesign(designSamples, { levels, contrast, pairField, covariates });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const finish = (rows, extra) => {
+        const sorted = [...rows].sort((a, b) => (Number.isFinite(a.p) ? a.p : 2) - (Number.isFinite(b.p) ? b.p : 2));
+        const limit = Math.max(1, Math.min(500, Number(args.limit ?? 40)));
+        const significant = rows.filter((r) => r.padj < 0.05).length;
+        return { sorted: sorted.slice(0, limit), significant, total: rows.length, extra };
+      };
+      if (test === 'abundance') {
+        const counts = views.map((view) => differential.clusterCounts(view, w, units.channel, parentId));
+        const da = hypothesis.differentialAbundance(counts.map((c) => units.labels.map((k) => c?.counts.get(k) ?? 0)), counts.map((c) => c?.total ?? 0), built.design, { coefficient: built.coefficient, clusterNames: units.labels.map(unitName) });
+        const rows = da.results.map((r, i) => ({ cluster: r.cluster, label: units.labels[i], log2OddsRatio: round(r.log2OddsRatio), p: r.p, padj: r.padj, note: r.note }));
+        const out = finish(rows);
+        const methods = `Differential abundance of ${unitsLabel} between ${contrast} and ${levels[0]} was tested per cluster with a quasi-binomial generalized linear model (logit link; cluster cells out of ${parentId === ROOT ? 'all events' : gatePath(w, parentId)} per sample; design ~ group${built.covariates.length ? ` + ${built.covariates.join(' + ')}` : ''}) by likelihood-ratio F test, approximating diffcyt (Weber et al. 2019), with p-values adjusted across clusters by the Benjamini–Hochberg procedure, in CytoWeave ${app.version ?? ''}.`;
+        return {
+          message: `Differential abundance of ${unitsLabel}, ${contrast} vs ${levels[0]} (design ${built.design.names.join(' + ')}; ${chosen.length} samples): ${out.significant} of ${out.total} clusters at adjusted p < 0.05${out.sorted[0] ? `; lowest p: ${out.sorted[0].cluster} (log2 odds ratio ${out.sorted[0].log2OddsRatio}, p ${round(out.sorted[0].p, 3)}, adjusted ${round(out.sorted[0].padj, 3)})` : ''}.`,
+          data: { test, groupBy: field, groups: levels, contrast, design: built.design.names, samples: chosen.map((s) => s.name), significant: out.significant, tested: out.total, rows: out.sorted.map((r) => ({ ...r, p: round(r.p, 6), padj: round(r.padj, 6) })), methods },
+        };
+      }
+      const { candidates, state } = differential.stateMarkerCandidates(views[0], channel?.record ?? null);
+      const markers = args.markers?.length ? args.markers.map((m) => resolveChannel(views[0], m)) : state.map((c) => c.name);
+      if (!markers.length) throw new ActionError('No markers to test: name them with markers.');
+      const markerName = (name) => candidates.find((c) => c.name === name)?.marker || views[0].parameters.find((p) => p.name === name)?.marker || name;
+      const cofactor = Number(args.cofactor ?? differential.defaultCofactor(chosen[0]));
+      const perSample = views.map((view) => differential.stateMedians(view, w, units, markers, cofactor));
+      const minCells = Number(args.minCells ?? 3);
+      let result;
+      try {
+        result = differential.differentialState({ counts: perSample.map((p) => p.counts), medians: perSample.map((p) => p.medians), design: built.design, coefficient: built.coefficient, units: perSample[0].units, markers, minCells, minSamples: args.minSamples !== undefined ? Number(args.minSamples) : null });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const rows = result.rows.map((r) => ({ [units.kind === 'clusters' ? 'cluster' : 'population']: unitName(r.unit), marker: markerName(r.marker), channel: r.marker, logFC: round(r.logFC), average: round(r.aveExpr), t: round(r.t), p: r.p, padj: r.padj, samples: r.samples }));
+      const out = finish(rows);
+      const methods = differential.stateMethods({ unitsLabel, markers, contrastLabel: contrast, referenceLabel: levels[0], covariates: built.covariates, cofactor, minCells, minSamples: result.minSamples, tested: rows.length, version: app.version ?? '' });
+      const top = out.sorted[0];
+      return {
+        message: `Differential state of ${markers.length} markers in ${unitsLabel}, ${contrast} vs ${levels[0]} (diffcyt-DS-limma; design ${built.design.names.join(' + ')}; ${chosen.length} samples; arcsinh cofactor ${cofactor}): ${out.significant} of ${out.total} ${units.kind === 'clusters' ? 'cluster' : 'population'} × marker tests at adjusted p < 0.05${top ? `; lowest p: ${top.marker} in ${top.cluster ?? top.population} (difference of medians ${top.logFC}, p ${round(top.p, 3)}, adjusted ${round(top.padj, 3)})` : ''}${result.filtered.length ? `. Left out (fewer than ${minCells} cells in more than half the samples): ${result.filtered.map(unitName).join(', ')}` : ''}.`,
+        data: { test, groupBy: field, groups: levels, contrast, design: built.design.names, samples: chosen.map((s) => s.name), markers: markers.map(markerName), cofactor, kept: result.kept.map(unitName), filtered: result.filtered.map(unitName), priorDf: round(result.dfPrior), significant: out.significant, tested: out.total, rows: out.sorted.map((r) => ({ ...r, p: round(r.p, 6), padj: round(r.padj, 6) })), methods, citations: differential.STATE_CITATIONS },
+      };
     },
 
     async check_robustness(args) {
@@ -1027,6 +1410,51 @@ export function installRemote(app) {
   };
 
   // The extension of an export's path, which must be one of `allowed`.
+  // Excel and Prism exports of a Tables table, every table, or a statistic given as statistics_table
+  // takes it (made into a table of one column per population, not kept).
+  async function exportSpreadsheet(args, extension) {
+    const w = ws();
+    let tables;
+    if (args.table) {
+      const table = w.tables.find((t) => t.name.toLowerCase() === String(args.table).toLowerCase());
+      if (!table) throw new ActionError(`No table "${args.table}". Tables: ${w.tables.map((t) => t.name).join(', ') || 'none'}.`);
+      tables = [table];
+    } else if (args.statistic || args.populations?.length || extension === '.pzfx' || !w.tables.length) {
+      const group = args.group ? w.groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase()) : null;
+      if (args.group && !group) throw new ActionError(`No group "${args.group}".`);
+      const stat = args.statistic ?? 'freqParent';
+      const gateIds = args.populations?.length ? args.populations.map(resolvePopulation) : w.gates.map((g) => g.id);
+      const first = w.samples.find((x) => (group ? group.sampleIds.includes(x.id) : x.role === 'sample'));
+      const channel = args.channel && first ? resolveChannel(await loadedView(first), args.channel) : undefined;
+      const control = args.control ? { sampleId: resolveSample(args.control).id, ...(args.controlPopulation ? { gateId: resolvePopulation(args.controlPopulation) } : {}) } : undefined;
+      const counting = args.beadPopulation ? { beadGateId: resolvePopulation(args.beadPopulation), beads: Number(args.beadsPerTube), volume: Number(args.sampleVolume) } : undefined;
+      const dilution = args.dilution === undefined || args.dilution === null || args.dilution === '' ? undefined : Number.isFinite(Number(args.dilution)) ? Number(args.dilution) : { field: String(args.dilution) };
+      tables = [{ id: 'agent-table', name: `${stat}${args.channel ? ` ${args.channel}` : ''}`, groupId: group?.id ?? null, includeControls: Boolean(group), columns: gateIds.map((id, k) => ({ id: `c${k}`, gateId: id, stat, channel, control, counting, ...(dilution !== undefined ? { dilution } : {}) })) }];
+    } else {
+      tables = w.tables;
+    }
+    const { tableSamples, tableControlSamples } = await import('../lib/tables.js');
+    for (const table of tables) {
+      const ids = new Set([...tableSamples(w, table), ...tableControlSamples(w, table)].map((x) => x.id));
+      for (const c of table.columns) for (const id of [...(c.limits?.blankIds ?? []), ...(c.limits?.lowIds ?? [])]) ids.add(id);
+      for (const id of ids) await loadedView(w.samples.find((x) => x.id === id));
+    }
+    const viewOf = (id) => app.data.view(id);
+    if (extension === '.xlsx') {
+      const { tablesWorkbook } = await import('../lib/spreadsheets.js');
+      const { writeXLSX } = await import('../lib/xlsx.js');
+      const book = tablesWorkbook(w, tables, viewOf, { version: app.version });
+      return { file: await writeXLSX(book.sheets, { title: `${w.name} tables` }), message: `Excel workbook: ${tables.map((t) => t.name).join(', ')} (${book.traced.length} values in full precision), with sheets Columns (each column's definition), Samples (files and checksums), Populations and About (with the methods).` };
+    }
+    const fields = [...new Set(w.samples.flatMap((x) => Object.keys(x.meta ?? {})))];
+    const groupBy = args.groupBy ? fields.find((f) => f.toLowerCase() === String(args.groupBy).toLowerCase()) : null;
+    if (args.groupBy && !groupBy) throw new ActionError(`No annotation "${args.groupBy}". Annotations: ${fields.join(', ') || 'none'}.`);
+    const { prismTables } = await import('../lib/spreadsheets.js');
+    const { writePZFX } = await import('../lib/pzfx.js');
+    const out = prismTables(w, tables[0], viewOf, { groupBy });
+    return { file: writePZFX(out.tables, { version: app.version, project: w.name, notes: `Exported from CytoWeave by ${author}: ${w.name}, ${tables[0].name}.` }), message: `Prism project: ${out.tables.length} table${out.tables.length === 1 ? '' : 's'} (${tables[0].name}${groupBy ? `, and one column table per statistic grouped by ${groupBy}` : ''}).${out.notes.length ? ` ${out.notes.join(' ')}` : ''}` };
+  }
+
   function requireExtension(path, allowed, what) {
     const match = /\.[a-z0-9]+$/i.exec(String(path ?? ''));
     const extension = match ? match[0].toLowerCase() : '';

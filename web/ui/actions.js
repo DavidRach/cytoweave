@@ -4,8 +4,9 @@
 import { prefs } from './storage.js';
 import { h, icon, clear, downloadBlob, formatCount, formatPercent } from './dom.js';
 import { showMenu, showDialog, promptDialog, confirmDialog, toast, progressToast } from './overlays.js';
-import { buildPlotScene, drawScene, sceneToSVG } from '../lib/plot.js';
-import { gateOutline, newId } from '../lib/gates.js';
+import { drawScene, sceneToSVG } from '../lib/plot.js';
+import { exportScene } from '../lib/scene.js';
+import { newId } from '../lib/gates.js';
 import { channelTransform, countOf, gateRobustness, population, populationSet } from '../lib/engine.js';
 import { createTransform, describeTransform, estimateLogicleW, applyTransform } from '../lib/transforms.js';
 import { writeFCS, readSpillover } from '../lib/fcs.js';
@@ -17,9 +18,7 @@ import {
   channelLabel,
   clearOverride,
   copyGateSubtree,
-  effectiveGeometry,
   gateById,
-  gateChildren,
   gatePath,
   removeGate,
   setCollection,
@@ -164,37 +163,9 @@ export function installActions(app) {
     downloadBlob(record ? new Blob([(await import('../lib/figure-provenance.js')).embedPNG(new Uint8Array(await blob.arrayBuffer()), record)], { type: 'image/png' }) : blob, `${base}.png`);
   };
 
-  // A complete scene (events, gates with labels) for export or figures.
+  // A complete scene (events, gates with labels) for export or figures, in the chosen colormap.
   function buildExportScene(ws, view, spec, options) {
-    const dims = [{ channel: spec.x, transform: channelTransform(ws, view, spec.x) }];
-    const oneD = !spec.y || spec.type === 'histogram' || spec.type === 'cdf';
-    dims.push(oneD ? null : { channel: spec.y, transform: channelTransform(ws, view, spec.y) });
-    const indices = populationSet(view, ws, spec.populationId ?? ROOT);
-    const xs = view.scaled(spec.x, dims[0].transform);
-    const ys = dims[1] ? view.scaled(spec.y, dims[1].transform) : null;
-    const parentId = spec.populationId === ROOT ? null : spec.populationId;
-    const parentCount = countOf(indices, view);
-    const gates = [];
-    for (const gate of gateChildren(ws, parentId)) {
-      if (gate.type === 'boolean' || gate.type === 'category') continue;
-      const outline = gateOutline(gate, effectiveGeometry(gate, view.id), dims);
-      if (!outline) continue;
-      const members = populationSet(view, ws, gate.id);
-      gates.push({ id: gate.id, outline, name: gate.name, label: members === undefined ? '' : formatPercent((100 * countOf(members, view)) / (parentCount || 1)), color: shownColor(ws, gate), level: 0.55 });
-    }
-    const popName = gateById(ws, spec.populationId)?.name ?? 'All events';
-    return buildPlotScene({
-      width: options.width,
-      height: options.height,
-      type: oneD ? (spec.type === 'cdf' ? 'cdf' : 'histogram') : spec.type,
-      x: { channel: spec.x, transform: dims[0].transform, label: channelLabel(ws, spec.x) },
-      y: dims[1] ? { channel: spec.y, transform: dims[1].transform, label: channelLabel(ws, spec.y) } : undefined,
-      xs,
-      ys,
-      indices: indices ?? null,
-      gates,
-      options: { ...(spec.options ?? {}), theme: options.theme, title: options.title ?? popName, colormap: spec.options?.colormap ?? store.ui.colormap, color: shownColor(ws, gateById(ws, spec.populationId)) ?? '#4c78e0' },
-    });
+    return exportScene(ws, view, spec, { ...options, colormap: store.ui.colormap });
   }
   app.buildExportScene = buildExportScene;
 
@@ -224,6 +195,7 @@ export function installActions(app) {
       { label: 'Export events as FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs') },
       { label: 'Export events as de-identified FCS…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'fcs', { deidentify: true }) },
       { label: 'Export events as CSV…', icon: 'download', disabled: !sampleId, onSelect: () => exportPopulation(gateId, sampleId, 'csv') },
+      { label: 'Export events of several samples…', icon: 'download', onSelect: () => app.exportEventsDialog({ populationId: gateId ?? ROOT }) },
       { label: 'Add statistics to a table', icon: 'table', onSelect: () => { app.setMode('tables'); setTimeout(() => app.addPopulationToTable?.(gateId), 50); } },
       '-',
       { section: 'Model this population' },

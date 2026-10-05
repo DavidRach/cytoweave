@@ -1,6 +1,6 @@
 // Comparing single-parameter (and low-dimensional) distributions between samples: probability
-// binning, Overton subtraction, Kolmogorov–Smirnov, Earth Mover's distance, Jensen–Shannon
-// divergence and kernel density estimates.
+// binning, Overton subtraction, SED (enhanced normalized subtraction), Kolmogorov–Smirnov, Earth
+// Mover's distance, Jensen–Shannon divergence and kernel density estimates.
 //
 // Inputs are event values as Float32Array/Float64Array/arrays; multivariate inputs are arrays of
 // columns ([Float32Array, …], column-major as dataset.data). Distances that depend on the axis
@@ -28,12 +28,18 @@ function isMultivariate(data) {
 //   χ² = Σᵢ (cᵢ − sᵢ)² / (cᵢ + sᵢ)        (cᵢ, sᵢ = fractions of control and test events)
 //   T(χ) = max(0, (χ² − B/K) / (√B / K)),  K = min(N_control, N_test), B = number of bins
 // where B/K and √B/K are the expected value and spread of χ² for two samples drawn from the same
-// distribution (Roederer, Treister, Hardy & Herzenberg 2001, Cytometry 45:37–46,
+// distribution (Roederer, Treister, Moore & Herzenberg 2001, Cytometry 45:37–46,
 // doi:10.1002/1097-0320(20010901)45:1<37::AID-CYTO1142>3.0.CO;2-E). T(χ) > 4 corresponds roughly
-// to p < 0.01. `percentPositive` = 100·Σᵢ max(0, sᵢ − cᵢ): the share of test events in excess of
-// the control's probability mass, the probability-binning analog of Overton subtraction.
+// to p < 0.01. Baggerly (2001, Cytometry 45:141–150) showed that 2·N_c·N_t/(N_c + N_t)·χ² follows
+// a χ² distribution with B − 1 degrees of freedom when the samples agree; `pbStat` is that value
+// standardized, (2·N_c·N_t/(N_c + N_t)·χ² − (B − 1)) / √(2(B − 1)), as flowStats'
+// calcPBChiSquare reports it. `percentPositive` = 100·Σᵢ max(0, sᵢ − cᵢ): the share of test events
+// in excess of the control's probability mass, the probability-binning analog of Overton
+// subtraction.
 // Options: bins (default: power of two ≤ N_control/10, at most 1024 in d dimensions and 256 in
-// 1-D), minPerBin (10).
+// 1-D), minPerBin (10); or minEvents, which instead splits every bin holding more than minEvents
+// control events, in 1-D too, as flowStats' proBin does (a bin whose events all lie on one side
+// of its median is not split).
 export function probabilityBinning(control, test, options = {}) {
   const multi = isMultivariate(control);
   const controlColumns = multi ? control : [control];
@@ -43,14 +49,13 @@ export function probabilityBinning(control, test, options = {}) {
   const nc = controlColumns[0].length;
   const nt = testColumns[0].length;
   if (nc < 2 || nt < 1) throw new Error('Probability binning needs events in both samples.');
-  const minPerBin = options.minPerBin ?? 10;
-  const cap = dims === 1 ? 256 : 1024;
-  let bins = options.bins ?? Math.min(cap, 2 ** Math.max(1, Math.floor(Math.log2(nc / minPerBin))));
-  bins = Math.max(2, Math.min(bins, nc));
+  let bins;
   let controlCounts;
-  let testCounts;
-  let assignTest;
-  if (dims === 1) {
+  let leafOf;
+  if (dims === 1 && !options.minEvents) {
+    const minPerBin = options.minPerBin ?? 10;
+    bins = options.bins ?? Math.min(256, 2 ** Math.max(1, Math.floor(Math.log2(nc / minPerBin))));
+    bins = Math.max(2, Math.min(bins, nc));
     const sorted = sortedCopy(controlColumns[0]);
     const cuts = new Float64Array(bins - 1);
     for (let b = 1; b < bins; b += 1) cuts[b - 1] = quantileSorted(sorted, b / bins);
@@ -66,34 +71,35 @@ export function probabilityBinning(control, test, options = {}) {
     };
     controlCounts = new Float64Array(bins);
     for (let i = 0; i < sorted.length; i += 1) controlCounts[binOf(sorted[i])] += 1;
-    assignTest = binOf;
+    leafOf = (e) => binOf(testColumns[0][e]);
   } else {
-    const levels = Math.max(1, Math.round(Math.log2(bins)));
-    bins = 2 ** levels;
-    const tree = buildMedianTree(controlColumns, levels);
+    let tree;
+    if (options.minEvents) tree = medianTree(controlColumns, { minEvents: options.minEvents });
+    else {
+      const minPerBin = options.minPerBin ?? 10;
+      const requested = options.bins ?? Math.min(1024, 2 ** Math.max(1, Math.floor(Math.log2(nc / minPerBin))));
+      tree = medianTree(controlColumns, { levels: Math.max(1, Math.round(Math.log2(requested))) });
+    }
     controlCounts = tree.counts;
-    assignTest = null;
-    testCounts = new Float64Array(bins);
-    for (let e = 0; e < nt; e += 1) {
-      let node = 0;
-      for (let level = 0; level < levels; level += 1) {
-        const split = tree.splits[node];
-        const v = testColumns[split.dim][e];
-        node = 2 * node + (v <= split.threshold ? 1 : 2);
+    bins = controlCounts.length;
+    leafOf = (e) => {
+      let k = 0;
+      while (tree.nodes[k].leaf === undefined) {
+        const node = tree.nodes[k];
+        k = testColumns[node.dim][e] <= node.threshold ? node.left : node.right;
       }
-      testCounts[node - (bins - 1)] += 1;
-    }
+      return tree.nodes[k].leaf;
+    };
   }
-  if (assignTest) {
-    testCounts = new Float64Array(bins);
-    const column = testColumns[0];
-    for (let e = 0; e < nt; e += 1) {
-      const v = column[e];
-      if (Number.isFinite(v)) testCounts[assignTest(v)] += 1;
-    }
+  const testCounts = new Float64Array(bins);
+  for (let e = 0; e < nt; e += 1) {
+    let finite = true;
+    for (const column of testColumns) if (!Number.isFinite(column[e])) finite = false;
+    if (finite) testCounts[leafOf(e)] += 1;
   }
   const totalC = controlCounts.reduce((a, b) => a + b, 0);
   const totalT = testCounts.reduce((a, b) => a + b, 0);
+  if (!totalC || !totalT) throw new Error('Probability binning needs events in both samples.');
   const controlFractions = new Float64Array(bins);
   const testFractions = new Float64Array(bins);
   let chi = 0;
@@ -112,6 +118,7 @@ export function probabilityBinning(control, test, options = {}) {
   return {
     chiSquare: chi,
     T: Math.max(0, (chi - expected) / spread),
+    pbStat: bins > 1 ? ((2 * totalC * totalT * chi) / (totalC + totalT) - (bins - 1)) / Math.sqrt(2 * (bins - 1)) : Number.NaN,
     expectedChiSquare: expected,
     bins,
     controlCount: totalC,
@@ -122,62 +129,69 @@ export function probabilityBinning(control, test, options = {}) {
   };
 }
 
-// Recursive median splits over `levels` levels; splits[node] for a complete binary tree in
-// array order (children of node k are 2k+1 and 2k+2). Returns counts of control events per leaf.
-function buildMedianTree(columns, levels) {
+// Recursive median splits of the control's events, each bin split on its own dimension of largest
+// variance: to `levels` levels, or while a bin holds more than `minEvents` events. Ties go to the
+// lower bin (≤ the median), as in flowStats. Returns { nodes, counts }: nodes[0] is the root, a
+// split is { dim, threshold, left, right } (indices of its children) and a bin is { leaf }, the
+// index of its control count in `counts`.
+function medianTree(columns, { levels = Infinity, minEvents = 0 }) {
   const n = columns[0].length;
-  let groups = [];
   const all = [];
   for (let e = 0; e < n; e += 1) {
     let ok = true;
     for (const col of columns) if (!Number.isFinite(col[e])) ok = false;
     if (ok) all.push(e);
   }
-  groups.push(Uint32Array.from(all));
-  const splits = [];
-  for (let level = 0; level < levels; level += 1) {
-    const next = [];
-    for (const members of groups) {
+  const nodes = [];
+  const counts = [];
+  const grow = (members, depth) => {
+    const index = nodes.length;
+    nodes.push(null);
+    if (depth < levels && members.length > minEvents && members.length > 1) {
       let bestDim = 0;
       let bestVar = -1;
       for (let d = 0; d < columns.length; d += 1) {
         const col = columns[d];
         let s = 0;
-        let s2 = 0;
-        for (let i = 0; i < members.length; i += 1) {
-          const v = col[members[i]];
-          s += v;
-          s2 += v * v;
-        }
-        const m = members.length ? s / members.length : 0;
-        const variance = members.length ? s2 / members.length - m * m : 0;
-        if (variance > bestVar) {
-          bestVar = variance;
+        for (let i = 0; i < members.length; i += 1) s += col[members[i]];
+        const m = s / members.length;
+        let ss = 0;
+        for (let i = 0; i < members.length; i += 1) ss += (col[members[i]] - m) ** 2;
+        if (ss > bestVar) {
+          bestVar = ss;
           bestDim = d;
         }
       }
       const col = columns[bestDim];
-      const values = Float64Array.from(members, (e) => col[e]).sort();
-      const threshold = values.length ? quantileSorted(values, 0.5) : 0;
-      splits.push({ dim: bestDim, threshold });
-      const left = [];
-      const right = [];
-      for (let i = 0; i < members.length; i += 1) (col[members[i]] <= threshold ? left : right).push(members[i]);
-      next.push(Uint32Array.from(left), Uint32Array.from(right));
+      const threshold = quantileSorted(Float64Array.from(members, (e) => col[e]).sort(), 0.5);
+      const low = [];
+      const high = [];
+      for (let i = 0; i < members.length; i += 1) (col[members[i]] <= threshold ? low : high).push(members[i]);
+      if (low.length && high.length) {
+        const left = grow(low, depth + 1);
+        const right = grow(high, depth + 1);
+        nodes[index] = { dim: bestDim, threshold, left, right };
+        return index;
+      }
     }
-    groups = next;
-  }
-  return { splits, counts: Float64Array.from(groups, (g) => g.length) };
+    nodes[index] = { leaf: counts.length };
+    counts.push(members.length);
+    return index;
+  };
+  grow(all, 0);
+  return { nodes, counts: Float64Array.from(counts) };
 }
 
 // --- Overton cumulative subtraction ---------------------------------------------------------------
 
 // Overton (1988, Cytometry 9:619–626, doi:10.1002/cyto.990090617) cumulative histogram
 // subtraction: % positive = max over x of [F_control(x) − F_test(x)] × 100, the largest excess of
-// the control's cumulative fraction over the test's (the test shifted to higher values). Computed
-// exactly from the sorted events (the limit of infinitely fine histogram channels); the result
-// does not depend on the axis transform. Also returns the threshold where the maximum occurs and,
-// when `bins` is given, cumulative curves on a grid for drawing.
+// the control's cumulative fraction over the test's (the test shifted to higher values). Bagwell
+// (1996) showed that this is the Kolmogorov–Smirnov Dmax, and that it underestimates the positive
+// fraction (see sedSubtraction). Computed exactly from the sorted events (the limit of infinitely
+// fine histogram channels); the result does not depend on the axis transform. Also returns the
+// threshold where the maximum occurs and, when `bins` is given, cumulative curves on a grid for
+// drawing.
 export function overtonSubtraction(control, test, options = {}) {
   const c = sortedCopy(control);
   const t = sortedCopy(test);
@@ -216,6 +230,82 @@ export function overtonSubtraction(control, test, options = {}) {
     result.curves = { x, controlCdf, testCdf };
   }
   return result;
+}
+
+// --- Enhanced normalized subtraction (SED) -------------------------------------------------------
+
+// Walks the merged sorted events of two samples, calling visit(value, C, T) at each distinct value
+// with C and T the fractions of control and test events at or below it.
+function cumulativeSteps(c, t, visit) {
+  let i = 0;
+  let j = 0;
+  while (i < c.length || j < t.length) {
+    const v = j >= t.length || (i < c.length && c[i] <= t[j]) ? c[i] : t[j];
+    while (i < c.length && c[i] === v) i += 1;
+    while (j < t.length && t[j] === v) j += 1;
+    visit(v, i / c.length, j / t.length);
+  }
+}
+
+// The positive fraction of a test sample against a negative control by Bagwell's enhanced
+// normalized subtraction (ENS; Bagwell 1996, "A journey through flow cytometric
+// immunofluorescence analyses", Clinical Immunology Newsletter 16(3)). With C(x) and T(x) the
+// cumulative fractions of control and test events at or below x, D(x) = C(x) − T(x), and the
+// positive fraction among test events is
+//   pos = (D(x) + P(x)) / C(x)                                      (Bagwell's Eq. D-2)
+// for any x, where P(x) is the positive events' share at or below x. At x_d, where D is largest:
+//   Overton's cumulative subtraction, the K-S Dmax:   D(x_d)
+//   enhanced Dmax (= normalized subtraction):          D(x_d) / C(x_d)
+//   ENS, with P(x_d) estimated by a second Dmax at x_d2 between the cumulatives renormalized on
+//   [min, x_d]:
+//     pos = (C(x_d) − T(x_d)) / C(x_d) + (C(x_d2)·T(x_d) − C(x_d)·T(x_d2)) / C(x_d)²    (Eq. ENS-1)
+// In Bagwell's simulations of 1,000s of histograms, the mean errors were −7.7% (Dmax), −2.7%
+// (enhanced Dmax) and −0.85% (ENS) of the true fraction. FlowJo's SED ("Super-Enhanced Dmax") is,
+// in FlowJo's words, essentially ENS without a correction factor Bagwell did not publish.
+// Computed exactly from the sorted events, so independent of the axis transform. Returns
+// percentPositive (ENS), dmax and enhancedDmax (as percentages), and the thresholds x_d and x_d2.
+export function sedSubtraction(control, test) {
+  const c = sortedCopy(control);
+  const t = sortedCopy(test);
+  if (!c.length || !t.length) throw new Error('SED needs events in both samples.');
+  let best = 0;
+  let xd = Number.NaN;
+  let cd = 0;
+  let td = 0;
+  cumulativeSteps(c, t, (v, C, T) => {
+    if (C - T > best) {
+      best = C - T;
+      xd = v;
+      cd = C;
+      td = T;
+    }
+  });
+  if (!(best > 0)) return { percentPositive: 0, dmax: 0, enhancedDmax: 0, threshold: Number.NaN, threshold2: Number.NaN };
+  // The second Dmax, between C/C(x_d) and T/T(x_d) on [min, x_d].
+  let best2 = 0;
+  let xd2 = Number.NaN;
+  let c2 = 0;
+  let t2 = 0;
+  if (td > 0) {
+    cumulativeSteps(c, t, (v, C, T) => {
+      if (v > xd) return;
+      const d = C / cd - T / td;
+      if (d > best2) {
+        best2 = d;
+        xd2 = v;
+        c2 = C;
+        t2 = T;
+      }
+    });
+  }
+  const ens = (cd - td) / cd + (best2 > 0 ? (c2 * td - cd * t2) / (cd * cd) : 0);
+  return {
+    percentPositive: 100 * Math.min(1, Math.max(0, ens)),
+    dmax: 100 * best,
+    enhancedDmax: 100 * Math.min(1, best / cd),
+    threshold: xd,
+    threshold2: xd2,
+  };
 }
 
 // --- Kolmogorov–Smirnov ---------------------------------------------------------------------------

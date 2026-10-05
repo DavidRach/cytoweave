@@ -10,7 +10,11 @@ import { float32 } from './memory.js';
 import { applyTransform, createTransform, defaultTransform } from './transforms.js';
 import { boundaryTest, boundaryTestN, membershipNSet, membershipSet, offsetGeometry, pointTest, pointTestN } from './gates.js';
 import { EventSet, differenceSets, intersectSets, unionSets } from './eventset.js';
-import { describe, summarize } from './stats.js';
+import { describe, gather, summarize } from './stats.js';
+import { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } from './distribution.js';
+import { binomialInterval, countPrecision, poissonInterval } from './rare-events.js';
+import { evaluateColumns, evaluateFormula, parseFormula } from './formula.js';
+import { standardCurve } from './calibration.js';
 import { readSpillover } from './fcs.js';
 import { ROOT, effectiveGeometry, gateApplies, gateById } from './workspace.js';
 
@@ -232,9 +236,13 @@ export class SampleView {
   }
 
   // Defines the computed channels of derived records without stored columns: ratios
-  // ({ kind: 'ratio', inputs: [x, y], outputs: [name], params: { A, B, C } }) and unmixing
+  // ({ kind: 'ratio', inputs: [x, y], outputs: [name], params: { A, B, C } }), unmixing
   // ({ kind: 'unmix', inputs: detectors, outputs: fluorochromes, params: { matrix } }, matrix
-  // detectors × fluorochromes, row-major).
+  // detectors × fluorochromes, row-major), formulas ({ kind: 'formula', inputs, outputs: [name],
+  // params: { expression } }, formula.js) and bead calibrations ({ kind: 'calibration',
+  // inputs: [channel], outputs: [name], params: { m, b, unit }, samples }, calibration.js). A
+  // record with `samples` applies to those samples only (a calibration to the samples acquired
+  // with its beads).
   syncComputed(records = []) {
     if (records === this.computedSource) return;
     this.computedSource = records;
@@ -249,7 +257,19 @@ export class SampleView {
     };
     for (const record of records) {
       if (record.files) continue;
-      if (record.kind === 'ratio' && record.outputs?.[0] && record.inputs?.length === 2) {
+      if (record.samples && !record.samples.includes(this.id)) continue;
+      if (record.kind === 'formula' && record.outputs?.[0] && record.inputs?.length && record.params?.expression) {
+        let tree = null;
+        try {
+          tree = parseFormula(record.params.expression);
+        } catch {
+          continue;
+        }
+        define(record.outputs[0], { kind: 'formula', inputs: record.inputs, params: { tree }, key: JSON.stringify(['formula', record.params.expression]) });
+      } else if (record.kind === 'calibration' && record.outputs?.[0] && record.inputs?.length === 1) {
+        const { m, b, unit } = record.params ?? {};
+        define(record.outputs[0], { kind: 'calibration', inputs: record.inputs, params: { m, b, unit }, key: JSON.stringify(['calibration', record.inputs, m, b, unit]) });
+      } else if (record.kind === 'ratio' && record.outputs?.[0] && record.inputs?.length === 2) {
         define(record.outputs[0], { kind: 'ratio', inputs: record.inputs, params: record.params ?? {}, key: JSON.stringify(['ratio', record.inputs, record.params]) });
       } else if (record.kind === 'unmix' && record.inputs?.length && record.outputs?.length && record.params?.matrix?.length === record.inputs.length * record.outputs.length) {
         const key = hash53(JSON.stringify(['unmix', record.inputs, record.outputs, record.params.matrix]));
@@ -326,6 +346,13 @@ export class SampleView {
       const [x, y] = inputs;
       const { A = 1, B = 0, C = 0 } = entry.params;
       for (let i = 0; i < column.length; i += 1) column[i] = (A * (x[i] - B)) / (y[i] - C);
+    } else if (entry.kind === 'formula') {
+      const values = evaluateColumns(entry.params.tree, (input) => inputs[entry.inputs.indexOf(input)], column.length);
+      column.set(values);
+    } else if (entry.kind === 'calibration') {
+      const curve = standardCurve(entry.params);
+      const [x] = inputs;
+      for (let i = 0; i < column.length; i += 1) column[i] = curve(x[i]);
     } else {
       const { matrix, j, f } = entry.params;
       const weights = inputs.map((_, i) => matrix[i * f + j]);
@@ -360,6 +387,8 @@ export class SampleView {
       const { A = 1, B = 0, C = 0 } = entry.params;
       return (A * (this.exactValue(entry.inputs[0], e, ref) - B)) / (this.exactValue(entry.inputs[1], e, ref) - C);
     }
+    if (entry?.kind === 'formula') return evaluateFormula(entry.params.tree, (input) => this.exactValue(input, e, ref));
+    if (entry?.kind === 'calibration') return standardCurve(entry.params)(this.exactValue(entry.inputs[0], e, ref));
     if (entry?.kind === 'unmix') {
       const { matrix, j: k, f } = entry.params;
       let sum = 0;
@@ -418,7 +447,13 @@ export class SampleView {
   channelInfo(name) {
     const p = this.parameters.find((param) => param.name === name);
     if (p) return p;
-    if (this.derived.has(name) || this.computed.has(name)) return { name, type: 'derived', range: 1, label: '', marker: '' };
+    const entry = this.computed.get(name);
+    // A calibrated channel is the fluorescence channel it calibrates, in other units.
+    if (entry?.kind === 'calibration') {
+      const input = this.parameters.find((param) => param.name === entry.inputs[0]);
+      if (input) return { ...input, index: undefined, name, range: standardCurve(entry.params)(input.range), label: input.label, marker: input.marker, unit: entry.params.unit };
+    }
+    if (this.derived.has(name) || entry) return { name, type: 'derived', range: 1, label: '', marker: '' };
     return null;
   }
 }
@@ -580,11 +615,24 @@ export function populationSummary(view, ws) {
 
 // --- Statistics -------------------------------------------------------------------------------
 
-// A statistic spec: { stat, gateId, channel?, ancestorId?, value? }.
-export function computeStatistic(view, ws, spec) {
-  const key = `${view.version}|${JSON.stringify(spec)}|${spec.gateId ? gateSignature(ws, gateById(ws, spec.gateId) ?? { id: '', type: 'x', dims: [], geometry: {} }, view.id) : 'root'}`;
+// Statistics compared with a control sample's population (stats.js `needsControl`).
+export const COMPARISONS = new Set(['overton', 'sed', 'pbPositive', 'pbT', 'ksD']);
+
+// A statistic spec: { stat, gateId, channel?, ancestorId?, value?, control? }. A comparison's
+// control is { sampleId, gateId? } (the same population when gateId is omitted), and its events
+// come from context.viewOf(sampleId); without them the statistic is NaN.
+export function computeStatistic(view, ws, spec, context = {}) {
+  const signature = (v, gateId) => (gateId && gateId !== ROOT ? gateSignature(ws, gateById(ws, gateId) ?? { id: '', type: 'x', dims: [], geometry: {} }, v.id) : 'root');
+  let controlView = null;
+  let controlKey = '';
+  if (COMPARISONS.has(spec.stat)) {
+    controlView = spec.control?.sampleId ? context.viewOf?.(spec.control.sampleId) ?? null : null;
+    if (!controlView) return Number.NaN;
+    controlKey = `|${controlView.version}|${signature(controlView, spec.control.gateId ?? spec.gateId)}`;
+  }
+  const key = `${view.version}|${JSON.stringify(spec)}|${signature(view, spec.gateId)}${controlKey}`;
   if (view.statCache.has(key)) return view.statCache.get(key);
-  const value = computeStatisticUncached(view, ws, spec);
+  const value = controlView ? computeComparison(view, controlView, ws, spec) : computeStatisticUncached(view, ws, spec);
   view.statCache.set(key, value);
   if (view.statCache.size > 8192) view.statCache.delete(view.statCache.keys().next().value);
   return value;
@@ -609,10 +657,27 @@ function computeStatisticUncached(view, ws, spec) {
     }
     case 'freqTotal': return freqOf(ROOT);
     case 'freqOf': return freqOf(spec.ancestorId ?? ROOT);
+    case 'countLow': return poissonInterval(count)[0];
+    case 'countHigh': return poissonInterval(count)[1];
+    case 'countCV': return countPrecision(count);
+    case 'freqLow':
+    case 'freqHigh': {
+      const parentCount = countOf(populationSet(view, ws, gate?.parentId ?? ROOT), view);
+      return parentCount > 0 ? 100 * binomialInterval(count, parentCount)[spec.stat === 'freqLow' ? 0 : 1] : Number.NaN;
+    }
     case 'concentration': {
-      // Events per µL from the acquired volume ($VOL in nL), when the instrument records it.
+      // Events per µL from the acquired volume ($VOL in nL), when the instrument records it, times
+      // the sample's dilution.
       const volume = Number.parseFloat(view.record.keywords?.$VOL ?? '');
-      return volume > 0 ? count / (volume / 1000) : Number.NaN;
+      return volume > 0 ? (count / (volume / 1000)) * dilutionOf(ws, view, spec.dilution) : Number.NaN;
+    }
+    case 'absoluteCount': {
+      // Cells per µL of the sample from counting beads: (cell events / bead events) × (beads in the
+      // tube / µL of sample in the tube) × the dilution.
+      const { beadGateId, beads, volume } = spec.counting ?? {};
+      if (!beadGateId || !(beads > 0) || !(volume > 0)) return Number.NaN;
+      const beadEvents = countOf(populationSet(view, ws, beadGateId), view);
+      return beadEvents > 0 ? (count / beadEvents) * (beads / volume) * dilutionOf(ws, view, spec.dilution) : Number.NaN;
     }
     default: {
       if (!spec.channel || !view.hasChannel(spec.channel)) return Number.NaN;
@@ -623,6 +688,59 @@ function computeStatisticUncached(view, ws, spec) {
       return result[spec.stat] ?? Number.NaN;
     }
   }
+}
+
+// A sample's dilution factor: a number, or { field } naming a sample annotation that holds it
+// (1 when absent).
+function dilutionOf(ws, view, dilution) {
+  if (dilution === undefined || dilution === null || dilution === '') return 1;
+  if (typeof dilution === 'number') return dilution > 0 ? dilution : Number.NaN;
+  const sample = ws.samples.find((s) => s.id === view.id);
+  const value = Number.parseFloat(String(sample?.meta?.[dilution.field] ?? '').replace(/^1:/, ''));
+  return value > 0 ? value : Number.NaN;
+}
+
+// A population's channel values in a test sample against a control sample's population (the same
+// one unless spec.control.gateId names another), compared with distribution.js. All five are
+// computed from ranks, so they do not depend on the channel's display transform.
+function computeComparison(view, controlView, ws, spec) {
+  const testSet = populationSet(view, ws, spec.gateId ?? ROOT);
+  const controlSet = populationSet(controlView, ws, spec.control.gateId ?? spec.gateId ?? ROOT);
+  if (testSet === undefined || controlSet === undefined || !spec.channel) return Number.NaN;
+  if (!view.hasChannel(spec.channel) || !controlView.hasChannel(spec.channel)) return Number.NaN;
+  const test = gather(view.column(spec.channel), testSet);
+  const control = gather(controlView.column(spec.channel), controlSet);
+  if (control.length < 2 || !test.length) return Number.NaN;
+  switch (spec.stat) {
+    case 'overton': return overtonSubtraction(control, test).percentPositive;
+    case 'sed': return sedSubtraction(control, test).percentPositive;
+    case 'pbPositive': return probabilityBinning(control, test).percentPositive;
+    case 'pbT': return probabilityBinning(control, test).T;
+    case 'ksD': return ksTest(control, test).D;
+    default: return Number.NaN;
+  }
+}
+
+// A population's values on several channels, aligned event by event (events with a non-finite
+// value on any of them left out), each on its display scale (channelTransform), or as measured
+// with { raw: true }. Null when the population does not apply to the sample.
+export function populationColumns(view, ws, gateId, channels, options = {}) {
+  const set = populationSet(view, ws, gateId ?? ROOT);
+  if (set === undefined) return null;
+  const indices = set === null ? null : set instanceof EventSet ? set.toIndices() : set;
+  const sources = channels.map((channel) => (options.raw ? view.column(channel) : view.scaled(channel, channelTransform(ws, view, channel))));
+  const n = indices ? indices.length : view.eventCount;
+  const out = channels.map(() => new Float64Array(n));
+  let k = 0;
+  for (let i = 0; i < n; i += 1) {
+    const e = indices ? indices[i] : i;
+    let finite = true;
+    for (const source of sources) if (!Number.isFinite(source[e])) finite = false;
+    if (!finite) continue;
+    for (let d = 0; d < sources.length; d += 1) out[d][k] = sources[d][e];
+    k += 1;
+  }
+  return out.map((column) => (k === n ? column : column.slice(0, k)));
 }
 
 // Every channel's description for a population. With { basic: true }, only n, median, mean and
@@ -694,9 +812,11 @@ function defaultFor(view, channel, info) {
     let lo = Infinity; let hi = -Infinity;
     for (let i = 0; i < column.length; i += 1) {
       const v = column[i];
+      if (!Number.isFinite(v)) continue;
       if (v < lo) lo = v;
       if (v > hi) hi = v;
     }
+    if (!Number.isFinite(lo)) return { type: 'linear', min: 0, max: 1 };
     const pad = (hi - lo) * 0.04 || 1;
     return { type: 'linear', min: lo - pad, max: hi + pad };
   }

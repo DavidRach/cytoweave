@@ -134,7 +134,7 @@ export function installTemplateDialogs(app) {
       }
       place = placeOnSample(view, placedOn.name);
     }
-    const catalog = channelCatalog(ws).filter((c) => c.type !== 'derived');
+    const catalog = channelCatalog(ws).filter((c) => !c.derived);
     const overrides = {};
     const options = { parentId: ROOT, scales: 'keep', plots: true, tables: true, figures: true };
     const summary = h('div');
@@ -142,8 +142,18 @@ export function installTemplateDialogs(app) {
     const describe = (c) => (c.marker ? `${c.marker} · ${c.name}` : c.name);
     const render = () => {
       const match = matchChannels(template, catalog, overrides);
+      const preview = applyTemplate(store.ws, template, { ...options, overrides, place });
       rows.replaceChildren(...Object.entries(template.channels).map(([key, wanted]) => {
         const m = match[key];
+        // A formula channel is computed from the channels it uses, as they match.
+        if (wanted.type === 'formula') {
+          const r = preview.report.channels.find((c) => c.key === key);
+          return h('tr',
+            h('td', h('strong', wanted.name), h('span.muted', ' formula')),
+            h('td', h('code', r?.formula ?? '')),
+            h('td', r?.channel ? h('span.badge.ok', 'Computed') : h('span.badge.warn', 'Not found')),
+            h('td.muted', { style: { fontSize: '11.5px' } }, r?.note ?? (r?.channel && r.channel !== wanted.name ? `added as ${r.channel}` : '')));
+        }
         const select = h('select.input.small', { 'aria-label': `Channel for ${wanted.marker || wanted.name}`, onchange: (e) => { if (e.target.value) overrides[key] = e.target.value; else delete overrides[key]; render(); } },
           h('option', { value: '' }, m.channel && !overrides[key] ? `${describe(catalog.find((c) => c.name === m.channel) ?? { name: m.channel })} (${m.how})` : '— none —'),
           ...catalog.map((c) => h('option', { value: c.name, selected: overrides[key] === c.name }, describe(c))));
@@ -153,7 +163,6 @@ export function installTemplateDialogs(app) {
           h('td', m.channel ? h('span.badge.ok', m.how === 'chosen' ? 'Chosen' : 'Matched') : h('span.badge.warn', 'Not found')),
           h('td.muted', { style: { fontSize: '11.5px' } }, m.note ?? ''));
       }));
-      const preview = applyTemplate(store.ws, template, { ...options, overrides, place });
       const { applied, skipped } = preview.report.gates;
       summary.replaceChildren(
         h('p', h('strong', `${applied} of ${template.gates.length} populations`), ` will be added${options.parentId !== ROOT ? ` under ${gateById(store.ws, options.parentId)?.name}` : ' at the top of the tree'}${[[preview.report.plots, 'plot'], [preview.report.tables, 'table'], [preview.report.figures, 'figure']].some(([n]) => n) ? `, with ${[[preview.report.plots, 'plot'], [preview.report.tables, 'table'], [preview.report.figures, 'figure']].filter(([n]) => n).map(([n, word]) => `${n} ${word}${n === 1 ? '' : 's'}`).join(', ')}` : ''}.`),

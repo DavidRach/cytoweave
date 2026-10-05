@@ -107,14 +107,8 @@ export function formatCount(n) {
   return Math.round(n).toLocaleString('en-US');
 }
 
-export function formatPercent(p) {
-  if (!Number.isFinite(p)) return '—';
-  if (p >= 10) return `${p.toFixed(1)}%`;
-  if (p >= 1) return `${p.toFixed(2)}%`;
-  if (p >= 0.01) return `${p.toFixed(3)}%`;
-  if (p === 0) return '0%';
-  return `${p.toPrecision(2)}%`;
-}
+// Shared with the library's plot scenes (gate labels), so figures and reports print the same.
+export { formatPercent } from '../lib/stats.js';
 
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return '—';

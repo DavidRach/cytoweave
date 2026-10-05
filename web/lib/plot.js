@@ -1,5 +1,5 @@
 // Plot scenes: a plot described once (raster layer, contours, curves, axes, gates and labels) and
-// drawn either to a canvas (on screen, PNG) or as SVG (vector figures). Scene coordinates for data
+// drawn to a canvas (on screen, PNG), as SVG or on a PDF page (vector figures and reports). Scene coordinates for data
 // are plot units: 0–1 across the plot area, y up.
 
 import { createTransform } from './transforms.js';
@@ -7,6 +7,7 @@ import { bin2d, contours, dotRaster, densityRaster, histogram, outlierRaster, ov
 import { gateCenter } from './gates.js';
 import { sizeOf } from './eventset.js';
 import { displayColor } from './colormaps.js';
+import { ellipsizeText, textWidth } from './pdf.js';
 
 export const PLOT_TYPES = [
   { id: 'pseudocolor', label: 'Pseudocolor', dims: 2 },
@@ -596,4 +597,140 @@ export function sceneToSVG(scene, options = {}) {
   }
   parts.push(options.embedded ? '</g>' : '</svg>');
   return parts.join('');
+}
+
+// --- PDF --------------------------------------------------------------------------------------
+
+// Draws the scene on a PDFPage (pdf.js) with its top left at (ox, oy), as drawScene draws it on a
+// canvas: the event raster as an image, everything else as paths and Helvetica text.
+export function sceneToPDF(page, scene, ox = 0, oy = 0, options = {}) {
+  const { theme, margins } = scene;
+  const compact = margins.compact;
+  const r = { x: ox + scene.plotRect.x, y: oy + scene.plotRect.y, w: scene.plotRect.w, h: scene.plotRect.h };
+  const px = (u) => r.x + u * r.w;
+  const py = (v) => r.y + (1 - v) * r.h;
+  if (options.background !== false) page.fillRect(ox, oy, scene.width, scene.height, theme.background);
+  page.fillRect(r.x, r.y, r.w, r.h, theme.plot);
+  page.save();
+  page.clipRect(r.x, r.y, r.w, r.h);
+  if (scene.raster) page.image(scene.raster, r.x, r.y, r.w, r.h, { interpolate: false });
+  for (const contour of scene.contours) {
+    const seg = contour.segments;
+    for (let i = 0; i < seg.length; i += 4) {
+      page.moveTo(px(seg[i]), py(seg[i + 1]));
+      page.lineTo(px(seg[i + 2]), py(seg[i + 3]));
+    }
+    page.draw({ stroke: contour.color, width: contour.width, cap: 1 });
+  }
+  for (const curve of scene.curves) {
+    const p = curve.points;
+    page.moveTo(px(p[0]), py(p[1]));
+    for (let i = 2; i < p.length; i += 2) page.lineTo(px(p[i]), py(p[i + 1]));
+    if (curve.fill) {
+      page.closePath();
+      page.draw({ fill: curve.fill });
+      page.moveTo(px(p[0]), py(p[1]));
+      for (let i = 2; i < p.length; i += 2) page.lineTo(px(p[i]), py(p[i + 1]));
+    }
+    page.draw({ stroke: curve.stroke, width: 1.4, join: 1 });
+  }
+  for (const gate of scene.gates) {
+    const o = gate.outline;
+    if (!o) continue;
+    const color = displayColor(gate.color) ?? '#111827';
+    const line = { stroke: color, width: 1.5, dash: gate.proposed ? [2, 3] : gate.dashed ? [5, 4] : null };
+    if (o.kind === 'polygon') {
+      o.points.forEach(([u, v], i) => (i ? page.lineTo(px(u), py(v)) : page.moveTo(px(u), py(v))));
+      page.closePath();
+      page.draw(line);
+    } else if (o.kind === 'range') {
+      const lo = o.min ?? -0.02;
+      const hi = o.max ?? 1.02;
+      const level = gate.level ?? 0.5;
+      if (o.axis === 'x') {
+        const y = py(level);
+        page.moveTo(px(lo), y);
+        page.lineTo(px(hi), y);
+        if (o.min !== null) { page.moveTo(px(lo), y - 7); page.lineTo(px(lo), y + 7); }
+        if (o.max !== null) { page.moveTo(px(hi), y - 7); page.lineTo(px(hi), y + 7); }
+      } else {
+        page.moveTo(px(level), py(lo));
+        page.lineTo(px(level), py(hi));
+      }
+      page.draw(line);
+    } else if (o.kind === 'split') {
+      if (o.axis === 'x') { page.moveTo(px(o.threshold), r.y); page.lineTo(px(o.threshold), r.y + r.h); } else { page.moveTo(r.x, py(o.threshold)); page.lineTo(r.x + r.w, py(o.threshold)); }
+      page.draw(line);
+    } else if (o.kind === 'quadrant') {
+      const [cu, cv] = o.center;
+      page.moveTo(px(cu), r.y);
+      page.lineTo(px(cu), r.y + r.h);
+      page.moveTo(r.x, py(cv));
+      page.lineTo(r.x + r.w, py(cv));
+      page.draw(line);
+    }
+  }
+  // Gate labels: name and frequency in a box at the gate's label position.
+  const size = compact ? 9 : 11;
+  for (const gate of scene.gates) {
+    if (!gate.outline || gate.hideLabel) continue;
+    const pos = gateLabelPosition(scene, gate);
+    if (!pos) continue;
+    const [u, v, align = 'center', baseline = 'middle'] = pos;
+    const lines = [gate.name, gate.label].filter(Boolean);
+    if (!lines.length) continue;
+    const width = Math.max(...lines.map((text) => textWidth(text, size, true))) + 8;
+    const height = lines.length * (size + 2) + 4;
+    let x = px(u);
+    let y = py(v);
+    if (align === 'center') x -= width / 2;
+    else if (align === 'right') x -= width;
+    if (baseline === 'middle') y -= height / 2;
+    else if (baseline === 'bottom') y -= height;
+    x = Math.min(Math.max(x, r.x + 1), r.x + r.w - width - 1);
+    y = Math.min(Math.max(y, r.y + 1), r.y + r.h - height - 1);
+    const color = displayColor(gate.color) ?? '#111827';
+    page.roundRect(x, y, width, height, 3);
+    page.draw({ fill: 'rgba(255,255,255,0.86)', stroke: withAlpha(color, 0.6), width: 1 });
+    lines.forEach((text, i) => page.text(text, x + 4, y + 2 + i * (size + 2), { size, bold: true, color: i === 0 ? '#111827' : color, baseline: 'top' }));
+  }
+  page.restore();
+  // Axes
+  if (margins.left > 6) {
+    page.moveTo(r.x, r.y);
+    page.lineTo(r.x, r.y + r.h);
+    page.lineTo(r.x + r.w, r.y + r.h);
+    page.draw({ stroke: theme.axis, width: 1 });
+    const tickSize = compact ? 8.5 : 10.5;
+    for (const tick of scene.axes.x.ticks) {
+      const x = px(tick.position);
+      page.line(x, r.y + r.h, x, r.y + r.h + (tick.major ? 4 : 2), theme.axis, 1);
+      if (tick.label && (!compact || tick.major)) page.text(tick.label, x, r.y + r.h + (compact ? 4 : 6), { size: tickSize, color: theme.tick, align: 'center', baseline: 'top' });
+    }
+    if (scene.axes.y) {
+      for (const tick of scene.axes.y.ticks) {
+        const y = py(tick.position);
+        page.line(r.x, y, r.x - (tick.major ? 4 : 2), y, theme.axis, 1);
+        if (tick.label) page.text(tick.label, r.x - 6, y, { size: tickSize, color: theme.tick, align: 'right', baseline: 'middle' });
+      }
+    }
+    const labelSize = compact ? 9.5 : 11.5;
+    page.text(ellipsizeText(scene.axes.x.label ?? '', r.w, labelSize, true), r.x + r.w / 2, oy + scene.height - (compact ? 2 : 6), { size: labelSize, bold: true, color: theme.text, align: 'center', baseline: 'bottom' });
+    if (scene.axes.y?.label) page.text(ellipsizeText(scene.axes.y.label, r.h, labelSize, true), ox + (compact ? 9 : 13), r.y + r.h / 2, { size: labelSize, bold: true, color: theme.text, align: 'center', baseline: 'middle', rotate: 90 });
+  }
+  if (scene.legend && options.legend !== false) {
+    const lsize = compact ? 9 : 10.5;
+    const items = scene.legend.slice(0, 12);
+    const width = Math.max(...items.map((item) => textWidth(item.label ?? '', lsize))) + 22;
+    let y = r.y + 6;
+    const x = r.x + r.w - width - 6;
+    page.roundRect(x - 4, y - 3, width + 8, items.length * (lsize + 5) + 4, 4);
+    page.draw({ fill: 'rgba(255,255,255,0.8)' });
+    for (const item of items) {
+      page.fillRect(x, y + 2, 10, lsize - 2, item.color);
+      page.text(item.label ?? '', x + 15, y, { size: lsize, color: '#1f2430', baseline: 'top' });
+      y += lsize + 5;
+    }
+  }
+  if (scene.title) page.text(ellipsizeText(scene.title, scene.width - 12, compact ? 10 : 12, true), r.x, oy + (compact ? 13 : 19), { size: compact ? 10 : 12, bold: true, color: theme.text });
 }

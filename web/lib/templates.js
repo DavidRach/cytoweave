@@ -10,14 +10,18 @@
 //             geometry, color, linkId, meta, ontology? }],
 //   plots: [{ populationId, x: key, y: key|null, type, options }],
 //   tables: [{ name, heatmap, columns: [{ gateId, stat, channel: key|undefined, ... }] }],
-//   figures: [{ name, width, height, background, items }] (plot items without a sample),
+//   figures: [{ name, width, height, background, batch: { by }, items }] (plot items without a
+//            sample; statistics items with tableIndex and columnIndexes into tables),
 //   scales: { key: { transform, label } },
-//   compensation: { source: 'file' | 'none' | 'computed', method } }
+//   compensation: { source: 'file' | 'none' | 'computed', method },
+//   formulas: [{ key, name, expression }] (formula channels: expression references channel keys,
+//             as in "[c3] / [c4]"; key is the formula's own channel, of type 'formula') }
 // Gates keep their geometry in the coordinates of their own transform, so a gate applies to the
 // same data values on another experiment's matched channel.
 
 import { newId } from './gates.js';
-import { ROOT, addGates, channelCatalog, gateById, gateDescendants, setCollection, uniqueGateName } from './workspace.js';
+import { ROOT, addDerived, addGates, channelCatalog, gateById, gateDescendants, setCollection, uniqueGateName } from './workspace.js';
+import { formulaText, mapReferences, parseFormula } from './formula.js';
 
 export const TEMPLATE_FORMAT = 'cytoweave-template';
 export const TEMPLATE_VERSION = 1;
@@ -64,7 +68,14 @@ export function buildTemplate(ws, options = {}) {
     channels[key] = { name: channel, marker: info?.marker || '', type: info?.type ?? 'fluorescence' };
     return key;
   };
-  const computed = (channel) => catalog.get(channel)?.type === 'derived';
+  // Formula channels travel with the template when every channel they use does; other computed
+  // channels (QC pass, clusters, unmixing, calibrations) belong to their own samples.
+  const formulaOf = (channel) => ws.derived.find((d) => d.kind === 'formula' && d.outputs?.[0] === channel);
+  const portable = (channel) => {
+    const record = formulaOf(channel);
+    return Boolean(record && record.inputs.every((input) => !catalog.get(input)?.derived));
+  };
+  const computed = (channel) => Boolean(catalog.get(channel)?.derived) && !portable(channel);
 
   // The gates to keep: the chosen subtrees (or all), without those on computed channels.
   let chosen = gateIds ? [...new Set(gateIds.flatMap((id) => [id, ...gateDescendants(ws, id).map((g) => g.id)]))].map((id) => gateById(ws, id)).filter(Boolean) : ws.gates.slice();
@@ -120,25 +131,46 @@ export function buildTemplate(ws, options = {}) {
   };
   const plots = (ws.plots ?? []).filter((p) => gateRef(p.populationId) !== undefined && ![p.x, p.y].some((c) => c && computed(c)))
     .map((p) => ({ populationId: gateRef(p.populationId), x: keyOf(p.x), y: keyOf(p.y), type: p.type, options: { ...(p.options ?? {}) } }));
-  const tables = (ws.tables ?? []).map((t) => ({
+  const keptColumns = (t) => t.columns.filter((c) => gateRef(c.gateId) !== undefined && !(c.channel && computed(c.channel)));
+  const keptTables = (ws.tables ?? []).filter((t) => keptColumns(t).length);
+  const tables = keptTables.map((t) => ({
     name: t.name,
     heatmap: t.heatmap,
-    columns: t.columns.filter((c) => gateRef(c.gateId) !== undefined && !(c.channel && computed(c.channel))).map((c) => {
+    columns: keptColumns(t).map((c) => {
       const { id, ...rest } = c;
       return { ...rest, gateId: gateRef(c.gateId), ...(c.channel ? { channel: keyOf(c.channel) } : {}) };
     }),
-  })).filter((t) => t.columns.length);
+  }));
+  // A statistics item names its table and columns by position in the template's tables.
+  const statsRef = (item) => {
+    const index = keptTables.findIndex((t) => t.id === item.tableId);
+    if (index < 0) return null;
+    const { tableId, columnIds, ...rest } = item;
+    const columns = keptColumns(keptTables[index]);
+    return { ...rest, tableIndex: index, ...(columnIds?.length ? { columnIndexes: columnIds.map((id) => columns.findIndex((c) => c.id === id)).filter((k) => k >= 0) } : {}) };
+  };
   const figures = (ws.figures ?? []).filter((f) => !f.proposal).map((f) => ({
     name: f.name,
     width: f.width,
     height: f.height,
     background: f.background,
-    items: f.items.filter((item) => item.kind !== 'plot' || (gateRef(item.spec.populationId) !== undefined && ![item.spec.x, item.spec.y].some((c) => c && computed(c)))).map((item) => {
+    ...(f.batch?.by ? { batch: { by: f.batch.by, ...(f.batch.format ? { format: f.batch.format } : {}) } } : {}),
+    items: f.items.filter((item) => (item.kind !== 'plot' || (gateRef(item.spec.populationId) !== undefined && ![item.spec.x, item.spec.y].some((c) => c && computed(c)))) && (item.kind !== 'stats' || statsRef(item))).map((item) => {
+      if (item.kind === 'stats') return statsRef(item);
       if (item.kind !== 'plot') return { ...item };
       const { sampleId, ...rest } = item;
       return { ...rest, spec: { ...item.spec, populationId: gateRef(item.spec.populationId), x: keyOf(item.spec.x), y: keyOf(item.spec.y) }, ...(item.highlight ? { highlight: keptIds.has(item.highlight) ? item.highlight : undefined } : {}) };
     }),
   }));
+  // The formulas of the formula channels kept, with their inputs as channel keys.
+  const formulas = [];
+  for (const [channel, key] of [...keys]) {
+    const record = formulaOf(channel);
+    if (!record || !portable(channel)) continue;
+    channels[key] = { name: channel, marker: '', type: 'formula' };
+    const tree = mapReferences(parseFormula(record.params.expression), (input) => keyOf(input));
+    formulas.push({ key, name: channel, expression: formulaText(tree) });
+  }
   const scales = {};
   for (const [channel, key] of keys) {
     const settings = ws.channelSettings?.[channel];
@@ -163,6 +195,7 @@ export function buildTemplate(ws, options = {}) {
     figures,
     scales,
     compensation: { source, ...(usedMatrix ? { method: usedMatrix.method ?? usedMatrix.source ?? null, name: usedMatrix.name } : {}) },
+    ...(formulas.length ? { formulas } : {}),
   };
 }
 
@@ -189,12 +222,18 @@ export function parseTemplate(text) {
 // reason). A fluorescence channel with a marker matches by marker, preferring the same area,
 // height or width suffix; scatter, time and channels without a marker match by name.
 export function matchChannels(template, catalog, overrides = {}) {
-  const channels = catalog.filter((c) => c.type !== 'derived');
+  const channels = catalog.filter((c) => !c.derived);
   const byName = new Map(channels.map((c) => [c.name, c]));
   const byLowerName = new Map(channels.map((c) => [c.name.toLowerCase(), c]));
   const used = new Map();
   const out = {};
   for (const [key, wanted] of Object.entries(template.channels)) {
+    // A formula channel is computed on the experiment from the channels it uses (applyTemplate).
+    if (wanted.type === 'formula') {
+      const formula = template.formulas?.find((f) => f.key === key);
+      out[key] = { channel: null, how: 'formula', formula: formula?.expression ?? '' };
+      continue;
+    }
     if (overrides[key]) {
       out[key] = byName.has(overrides[key]) ? { channel: overrides[key], how: 'chosen' } : { channel: null, how: null, note: `${overrides[key]} is not a channel of these samples` };
       continue;
@@ -245,6 +284,42 @@ export function applyTemplate(ws, template, options = {}) {
   const match = matchChannels(template, channelCatalog(ws), overrides);
   const channelOf = (key) => (key === null || key === undefined ? null : match[key]?.channel ?? undefined);
   const skipped = [];
+  // Formula channels first, from the matched channels they use: reused when the workspace already
+  // computes the same formula, otherwise added (under another name if theirs is taken).
+  let formulaWs = ws;
+  const addedFormulas = [];
+  for (const formula of template.formulas ?? []) {
+    let tree;
+    let missing = [];
+    try {
+      tree = mapReferences(parseFormula(formula.expression), (key) => {
+        const channel = channelOf(key);
+        if (!channel) missing.push(template.channels[key]?.marker || template.channels[key]?.name || key);
+        return channel ?? key;
+      });
+    } catch {
+      missing = ['(an unreadable formula)'];
+    }
+    if (missing.length) {
+      match[formula.key] = { channel: null, how: null, formula: formula.expression, note: `${formula.name} is a formula of ${missing.join(', ')}, which these samples lack` };
+      continue;
+    }
+    const expression = formulaText(tree);
+    const same = formulaWs.derived.find((d) => d.kind === 'formula' && d.params?.expression === expression);
+    if (same) {
+      match[formula.key] = { channel: same.outputs[0], how: 'formula', formula: expression };
+      continue;
+    }
+    const taken = new Set(channelCatalog(formulaWs).map((c) => c.name));
+    let name = formula.name;
+    for (let k = 2; taken.has(name); k += 1) name = `${formula.name} (${k})`;
+    const inputs = [];
+    mapReferences(tree, (input) => { if (!inputs.includes(input)) inputs.push(input); return input; });
+    formulaWs = addDerived(formulaWs, { kind: 'formula', name, inputs, outputs: [name], params: { expression, source: expression }, meta: { origin: 'template', template: template.name } }).ws;
+    addedFormulas.push(name);
+    match[formula.key] = { channel: name, how: 'formula', formula: expression };
+  }
+  ws = formulaWs;
   const idMap = new Map();
   const linkMap = new Map();
   const unusable = new Set();
@@ -342,17 +417,33 @@ export function applyTemplate(ws, template, options = {}) {
     if (added.length) working = setCollection(working, 'plots', [...(working.plots ?? []), ...added], 'apply-template-plots');
   }
   let tableCount = 0;
+  // Template tables by position → { id, columnIds (by the template's column positions) }.
+  const tableRefs = new Map();
+  const appliedTables = new Set();
   if (tables && template.tables?.length) {
-    const added = template.tables.map((t) => ({
-      id: newId('t'),
-      name: t.name,
-      groupId: null,
-      heatmap: t.heatmap,
-      columns: t.columns.filter((c) => gateRef(c.gateId) && (!c.channel || channelOf(c.channel))).map((c) => ({ ...c, id: newId('col'), gateId: gateRef(c.gateId), ...(c.channel ? { channel: channelOf(c.channel) } : {}) })),
-    })).filter((t) => t.columns.length);
+    const added = template.tables.map((t, index) => {
+      const id = newId('t');
+      const columnIds = t.columns.map((c) => (gateRef(c.gateId) && (!c.channel || channelOf(c.channel)) ? newId('col') : null));
+      tableRefs.set(index, { id, columnIds });
+      return {
+        id,
+        name: t.name,
+        groupId: null,
+        heatmap: t.heatmap,
+        columns: t.columns.map((c, k) => (columnIds[k] ? { ...c, id: columnIds[k], gateId: gateRef(c.gateId), ...(c.channel ? { channel: channelOf(c.channel) } : {}) } : null)).filter(Boolean),
+      };
+    }).filter((t) => t.columns.length);
     tableCount = added.length;
     if (added.length) working = setCollection(working, 'tables', [...(working.tables ?? []), ...added], 'apply-template-tables');
+    for (const t of added) appliedTables.add(t.id);
   }
+  // A statistics item on the applied table and columns.
+  const statsItem = (item) => {
+    const ref = tableRefs.get(item.tableIndex);
+    const { tableIndex, columnIndexes, ...rest } = item;
+    const columnIds = (columnIndexes ?? []).map((k) => ref.columnIds[k]).filter(Boolean);
+    return { ...rest, id: newId('i'), tableId: ref.id, ...(columnIds.length ? { columnIds } : {}) };
+  };
   let figureCount = 0;
   const sampleId = options.sampleId ?? working.samples.find((s) => s.role === 'sample')?.id ?? working.samples[0]?.id ?? null;
   if (figures && template.figures?.length && sampleId) {
@@ -362,7 +453,8 @@ export function applyTemplate(ws, template, options = {}) {
       width: f.width,
       height: f.height,
       background: f.background,
-      items: f.items.filter((item) => item.kind !== 'plot' || (gateRef(item.spec.populationId) && channelOf(item.spec.x) && (item.spec.y === null || channelOf(item.spec.y)))).map((item) => (item.kind !== 'plot' ? { ...item, id: newId('i') } : {
+      ...(f.batch?.by ? { batch: { ...f.batch } } : {}),
+      items: f.items.filter((item) => (item.kind !== 'plot' || (gateRef(item.spec.populationId) && channelOf(item.spec.x) && (item.spec.y === null || channelOf(item.spec.y)))) && (item.kind !== 'stats' || appliedTables.has(tableRefs.get(item.tableIndex)?.id))).map((item) => (item.kind === 'stats' ? statsItem(item) : item.kind !== 'plot' ? { ...item, id: newId('i') } : {
         ...item,
         id: newId('i'),
         sampleId,
@@ -374,9 +466,10 @@ export function applyTemplate(ws, template, options = {}) {
     working = setCollection(working, 'figures', [...(working.figures ?? []), ...added], 'apply-template-figures');
   }
 
-  const channels = Object.entries(template.channels).map(([key, c]) => ({ key, template: c.marker ? `${c.marker} (${c.name})` : c.name, channel: match[key].channel, how: match[key].how, note: match[key].note }));
+  const channels = Object.entries(template.channels).map(([key, c]) => ({ key, template: c.marker ? `${c.marker} (${c.name})` : c.name, channel: match[key].channel, how: match[key].how, note: match[key].note, ...(match[key].formula ? { formula: match[key].formula } : {}) }));
   const report = {
     template: template.name,
+    formulas: addedFormulas,
     channels,
     matched: channels.filter((c) => c.channel).length,
     unmatched: channels.filter((c) => !c.channel).length,

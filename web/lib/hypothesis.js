@@ -174,6 +174,44 @@ export function incompleteBetaComplement(x, a, b) {
   return betaPair(x, a, b)[1];
 }
 
+// Polygamma functions for x > 0: ψ (digamma), ψ′ (trigamma) and ψ″, by the recurrences
+// ψ⁽ᵏ⁾(x) = ψ⁽ᵏ⁾(x + 1) − (−1)ᵏ k! / x^(k+1) up to x ≥ 10 and the asymptotic (Bernoulli) series
+// there, whose next terms are below 1e-17 relative.
+export function digamma(x) {
+  if (!(x > 0)) return Number.NaN;
+  let shift = 0;
+  while (x < 10) {
+    shift += 1 / x;
+    x += 1;
+  }
+  const r2 = 1 / (x * x);
+  return Math.log(x) - 0.5 / x - r2 * (1 / 12 - r2 * (1 / 120 - r2 * (1 / 252 - r2 * (1 / 240 - r2 * (1 / 132 - r2 * (691 / 32760 - r2 / 12)))))) - shift;
+}
+
+export function trigamma(x) {
+  if (!(x > 0)) return Number.NaN;
+  let shift = 0;
+  while (x < 10) {
+    shift += 1 / (x * x);
+    x += 1;
+  }
+  const r = 1 / x;
+  const r2 = r * r;
+  return shift + r + 0.5 * r2 + r * r2 * (1 / 6 - r2 * (1 / 30 - r2 * (1 / 42 - r2 * (1 / 30 - r2 * (5 / 66 - r2 * (691 / 2730 - r2 * 7 / 6))))));
+}
+
+export function tetragamma(x) {
+  if (!(x > 0)) return Number.NaN;
+  let shift = 0;
+  while (x < 10) {
+    shift -= 2 / (x * x * x);
+    x += 1;
+  }
+  const r = 1 / x;
+  const r2 = r * r;
+  return shift - r2 - r * r2 - r2 * r2 * (0.5 - r2 * (1 / 6 - r2 * (1 / 6 - r2 * (3 / 10 - r2 * (5 / 6 - r2 * (691 / 210 - r2 * 35 / 2))))));
+}
+
 export function erf(x) {
   return x < 0 ? -gammaP(0.5, x * x) : gammaP(0.5, x * x);
 }

@@ -1,6 +1,8 @@
 // Figures: a page layout editor for publication figures. Plots stay live (they follow gate edits),
 // and two builders make the figures most papers need: the gating strategy of a population and a
-// grid of the same plot across samples. Exports SVG (vector), PNG and PDF.
+// grid of the same plot across samples. Statistics items show columns of a Tables table. Exports
+// SVG (vector), PNG and PDF, and batch reports: the figure repeated for each sample or each value
+// of an annotation, as a multi-page PDF or a PowerPoint deck (report-dialog.js).
 
 import { h, icon, clear, downloadBlob } from './dom.js';
 import { showMenu, toast, promptDialog, progressToast } from './overlays.js';
@@ -8,7 +10,9 @@ import { drawScene } from '../lib/plot.js';
 import { newId } from '../lib/gates.js';
 import { ROOT, channelLabel, gateById, gatePath, plotsOf, setCollection } from '../lib/workspace.js';
 import { gatingStrategyFigure, samplesGridFigure } from '../lib/figures.js';
-import { figurePDF, figurePNG, figureSVG, figureScene } from './figure-export.js';
+import { drawStats, figurePDF, figurePNG, figurePage, figureSVG, figureScene } from './figure-export.js';
+import { batchReportDialog } from './report-dialog.js';
+import { columnLabel } from '../lib/tables.js';
 import { prefs } from './storage.js';
 
 const PAGES = [
@@ -146,19 +150,41 @@ export function mountFiguresMode(app, container) {
     page.style.background = fig.background ?? '#fff';
     page.style.transform = `scale(${zoom})`;
     page.parentElement.style.height = `${fig.height * zoom + 40}px`;
+    // Text placeholders filled and statistics computed, as exports show them.
+    const resolved = new Map(figurePage(app, fig).items.map((item) => [item.id, item]));
+    const wanted = new Set();
     for (const item of fig.items) {
+      const shown = resolved.get(item.id) ?? item;
       const el = h(`div.figure-item.${item.kind}${item.id === selectedItem ? '.selected' : ''}`, { style: { left: `${item.x}px`, top: `${item.y}px`, width: `${item.w}px`, height: `${item.h}px` }, dataset: { id: item.id } });
       if (item.kind === 'text') {
-        el.append(h('div', { style: { fontSize: `${item.size ?? 14}px`, fontWeight: String(item.weight ?? 400), textAlign: item.align ?? 'left', color: item.color ?? '#171b26', whiteSpace: 'pre-wrap', lineHeight: 1.25 } }, item.text));
+        el.append(h('div', { style: { fontSize: `${item.size ?? 14}px`, fontWeight: String(item.weight ?? 400), textAlign: item.align ?? 'left', color: item.color ?? '#171b26', whiteSpace: 'pre-wrap', lineHeight: 1.25 } }, shown.text));
       } else if (item.kind === 'arrow') {
         el.append(h('div.figure-arrow'));
+      } else if (item.kind === 'stats') {
+        renderStatsItem(shown, el);
+        for (const id of shown.rowIds ?? []) if (!data.view(id)) wanted.add(id);
       } else {
-        renderPlotItem(item, el);
+        renderPlotItem(shown, el);
       }
       el.append(h('div.figure-handle'));
       attachDrag(el, item);
       page.append(el);
     }
+    // The samples statistics items list are loaded (the page redraws when they are).
+    for (const id of wanted) data.ensure(id).catch(() => {});
+  }
+
+  function renderStatsItem(item, el) {
+    const canvas = h('canvas');
+    el.append(canvas);
+    const dpr = (window.devicePixelRatio || 1) * Math.min(2, Math.max(1, zoom));
+    canvas.width = Math.round(item.w * dpr);
+    canvas.height = Math.round(item.h * dpr);
+    canvas.style.width = `${item.w}px`;
+    canvas.style.height = `${item.h}px`;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawStats(ctx, item);
   }
 
   function attachDrag(el, item) {
@@ -235,11 +261,12 @@ export function mountFiguresMode(app, container) {
         h('div.btn-row', { style: { marginTop: '8px' } },
           h('button.btn.small', { type: 'button', onclick: () => addItem('text') }, icon('plus'), 'Text'),
           h('button.btn.small', { type: 'button', onclick: () => addItem('plot') }, icon('plus'), 'Plot of the current population'),
-          h('button.btn.small', { type: 'button', onclick: () => addItem('arrow') }, icon('plus'), 'Arrow')),
+          h('button.btn.small', { type: 'button', onclick: () => addItem('arrow') }, icon('plus'), 'Arrow'),
+          h('button.btn.small', { type: 'button', title: 'Columns of a Tables table for the samples on the page', onclick: () => addItem('stats') }, icon('plus'), 'Statistics')),
         h('p.muted', { style: { marginTop: '10px', fontSize: '11.5px' } }, 'Click an item to edit it; drag to move (snaps to 5 px); drag its corner to resize. Delete removes the selected item.'));
       return;
     }
-    propsHost.append(h('h3', item.kind === 'plot' ? 'Plot' : item.kind === 'text' ? 'Text' : 'Arrow', h('span.spacer'),
+    propsHost.append(h('h3', { plot: 'Plot', text: 'Text', stats: 'Statistics', arrow: 'Arrow' }[item.kind] ?? 'Item', h('span.spacer'),
       h('button.icon-button.small', { type: 'button', title: 'Duplicate', onclick: () => duplicateItem(item) }, icon('copy')),
       h('button.icon-button.small', { type: 'button', title: 'Delete', onclick: () => removeItem(item) }, icon('trash'))));
     if (item.kind === 'text') {
@@ -250,7 +277,34 @@ export function mountFiguresMode(app, container) {
           h('label.field', h('span', 'Size'), h('input.input.small', { type: 'number', value: item.size ?? 14, onchange: (event) => updateItem({ size: Number(event.target.value) }) })),
           h('label.field', h('span', 'Weight'), h('select.input.small', { onchange: (event) => updateItem({ weight: Number(event.target.value) }) }, ...[400, 500, 600, 700].map((w) => h('option', { value: w, selected: (item.weight ?? 400) === w }, String(w))))),
           h('label.field', h('span', 'Align'), h('select.input.small', { onchange: (event) => updateItem({ align: event.target.value }) }, ...['left', 'center', 'right'].map((a) => h('option', { value: a, selected: (item.align ?? 'left') === a }, a))))),
-        h('label.field', h('span', 'Color'), h('input', { type: 'color', value: item.color ?? '#171b26', onchange: (event) => updateItem({ color: event.target.value }) })));
+        h('label.field', h('span', 'Color'), h('input', { type: 'color', value: item.color ?? '#171b26', onchange: (event) => updateItem({ color: event.target.value }) })),
+        h('p.muted', { style: { fontSize: '11.5px' } }, 'Placeholders are filled from the figure\'s samples, and on each page of a batch report: {sample}, {page}, {pages}, {group}, {date}, {workspace} and annotations such as {subject} or {condition}.'));
+      return;
+    }
+    if (item.kind === 'stats') {
+      const table = ws.tables.find((t) => t.id === item.tableId);
+      const tableSelect = h('select.input.small', { onchange: (event) => updateItem({ tableId: event.target.value, columnIds: null }) }, ...ws.tables.map((t) => h('option', { value: t.id, selected: t.id === item.tableId }, t.name)));
+      const rowsSelect = h('select.input.small', { onchange: (event) => updateItem({ rows: event.target.value }) },
+        h('option', { value: 'page', selected: item.rows !== 'table' }, 'The samples on the page'),
+        h('option', { value: 'table', selected: item.rows === 'table' }, 'All of the table\'s rows'));
+      const chosen = new Set(item.columnIds?.length ? item.columnIds : table?.columns.map((c) => c.id) ?? []);
+      const columns = h('div', { style: { maxHeight: '220px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '8px', padding: '4px 8px' } },
+        ...(table?.columns ?? []).map((column) => h('label.check', h('input', {
+          type: 'checkbox',
+          checked: chosen.has(column.id),
+          onchange: (event) => {
+            if (event.target.checked) chosen.add(column.id);
+            else chosen.delete(column.id);
+            const ids = table.columns.map((c) => c.id).filter((id) => chosen.has(id));
+            updateItem({ columnIds: ids.length === table.columns.length ? null : ids });
+          },
+        }), columnLabel(ws, column))));
+      propsHost.append(
+        h('label.field', h('span', 'Table'), tableSelect),
+        h('label.field', h('span', 'Rows'), rowsSelect),
+        h('div.section-title', 'Columns'), table ? columns : h('p.muted', 'The table was deleted.'),
+        h('label.field', h('span', 'Text size'), h('input.input.small', { type: 'number', min: 7, max: 24, value: item.size ?? 11, onchange: (event) => updateItem({ size: Number(event.target.value) || 11 }) })),
+        h('p.muted', { style: { fontSize: '11.5px' } }, 'Values as Tables computes them, with ND and < LLOQ where a column has detection limits. The text shrinks to fit the box; rows that still do not fit are counted below the table.'));
       return;
     }
     if (item.kind === 'plot') {
@@ -274,6 +328,17 @@ export function mountFiguresMode(app, container) {
   function addItem(kind) {
     const fig = figure();
     if (!fig) return;
+    if (kind === 'stats') {
+      const table = store.ws.tables[0];
+      if (!table) {
+        toast('Make a table in Tables first: a statistics item shows its columns.');
+        return;
+      }
+      const item = { id: newId('i'), kind: 'stats', x: 40, y: Math.max(40, fig.height - 260), w: Math.min(900, fig.width - 80), h: 200, tableId: table.id, rows: 'page', size: 11 };
+      selectedItem = item.id;
+      save({ ...fig, items: [...fig.items, item] }, 'Add statistics');
+      return;
+    }
     const sampleId = store.ui.sampleId ?? store.ws.samples[0]?.id;
     const pop = store.ui.gateId ?? ROOT;
     const plot = plotsOf(store.ws, pop)[0];
@@ -328,7 +393,8 @@ export function mountFiguresMode(app, container) {
     headActions.append(
       h('button.btn.small', { type: 'button', onclick: () => exportSVG(fig) }, icon('download'), 'SVG'),
       h('button.btn.small', { type: 'button', onclick: () => exportRaster(fig, 'png') }, icon('download'), 'PNG'),
-      h('button.btn.small', { type: 'button', onclick: () => exportRaster(fig, 'pdf') }, icon('download'), 'PDF (300 dpi)'),
+      h('button.btn.small', { type: 'button', onclick: () => exportRaster(fig, 'pdf') }, icon('download'), 'PDF'),
+      h('button.btn.small', { type: 'button', title: 'Repeat the figure for each sample or each value of an annotation, as a multi-page PDF or a PowerPoint deck', onclick: () => batchReportDialog(app, fig) }, icon('layers'), 'Batch report…'),
       h('label.check', { title: 'Exports carry the gates, scales, compensation, sample names and file checksums behind each plot, so the figure can be traced to its analysis and rebuilt. Open an exported figure in CytoWeave to check it.' },
         h('input', { type: 'checkbox', checked: embedding(), onchange: (event) => prefs.set('figureProvenance', event.target.checked) }), 'Embed the analysis'));
   }

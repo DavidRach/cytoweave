@@ -1,0 +1,1710 @@
+[
+  {
+    "name": "workspace_summary",
+    "title": "Describe the workspace",
+    "description": "The open workspace: its samples (name, events, role, metadata, channels with markers), groups, the gating tree with counts for the current sample, compensation matrices, derived results, and what the window shows. Start here.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "open_files",
+    "title": "Open FCS files",
+    "description": "Open FCS files, folders of FCS files (each folder becomes a group), CytoWeave workspaces (.cwz), FlowJo workspaces (.wsp), Gating-ML files, or CSV files of events (a row per event, a column per channel; each becomes a sample, with the columns' kinds and scales guessed and checked, reported in data.csv), by absolute path on this computer. A CSV whose first column names samples annotates them instead.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "description": "Absolute paths of files or folders",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "open_example",
+    "title": "Open an example experiment",
+    "description": "Generate and open a simulated example experiment as a new workspace: pbmc-immunophenotyping, flowjo-workspace (four samples and a FlowJo workspace, which opens in the FlowJo import dialog for the user), spectral-25color, cell-cycle, proliferation, cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded plate), index-sort, qc-showcase or bead-qc (30 daily runs of multi-level beads for Q, B and Levey–Jennings).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "enum": [
+            "pbmc-immunophenotyping",
+            "flowjo-workspace",
+            "spectral-25color",
+            "cell-cycle",
+            "proliferation",
+            "cytof-cohort",
+            "cytof-barcoded",
+            "index-sort",
+            "qc-showcase",
+            "bead-qc"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "select",
+    "title": "Show a sample, population or view",
+    "description": "Change what the window shows: a sample, a population, and/or a view (gate, qc, compensate, spectral, explore, tables, compare, figures, report).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample name or id (default: the sample shown in the window)",
+          "type": "string"
+        },
+        "view": {
+          "description": "View to show",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "list_populations",
+    "title": "List populations with counts",
+    "description": "The gating tree for a sample: every population's path, gate type and channels, event count, % of parent and % of total.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "sample": {
+          "description": "Sample name or id (default: the sample shown in the window)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "population_statistics",
+    "title": "Statistics of a population",
+    "description": "Count, frequencies and per-channel statistics (median, mean, geometric mean, SD, robust SD, CV, robust CV, percentiles) of one population in one sample, on compensated values.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "description": "Channels or markers (default: all fluorescence channels)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample name or id (default: the sample shown in the window)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "statistics_table",
+    "title": "A statistic across samples",
+    "description": "One or more statistics of one or more populations for every sample (or a group): e.g. freqParent of CD4 T cells, or median of CD25 in Tregs. Statistics: count, freqParent, freqTotal, freqGrandparent, median, mean, geomean, sd, rsd, cv, rcv, percentile, mode, positive; for rare events countLow and countHigh (exact Poisson 95% limits), countCV, freqLow and freqHigh (exact binomial 95% limits of freqParent); concentration (/µL from $VOL) and absoluteCount (/µL from counting beads); and, against a control sample's population on the channel, overton and sed (% positive), pbPositive and pbT (probability binning) and ksD.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "beadPopulation": {
+          "description": "For absoluteCount: the counting beads' population",
+          "type": "string"
+        },
+        "beadsPerTube": {
+          "description": "For absoluteCount: beads in the tube",
+          "type": "number"
+        },
+        "channel": {
+          "description": "Channel or marker for channel statistics",
+          "type": "string"
+        },
+        "control": {
+          "description": "Control sample for overton, sed, pbPositive, pbT and ksD (e.g. an FMO)",
+          "type": "string"
+        },
+        "controlPopulation": {
+          "description": "The control's population (default: the same population)",
+          "type": "string"
+        },
+        "dilution": {
+          "description": "For concentration and absoluteCount: a dilution factor, or the sample annotation that holds it",
+          "type": "string"
+        },
+        "group": {
+          "description": "Group name (default: all samples)",
+          "type": "string"
+        },
+        "populations": {
+          "description": "Populations (default: all)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sampleVolume": {
+          "description": "For absoluteCount: µL of sample in the tube",
+          "type": "number"
+        },
+        "statistic": {
+          "description": "Statistic id (default freqParent)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "render_plot",
+    "title": "Render a plot",
+    "description": "A PNG image of a plot: a population of a sample on one or two channels, with the child gates drawn and labeled. Types: pseudocolor, dot, density, contour, zebra, histogram.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "description": "Height in pixels (default 480)",
+          "type": "number"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample name or id (default: the sample shown in the window)",
+          "type": "string"
+        },
+        "type": {
+          "description": "Plot type",
+          "type": "string"
+        },
+        "width": {
+          "description": "Width in pixels (default 520)",
+          "type": "number"
+        },
+        "x": {
+          "description": "X channel or marker",
+          "type": "string"
+        },
+        "y": {
+          "description": "Y channel or marker (omit for a histogram)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "x"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "create_gate",
+    "title": "Create a gate",
+    "description": "Add a gate under a parent population. Coordinates are data values (as on the plot axes). Types and coordinates: rectangle {xMin, xMax, yMin, yMax} (omit a bound to leave it open), polygon {vertices: [[x, y], ...]}, ellipse {center: [x, y], semiAxes in fractions of the axes [rx, ry], angle in degrees}, range on one channel {min, max}, quadrant {at: [x, y]} (creates four populations), split on one channel {threshold} (two populations). The gate is proposed for the user's review (shown as proposed, usable as a parent at once). Returns the new populations with their counts.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "coordinates": {
+          "description": "Type-specific coordinates in data values",
+          "type": "object"
+        },
+        "name": {
+          "description": "Name (default: from the markers)",
+          "type": "string"
+        },
+        "parent": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample whose counts are reported (default: the current sample); the gate applies to every sample",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "rectangle",
+            "polygon",
+            "ellipse",
+            "range",
+            "quadrant",
+            "split"
+          ],
+          "type": "string"
+        },
+        "x": {
+          "description": "X channel or marker",
+          "type": "string"
+        },
+        "y": {
+          "description": "Y channel or marker (not for range or split)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "x",
+        "coordinates"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "auto_gate",
+    "title": "Propose a gate from the data",
+    "description": "Add a gate found from the data's density: method \"density\" gates the population around a point (at: [x, y] in data values) like a magic wand; \"singlets\" gates single cells on an area-versus-height plot (x = FSC-A, y = FSC-H); \"valley\" splits one channel at the density minimum between its two main modes. The explanation says what was found. The gate is proposed for the user's review.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "description": "[x, y] data values (density)",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "method": {
+          "enum": [
+            "density",
+            "singlets",
+            "valley"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Name",
+          "type": "string"
+        },
+        "parent": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample name or id (default: the sample shown in the window)",
+          "type": "string"
+        },
+        "x": {
+          "description": "X channel or marker",
+          "type": "string"
+        },
+        "y": {
+          "description": "Y channel or marker",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "x"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "edit_gate",
+    "title": "Rename, recolor or delete a gate",
+    "description": "Rename a population, change its color, or delete it (with its subpopulations). Changes to gates the user has accepted wait for the user's review; changes to gates you proposed apply at once.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "description": "New color (#rrggbb)",
+          "type": "string"
+        },
+        "delete": {
+          "type": "boolean"
+        },
+        "name": {
+          "description": "New name",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        }
+      },
+      "required": [
+        "population"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "review_gate",
+    "title": "Review a gate across samples",
+    "description": "A gate's frequency on every sample with a robust z-score against the cohort and the boundary robustness (how much the frequency depends on exactly where the boundary is), outliers first.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        }
+      },
+      "required": [
+        "population"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "adapt_gate",
+    "title": "Adapt a gate to each sample",
+    "description": "Adapt a gate to every sample by registering the density landmarks of its parent population along the gate's axes, learning from the samples the user drew, adjusted or confirmed it on. Each sample gets a confidence and a status: keep (the gate already fits), adjust (a confident adjustment, which is proposed for the user's review) or review (uncertain, left for the user to check by hand, with the reason). Adapt parents before their children: a sample under review for a parent stays under review for the children. A gate is moved only where it cuts into a population, since populations also move for biological reasons. When samples of one donor or subject differ by a stimulation being measured, pass groupBy (the metadata field) so that each group keeps one gate. Polygons, rectangles, ellipses, ranges, splits and quadrants can be adapted.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "groupBy": {
+          "description": "Sample metadata field whose samples keep one gate, adapted on their pooled events (e.g. donor or subject); default: each sample alone",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        }
+      },
+      "required": [
+        "population"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "compare",
+    "title": "Compare groups of samples",
+    "description": "Test a population statistic between groups of samples defined by a metadata field (e.g. condition), optionally paired by another (e.g. subject): per-group values, effect size with confidence interval, and t-test and rank tests.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "description": "Channel or marker for channel statistics",
+          "type": "string"
+        },
+        "control": {
+          "description": "Control sample, for a comparison statistic (overton, sed, pbPositive, pbT, ksD)",
+          "type": "string"
+        },
+        "groupBy": {
+          "description": "Metadata field that defines the groups",
+          "type": "string"
+        },
+        "pairBy": {
+          "description": "Metadata field that pairs samples (optional)",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "statistic": {
+          "description": "Statistic id (default freqParent)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "population",
+        "groupBy"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "differential_analysis",
+    "title": "Differential state or abundance across groups",
+    "description": "Test clusters (a cluster channel from explore) or populations between groups of samples defined by a metadata field, with pairing and covariates as fixed effects. test \"state\" (default) is diffcyt-DS-limma: per sample, the median of arcsinh(x / cofactor) of each marker in each cluster or population (cofactor 5 for mass cytometry, 150 for fluorescence), clusters with at least minCells cells in at least half the samples, a linear model per cluster and marker weighted by the cells in each sample, limma's moderated t-statistics with a mean-variance trend, and Benjamini-Hochberg adjustment across every cluster and marker tested. By default it tests the markers the clustering did not use (state markers). test \"abundance\" tests each cluster's share of the parent population with a quasi-binomial model. Rows are sorted by p; logFC is the difference of the medians (contrast minus reference).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clusters": {
+          "description": "Cluster channel (default: the first one)",
+          "type": "string"
+        },
+        "cofactor": {
+          "description": "arcsinh cofactor (default 5 for mass cytometry, 150 otherwise)",
+          "type": "number"
+        },
+        "contrast": {
+          "description": "The group tested against the reference (default: the second group)",
+          "type": "string"
+        },
+        "covariates": {
+          "description": "Other metadata fields in the model (e.g. batch)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "groupBy": {
+          "description": "Metadata field that defines the groups",
+          "type": "string"
+        },
+        "groups": {
+          "description": "Groups to compare, the reference first (default: every value, sorted)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "description": "Rows to return, lowest p first (default 40)",
+          "type": "number"
+        },
+        "markers": {
+          "description": "Markers to test (default: those the clustering did not use)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "minCells": {
+          "description": "Cells a cluster needs in a sample (default 3)",
+          "type": "number"
+        },
+        "minSamples": {
+          "description": "Samples that need minCells (default: half)",
+          "type": "number"
+        },
+        "pairBy": {
+          "description": "Metadata field that pairs samples (e.g. subject), as a fixed effect",
+          "type": "string"
+        },
+        "parent": {
+          "description": "Parent population of the clusters (default: all events)",
+          "type": "string"
+        },
+        "populations": {
+          "description": "Populations to test instead of clusters (state only)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "test": {
+          "description": "Marker medians (state, default) or cluster frequencies (abundance)",
+          "enum": [
+            "state",
+            "abundance"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "groupBy"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "add_formula_channel",
+    "title": "Add a formula channel",
+    "description": "Propose a channel computed for every event of every sample from other channels (compensated values): channels in square brackets by marker or detector ([CD4], [FITC-A]), numbers, + - * / ^, parentheses and the functions log (base 10), ln, exp, sqrt, abs, asinh, min and max. For example a ratio [CD4] / [CD8]. The channel can be gated, plotted and used in statistics at once; a ratio A*([x] - B)/([y] - C) goes into Gating-ML exports as fratio.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "description": "The formula, e.g. [CD4] / [CD8]",
+          "type": "string"
+        },
+        "name": {
+          "description": "Channel name (default: from the expression)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expression"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "calibrate_beads",
+    "title": "Calibrate fluorescence with beads",
+    "description": "Fit a standard curve from a multi-level bead sample (as FlowCal does): the levels are found together on the clustering channels, each level's median matched to its value from the beads' datasheet (MEF/ERF, dimmest first, null for a level without one), levels near the ends of the range left out, and m*ln(x) + b = ln(MEF + MEF_beads) fitted. With applyTo, proposes \"\u003cchannel\u003e \u003cunit\u003e\" channels for those samples (acquired with the beads' settings).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "applyTo": {
+          "description": "Samples to add the calibrated channels to",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "clustering": {
+          "description": "Channels to find the levels on (default: the calibrated ones)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "population": {
+          "description": "The single beads' population (default: found on scatter)",
+          "type": "string"
+        },
+        "sample": {
+          "description": "The bead sample",
+          "type": "string"
+        },
+        "unit": {
+          "description": "Unit for every channel (e.g. MEFL), or { channel: unit }"
+        },
+        "values": {
+          "description": "{ channel or marker: [value of each level, dimmest first] }",
+          "type": "object"
+        }
+      },
+      "required": [
+        "sample",
+        "values"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "compare_distributions",
+    "title": "Compare samples' distributions with a control",
+    "description": "Compare a population's distribution on a channel in each sample with a control sample's (an FMO, isotype or unstained sample, or a baseline): % positive by SED (Bagwell's enhanced normalized subtraction) and by Overton's cumulative subtraction (the K-S Dmax, which underestimates it), probability binning (Roederer's T(χ), above 4 for p \u003c 0.01, Baggerly's pbStat, and the % of events in excess of the control), and the Kolmogorov-Smirnov D and p. With several channels, multivariate probability binning only.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "description": "Channel or marker",
+          "type": "string"
+        },
+        "channels": {
+          "description": "Several channels, for multivariate probability binning",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "control": {
+          "description": "Control sample",
+          "type": "string"
+        },
+        "controlPopulation": {
+          "description": "The control's population (default: the same population)",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Samples to compare (default: every sample but the control)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "control"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "rare_events",
+    "title": "Rare-event statistics and detection limits",
+    "description": "For a rare population in each sample: its count with an exact Poisson 95% interval, its frequency of the parent with an exact binomial interval, the counting CV, and the parent events needed for a target CV. Given blank samples (none of the population expected) and optionally low-level samples, also the limit of blank, limit of detection and lower limit of quantification (CLSI EP17; Armbruster \u0026 Pry 2008), and whether each sample's value is not detected, detected below the limit of quantification, or quantifiable.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "blanks": {
+          "description": "Blank samples, for the limit of blank",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cv": {
+          "description": "Target CV in % (default 20), for the events needed and the limit of quantification",
+          "type": "number"
+        },
+        "low": {
+          "description": "Low-level samples, for the limit of detection and of quantification",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "lowGroupBy": {
+          "description": "Metadata field grouping low-level samples by level (default: one group)",
+          "type": "string"
+        },
+        "method": {
+          "description": "Limit of blank from mean + 1.645 SD (default) or the 95th percentile",
+          "enum": [
+            "parametric",
+            "nonparametric"
+          ],
+          "type": "string"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Samples to report (default: all samples but blanks and low-level ones)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "statistic": {
+          "description": "What the limits apply to (default freqParent)",
+          "enum": [
+            "freqParent",
+            "count"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "population"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "check_robustness",
+    "title": "Check a comparison against other analysis choices",
+    "description": "Repeat a two-group comparison (as compare) under other reasonable analysis choices — each gate on the population's path moved 1% and 2% of the axis, the gates adapted to each sample or without per-sample adjustments, without acquisition QC (and, with rerunQC, QC re-run with MAD 4 and 8), other compensation matrices, a rank test — alone and in random combinations (64 analyses), and report whether the conclusion holds (in at least 90% of them), mostly holds (70%) or is fragile, which single choices change it, and which change the size of a difference found beyond its confidence interval. The declared analysis stays the result; report fragility rather than choosing the analysis that gives the answer you want. Takes seconds to a minute.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "description": "Channel or marker for channel statistics",
+          "type": "string"
+        },
+        "groupBy": {
+          "description": "Metadata field that defines the groups",
+          "type": "string"
+        },
+        "groups": {
+          "description": "The two groups to compare, reference first (default: the field's two values)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pairBy": {
+          "description": "Metadata field that pairs samples (optional)",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "rerunQC": {
+          "description": "Also re-run acquisition QC with stricter and looser settings (slower)",
+          "type": "boolean"
+        },
+        "statistic": {
+          "description": "Statistic id (default freqParent)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "population",
+        "groupBy"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "propose_compensation",
+    "title": "Propose a compensation matrix from the controls",
+    "description": "Compute a spillover matrix from the workspace's single-stain controls (samples with the role single-stain and a stained channel), optionally within a population of each control (e.g. its singlets) and with an unstained sample as the negative reference, and propose it for the samples. The user reviews it with your other changes; the result lists the largest spillover values and any warnings about the controls.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "enum": [
+            "median",
+            "regression"
+          ],
+          "type": "string"
+        },
+        "population": {
+          "description": "Population of each control to use (default: all events)",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Samples to apply it to (default: every sample that is not a control)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unstained": {
+          "description": "Unstained sample used as the negative reference (default: the dim events of each control)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "annotate_samples",
+    "title": "Annotate samples",
+    "description": "Set samples' metadata fields (condition, subject, donor, batch, timepoint, … or any field; null removes one), their role (sample, unstained, single-stain, fmo, isotype, bead, reference) and, for single-stain controls, the stained channel. Compare, check_robustness, adapt_gate (groupBy), propose_compensation and unmix use these. The annotations wait for the user's review: until the user accepts, the tools see the current ones.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "samples": {
+          "description": "One entry per sample: {sample, meta: {field: value}, role, stain}",
+          "items": {
+            "properties": {
+              "meta": {
+                "description": "Field → value (string; null removes the field)",
+                "type": "object"
+              },
+              "role": {
+                "description": "Role",
+                "type": "string"
+              },
+              "sample": {
+                "description": "Sample name or id (default: the sample shown in the window)",
+                "type": "string"
+              },
+              "stain": {
+                "description": "Stained channel of a single-stain control (name or marker)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "sample"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "samples"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "run_qc",
+    "title": "Run acquisition QC",
+    "description": "Acquisition QC of samples, as the QC view runs it: PeacoQC (refined by default, or classic as in R), a flow-rate check, margin events and per-channel drift. Returns each sample's score (0–100), the share of events removed and the findings, worst first. The result is proposed: its \"QC pass\" channel (1 = passed) can be gated at once. With addGate, a \"QC pass\" gate is proposed at the top of the gating tree, which moves every population beneath it when the user accepts. Samples the user has already checked keep the user's result. Takes seconds per sample.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "addGate": {
+          "description": "Propose a \"QC pass\" gate at the top of the tree",
+          "type": "boolean"
+        },
+        "includeControls": {
+          "description": "Also check controls (default false)",
+          "type": "boolean"
+        },
+        "mad": {
+          "description": "PeacoQC MAD threshold (default 6; lower is stricter)",
+          "type": "number"
+        },
+        "samples": {
+          "description": "Samples (default: every sample that is not a control)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "variant": {
+          "enum": [
+            "refined",
+            "classic"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "unmix",
+    "title": "Unmix spectral data",
+    "description": "Spectral unmixing of raw spectral files (Aurora, ID7000, FACSDiscover and others) with reference spectra from the single-stain controls (role single-stain), each gated automatically, and autofluorescence signatures from the unstained control (role unstained). The user's reference library is used when there is one; otherwise one is computed and proposed. Methods: ols (default), wls, wls-fixed, nnls; autofluorescenceMode: none, single, perEvent. Returns the unmixed channels (proposed, usable at once), each reference's peak detector, stain index and warnings, the panel's complexity index and each sample's median residual.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "autofluorescence": {
+          "description": "Extract autofluorescence signatures when building a library (default true)",
+          "type": "boolean"
+        },
+        "autofluorescenceMode": {
+          "description": "none, single or perEvent",
+          "type": "string"
+        },
+        "method": {
+          "description": "ols, wls, wls-fixed or nnls",
+          "type": "string"
+        },
+        "recompute": {
+          "description": "Recompute your own proposed library",
+          "type": "boolean"
+        },
+        "samples": {
+          "description": "Samples to unmix (default: every sample that is not a control)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unstainedPopulation": {
+          "description": "Population of the unstained control for the signatures (e.g. its live single cells)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "explore",
+    "title": "Cluster and map cells",
+    "description": "Cluster the events of a population across samples (flowsom, phenograph (Leiden), louvain, kmeans or none; every event gets a cluster) and map them (umap, tsne, pca or none, on an equal subsample per sample), as the Explore view does. Returns each cluster's name from marker enrichment, frequency and abundance per sample, and the map's faithfulness (trustworthiness, continuity, neighbor preservation, sample mixing) with warnings. The channels (e.g. \"FlowSOM cluster\", \"UMAP 1\") are proposed and usable at once; with populations: true the clusters are proposed as populations (category gates) to compare. Markers default to the lineage and phenotype markers (viability, DNA and dump channels left out).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clustering": {
+          "description": "flowsom (default), phenograph, louvain, kmeans or none",
+          "type": "string"
+        },
+        "embedding": {
+          "description": "umap (default), tsne, pca or none",
+          "type": "string"
+        },
+        "eventsPerSample": {
+          "description": "Events per sample in the map, default 5000",
+          "type": "number"
+        },
+        "group": {
+          "description": "A group of samples instead",
+          "type": "string"
+        },
+        "k": {
+          "description": "Metaclusters (FlowSOM) or clusters (k-means), default 12",
+          "type": "number"
+        },
+        "markers": {
+          "description": "Channels or markers to cluster on",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "minDist": {
+          "description": "UMAP min_dist, default 0.1",
+          "type": "number"
+        },
+        "nNeighbors": {
+          "description": "UMAP n_neighbors, default 15",
+          "type": "number"
+        },
+        "neighbors": {
+          "description": "k of the neighbor graph (Leiden, Louvain), default 30",
+          "type": "number"
+        },
+        "perplexity": {
+          "description": "t-SNE perplexity, default 30",
+          "type": "number"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "populations": {
+          "description": "Propose the clusters as populations",
+          "type": "boolean"
+        },
+        "resolution": {
+          "description": "Leiden or Louvain resolution, default 1",
+          "type": "number"
+        },
+        "samples": {
+          "description": "Samples (default: every sample that is not a control)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "seed": {
+          "description": "Random seed, default 42",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "build_figure",
+    "title": "Build a figure",
+    "description": "Lay out a publication figure, proposed for the user's review: kind gating-strategy shows one plot per gate on the path to a population in one sample, each gate on its parent, with arrows; kind across-samples shows the same plots (plots: [{x, y, type}], default the population's plots in the Gate view) of a population in a row per sample. The plots stay live (they follow gate and compensation changes) until export_figure writes the figure.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "description": "A group of samples instead",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "gating-strategy",
+            "across-samples"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Figure name",
+          "type": "string"
+        },
+        "plots": {
+          "description": "Plots of an across-samples figure: {x, y (omit for a histogram), type}",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "population": {
+          "description": "Population name, path (\"Lymphocytes/Single cells/CD3+\") or id; \"All events\" or omitted for all events",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample of a gating strategy (default: the current sample)",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Samples of an across-samples figure (default: every sample, at most 24)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "population"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "export_flowjo",
+    "title": "Export a FlowJo workspace",
+    "description": "Write the workspace as a FlowJo 10 workspace (.wsp), opened by FlowJo 10 and 11: one gating tree per sample with its adjustments, the compensation, scales, groups and, by default, CytoWeave's counts to check against. With files: true, a .zip holding the workspace and its FCS files; with deidentify, identifying keywords are removed from both. Returns the populations not written exactly (traced on another scale, or not exported) and why. The file must not exist unless overwrite is true.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "description": "Include population counts (default true)",
+          "type": "boolean"
+        },
+        "deidentify": {
+          "type": "boolean"
+        },
+        "files": {
+          "description": "Include the FCS files (a .zip)",
+          "type": "boolean"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.wsp, or .zip with files)",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Samples (default: all)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "export_fcs",
+    "title": "Export de-identified FCS files",
+    "description": "Write de-identified copies of the samples' FCS files: only the keywords needed to read and analyze them are kept (operator, specimen and patient fields, free-text comments, dates unless keepDates, serial numbers and vendor keywords are removed), the events copied byte for byte. A .zip of the files, or an .acs archive with the workspace. Files are named after their samples, whose names are kept.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "keepDates": {
+          "type": "boolean"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.zip or .acs)",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Samples (default: all)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "export_figure",
+    "title": "Export a figure",
+    "description": "Write a figure (by name; default the newest) as SVG (vector), PNG (3×) or PDF (vector text and lines, event rasters as images), chosen by the path's extension. export_report repeats a figure for each sample or subject. By default the file carries the analysis behind each plot (gates, scales, compensation, file checksums), so opening it in CytoWeave shows what changed since.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "figure": {
+          "description": "Figure name",
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.svg, .png or .pdf)",
+          "type": "string"
+        },
+        "provenance": {
+          "description": "Embed the analysis (default true)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "export_events",
+    "title": "Export events",
+    "description": "Write a population's events in several samples, optionally downsampled with a seed (the same seed picks the same events; each sample drawn on its own). .fcs: one FCS file of the samples concatenated, with the channels they all have (raw values with the spillover matrix when the samples share one, else compensated values; values chooses), a SampleID channel numbering the samples (names in the CYTOWEAVE_SAMPLE_n keywords) and SourceEvent, each event's index in its own file. .zip: one FCS file per sample (raw values, each with its spillover). .h5ad: AnnData for scanpy and R: X the chosen channels (default fluorescence and mass) as arcsinh(x / cofactor; default 150, 5 for mass cytometry) or compensated values; obs the sample, its annotations, event, population (the deepest gate) and a True/False column per gate, clusters, QC pass, scatter and time; var the channels and markers; obsm the maps (X_umap, X_tsne); uns where it came from.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "description": "For .h5ad: the channels of X, by marker or detector",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cofactor": {
+          "description": "For .h5ad: the arcsinh cofactor",
+          "type": "number"
+        },
+        "eventsPerSample": {
+          "description": "Downsample to at most this many events per sample",
+          "type": "number"
+        },
+        "fraction": {
+          "description": "Downsample to this share of each sample's events (0–1)",
+          "type": "number"
+        },
+        "group": {
+          "description": "Instead of samples: a group's samples",
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.fcs, .zip or .h5ad)",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population (default: all events)",
+          "type": "string"
+        },
+        "samples": {
+          "description": "Samples (default: the samples, not controls)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "seed": {
+          "description": "Seed of the downsampling (default 1)",
+          "type": "number"
+        },
+        "values": {
+          "description": "For .fcs: raw values with the spillover matrix, or compensated values",
+          "enum": [
+            "raw",
+            "compensated"
+          ],
+          "type": "string"
+        },
+        "x": {
+          "description": "For .h5ad: what X holds (default arcsinh)",
+          "enum": [
+            "arcsinh",
+            "compensated"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "export_report",
+    "title": "Export a batch report",
+    "description": "Write a figure (build_figure, a template's, or the user's) repeated page after page as a multi-page PDF or a PowerPoint deck: by sample (the plots of the figure's main sample are redrawn on each sample; plots of other samples, such as a control, stay on every page) or by an annotation such as subject (each page one value; each plot redrawn on that value's sample matching it on the annotations that tell the figure's samples apart, e.g. the stim tube). Text placeholders ({sample}, {subject}, {page}, …) are filled; table lists a Tables table's columns for each page's samples (as native tables in PowerPoint). Every number printed is recorded with the table column or gate it comes from, and the record goes into the file. The result lists the pages and notes (a missing tube, replicates).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "description": "sample, or an annotation field such as subject (default: the figure's saved choice, else sample)",
+          "type": "string"
+        },
+        "figure": {
+          "description": "Figure name (default: the latest)",
+          "type": "string"
+        },
+        "group": {
+          "description": "Only the samples of this group (default: the samples, not controls)",
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.pdf or .pptx)",
+          "type": "string"
+        },
+        "provenance": {
+          "description": "Embed the analysis and the record of every number (default true)",
+          "type": "boolean"
+        },
+        "sample": {
+          "description": "By sample: the sample whose plots follow (default: the one most plots are on)",
+          "type": "string"
+        },
+        "table": {
+          "description": "A Tables table to list on each page for the page's samples, if the figure has no statistics item",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "export_table",
+    "title": "Export a statistics table",
+    "description": "Write statistics to a file. .csv or .tsv: a statistic of populations for every sample (as statistics_table), one row per sample with its metadata, one column per population. .xlsx: an Excel workbook of the Tables table named by table (or that statistic, or with neither, every table), values in full precision, with sheets describing each column, the samples (files and SHA-256 checksums) and the gating, and the methods. .pzfx: a GraphPad Prism project of the table (or the statistic), and with groupBy (an annotation such as condition) a column table per statistic with a column per group, as Prism's t tests and ANOVA take.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "beadPopulation": {
+          "description": "For absoluteCount: the counting beads' population",
+          "type": "string"
+        },
+        "beadsPerTube": {
+          "description": "For absoluteCount: beads in the tube",
+          "type": "number"
+        },
+        "channel": {
+          "description": "Channel or marker for channel statistics",
+          "type": "string"
+        },
+        "control": {
+          "description": "Control sample for comparison statistics",
+          "type": "string"
+        },
+        "controlPopulation": {
+          "description": "The control's population (default: the same population)",
+          "type": "string"
+        },
+        "dilution": {
+          "description": "For concentration and absoluteCount: a dilution factor, or the sample annotation that holds it",
+          "type": "string"
+        },
+        "group": {
+          "description": "Group name (default: all samples)",
+          "type": "string"
+        },
+        "groupBy": {
+          "description": "For .pzfx: the annotation whose values become Prism's columns",
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.csv, .tsv, .xlsx or .pzfx)",
+          "type": "string"
+        },
+        "populations": {
+          "description": "Populations (default: all)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sampleVolume": {
+          "description": "For absoluteCount: µL of sample in the tube",
+          "type": "number"
+        },
+        "statistic": {
+          "description": "Statistic id (default freqParent)",
+          "type": "string"
+        },
+        "table": {
+          "description": "A table in Tables (for .xlsx and .pzfx; its columns as Tables shows them)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "list_templates",
+    "title": "List analysis templates",
+    "description": "The analysis templates in the library (saved by the user or save_template): each one's name, populations and the markers its channels measure; and the published gating strategies (OMIP-101 major leukocyte populations, OMIP-090 regulatory T cells) that apply_template places on the data, with their citations and where they differ from the articles.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "save_template",
+    "title": "Save the analysis as a template",
+    "description": "Save the workspace's analysis (or one population and those under it) as a template in the library: the gates, scales, plots, tables and figure layouts, with channels described by marker (scatter and time by name) so that it applies to another panel. Gates on computed channels and per-sample adjustments are left out and listed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Template name",
+          "type": "string"
+        },
+        "population": {
+          "description": "Keep only this population and those under it (default: the whole tree)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "apply_template",
+    "title": "Apply an analysis template",
+    "description": "Apply a template from the library, or a published gating strategy (omip-101, omip-090; see list_templates), to the open samples: each of its channels is matched by marker (preferring the same area/height suffix), scatter and time by name, and the report says how each matched and which populations could not be applied (with the reason). A strategy's gates are placed on the events of one sample (sample, default the current one), each from its parent population: density peaks for scatter, valleys between a marker's modes for positive and negative cells, and come with suggested Cell Ontology terms. The gates and figures are proposed for the user's review; gates keep their position in data values, so check them across samples with review_gate and adjust with adapt_gate. channels overrides a match: {\"CD3\": \"FL4-A\"}.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "description": "Template marker or channel name → channel here",
+          "type": "object"
+        },
+        "figures": {
+          "description": "Also propose its figures (default true)",
+          "type": "boolean"
+        },
+        "parent": {
+          "description": "Population to put the template's top gates under (default: the top of the tree)",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample whose events a strategy's gates are placed on (default: the current sample)",
+          "type": "string"
+        },
+        "template": {
+          "description": "Template name, or a strategy id (omip-101)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "template"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "suggest_cell_types",
+    "title": "Suggest Cell Ontology terms",
+    "description": "Suggest a Cell Ontology term for each population (or the ones named) from its marker phenotype in a sample: which side of each gate's markers it lies on and, for scatter gates, where it sits, never from its name. Each suggestion has a confidence (exact: every marker the term requires is gated; likely: only negative markers are not gated) and the markers it rests on. With propose: true, the top terms are proposed for the user to confirm; confirmed terms go into the FlowJo and Gating-ML exports and the methods.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "populations": {
+          "description": "Populations (default: all)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "propose": {
+          "description": "Propose the top terms for the user to confirm",
+          "type": "boolean"
+        },
+        "sample": {
+          "description": "Sample name or id (default: the sample shown in the window)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "titration",
+    "title": "Analyze a titration or voltage walk",
+    "description": "A reagent titration (samples stained with a series of amounts of one antibody, read from their names, such as \"125 ng\" or \"1:200\", or an \"amount\" annotation) or a detector voltage walk (samples acquired at a series of PMT voltages, from each file's $PnV). On one channel (default: the one the names mention, or found from the data), within a population (default: one named like lymphocytes), each step's positive and negative cells give the stain index (Maecker), separation index (Bigos) and medians. Titration: a saturation curve fitted to the stain index; the recommended amount is the first tested at or above twice the amount giving 90% of saturation (Bonilla et al. 2024). Voltage walk: the minimum voltage, where the negative cells' rSD reaches 2.5 times the detector's electronic noise (rsdEN from the cytometer's baseline report, or estimated from the walk), and the maximum, where the positive cells' 99th percentile reaches the top of the linear range (linearMax, default 90% of the range). With save, the result is proposed for the workspace, and the methods describe it.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "description": "Channel or marker (default: detected)",
+          "type": "string"
+        },
+        "linearMax": {
+          "description": "Top of the detector's linear range (voltage walk)",
+          "type": "number"
+        },
+        "mode": {
+          "enum": [
+            "titration",
+            "voltage"
+          ],
+          "type": "string"
+        },
+        "population": {
+          "description": "Population to analyze within (default: a lymphocyte gate if any, else all events)",
+          "type": "string"
+        },
+        "rsdEN": {
+          "description": "The detector's electronic noise rSD (voltage walk)",
+          "type": "number"
+        },
+        "samples": {
+          "description": "The samples of the series (default: found from names and voltages)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "save": {
+          "description": "Propose the result for the workspace",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "watch_folder",
+    "title": "Watch an instrument's export folder",
+    "description": "QC as files are acquired: action start watches a folder (absolute path) the instrument exports to; each FCS file is added to the workspace once complete and checked at once (acquisition QC for samples and controls, Q and B for bead files, against the instrument's Levey–Jennings rules). The folder is only read. Files already there wait for action existing. action status lists every file with its result (call it again to follow new files); stop ends the watch.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "start",
+            "stop",
+            "existing",
+            "status"
+          ],
+          "type": "string"
+        },
+        "beads": {
+          "description": "Measure Q and B on bead files (default true)",
+          "type": "boolean"
+        },
+        "existing": {
+          "description": "Also check the files already there (start)",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Folder to watch (start)",
+          "type": "string"
+        },
+        "qc": {
+          "description": "Run acquisition QC on samples (default true)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "proposals",
+    "title": "Proposals and the user's decisions",
+    "description": "Your open proposal (what is waiting for the user's review) and the user's recent decisions on proposals (accepted or rejected, by whom).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "methods",
+    "title": "Write the methods",
+    "description": "A methods paragraph for the analysis in the workspace, with numbered references and DOIs.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "export_gating_ml",
+    "title": "Export gates as Gating-ML",
+    "description": "The gating strategy as ISAC Gating-ML 2.0 XML text.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  }
+]

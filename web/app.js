@@ -9,7 +9,9 @@ import { mountSidebar } from './ui/sidebar.js';
 import { mountInspector } from './ui/inspector.js';
 import { installActions } from './ui/actions.js';
 import { installExportDialogs } from './ui/export-dialogs.js';
+import { installEventsIO } from './ui/events-io.js';
 import { installTemplateDialogs } from './ui/template-dialogs.js';
+import { installChannelDialogs } from './ui/channel-dialogs.js';
 import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
 import { installAutogating } from './ui/autogate-dialog.js';
 import { installLiveQC } from './ui/live-qc.js';
@@ -34,7 +36,7 @@ import {
   updateSample,
 } from './lib/workspace.js';
 
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 
 const MODES = [
   { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
@@ -97,7 +99,9 @@ async function start() {
 
   installActions(app);
   installExportDialogs(app);
+  installEventsIO(app);
   installTemplateDialogs(app);
+  installChannelDialogs(app);
   installFigureProvenance(app);
   installAutogating(app);
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
@@ -250,13 +254,15 @@ async function start() {
   folderInput.addEventListener('change', () => app.importFiles([...folderInput.files]));
 
   // Imports dropped or picked files by type. Entries: File objects or { name, bytes, folder }.
-  app.importFiles = async (files) => {
+  // options.interactive (default true): false imports CSV events with the guessed settings (agents).
+  // Returns { csv: the CSV event imports }.
+  app.importFiles = async (files, options = {}) => {
     const items = files.map((file, order) => ({ file, name: file.name, folder: file.webkitRelativePath ? file.webkitRelativePath.split('/').slice(-2, -1)[0] : file.folder ?? null, order }));
     const fcs = items.filter((item) => /\.(fcs|lmd)$/i.test(item.name) || (!/\.\w+$/.test(item.name) && item.file.size > 256));
     const workspaces = items.filter((item) => /\.(cwz|json)$/i.test(item.name));
     const flowjo = items.filter((item) => /\.wspt?$/i.test(item.name));
     const gatingml = items.filter((item) => /\.xml$/i.test(item.name));
-    const tables = items.filter((item) => /\.(csv|tsv)$/i.test(item.name));
+    const tables = items.filter((item) => /\.(csv|tsv|txt)$/i.test(item.name));
     const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
     const figures = items.filter((item) => /\.(svg|png|pdf)$/i.test(item.name));
     const templates = items.filter((item) => /\.cwt$/i.test(item.name));
@@ -265,10 +271,19 @@ async function start() {
     for (const item of archives) await importArchive(item);
     for (const item of flowjo) await importFlowJo(item);
     for (const item of gatingml) await importGatingML(item);
-    for (const item of tables) await importMetadataTable(item);
+    // A CSV of numbers (in the first column too) holds events; otherwise sample annotations.
+    const eventTables = [];
+    for (const item of tables) {
+      const text = new TextDecoder().decode(await readBytes(item));
+      const { looksLikeEvents } = await import('./lib/csv-events.js');
+      if (looksLikeEvents(text)) eventTables.push({ name: item.name, text });
+      else await importMetadataTable({ ...item, bytes: new TextEncoder().encode(text) });
+    }
+    const csv = eventTables.length ? await app.importEventCSVs(eventTables, { interactive: options.interactive !== false }) : [];
     for (const item of figures) await app.openFigureFile(item);
     for (const item of templates) await app.openTemplateFile(item);
-    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf).', { kind: 'error' });
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf), and events in CSV files.', { kind: 'error' });
+    return { csv };
   };
 
   async function readBytes(item) {
@@ -644,6 +659,10 @@ async function start() {
       } },
       { label: 'Save now', icon: 'save', hint: `${modKey}S`, onSelect: async () => { await saveNow(); toast('Saved.', { kind: 'ok' }); } },
       '-',
+      { section: 'Channels' },
+      { label: 'Computed channels…', icon: 'layers', onSelect: () => app.computedChannelsDialog() },
+      { label: 'New formula channel…', icon: 'plus', onSelect: () => app.formulaDialog() },
+      '-',
       { section: 'Templates' },
       { label: 'Save as a template…', icon: 'layers', onSelect: () => app.saveTemplate() },
       { label: 'Apply a template…', icon: 'layers', onSelect: () => app.applyTemplateDialog() },
@@ -655,12 +674,14 @@ async function start() {
       { label: 'Population memberships (CLR)…', icon: 'download', onSelect: () => app.exportCLR() },
       { label: 'FlowJo workspace (.wsp)…', icon: 'download', onSelect: () => app.exportFlowJo() },
       { label: 'De-identified FCS files…', icon: 'download', onSelect: () => app.exportDeidentified() },
+      { label: 'Events: concatenated FCS, downsampled, AnnData…', icon: 'download', onSelect: () => app.exportEventsDialog() },
+      { label: 'Tables as an Excel workbook', icon: 'download', onSelect: () => import('./ui/mode-tables.js').then((m) => m.exportTablesWorkbook(app)) },
       ...(store.ws.migrations?.length ? [{ label: 'FlowJo migration report…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
       '-',
       { section: 'Import' },
       { label: 'FCS files…', icon: 'file', onSelect: () => app.pickFiles() },
       { label: 'Workspace, FlowJo .wsp, Gating-ML or ACS…', icon: 'upload', onSelect: () => app.pickFiles('.cwz,.json,.wsp,.wspt,.xml,.acs,.zip') },
-      { label: 'Sample annotations (CSV)…', icon: 'tag', onSelect: () => app.pickFiles('.csv,.tsv') },
+      { label: 'Events or sample annotations (CSV)…', icon: 'tag', onSelect: () => app.pickFiles('.csv,.tsv,.txt') },
       '-',
       { label: 'Example experiments…', icon: 'flask', onSelect: () => app.showExamples() },
       { label: 'Start page', icon: 'grid', onSelect: () => app.setMode('welcome') },
@@ -681,9 +702,14 @@ async function start() {
     { label: 'Export gates as Gating-ML', icon: 'download', run: exportGatingML },
     { label: 'Export as a FlowJo workspace', icon: 'download', run: () => app.exportFlowJo(), keywords: 'wsp flowjo' },
     { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymize privacy keywords' },
+    { label: 'Export events (concatenated FCS, downsampled, AnnData)', icon: 'download', run: () => app.exportEventsDialog(), keywords: 'concatenate downsample h5ad anndata scanpy merge subsample' },
+    { label: 'Export tables to Excel', icon: 'download', run: () => import('./ui/mode-tables.js').then((m) => m.exportTablesWorkbook(app)), keywords: 'xlsx spreadsheet workbook statistics' },
     { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
     { label: 'Save as a template', icon: 'layers', run: () => app.saveTemplate(), keywords: 'template reuse strategy panel' },
     { label: 'Apply a template', icon: 'layers', run: () => app.applyTemplateDialog(), keywords: 'template reuse strategy panel omip' },
+    { label: 'New formula channel', icon: 'plus', run: () => app.formulaDialog(), keywords: 'formula ratio derived parameter channel calculate' },
+    { label: 'Computed channels', icon: 'layers', run: () => app.computedChannelsDialog(), keywords: 'formula calibration mef derived parameters' },
+    { label: 'Calibrate fluorescence with beads', icon: 'gauge', run: () => app.openCalibration(), keywords: 'mef mefl erf calibration beads rainbow units' },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
     { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },
@@ -1023,6 +1049,12 @@ async function start() {
   app.openLiveQC = async () => {
     if (app.qcState) app.qcState.section = 'live';
     else app.qcStartSection = 'live';
+    if (store.ui.mode === 'qc') store.setUI({}, ['selection']);
+    else await app.setMode('qc');
+  };
+  app.openCalibration = async () => {
+    if (app.qcState) app.qcState.section = 'calibration';
+    else app.qcStartSection = 'calibration';
     if (store.ui.mode === 'qc') store.setUI({}, ['selection']);
     else await app.setMode('qc');
   };

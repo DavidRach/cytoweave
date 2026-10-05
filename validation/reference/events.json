@@ -1,0 +1,2328 @@
+{
+ "about": "CytoWeave's events documents read back by anndata, h5py, pyfive, fcsparser and FlowIO; written by reference/read_events.py.",
+ "files": {
+  "lymphocytes.h5ad": {
+   "anndata 0.13.4": {
+    "sha256": "60c5d4e43c3a0b21764aa1611f11a04ac6d778962549abe79474a65dfbae997d",
+    "shape": [
+     24000,
+     14
+    ],
+    "X": "9d12eb92ec4d17a8dbb78d88bccc544e12f74a915f202a80c0f378f4b0e63283",
+    "obs_names": "34e3cbe3378801481ee71d7be0780ecb4dbddeff2a476b24ea7425a9d32a2860",
+    "var_names": [
+     "CD45RA",
+     "CD56",
+     "CCR7",
+     "Viability",
+     "CD3",
+     "HLA-DR",
+     "CD19",
+     "CD45",
+     "CD16",
+     "CD14",
+     "CD25",
+     "CD127",
+     "CD8",
+     "CD4"
+    ],
+    "var": {
+     "channel": [
+      "BUV395-A",
+      "BUV737-A",
+      "BV421-A",
+      "BV510-A",
+      "BV605-A",
+      "BV650-A",
+      "BV711-A",
+      "BV786-A",
+      "FITC-A",
+      "PerCP-Cy5-5-A",
+      "PE-A",
+      "PE-Cy7-A",
+      "APC-A",
+      "Alexa Fluor 700-A"
+     ],
+     "marker": [
+      "CD45RA",
+      "CD56",
+      "CCR7",
+      "Viability",
+      "CD3",
+      "HLA-DR",
+      "CD19",
+      "CD45",
+      "CD16",
+      "CD14",
+      "CD25",
+      "CD127",
+      "CD8",
+      "CD4"
+     ],
+     "type": [
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence"
+     ]
+    },
+    "obs": {
+     "sample": {
+      "kind": "category",
+      "categories": [
+       "D01_Unstim",
+       "D01_Stim",
+       "D02_Unstim",
+       "D02_Stim",
+       "D03_Unstim",
+       "D03_Stim",
+       "D04_Unstim",
+       "D04_Stim",
+       "D05_Unstim",
+       "D05_Stim",
+       "D06_Unstim",
+       "D06_Stim"
+      ],
+      "codes": "9412eb3f0c507d31116deece72757616e091c5ca003d426d8ed6cd177bfffd68"
+     },
+     "subject": {
+      "kind": "category",
+      "categories": [
+       "D01",
+       "D02",
+       "D03",
+       "D04",
+       "D05",
+       "D06"
+      ],
+      "codes": "4981e187a948e1ec99cdd82e934a2e700f671a7974e8e5a630f11a2cdd347b91"
+     },
+     "condition": {
+      "kind": "category",
+      "categories": [
+       "Unstim",
+       "Stim"
+      ],
+      "codes": "4a14fe99596098bbd66cd8f631be619bfdc6b2ff00d6c1b50cc40bdf8c3021fd"
+     },
+     "event": {
+      "kind": "int",
+      "values": "0b45604876fddb23970c6288deb8795762d644a36413e22632596e25dbd80e8f"
+     },
+     "population": {
+      "kind": "category",
+      "categories": [
+       "Lymphocytes",
+       "T cells",
+       "CD4\u2212 CD8+",
+       "CD4+ CD8+",
+       "CD4+ CD8\u2212",
+       "CD4\u2212 CD8\u2212",
+       "CD45RA\u2212 CCR7+",
+       "CD45RA+ CCR7+",
+       "CD45RA+ CCR7\u2212",
+       "CD45RA\u2212 CCR7\u2212",
+       "Tregs",
+       "B cells",
+       "NK cells",
+       "B or NK"
+      ],
+      "codes": "9ffabc001f1e2af1f9cf8b91213aebc70dec2e1e16336c2ae5c5f6447057d825"
+     },
+     "T cells": {
+      "kind": "bool",
+      "values": "13b1099f3c46331f5cf85154251a3b07113f3c7740017bc57138530a85ed95e2"
+     },
+     "CD4\u2212 CD8+": {
+      "kind": "bool",
+      "values": "2a7b5bc9de2b6e6f712fe82768f278e34613a1582c495c114acc3ce5e8222274"
+     },
+     "CD4+ CD8+": {
+      "kind": "bool",
+      "values": "8b381e820903b34356b41d2961f4230d739704aed870aa50d2054d0bb42d8463"
+     },
+     "CD4+ CD8\u2212": {
+      "kind": "bool",
+      "values": "3d07629ddca7442015090d70313c4124589178f5aa1811d5c6971d65d393c032"
+     },
+     "CD4\u2212 CD8\u2212": {
+      "kind": "bool",
+      "values": "41a8c894afb72cfeaca7bfddad70bd1e450203db2885cb0b7f331c229a1fa937"
+     },
+     "CD45RA\u2212 CCR7+": {
+      "kind": "bool",
+      "values": "037159270216f8960e702a9ec9da3540996589b1a809444f651254e3ce61c47c"
+     },
+     "CD45RA+ CCR7+": {
+      "kind": "bool",
+      "values": "441999956232d114e3a9a6f73f2c491ac37c09413d74afc8ae2895643f9452f8"
+     },
+     "CD45RA+ CCR7\u2212": {
+      "kind": "bool",
+      "values": "631b818eeb3fd11eb8193fee542264ab5ad14055091e61b88f8a33b876151409"
+     },
+     "CD45RA\u2212 CCR7\u2212": {
+      "kind": "bool",
+      "values": "5af17512d5577231fa847285d9d56ca7f31095d944ce04c9c6b2ea4dd6377fd8"
+     },
+     "Tregs": {
+      "kind": "bool",
+      "values": "df75229f44559feec32cd0a4c26fd0b160cdd9872733ba0a7f464cb9ec397296"
+     },
+     "B cells": {
+      "kind": "bool",
+      "values": "6694bc8faed6e16620affb208818c5c43d5cca702c7656173e4b6860527e230d"
+     },
+     "NK cells": {
+      "kind": "bool",
+      "values": "6f12aa15204668631216e6063bfb06e02b57c60924a820a46f5aac6cc1c157bf"
+     },
+     "B or NK": {
+      "kind": "bool",
+      "values": "1fb19ce0b031ad54d857bf532a126256521f102ac8142bb057b300db66c79a49"
+     },
+     "FlowSOM cluster": {
+      "kind": "category",
+      "categories": [
+       "Naive T",
+       "Memory T",
+       "B cells",
+       "NK cells",
+       "Monocytes"
+      ],
+      "codes": "b56e3dcc0451d99634c968968f9d8bf41321b2ad3418f4e268829f0caab5189f"
+     },
+     "FSC-A": {
+      "kind": "float",
+      "values": "3948713edb3eb2fea360481e88ca35081673be036f9427adfd754947bbeb8782"
+     },
+     "FSC-H": {
+      "kind": "float",
+      "values": "910a641ff666bef480f55e7c8159a217fa1687f978b359c9fb6d16648dfb9cc1"
+     },
+     "FSC-W": {
+      "kind": "float",
+      "values": "c335aa39d25b9061c53fd189b49a283908c96418dbf8ba75fd4006c5a4813d26"
+     },
+     "SSC-A": {
+      "kind": "float",
+      "values": "c89ceaa1a41638b7657aac103224d0753dbda711322ab96ea21db049a3aa93d5"
+     },
+     "SSC-H": {
+      "kind": "float",
+      "values": "9c6328b52dd2a5ada7d5b678687ae249fbdce0e54a35349cc7912c7823c5fd48"
+     },
+     "SSC-W": {
+      "kind": "float",
+      "values": "cb5c13588c7eaee28eb1d602f7d2f3cff4fdb08e0359401f61421f7ba7f2fea3"
+     },
+     "Time": {
+      "kind": "float",
+      "values": "bb06ec9812a88bde154668fa69895dd50e890d7371561e088d7f4d506de1e898"
+     }
+    },
+    "obsm": {
+     "X_umap": "1cde238d2c6461db4e9243f02c8c871a9f86458052817b563b4691343978ea38"
+    },
+    "uns": {
+     "downsampling": "downsampled to 2,000 events per sample (seed 9)",
+     "exported": "2026-10-04T12:00:00.000Z",
+     "files": [
+      "D01_Unstim.fcs",
+      "D01_Stim.fcs",
+      "D02_Unstim.fcs",
+      "D02_Stim.fcs",
+      "D03_Unstim.fcs",
+      "D03_Stim.fcs",
+      "D04_Unstim.fcs",
+      "D04_Stim.fcs",
+      "D05_Unstim.fcs",
+      "D05_Stim.fcs",
+      "D06_Unstim.fcs",
+      "D06_Stim.fcs"
+     ],
+     "population": "Cells / Single cells / Live / Lymphocytes",
+     "samples": [
+      "D01_Unstim",
+      "D01_Stim",
+      "D02_Unstim",
+      "D02_Stim",
+      "D03_Unstim",
+      "D03_Stim",
+      "D04_Unstim",
+      "D04_Stim",
+      "D05_Unstim",
+      "D05_Stim",
+      "D06_Unstim",
+      "D06_Stim"
+     ],
+     "sha256": [
+      "136e576515ec0f4a9aee1def42b3b0b04249c00b07958691ee614d22ddb11cdc",
+      "4c7ad27aa1e12b492bdcbf3027031261049dd74bf6d3453629facdbdcd698437",
+      "b2973aa366c18736d54539d49e17e059f043fe85dfaa47571f90bded10f423d9",
+      "3f2c23927f4ec4ac52ff6ff4fcaf326fde0b80e3288562f10e9f1b1f964dc4a6",
+      "52e945fd9bb1b71d9555eeae5bd3dfa6b7826cbd057404af366307dfafd68cd7",
+      "246a3df1461cb5488c7079a9a41a5a83d7c4aa31b486ef077a95c6e23efe9521",
+      "043b04e02a3a97ba0fc4d0e55f026448a828b03084d96b4a265ffa0c0fcd14de",
+      "2dd07738fc9b9b05e777a7250987d8f6ac46dc07d17c6cf0ed89ae500fbcf5b4",
+      "dc9c17bc46b95c6ba7033e28a4f4105031c6d20c4952f484e943dbc875794aaf",
+      "fa3b28c8f7823a97c660dfa709850f3e5491190a50f8fd969f8ddd663489931d",
+      "a1206e90d77b34b2a6db1d1e2ade45ee1f2eda76f4fa076ddd8a4e5f7ef4a409",
+      "f905ff54c0611430f40d8964bcd6023858ffbc6b47db3fae097c72878bcb4ddc"
+     ],
+     "values": "arcsinh(x / 150) of compensated values",
+     "version": "validation",
+     "workspace": "PBMC analysis"
+    }
+   },
+   "h5py 3.16.0 (HDF5 2.0.0)": {
+    "sha256": "60c5d4e43c3a0b21764aa1611f11a04ac6d778962549abe79474a65dfbae997d",
+    "objects": [
+     [
+      "X",
+      "float32",
+      "array"
+     ],
+     [
+      "layers",
+      "group",
+      "dict"
+     ],
+     [
+      "obs",
+      "group",
+      "dataframe"
+     ],
+     [
+      "obs/B cells",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/B or NK",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD4+ CD8+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD4+ CD8\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA+ CCR7+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA+ CCR7\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA\u2212 CCR7+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA\u2212 CCR7\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD4\u2212 CD8+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD4\u2212 CD8\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/FSC-A",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/FSC-H",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/FSC-W",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/FlowSOM cluster",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/FlowSOM cluster/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/FlowSOM cluster/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/NK cells",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/SSC-A",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/SSC-H",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/SSC-W",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/T cells",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/Time",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/Tregs",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/_index",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/condition",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/condition/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/condition/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/event",
+      "int32",
+      "array"
+     ],
+     [
+      "obs/population",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/population/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/population/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/sample",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/sample/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/sample/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/subject",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/subject/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/subject/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obsm",
+      "group",
+      "dict"
+     ],
+     [
+      "obsm/X_umap",
+      "float32",
+      "array"
+     ],
+     [
+      "obsp",
+      "group",
+      "dict"
+     ],
+     [
+      "uns",
+      "group",
+      "dict"
+     ],
+     [
+      "uns/cytoweave",
+      "group",
+      "dict"
+     ],
+     [
+      "uns/cytoweave/downsampling",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/exported",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/files",
+      "object",
+      "string-array"
+     ],
+     [
+      "uns/cytoweave/population",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/samples",
+      "object",
+      "string-array"
+     ],
+     [
+      "uns/cytoweave/sha256",
+      "object",
+      "string-array"
+     ],
+     [
+      "uns/cytoweave/values",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/version",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/workspace",
+      "object",
+      "string"
+     ],
+     [
+      "var",
+      "group",
+      "dataframe"
+     ],
+     [
+      "var/_index",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/channel",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/marker",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/type",
+      "group",
+      "categorical"
+     ],
+     [
+      "var/type/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/type/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "varm",
+      "group",
+      "dict"
+     ],
+     [
+      "varp",
+      "group",
+      "dict"
+     ]
+    ],
+    "X": "9d12eb92ec4d17a8dbb78d88bccc544e12f74a915f202a80c0f378f4b0e63283",
+    "obs_names": "34e3cbe3378801481ee71d7be0780ecb4dbddeff2a476b24ea7425a9d32a2860"
+   },
+   "pyfive 1.2.1": {
+    "sha256": "60c5d4e43c3a0b21764aa1611f11a04ac6d778962549abe79474a65dfbae997d",
+    "X": "9d12eb92ec4d17a8dbb78d88bccc544e12f74a915f202a80c0f378f4b0e63283",
+    "obs_names": "34e3cbe3378801481ee71d7be0780ecb4dbddeff2a476b24ea7425a9d32a2860",
+    "groups": [
+     "X",
+     "layers",
+     "obs",
+     "obsm",
+     "obsp",
+     "uns",
+     "var",
+     "varm",
+     "varp"
+    ]
+   },
+   "anndata 0.10.9": {
+    "sha256": "60c5d4e43c3a0b21764aa1611f11a04ac6d778962549abe79474a65dfbae997d",
+    "shape": [
+     24000,
+     14
+    ],
+    "X": "9d12eb92ec4d17a8dbb78d88bccc544e12f74a915f202a80c0f378f4b0e63283",
+    "obs_names": "34e3cbe3378801481ee71d7be0780ecb4dbddeff2a476b24ea7425a9d32a2860",
+    "var_names": [
+     "CD45RA",
+     "CD56",
+     "CCR7",
+     "Viability",
+     "CD3",
+     "HLA-DR",
+     "CD19",
+     "CD45",
+     "CD16",
+     "CD14",
+     "CD25",
+     "CD127",
+     "CD8",
+     "CD4"
+    ],
+    "var": {
+     "channel": [
+      "BUV395-A",
+      "BUV737-A",
+      "BV421-A",
+      "BV510-A",
+      "BV605-A",
+      "BV650-A",
+      "BV711-A",
+      "BV786-A",
+      "FITC-A",
+      "PerCP-Cy5-5-A",
+      "PE-A",
+      "PE-Cy7-A",
+      "APC-A",
+      "Alexa Fluor 700-A"
+     ],
+     "marker": [
+      "CD45RA",
+      "CD56",
+      "CCR7",
+      "Viability",
+      "CD3",
+      "HLA-DR",
+      "CD19",
+      "CD45",
+      "CD16",
+      "CD14",
+      "CD25",
+      "CD127",
+      "CD8",
+      "CD4"
+     ],
+     "type": [
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence"
+     ]
+    },
+    "obs": {
+     "sample": {
+      "kind": "category",
+      "categories": [
+       "D01_Unstim",
+       "D01_Stim",
+       "D02_Unstim",
+       "D02_Stim",
+       "D03_Unstim",
+       "D03_Stim",
+       "D04_Unstim",
+       "D04_Stim",
+       "D05_Unstim",
+       "D05_Stim",
+       "D06_Unstim",
+       "D06_Stim"
+      ],
+      "codes": "9412eb3f0c507d31116deece72757616e091c5ca003d426d8ed6cd177bfffd68"
+     },
+     "subject": {
+      "kind": "category",
+      "categories": [
+       "D01",
+       "D02",
+       "D03",
+       "D04",
+       "D05",
+       "D06"
+      ],
+      "codes": "4981e187a948e1ec99cdd82e934a2e700f671a7974e8e5a630f11a2cdd347b91"
+     },
+     "condition": {
+      "kind": "category",
+      "categories": [
+       "Unstim",
+       "Stim"
+      ],
+      "codes": "4a14fe99596098bbd66cd8f631be619bfdc6b2ff00d6c1b50cc40bdf8c3021fd"
+     },
+     "event": {
+      "kind": "int",
+      "values": "0b45604876fddb23970c6288deb8795762d644a36413e22632596e25dbd80e8f"
+     },
+     "population": {
+      "kind": "category",
+      "categories": [
+       "Lymphocytes",
+       "T cells",
+       "CD4\u2212 CD8+",
+       "CD4+ CD8+",
+       "CD4+ CD8\u2212",
+       "CD4\u2212 CD8\u2212",
+       "CD45RA\u2212 CCR7+",
+       "CD45RA+ CCR7+",
+       "CD45RA+ CCR7\u2212",
+       "CD45RA\u2212 CCR7\u2212",
+       "Tregs",
+       "B cells",
+       "NK cells",
+       "B or NK"
+      ],
+      "codes": "9ffabc001f1e2af1f9cf8b91213aebc70dec2e1e16336c2ae5c5f6447057d825"
+     },
+     "T cells": {
+      "kind": "bool",
+      "values": "13b1099f3c46331f5cf85154251a3b07113f3c7740017bc57138530a85ed95e2"
+     },
+     "CD4\u2212 CD8+": {
+      "kind": "bool",
+      "values": "2a7b5bc9de2b6e6f712fe82768f278e34613a1582c495c114acc3ce5e8222274"
+     },
+     "CD4+ CD8+": {
+      "kind": "bool",
+      "values": "8b381e820903b34356b41d2961f4230d739704aed870aa50d2054d0bb42d8463"
+     },
+     "CD4+ CD8\u2212": {
+      "kind": "bool",
+      "values": "3d07629ddca7442015090d70313c4124589178f5aa1811d5c6971d65d393c032"
+     },
+     "CD4\u2212 CD8\u2212": {
+      "kind": "bool",
+      "values": "41a8c894afb72cfeaca7bfddad70bd1e450203db2885cb0b7f331c229a1fa937"
+     },
+     "CD45RA\u2212 CCR7+": {
+      "kind": "bool",
+      "values": "037159270216f8960e702a9ec9da3540996589b1a809444f651254e3ce61c47c"
+     },
+     "CD45RA+ CCR7+": {
+      "kind": "bool",
+      "values": "441999956232d114e3a9a6f73f2c491ac37c09413d74afc8ae2895643f9452f8"
+     },
+     "CD45RA+ CCR7\u2212": {
+      "kind": "bool",
+      "values": "631b818eeb3fd11eb8193fee542264ab5ad14055091e61b88f8a33b876151409"
+     },
+     "CD45RA\u2212 CCR7\u2212": {
+      "kind": "bool",
+      "values": "5af17512d5577231fa847285d9d56ca7f31095d944ce04c9c6b2ea4dd6377fd8"
+     },
+     "Tregs": {
+      "kind": "bool",
+      "values": "df75229f44559feec32cd0a4c26fd0b160cdd9872733ba0a7f464cb9ec397296"
+     },
+     "B cells": {
+      "kind": "bool",
+      "values": "6694bc8faed6e16620affb208818c5c43d5cca702c7656173e4b6860527e230d"
+     },
+     "NK cells": {
+      "kind": "bool",
+      "values": "6f12aa15204668631216e6063bfb06e02b57c60924a820a46f5aac6cc1c157bf"
+     },
+     "B or NK": {
+      "kind": "bool",
+      "values": "1fb19ce0b031ad54d857bf532a126256521f102ac8142bb057b300db66c79a49"
+     },
+     "FlowSOM cluster": {
+      "kind": "category",
+      "categories": [
+       "Naive T",
+       "Memory T",
+       "B cells",
+       "NK cells",
+       "Monocytes"
+      ],
+      "codes": "b56e3dcc0451d99634c968968f9d8bf41321b2ad3418f4e268829f0caab5189f"
+     },
+     "FSC-A": {
+      "kind": "float",
+      "values": "3948713edb3eb2fea360481e88ca35081673be036f9427adfd754947bbeb8782"
+     },
+     "FSC-H": {
+      "kind": "float",
+      "values": "910a641ff666bef480f55e7c8159a217fa1687f978b359c9fb6d16648dfb9cc1"
+     },
+     "FSC-W": {
+      "kind": "float",
+      "values": "c335aa39d25b9061c53fd189b49a283908c96418dbf8ba75fd4006c5a4813d26"
+     },
+     "SSC-A": {
+      "kind": "float",
+      "values": "c89ceaa1a41638b7657aac103224d0753dbda711322ab96ea21db049a3aa93d5"
+     },
+     "SSC-H": {
+      "kind": "float",
+      "values": "9c6328b52dd2a5ada7d5b678687ae249fbdce0e54a35349cc7912c7823c5fd48"
+     },
+     "SSC-W": {
+      "kind": "float",
+      "values": "cb5c13588c7eaee28eb1d602f7d2f3cff4fdb08e0359401f61421f7ba7f2fea3"
+     },
+     "Time": {
+      "kind": "float",
+      "values": "bb06ec9812a88bde154668fa69895dd50e890d7371561e088d7f4d506de1e898"
+     }
+    },
+    "obsm": {
+     "X_umap": "1cde238d2c6461db4e9243f02c8c871a9f86458052817b563b4691343978ea38"
+    },
+    "uns": {
+     "downsampling": "downsampled to 2,000 events per sample (seed 9)",
+     "exported": "2026-10-04T12:00:00.000Z",
+     "files": [
+      "D01_Unstim.fcs",
+      "D01_Stim.fcs",
+      "D02_Unstim.fcs",
+      "D02_Stim.fcs",
+      "D03_Unstim.fcs",
+      "D03_Stim.fcs",
+      "D04_Unstim.fcs",
+      "D04_Stim.fcs",
+      "D05_Unstim.fcs",
+      "D05_Stim.fcs",
+      "D06_Unstim.fcs",
+      "D06_Stim.fcs"
+     ],
+     "population": "Cells / Single cells / Live / Lymphocytes",
+     "samples": [
+      "D01_Unstim",
+      "D01_Stim",
+      "D02_Unstim",
+      "D02_Stim",
+      "D03_Unstim",
+      "D03_Stim",
+      "D04_Unstim",
+      "D04_Stim",
+      "D05_Unstim",
+      "D05_Stim",
+      "D06_Unstim",
+      "D06_Stim"
+     ],
+     "sha256": [
+      "136e576515ec0f4a9aee1def42b3b0b04249c00b07958691ee614d22ddb11cdc",
+      "4c7ad27aa1e12b492bdcbf3027031261049dd74bf6d3453629facdbdcd698437",
+      "b2973aa366c18736d54539d49e17e059f043fe85dfaa47571f90bded10f423d9",
+      "3f2c23927f4ec4ac52ff6ff4fcaf326fde0b80e3288562f10e9f1b1f964dc4a6",
+      "52e945fd9bb1b71d9555eeae5bd3dfa6b7826cbd057404af366307dfafd68cd7",
+      "246a3df1461cb5488c7079a9a41a5a83d7c4aa31b486ef077a95c6e23efe9521",
+      "043b04e02a3a97ba0fc4d0e55f026448a828b03084d96b4a265ffa0c0fcd14de",
+      "2dd07738fc9b9b05e777a7250987d8f6ac46dc07d17c6cf0ed89ae500fbcf5b4",
+      "dc9c17bc46b95c6ba7033e28a4f4105031c6d20c4952f484e943dbc875794aaf",
+      "fa3b28c8f7823a97c660dfa709850f3e5491190a50f8fd969f8ddd663489931d",
+      "a1206e90d77b34b2a6db1d1e2ade45ee1f2eda76f4fa076ddd8a4e5f7ef4a409",
+      "f905ff54c0611430f40d8964bcd6023858ffbc6b47db3fae097c72878bcb4ddc"
+     ],
+     "values": "arcsinh(x / 150) of compensated values",
+     "version": "validation",
+     "workspace": "PBMC analysis"
+    }
+   }
+  },
+  "tcells.h5ad": {
+   "anndata 0.13.4": {
+    "sha256": "20e0a330d52713d382227be05f1e9b6f474704a9f7a50547d22d9399097c3118",
+    "shape": [
+     3600,
+     14
+    ],
+    "X": "30d2ac2cd3f828602b35d4548a04b79ae4422417ea869c61ec51a9917c79902a",
+    "obs_names": "1f3d6e43d9abd7a5c49a97cec6262f2c1d66951cc318cc188a518bde507a1a53",
+    "var_names": [
+     "CD45RA",
+     "CD56",
+     "CCR7",
+     "Viability",
+     "CD3",
+     "HLA-DR",
+     "CD19",
+     "CD45",
+     "CD16",
+     "CD14",
+     "CD25",
+     "CD127",
+     "CD8",
+     "CD4"
+    ],
+    "var": {
+     "channel": [
+      "BUV395-A",
+      "BUV737-A",
+      "BV421-A",
+      "BV510-A",
+      "BV605-A",
+      "BV650-A",
+      "BV711-A",
+      "BV786-A",
+      "FITC-A",
+      "PerCP-Cy5-5-A",
+      "PE-A",
+      "PE-Cy7-A",
+      "APC-A",
+      "Alexa Fluor 700-A"
+     ],
+     "marker": [
+      "CD45RA",
+      "CD56",
+      "CCR7",
+      "Viability",
+      "CD3",
+      "HLA-DR",
+      "CD19",
+      "CD45",
+      "CD16",
+      "CD14",
+      "CD25",
+      "CD127",
+      "CD8",
+      "CD4"
+     ],
+     "type": [
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence"
+     ]
+    },
+    "obs": {
+     "sample": {
+      "kind": "category",
+      "categories": [
+       "D01_Unstim",
+       "D01_Stim",
+       "D02_Unstim",
+       "D02_Stim",
+       "D03_Unstim",
+       "D03_Stim",
+       "D04_Unstim",
+       "D04_Stim",
+       "D05_Unstim",
+       "D05_Stim",
+       "D06_Unstim",
+       "D06_Stim"
+      ],
+      "codes": "cf13db24e81ac124f3393778c44cb5c80e9d87d3ec275f5dc90931f403cf26c9"
+     },
+     "subject": {
+      "kind": "category",
+      "categories": [
+       "D01",
+       "D02",
+       "D03",
+       "D04",
+       "D05",
+       "D06"
+      ],
+      "codes": "7bcf9811b4174be31dd5053a7c54f5e16f43aae7ff36ab0a39a60f1c615507f9"
+     },
+     "condition": {
+      "kind": "category",
+      "categories": [
+       "Unstim",
+       "Stim"
+      ],
+      "codes": "6d0bdde59dd31cc59f2285ea790b092ba8e96fbd5b4b925a694eb48510a54351"
+     },
+     "event": {
+      "kind": "int",
+      "values": "3549e1447bb2ebdd2292f05c2f7953ced10fe572199e0df898acf9680cffe759"
+     },
+     "population": {
+      "kind": "category",
+      "categories": [
+       "T cells",
+       "CD4\u2212 CD8+",
+       "CD4+ CD8+",
+       "CD4+ CD8\u2212",
+       "CD4\u2212 CD8\u2212",
+       "CD45RA\u2212 CCR7+",
+       "CD45RA+ CCR7+",
+       "CD45RA+ CCR7\u2212",
+       "CD45RA\u2212 CCR7\u2212",
+       "Tregs"
+      ],
+      "codes": "661f65ccbcdc77904bb227bd3ba758a6fd26436c02b5f867e3570ff7161fc338"
+     },
+     "CD4\u2212 CD8+": {
+      "kind": "bool",
+      "values": "c0e1943731ad296428558d28cfa0cc5444d94d56d2b5899c8d4403787ed43189"
+     },
+     "CD4+ CD8+": {
+      "kind": "bool",
+      "values": "a6abba1ef24d86f28fdc45a77855ea12901565bb7a4630209fbe1424eddc8654"
+     },
+     "CD4+ CD8\u2212": {
+      "kind": "bool",
+      "values": "2cba0577fadfb61bde5cbe03eefc76f3a0a828785c345f48d896f23afb79ccbf"
+     },
+     "CD4\u2212 CD8\u2212": {
+      "kind": "bool",
+      "values": "356fc00e311ff15a002ce0043591092b15d90db1f38f959b2037fb8f14fd5c2a"
+     },
+     "CD45RA\u2212 CCR7+": {
+      "kind": "bool",
+      "values": "f87e55c35901fdde18315e58d225c40c312feaa7ad43be79f7180f1b89c8c662"
+     },
+     "CD45RA+ CCR7+": {
+      "kind": "bool",
+      "values": "a7214d6ea1586ac542bb15b16686b102c35e344f4e23d8945f6139e5dd641075"
+     },
+     "CD45RA+ CCR7\u2212": {
+      "kind": "bool",
+      "values": "604d2929d6a9d2edcca0989cf1f7c079d0510086fad0c810dbf230828821aeb5"
+     },
+     "CD45RA\u2212 CCR7\u2212": {
+      "kind": "bool",
+      "values": "44f4882bcb48abb195a187a931a5d9898f5de791bd92caacd4f4ef78d959f970"
+     },
+     "Tregs": {
+      "kind": "bool",
+      "values": "1c70d9a7bd1e6474f2a3dac7dfeff7b93a422fefce85ee7357601d2b15d21dc7"
+     },
+     "FlowSOM cluster": {
+      "kind": "category",
+      "categories": [
+       "Naive T",
+       "Memory T",
+       "B cells",
+       "NK cells",
+       "Monocytes"
+      ],
+      "codes": "9b6f5350b873178f102b8e4d2f1098cf9bd2d72005eaba093e656be8e9c48943"
+     },
+     "FSC-A": {
+      "kind": "float",
+      "values": "5e58cbbfb22a1d9e4ebd6cf705ad21a74d7dd4d2c64d822e9f55563e43a79108"
+     },
+     "FSC-H": {
+      "kind": "float",
+      "values": "45976d0010e20b5b2753a387196bfe63e63379ad174157497372a95036db326a"
+     },
+     "FSC-W": {
+      "kind": "float",
+      "values": "2b227c87125e07155c05cd71dba1ca2bd15fd6829170098c426878d2607b15b0"
+     },
+     "SSC-A": {
+      "kind": "float",
+      "values": "8a0d62bd968fa92fb8b728e9744595d135a0c374adf2841026b86eaf6dc44098"
+     },
+     "SSC-H": {
+      "kind": "float",
+      "values": "27a9b3293943adc24faab0e996c28e4fed0471d8f28de5caf1c2dc983e473764"
+     },
+     "SSC-W": {
+      "kind": "float",
+      "values": "fffdca9b44e97c55d741c3ba03c92e464a644ce3d486ab996d9d5f160d6bebc1"
+     },
+     "Time": {
+      "kind": "float",
+      "values": "1c96f81fabf95751bc5a225b0354c57cf9c6b33c705f3be138b9327d51aa7668"
+     }
+    },
+    "obsm": {
+     "X_umap": "addc193a1689f123aec0e6902136caf169c670429b003342a94b96a3c0ba4da4"
+    },
+    "uns": {
+     "downsampling": "downsampled to 300 events per sample (seed 4)",
+     "exported": "2026-10-04T12:00:00.000Z",
+     "files": [
+      "D01_Unstim.fcs",
+      "D01_Stim.fcs",
+      "D02_Unstim.fcs",
+      "D02_Stim.fcs",
+      "D03_Unstim.fcs",
+      "D03_Stim.fcs",
+      "D04_Unstim.fcs",
+      "D04_Stim.fcs",
+      "D05_Unstim.fcs",
+      "D05_Stim.fcs",
+      "D06_Unstim.fcs",
+      "D06_Stim.fcs"
+     ],
+     "population": "Cells / Single cells / Live / Lymphocytes / T cells",
+     "samples": [
+      "D01_Unstim",
+      "D01_Stim",
+      "D02_Unstim",
+      "D02_Stim",
+      "D03_Unstim",
+      "D03_Stim",
+      "D04_Unstim",
+      "D04_Stim",
+      "D05_Unstim",
+      "D05_Stim",
+      "D06_Unstim",
+      "D06_Stim"
+     ],
+     "sha256": [
+      "136e576515ec0f4a9aee1def42b3b0b04249c00b07958691ee614d22ddb11cdc",
+      "4c7ad27aa1e12b492bdcbf3027031261049dd74bf6d3453629facdbdcd698437",
+      "b2973aa366c18736d54539d49e17e059f043fe85dfaa47571f90bded10f423d9",
+      "3f2c23927f4ec4ac52ff6ff4fcaf326fde0b80e3288562f10e9f1b1f964dc4a6",
+      "52e945fd9bb1b71d9555eeae5bd3dfa6b7826cbd057404af366307dfafd68cd7",
+      "246a3df1461cb5488c7079a9a41a5a83d7c4aa31b486ef077a95c6e23efe9521",
+      "043b04e02a3a97ba0fc4d0e55f026448a828b03084d96b4a265ffa0c0fcd14de",
+      "2dd07738fc9b9b05e777a7250987d8f6ac46dc07d17c6cf0ed89ae500fbcf5b4",
+      "dc9c17bc46b95c6ba7033e28a4f4105031c6d20c4952f484e943dbc875794aaf",
+      "fa3b28c8f7823a97c660dfa709850f3e5491190a50f8fd969f8ddd663489931d",
+      "a1206e90d77b34b2a6db1d1e2ade45ee1f2eda76f4fa076ddd8a4e5f7ef4a409",
+      "f905ff54c0611430f40d8964bcd6023858ffbc6b47db3fae097c72878bcb4ddc"
+     ],
+     "values": "compensated values",
+     "version": "validation",
+     "workspace": "PBMC analysis"
+    }
+   },
+   "h5py 3.16.0 (HDF5 2.0.0)": {
+    "sha256": "20e0a330d52713d382227be05f1e9b6f474704a9f7a50547d22d9399097c3118",
+    "objects": [
+     [
+      "X",
+      "float32",
+      "array"
+     ],
+     [
+      "layers",
+      "group",
+      "dict"
+     ],
+     [
+      "obs",
+      "group",
+      "dataframe"
+     ],
+     [
+      "obs/CD4+ CD8+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD4+ CD8\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA+ CCR7+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA+ CCR7\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA\u2212 CCR7+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD45RA\u2212 CCR7\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD4\u2212 CD8+",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/CD4\u2212 CD8\u2212",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/FSC-A",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/FSC-H",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/FSC-W",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/FlowSOM cluster",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/FlowSOM cluster/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/FlowSOM cluster/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/SSC-A",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/SSC-H",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/SSC-W",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/Time",
+      "float32",
+      "array"
+     ],
+     [
+      "obs/Tregs",
+      "bool",
+      "array"
+     ],
+     [
+      "obs/_index",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/condition",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/condition/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/condition/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/event",
+      "int32",
+      "array"
+     ],
+     [
+      "obs/population",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/population/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/population/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/sample",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/sample/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/sample/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obs/subject",
+      "group",
+      "categorical"
+     ],
+     [
+      "obs/subject/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "obs/subject/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "obsm",
+      "group",
+      "dict"
+     ],
+     [
+      "obsm/X_umap",
+      "float32",
+      "array"
+     ],
+     [
+      "obsp",
+      "group",
+      "dict"
+     ],
+     [
+      "uns",
+      "group",
+      "dict"
+     ],
+     [
+      "uns/cytoweave",
+      "group",
+      "dict"
+     ],
+     [
+      "uns/cytoweave/downsampling",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/exported",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/files",
+      "object",
+      "string-array"
+     ],
+     [
+      "uns/cytoweave/population",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/samples",
+      "object",
+      "string-array"
+     ],
+     [
+      "uns/cytoweave/sha256",
+      "object",
+      "string-array"
+     ],
+     [
+      "uns/cytoweave/values",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/version",
+      "object",
+      "string"
+     ],
+     [
+      "uns/cytoweave/workspace",
+      "object",
+      "string"
+     ],
+     [
+      "var",
+      "group",
+      "dataframe"
+     ],
+     [
+      "var/_index",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/channel",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/marker",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/type",
+      "group",
+      "categorical"
+     ],
+     [
+      "var/type/categories",
+      "object",
+      "string-array"
+     ],
+     [
+      "var/type/codes",
+      "int8",
+      "array"
+     ],
+     [
+      "varm",
+      "group",
+      "dict"
+     ],
+     [
+      "varp",
+      "group",
+      "dict"
+     ]
+    ],
+    "X": "30d2ac2cd3f828602b35d4548a04b79ae4422417ea869c61ec51a9917c79902a",
+    "obs_names": "1f3d6e43d9abd7a5c49a97cec6262f2c1d66951cc318cc188a518bde507a1a53"
+   },
+   "pyfive 1.2.1": {
+    "sha256": "20e0a330d52713d382227be05f1e9b6f474704a9f7a50547d22d9399097c3118",
+    "X": "30d2ac2cd3f828602b35d4548a04b79ae4422417ea869c61ec51a9917c79902a",
+    "obs_names": "1f3d6e43d9abd7a5c49a97cec6262f2c1d66951cc318cc188a518bde507a1a53",
+    "groups": [
+     "X",
+     "layers",
+     "obs",
+     "obsm",
+     "obsp",
+     "uns",
+     "var",
+     "varm",
+     "varp"
+    ]
+   },
+   "anndata 0.10.9": {
+    "sha256": "20e0a330d52713d382227be05f1e9b6f474704a9f7a50547d22d9399097c3118",
+    "shape": [
+     3600,
+     14
+    ],
+    "X": "30d2ac2cd3f828602b35d4548a04b79ae4422417ea869c61ec51a9917c79902a",
+    "obs_names": "1f3d6e43d9abd7a5c49a97cec6262f2c1d66951cc318cc188a518bde507a1a53",
+    "var_names": [
+     "CD45RA",
+     "CD56",
+     "CCR7",
+     "Viability",
+     "CD3",
+     "HLA-DR",
+     "CD19",
+     "CD45",
+     "CD16",
+     "CD14",
+     "CD25",
+     "CD127",
+     "CD8",
+     "CD4"
+    ],
+    "var": {
+     "channel": [
+      "BUV395-A",
+      "BUV737-A",
+      "BV421-A",
+      "BV510-A",
+      "BV605-A",
+      "BV650-A",
+      "BV711-A",
+      "BV786-A",
+      "FITC-A",
+      "PerCP-Cy5-5-A",
+      "PE-A",
+      "PE-Cy7-A",
+      "APC-A",
+      "Alexa Fluor 700-A"
+     ],
+     "marker": [
+      "CD45RA",
+      "CD56",
+      "CCR7",
+      "Viability",
+      "CD3",
+      "HLA-DR",
+      "CD19",
+      "CD45",
+      "CD16",
+      "CD14",
+      "CD25",
+      "CD127",
+      "CD8",
+      "CD4"
+     ],
+     "type": [
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence",
+      "fluorescence"
+     ]
+    },
+    "obs": {
+     "sample": {
+      "kind": "category",
+      "categories": [
+       "D01_Unstim",
+       "D01_Stim",
+       "D02_Unstim",
+       "D02_Stim",
+       "D03_Unstim",
+       "D03_Stim",
+       "D04_Unstim",
+       "D04_Stim",
+       "D05_Unstim",
+       "D05_Stim",
+       "D06_Unstim",
+       "D06_Stim"
+      ],
+      "codes": "cf13db24e81ac124f3393778c44cb5c80e9d87d3ec275f5dc90931f403cf26c9"
+     },
+     "subject": {
+      "kind": "category",
+      "categories": [
+       "D01",
+       "D02",
+       "D03",
+       "D04",
+       "D05",
+       "D06"
+      ],
+      "codes": "7bcf9811b4174be31dd5053a7c54f5e16f43aae7ff36ab0a39a60f1c615507f9"
+     },
+     "condition": {
+      "kind": "category",
+      "categories": [
+       "Unstim",
+       "Stim"
+      ],
+      "codes": "6d0bdde59dd31cc59f2285ea790b092ba8e96fbd5b4b925a694eb48510a54351"
+     },
+     "event": {
+      "kind": "int",
+      "values": "3549e1447bb2ebdd2292f05c2f7953ced10fe572199e0df898acf9680cffe759"
+     },
+     "population": {
+      "kind": "category",
+      "categories": [
+       "T cells",
+       "CD4\u2212 CD8+",
+       "CD4+ CD8+",
+       "CD4+ CD8\u2212",
+       "CD4\u2212 CD8\u2212",
+       "CD45RA\u2212 CCR7+",
+       "CD45RA+ CCR7+",
+       "CD45RA+ CCR7\u2212",
+       "CD45RA\u2212 CCR7\u2212",
+       "Tregs"
+      ],
+      "codes": "661f65ccbcdc77904bb227bd3ba758a6fd26436c02b5f867e3570ff7161fc338"
+     },
+     "CD4\u2212 CD8+": {
+      "kind": "bool",
+      "values": "c0e1943731ad296428558d28cfa0cc5444d94d56d2b5899c8d4403787ed43189"
+     },
+     "CD4+ CD8+": {
+      "kind": "bool",
+      "values": "a6abba1ef24d86f28fdc45a77855ea12901565bb7a4630209fbe1424eddc8654"
+     },
+     "CD4+ CD8\u2212": {
+      "kind": "bool",
+      "values": "2cba0577fadfb61bde5cbe03eefc76f3a0a828785c345f48d896f23afb79ccbf"
+     },
+     "CD4\u2212 CD8\u2212": {
+      "kind": "bool",
+      "values": "356fc00e311ff15a002ce0043591092b15d90db1f38f959b2037fb8f14fd5c2a"
+     },
+     "CD45RA\u2212 CCR7+": {
+      "kind": "bool",
+      "values": "f87e55c35901fdde18315e58d225c40c312feaa7ad43be79f7180f1b89c8c662"
+     },
+     "CD45RA+ CCR7+": {
+      "kind": "bool",
+      "values": "a7214d6ea1586ac542bb15b16686b102c35e344f4e23d8945f6139e5dd641075"
+     },
+     "CD45RA+ CCR7\u2212": {
+      "kind": "bool",
+      "values": "604d2929d6a9d2edcca0989cf1f7c079d0510086fad0c810dbf230828821aeb5"
+     },
+     "CD45RA\u2212 CCR7\u2212": {
+      "kind": "bool",
+      "values": "44f4882bcb48abb195a187a931a5d9898f5de791bd92caacd4f4ef78d959f970"
+     },
+     "Tregs": {
+      "kind": "bool",
+      "values": "1c70d9a7bd1e6474f2a3dac7dfeff7b93a422fefce85ee7357601d2b15d21dc7"
+     },
+     "FlowSOM cluster": {
+      "kind": "category",
+      "categories": [
+       "Naive T",
+       "Memory T",
+       "B cells",
+       "NK cells",
+       "Monocytes"
+      ],
+      "codes": "9b6f5350b873178f102b8e4d2f1098cf9bd2d72005eaba093e656be8e9c48943"
+     },
+     "FSC-A": {
+      "kind": "float",
+      "values": "5e58cbbfb22a1d9e4ebd6cf705ad21a74d7dd4d2c64d822e9f55563e43a79108"
+     },
+     "FSC-H": {
+      "kind": "float",
+      "values": "45976d0010e20b5b2753a387196bfe63e63379ad174157497372a95036db326a"
+     },
+     "FSC-W": {
+      "kind": "float",
+      "values": "2b227c87125e07155c05cd71dba1ca2bd15fd6829170098c426878d2607b15b0"
+     },
+     "SSC-A": {
+      "kind": "float",
+      "values": "8a0d62bd968fa92fb8b728e9744595d135a0c374adf2841026b86eaf6dc44098"
+     },
+     "SSC-H": {
+      "kind": "float",
+      "values": "27a9b3293943adc24faab0e996c28e4fed0471d8f28de5caf1c2dc983e473764"
+     },
+     "SSC-W": {
+      "kind": "float",
+      "values": "fffdca9b44e97c55d741c3ba03c92e464a644ce3d486ab996d9d5f160d6bebc1"
+     },
+     "Time": {
+      "kind": "float",
+      "values": "1c96f81fabf95751bc5a225b0354c57cf9c6b33c705f3be138b9327d51aa7668"
+     }
+    },
+    "obsm": {
+     "X_umap": "addc193a1689f123aec0e6902136caf169c670429b003342a94b96a3c0ba4da4"
+    },
+    "uns": {
+     "downsampling": "downsampled to 300 events per sample (seed 4)",
+     "exported": "2026-10-04T12:00:00.000Z",
+     "files": [
+      "D01_Unstim.fcs",
+      "D01_Stim.fcs",
+      "D02_Unstim.fcs",
+      "D02_Stim.fcs",
+      "D03_Unstim.fcs",
+      "D03_Stim.fcs",
+      "D04_Unstim.fcs",
+      "D04_Stim.fcs",
+      "D05_Unstim.fcs",
+      "D05_Stim.fcs",
+      "D06_Unstim.fcs",
+      "D06_Stim.fcs"
+     ],
+     "population": "Cells / Single cells / Live / Lymphocytes / T cells",
+     "samples": [
+      "D01_Unstim",
+      "D01_Stim",
+      "D02_Unstim",
+      "D02_Stim",
+      "D03_Unstim",
+      "D03_Stim",
+      "D04_Unstim",
+      "D04_Stim",
+      "D05_Unstim",
+      "D05_Stim",
+      "D06_Unstim",
+      "D06_Stim"
+     ],
+     "sha256": [
+      "136e576515ec0f4a9aee1def42b3b0b04249c00b07958691ee614d22ddb11cdc",
+      "4c7ad27aa1e12b492bdcbf3027031261049dd74bf6d3453629facdbdcd698437",
+      "b2973aa366c18736d54539d49e17e059f043fe85dfaa47571f90bded10f423d9",
+      "3f2c23927f4ec4ac52ff6ff4fcaf326fde0b80e3288562f10e9f1b1f964dc4a6",
+      "52e945fd9bb1b71d9555eeae5bd3dfa6b7826cbd057404af366307dfafd68cd7",
+      "246a3df1461cb5488c7079a9a41a5a83d7c4aa31b486ef077a95c6e23efe9521",
+      "043b04e02a3a97ba0fc4d0e55f026448a828b03084d96b4a265ffa0c0fcd14de",
+      "2dd07738fc9b9b05e777a7250987d8f6ac46dc07d17c6cf0ed89ae500fbcf5b4",
+      "dc9c17bc46b95c6ba7033e28a4f4105031c6d20c4952f484e943dbc875794aaf",
+      "fa3b28c8f7823a97c660dfa709850f3e5491190a50f8fd969f8ddd663489931d",
+      "a1206e90d77b34b2a6db1d1e2ade45ee1f2eda76f4fa076ddd8a4e5f7ef4a409",
+      "f905ff54c0611430f40d8964bcd6023858ffbc6b47db3fae097c72878bcb4ddc"
+     ],
+     "values": "compensated values",
+     "version": "validation",
+     "workspace": "PBMC analysis"
+    }
+   }
+  },
+  "concatenated.fcs": {
+   "sha256": "982bce5325db46db7145591e5157db26b2ace6c3fdece6e71822b9ee7bcaade5",
+   "fcsparser": "0.2.8",
+   "flowio": "1.4.0",
+   "files": {
+    "concatenated.fcs": {
+     "fcsparser": {
+      "shape": [
+       48000,
+       23
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time",
+       "Sample",
+       "Event in its file"
+      ],
+      "data": "c344f55a13e6b6c489063fed42e9f3193b14b64583e65271909429edf50bd1be",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": "D01_Unstim"
+     },
+     "flowio": {
+      "events": 48000,
+      "channels": 23,
+      "data": "c344f55a13e6b6c489063fed42e9f3193b14b64583e65271909429edf50bd1be"
+     }
+    }
+   }
+  },
+  "downsampled.fcs": {
+   "sha256": "75a0e8fd0e2afeb32bb2103af4ff91e670b979e03b191778cbe12a9f060c6f3d",
+   "fcsparser": "0.2.8",
+   "flowio": "1.4.0",
+   "files": {
+    "downsampled.fcs": {
+     "fcsparser": {
+      "shape": [
+       12000,
+       23
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time",
+       "Sample",
+       "Event in its file"
+      ],
+      "data": "e17f5e45b3ccdacb7f52a86ab5297f071385c3446eb0209355f70ad7fa0c8c7a",
+      "spillover": null,
+      "sample1": "D01_Unstim"
+     },
+     "flowio": {
+      "events": 12000,
+      "channels": 23,
+      "data": "e17f5e45b3ccdacb7f52a86ab5297f071385c3446eb0209355f70ad7fa0c8c7a"
+     }
+    }
+   }
+  },
+  "tregs.zip": {
+   "sha256": "1e2f25657345fd002dc3cd1958ae9ac571fc3fc8479d0c3bb0d3b3853a9bdd67",
+   "fcsparser": "0.2.8",
+   "flowio": "1.4.0",
+   "files": {
+    "D01_Stim.fcs": {
+     "fcsparser": {
+      "shape": [
+       39,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "6d54a78daa5b0c489f85a2984b4a31e12219a84c91647e7deef86a5659578079",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 39,
+      "channels": 21,
+      "data": "6d54a78daa5b0c489f85a2984b4a31e12219a84c91647e7deef86a5659578079"
+     }
+    },
+    "D01_Unstim.fcs": {
+     "fcsparser": {
+      "shape": [
+       23,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "adf801c8565cd59ad19f7a9d41f29d0b37093a8c19a045e885c0875d107497a4",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 23,
+      "channels": 21,
+      "data": "adf801c8565cd59ad19f7a9d41f29d0b37093a8c19a045e885c0875d107497a4"
+     }
+    },
+    "D02_Stim.fcs": {
+     "fcsparser": {
+      "shape": [
+       59,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "52fc75acaafaf44e1faa041feee21c1b5c2d7e1c74f563f7f553a7abe5f45583",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 59,
+      "channels": 21,
+      "data": "52fc75acaafaf44e1faa041feee21c1b5c2d7e1c74f563f7f553a7abe5f45583"
+     }
+    },
+    "D02_Unstim.fcs": {
+     "fcsparser": {
+      "shape": [
+       36,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "56d5fac7d38af413df7ecab8db6b33bfc8c954d157f08233898af3a30b64c052",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 36,
+      "channels": 21,
+      "data": "56d5fac7d38af413df7ecab8db6b33bfc8c954d157f08233898af3a30b64c052"
+     }
+    },
+    "D03_Stim.fcs": {
+     "fcsparser": {
+      "shape": [
+       38,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "68849038871f98cbed63157f151311632c8822712f3022e9879bb8879a13b6d4",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 38,
+      "channels": 21,
+      "data": "68849038871f98cbed63157f151311632c8822712f3022e9879bb8879a13b6d4"
+     }
+    },
+    "D03_Unstim.fcs": {
+     "fcsparser": {
+      "shape": [
+       29,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "d696985e5aa8540ec325b62e8a7b9f5f831d6c4b5b1389840cb4f10248e46589",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 29,
+      "channels": 21,
+      "data": "d696985e5aa8540ec325b62e8a7b9f5f831d6c4b5b1389840cb4f10248e46589"
+     }
+    },
+    "D04_Stim.fcs": {
+     "fcsparser": {
+      "shape": [
+       37,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "0555d913d9e79bdbb90ca87b0c55a877f952df1470e7b42a7877c0ea49451ce7",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 37,
+      "channels": 21,
+      "data": "0555d913d9e79bdbb90ca87b0c55a877f952df1470e7b42a7877c0ea49451ce7"
+     }
+    },
+    "D04_Unstim.fcs": {
+     "fcsparser": {
+      "shape": [
+       32,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "75002584cb73820ca6919fe6d6b20afd790699fa60d303b271fa5d55a1f7a18e",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 32,
+      "channels": 21,
+      "data": "75002584cb73820ca6919fe6d6b20afd790699fa60d303b271fa5d55a1f7a18e"
+     }
+    },
+    "D05_Stim.fcs": {
+     "fcsparser": {
+      "shape": [
+       26,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "ffc9cc5b6f285576f62b383798d27d385d506c3be207b7321e0138a7dee40004",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 26,
+      "channels": 21,
+      "data": "ffc9cc5b6f285576f62b383798d27d385d506c3be207b7321e0138a7dee40004"
+     }
+    },
+    "D05_Unstim.fcs": {
+     "fcsparser": {
+      "shape": [
+       28,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "df11032a963327829a86774b55d2efb9bf4f3dc87c4fedbf853f7b34a3dd4628",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 28,
+      "channels": 21,
+      "data": "df11032a963327829a86774b55d2efb9bf4f3dc87c4fedbf853f7b34a3dd4628"
+     }
+    },
+    "D06_Stim.fcs": {
+     "fcsparser": {
+      "shape": [
+       34,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "41962727bb49dc8f714cf9fca9af38e9da08816d166d7cf8c00dca95b90a1d3a",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 34,
+      "channels": 21,
+      "data": "41962727bb49dc8f714cf9fca9af38e9da08816d166d7cf8c00dca95b90a1d3a"
+     }
+    },
+    "D06_Unstim.fcs": {
+     "fcsparser": {
+      "shape": [
+       27,
+       21
+      ],
+      "channels": [
+       "FSC-A",
+       "FSC-H",
+       "FSC-W",
+       "SSC-A",
+       "SSC-H",
+       "SSC-W",
+       "CD45RA",
+       "CD56",
+       "CCR7",
+       "Viability",
+       "CD3",
+       "HLA-DR",
+       "CD19",
+       "CD45",
+       "CD16",
+       "CD14",
+       "CD25",
+       "CD127",
+       "CD8",
+       "CD4",
+       "Time"
+      ],
+      "data": "cf3f14fbc98fc07ae6125ab2615436e6fa895b07586949cba33f6e89eb11958d",
+      "spillover": "14,BUV395-A,BUV737-A,BV421-A,BV510-A,BV605-A,BV650-A,BV711-A,BV786-A,FITC-A,PerCP-Cy5-5-A,PE-A,PE-Cy7-A,APC-A,Alexa Fluor 700-A,1,0.001236,0.006653,0.0009074,0,0,0,0,0,0,0,0,0,0,0.01358,1,0,0,0,0,0.02482,0.0289,0,0,0,0.009633,0,0.07966,0.002414,0.006686,1,0.2101,0.08053,0.04149,0.02689,0.01245,0.001966,0,0,0,0,0,0,0.004587,0.01798,1,0.09251,0.04389,0.02699,0.01136,0.04287,0.001292,0,0,0,0,0,0.01713,0.02462,0,1,0.1839,0.08399,0.03534,0,0.004021,0.01393,0.00106,0,0,0,0.03709,0.02523,0,0.04394,1,0.3056,0.07653,0,0.009818,0,0.002296,0.05,0.007504,0,0.2823,0.01949,0,0,0.06315,1,0.289,0,0.01461,0,0.005781,0.005052,0.08784,0,0.01881,0.0224,0,0,0,0.0007979,1,0,0,0,0.03,0,0.001531,0,0.0006503,0,0.06177,0.006603,0.002818,0.00162,0.0006034,1,0.02484,0,0,0,0,0,0.03615,0,0,0,0.0709,0.1342,0.009296,0,1,0,0.004958,0.01891,0.02268,0,0.001664,0,0,0.01047,0.002253,0.001295,0,0,0.02383,1,0.01608,0,0,0,0.0077,0,0,0,0,0,0.02,0,0,0.0428,1,0,0.002943,0,0.004378,0,0,0,0.03,0.01086,0.001904,0,0.005867,0,0.007617,1,0.1098,0,0.02804,0,0,0,0,0.007425,0.002364,0,0,0,0.009454,0.004531,1",
+      "sample1": null
+     },
+     "flowio": {
+      "events": 27,
+      "channels": 21,
+      "data": "cf3f14fbc98fc07ae6125ab2615436e6fa895b07586949cba33f6e89eb11958d"
+     }
+    }
+   }
+  }
+ }
+}

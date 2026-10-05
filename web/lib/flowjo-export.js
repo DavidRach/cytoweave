@@ -191,8 +191,12 @@ export function exportFlowJo(ws, options = {}) {
 
     // The FlowJo parameter of a gate dimension, or an error.
     const parameterOf = (dim) => {
-      if (dim.ratio || dim.kind === 'ratio') return { error: `${dim.channel} is a ratio, which FlowJo workspaces cannot hold` };
-      if (!channels.has(dim.channel)) return { error: `${dim.channel} is a channel CytoWeave computed (FlowJo does not have it)` };
+      if (!channels.has(dim.channel)) {
+        const d = (ws.derived ?? []).find((r) => r.outputs?.includes(dim.channel));
+        if (d?.kind === 'formula' || d?.kind === 'ratio') return { error: `${dim.channel} is a formula channel, which this export does not write as a FlowJo derived parameter` };
+        if (d?.kind === 'calibration') return { error: `${dim.channel} is a calibrated channel (${d.params.unit}), which this export does not write` };
+        return { error: `${dim.channel} is a channel CytoWeave computed (FlowJo does not have it)` };
+      }
       const comp = dim.compensation;
       let approx = null;
       if (comp && comp !== 'uncompensated' && comp !== sample.compensationId && !(comp === 'file' && matrix?.file)) {

@@ -10,6 +10,7 @@ import {
   ksTest,
   overtonSubtraction,
   probabilityBinning,
+  sedSubtraction,
   wasserstein1D,
 } from './distribution.js';
 import { createRandom } from './random.js';
@@ -148,4 +149,44 @@ test('kernel density estimate: bandwidth rules and normalization', () => {
   const one = kde([0, 0], { bandwidth: 1, range: [-4, 4], points: 801 });
   close(one.y[400], 1 / Math.sqrt(2 * Math.PI), 1e-12);
   close(one.y[500], Math.exp(-0.5) / Math.sqrt(2 * Math.PI), 1e-12);
+});
+
+test('probability binning as flowStats bins: split while a bin holds more than minEvents', () => {
+  const control = normalSample(5000, 0, 1, 21);
+  const result = probabilityBinning(control, normalSample(5000, 0.5, 1, 22), { minEvents: 500 });
+  // 5000 → 2500 → 1250 → 625 → 312.5: 16 bins of 312 or 313 control events.
+  assert.equal(result.bins, 16);
+  for (const f of result.controlFractions) close(f * 5000, 312.5, 0.5, 'control events per bin');
+  // Baggerly's statistic from the definition.
+  const expected = ((2 * 5000 * 5000 * result.chiSquare) / 10000 - 15) / Math.sqrt(30);
+  close(result.pbStat, expected, 1e-9);
+  // A bin whose events are all equal is not split.
+  const ties = probabilityBinning(new Float32Array(2000).fill(3), new Float32Array(100).fill(3), { minEvents: 100 });
+  assert.equal(ties.bins, 1);
+});
+
+test('SED: Bagwell\'s enhanced normalized subtraction, by hand', () => {
+  // Control 1…8; the test has the same eight negatives and four positives (4, 6, 9, 10): 1/3.
+  // D is largest at 8 (C 1, T 10/12); the second Dmax on [1, 8] is at 3 (C 3/8, T 3/12):
+  // ENS = (1 − 10/12)/1 + (3/8 · 10/12 − 1 · 3/12)/1 = 0.2291…, against Dmax 1/6.
+  const result = sedSubtraction([1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 4, 5, 6, 6, 7, 8, 9, 10]);
+  close(result.dmax, 100 / 6, 1e-9);
+  close(result.enhancedDmax, 100 / 6, 1e-9);
+  close(result.percentPositive, 100 * (1 / 6 + (3 / 8) * (10 / 12) - 3 / 12), 1e-9);
+  assert.equal(result.threshold, 8);
+  assert.equal(result.threshold2, 3);
+  close(overtonSubtraction([1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 4, 5, 6, 6, 7, 8, 9, 10]).percentPositive, result.dmax, 1e-9, 'Overton is Dmax');
+  assert.equal(sedSubtraction([1, 2, 3], [1, 2, 3]).percentPositive, 0);
+});
+
+test('SED corrects most of the underestimate of Dmax on overlapping populations', () => {
+  const control = normalSample(20000, 0, 1, 31);
+  const negatives = normalSample(14000, 0, 1, 32);
+  // 2.5 SD apart: Dmax 23.5%, enhanced Dmax 26.0%, ENS 28.7% of a true 30%.
+  const positives = normalSample(6000, 2.5, 1, 33);
+  const result = sedSubtraction(control, Float32Array.from([...negatives, ...positives]));
+  assert.ok(result.dmax < 25, `Dmax ${result.dmax}`);
+  assert.ok(result.enhancedDmax > result.dmax);
+  assert.ok(Math.abs(result.percentPositive - 30) < Math.abs(result.enhancedDmax - 30), `ENS ${result.percentPositive}, enhanced Dmax ${result.enhancedDmax}`);
+  close(result.percentPositive, 30, 2);
 });

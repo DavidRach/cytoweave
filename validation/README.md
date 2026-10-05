@@ -40,6 +40,8 @@ that are known in advance:
     the spillover matrix FACSDiva computed from them.
   - flowQB's LSR II data (an LED pulser series, 8-peak and 6-peak beads) and
     flowQB's results on them.
+  - FlowCal's MEF example: 8-level beads on two days and two gains and 12 cell
+    samples on a Cytek xP3+, with FlowCal's results on them.
   - Four FlowJo workspaces of an intracellular cytokine study (ALS C9orf72,
     Zenodo, CC BY 4.0) whose expert adjusted the gates per donor: 48 wells,
     four donors per workspace in a negative, a peptide and a PMA well.
@@ -53,7 +55,7 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-`fetch.mjs` downloads the public test data (about 540 MB) into
+`fetch.mjs` downloads the public test data (about 550 MB) into
 `validation/cache/` and checks every file against the SHA-256 recorded in
 `sources.json`, which also records each data set's source and license. Files
 already present are not downloaded again. The data are not part of the
@@ -63,7 +65,7 @@ a minute without them, and about four minutes with them.
 
 | Option | Effect |
 | --- | --- |
-| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
+| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `comparisons`, `calibration`, `flowcal`, `reports`, `events`, `differential`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
 | `--verbose` | Print every check, not only failures |
 | `--require-data` | Fail, rather than skip, when the public test data are missing |
 
@@ -91,12 +93,19 @@ examples, or against the files the exports write, read back:
 | `run_qc` | Each event's QC pass equal to the QC view's own run on three samples (300,000 events); the QC pass gate held, and accepting puts it at the top with every population beneath; samples with the user's result left alone |
 | `explore` | Every T cell's FlowSOM cluster equal to a direct run with the same settings (120,000 events); a population per cluster; map trustworthiness 0.98; clusters against the true T-cell types (adjusted Rand index 0.39); rejecting removes the clusters, their populations and their channels |
 | `build_figure`, `export_figure` | The SVG carries the analysis of every plot; an existing file is not replaced |
-| `export_table` | The CSV holds `statistics_table`'s values (0 cells differ) |
+| `export_table` | The CSV holds `statistics_table`'s values (0 cells differ); the Excel workbook the same values in full precision, with its Samples sheet; the Prism project a column table per population with a column per condition |
+| `export_events` | T cells of every sample, 2,000 each with a seed, concatenated: SampleID and SourceEvent the events the app picks with the same seed; and as AnnData with three markers |
+| `open_files` (CSV) | A CSV of events opened by path: one sample, its columns' kinds, markers and scales reported |
+| `differential_analysis` | The state of 13 markers in three populations of the 12 PBMC samples, stimulated against unstimulated and paired by donor: every test equal to diffcyt-DS-limma run in the page, and CD25 and HLA-DR on T cells called, rising; the abundance of the session's FlowSOM clusters on the samples that carry them, equal to the quasi-binomial model run in the page |
+| `export_report` | The gating-strategy figure by subject as a PDF (a page per subject; every gate label in the attached record equal to its population's % of parent recomputed in the app) and by sample as a PowerPoint deck (a slide per sample, every plot a picture) |
 | `export_fcs` | The de-identified files hold the same events as the originals |
 | `unmix` | A reference library proposed (25 spectra, autofluorescence signatures) and every unmixed channel equal to the same unmixing run directly |
 | `watch_folder` | Each file written to the watched folder added and checked |
 | `save_template`, `list_templates`, `apply_template` | The PBMC analysis saved, listed and applied to another experiment with the same panel: every channel matched, its gates proposed |
 | `titration` | The example's CD4-PE titration and PE voltage walk: the stain index of every step and the recommended amount (125 ng), and the voltage range, equal to the analysis run directly in the page; the saved walk proposed |
+| `compare_distributions`, `rare_events`, `statistics_table` with a control | Two titration tubes against the unstained one: SED and T(χ) equal to the statistics computed directly in the page, the same SED from `statistics_table`, and SED within 3 points of the CD4+ share at 1.953 ng too, where dim CD4+ cells fall below the split; the counts of a bright population with exact Poisson intervals equal to those computed directly |
+| `add_formula_channel` | A formula channel proposed and used at once: its medians in `statistics_table` equal to the formula computed directly |
+| `calibrate_beads` | Simulated 8-level beads of known response calibrated and applied to a cell sample: the slope within 0.01 of the truth, the cells' median MEFL within 2%, the calibrated channels proposed |
 | `apply_template` with a strategy | OMIP-101 placed on one sample of the PBMC example: its 25 gates proposed, each the same as placing the strategy directly, 19 with a suggested Cell Ontology term |
 
 Continuous integration runs it on each pull request and push to `main`.
@@ -133,6 +142,62 @@ after `write_flowjo_exports.mjs` when the FlowJo export changes:
 ```bash
 Rscript -e 'BiocManager::install("CytoML")'
 Rscript validation/reference/generate_cytoml.R
+```
+
+`reference/flowstats.json` holds flowStats' probability binning and R's
+K-S test, poisson.test and binom.test on the comparison tubes:
+
+```bash
+Rscript -e 'BiocManager::install("flowStats")'
+node validation/reference/write_comparisons.mjs
+Rscript validation/reference/generate_flowstats.R
+```
+
+`reference/flowcal.json` holds FlowCal's calibration of its own example, and
+`reference/formulas.json` R's values of the formula channels:
+
+```bash
+node validation/fetch.mjs flowcal-mef
+uv run --python 3.12 --with flowcal==1.3.1 python validation/reference/generate_flowcal.py
+node validation/reference/write_comparisons.mjs
+Rscript validation/reference/generate_formulas.R
+```
+
+`reference/reports.json` and `reference/pzfx.json` hold what the formats' own readers
+(openpyxl 3.1.5, python-pptx 1.0.2, pypdf 5.4.0; R pzfx 0.3.1) read in the documents the
+`reports` suite writes. `write_reports.mjs` writes the documents and a manifest of their content
+fingerprints, which the readers' output repeats, so that the suite knows the readback applies to
+the documents it writes again (a change to a writer makes the check fail until these are rerun):
+
+```bash
+node validation/reference/write_reports.mjs
+uv run --python 3.12 --with openpyxl==3.1.5 --with python-pptx==1.0.2 --with pypdf==5.4.0 python validation/reference/read_reports.py
+Rscript validation/reference/read_pzfx.R
+```
+
+`reference/events.json` holds what anndata (0.13.4 and 0.10.9), h5py 3.16 (HDF5 2.0), pyfive 1.2.1,
+fcsparser 0.2.8 and FlowIO 1.4.0 read in the events documents the `events` suite writes, as SHA-256
+digests of the values they read; the files are matched by their own SHA-256 (they are
+uncompressed and dated, so the same inputs give the same bytes). fcsparser needs numpy 1 and
+anndata 0.13 numpy 2, so the reader runs in parts:
+
+```bash
+node validation/reference/write_events.mjs
+uv run --python 3.12 --with anndata==0.13.4 --with h5py==3.16.0 --with pyfive==1.2.1 python validation/reference/read_events.py --anndata --hdf5
+uv run --python 3.12 --with anndata==0.10.9 --with "numpy<2" python validation/reference/read_events.py --anndata
+uv run --python 3.12 --with fcsparser==0.2.8 --with flowio==1.4.0 python validation/reference/read_events.py --fcs
+```
+
+`reference/diffcyt.json` holds limma's results on the synthetic cases of `differential-cases.mjs`
+and diffcyt-DS-limma's on the two mass cytometry experiments (cells as FCS files with their true
+population as a cluster channel, read by flowCore), from limma 3.68.5, diffcyt 1.32.1 and statmod
+1.5.2 (R 4.6.1, Bioconductor 3.23; the versions are recorded in the file). R's limma values are
+kept to 12 significant digits:
+
+```bash
+node validation/reference/write_differential.mjs
+Rscript -e 'BiocManager::install("diffcyt")'
+Rscript validation/reference/generate_diffcyt.R
 ```
 
 `reference/r.json` holds the results of flowCore 2.24, PeacoQC 1.22,
@@ -206,6 +271,12 @@ line):
 | `flowjo` | FlowJo import, migration and engine (`flowjo.js`, `flowjo-match.js`) | The bundled FlowJo example: a workspace whose counts are computed independently, as FlowJo evaluates each gate | Every population's count equal to FlowJo's; every population converted exactly. FlowJo export (`flowjo-export.js`) of the example and of a workspace built in CytoWeave (splits, quadrants on mixed scales, Booleans, overrides, scopes, a category gate): imported back with every count unchanged, outlines traced on another scale within 0.5%, and only the category gate left out | 56 of 56; all. Export: 56 of 56 and 50 of 50 unchanged; QC pass only |
 | `figures` | `buildProvenance`, `embedSVG`, `embedPNG`, `readFigureProvenance`, `rebuildWorkspace`, `compareProvenance` (`figure-provenance.js`); `writePDF` attachments (`pdf.js`) | A gating-strategy figure of the 12 PBMC samples (60 plots) | The record read back intact from SVG, PNG and PDF; rebuilt from the record alone, every plot drawn from the same events and checked unchanged; moving one gate flags exactly the plots that show it or depend on it | Intact in all three (66 KB); 60 of 60; 60 of 60; 36 of 36 |
 | `titration` | `analyzeTitration`, `analyzeVoltageWalk`, `titrationSeries`, `voltageSeries`, `stepsFrom` (`titration.js`) | The titration-voltage example within its lymphocyte gate: CD4-PE in ten two-fold steps (CD4 bound as c / (c + 5 ng), non-specific binding growing with the amount) and the PE detector walked from 300 V to 750 V (gain (V / 430)^7.4, electronic noise SD 25); the true CD4 T cells and CD4-negative lymphocytes of every step; the true voltage limits found by bisection on 200,000 simulated cells of the walk's stain (`titration-cases.mjs`) | Amounts read from the names and voltages from `$PnV`, the unstained tube set apart. Stain index of every step within 5% of the true cells', every step resolved. The recommended amount the first tested at or above twice the binding's 90% (125 ng), the stain index's 90% within ×1.5 of 45 ng. Gain exponent within 0.1, rSD_EN estimated within 5%; minimum and maximum voltages within 5 V of the truth, with rSD_EN estimated or given; recommended the minimum rounded up to 5 V. A walk from 500 V: the noise not estimated, the report asking for it; given it, the minimum within 10 V. FlowJo 11.2 on the same eleven tubes (`reference/flowjo11-titration.json`, written by `reference/write_flowjo_titration.mjs` and read from FlowJo during its trial): where a population holds the same events, FlowJo's median and Robust SD (1.4826 × the median absolute deviation) within 1e-5; ≤ 0.5 points of events moved across a split by FlowJo's display-resolution gating | All; largest difference 4.4% (median 2.1%), 10 of 10; 125 ng, 40.6 ng; 7.38, 25.1; minimum 507.2 V (given 506.8 V; true 508.0 V), maximum 566.8 V (true 566.3 V), 510 V; not estimated, 506.9 V; FlowJo: 21 of 31 populations the same events (all 11 ungated), median within 1.8e-6, Robust SD within 1.1e-6 of 1.4826 × MAD, 10 moved by at most 0.40 points; FACSDiva's robust SD, which CytoWeave uses, 1.00–1.08 × FlowJo's on the negative cells |
+| `comparisons` | `probabilityBinning`, `sedSubtraction`, `overtonSubtraction`, `ksTest` (`distribution.js`); `poissonInterval`, `binomialInterval`, `detectionLimits` (`rare-events.js`) | Ten tubes with known positive fractions on FITC-A against a negative control: well separated (5, 20, 40%), overlapping (40%), skewed (30%), 3,000 events (30%), a replicate of the control, the control 1.6× brighter and half as bright (`comparison-cases.mjs`); flowStats 4.24.0 and R 4.6.1 on the same tubes (`reference/flowstats.json`, written by `reference/generate_flowstats.R` from the tubes `reference/write_comparisons.mjs` writes); Bagwell's (1996) simulation of 2,000 Weibull histograms; 200 pairs of samples of the same cells; simulated counts, blanks and low-level samples | Probability binning: the same bins as flowStats, χ² and Baggerly's statistic within 1e-9. K-S D within 1e-12 of R, p within 1e-6 (R's tolerance). SED within 2.5 points of every true fraction and closer than Overton where populations overlap; the replicate's SED < 2% and T(χ) < 4, the shifted control's T(χ) > 4. Bagwell's order of mean errors (Dmax, enhanced Dmax, ENS), ENS within ±2%. T(χ) > 4 in ≤ 2% of same-cell pairs, Baggerly's above its 99th percentile in ≤ 3%. Exact intervals within 1e-9 of R, coverage ≥ 94%. EP17 limits: ≤ 8% of new blanks above the LoB, ≥ 93% detected at the LoD | 36 of 36 the same bins, within 9.3e-15; D within 8.9e-14, p within 3.0e-8; SED within 1.98 points, Overton 31.8 and 27.4 for 40 and 30; replicate 1.27%, 1.24; shifted 430; −12.73%, −4.89%, −1.33%; 0.5%, 1.5%; within 2.9e-13, coverage 95.4–98.8%; 4.05%, 97.85% |
+| `calibration` | `fitBeadModel`, `calibrateBeads`, `standardCurve` (`calibration.js`); formula channels (`formula.js`, `engine.js`); Gating-ML export of ratios; templates; absolute counts (`engine.js`) | FlowCal 1.3.1's selected levels and fits of its three bead samples (`reference/flowcal.json`, written by `reference/generate_flowcal.py`); 8-level beads on a simulated detector of slope 1.05 with the beads' own 1,500 MEFL and a 14-bit range in which the brightest level saturates, and three cell samples of known MEFL (`calibration-cases.mjs`); 7 formulas on the 10 comparison tubes evaluated by R (`reference/formulas.json`, written by `reference/generate_formulas.R`); the PBMC example's analysis with a CD4/CD8 formula gate on renamed detectors; 40 tubes of 200–8,000 cells/µL with 50,000 counting beads in 50 µL, every third diluted 1:4 | The standard curve on FlowCal's levels within 5e-4 of FlowCal's, residuals no larger. Simulated beads: the saturated level left out, the slope within 0.01, cells within 2%. Formulas: medians within 1e-6, single events within 1e-12, the same events without a value. The ratio gate through Gating-ML (fratio, A = 2, B = 100, C = −50) and through the template: the same events. Absolute counts within 1% on average, scatter 0.7–1.3 × Poisson's | Curves within 1.5e-4, residuals equal; 11111110, slope 1.0496, cells within 0.18%; medians within 4.3e-8, events within 1.3e-14; 8,137 events both ways, 12 of 12 samples; 1.005, 1.02 × |
+| `differential` | `lmFit`, `eBayes` (`limma.js`); `stateMedians`, `buildDesign`, `differentialState` (`differential.js`), as Compare → Screen marker states runs them | limma 3.68.5 on 11 synthetic cases (`differential-cases.mjs`): residual df equal (spline trend of 2–4 df, or none) or unequal (lowess trend, prior df by maximum likelihood), weighted and unweighted, rank-deficient rows, rows without residual df. diffcyt 1.32.1 in R (`reference/diffcyt.json`) on the cytof cohort (8 samples, case against control, batch in the design) and the barcoded plate split by well (20 samples, stimulated against unstimulated, paired by donor), each with the true populations as clusters and the markers CytoWeave proposes; the plate's activation (CD25, HLA-DR, CD38, PD-1 up, CD127, CD45RA, CCR7, CD3 down on 20–50% of every T-cell population) | limma: within 1e-9 (relative), residual df identical, prior df within 1e-8. diffcyt: counts identical, medians within 1e-12, the same tests, logFC and average within 1e-12, t, p and adjusted p within 1e-9. No call in the cohort; on the plate CD25, HLA-DR and CD38 called in all five populations with 40–50% activated, at most 10% of calls false | Within 4e-11; identical; 1e-11. Identical; 5e-15; 575 + 575 tests, 5e-15, 3e-11. 0 of 575 (4.5% of p < 0.05); 15 of 15, 3 of 53 false (50 of 70 changed pairs called) |
+| `events` | `downsample`, `selectEvents`, `concatenatedFCS`, `sampleFCS` (`events.js`); `analyzeCSV`, `csvDatasets`, `scaleFor` (`csv-events.js`); `writeAnnData` (`anndata.js`), `writeHDF5` (`hdf5.js`) | The PBMC example's 12 donor tubes with their spillover, 19 populations, subject and condition, a cluster channel and a UMAP (`event-cases.mjs`); 4,000 seeded draws; CSV files written by CytoWeave and in FlowJo's format, a European one, an arcsinh-transformed one, mass cytometry counts and a damaged one; the files read by anndata 0.13.4 and 0.10.9, h5py, pyfive, fcsparser and FlowIO (`reference/events.json`) | Downsampling: exact sizes, reproducible, independent of the other samples, uniform (\|z\| < 3.3). Concatenation: every value the source's, the spillover the samples', every population × sample count equal per SampleID; the downsampled file compensated values of T cells only; per-sample files exact. CSV: values back exactly; format found; scales as guessed; each fault reported, 6 rows left out, a split into 3 samples. AnnData: every reader's X and event names, and anndata's obs, obsm, var and uns, exactly CytoWeave's (SHA-256); FCS readers' values exact; the files those the readers read | χ² z 0.37; 0 of 48,000 events differ, 228 of 228 counts; 0 differ; 12 of 12; 84,000 of 84,000; as guessed; all reported; 4 of 4 readers exact for both files; fcsparser and FlowIO exact |
+| `reports` | `expandReport`, `fillStatistics`, `plotTrace`, `reportPDFPage`, `reportSlide` (`reports.js`); `writePDF` (`pdf.js`), `writePPTX` (`pptx.js`), `writeXLSX` (`xlsx.js`), `writePZFX` (`pzfx.js`); `tablesWorkbook`, `prismTables` (`spreadsheets.js`) | A simulated activation experiment: subjects S1–S4 unstimulated and stimulated, S2 with a second stimulated tube, S4 without one, two FMO controls as the blanks of CD69+'s detection limits; a figure on S1's tubes and the FMO with a statistics item and placeholders (`report-cases.mjs`); the documents read back by `document-readers.mjs` and by openpyxl, python-pptx, pypdf and R pzfx (`reference/reports.json`, `reference/pzfx.json`) | By sample: 8 pages, the followed sample's plots on each page's sample, the others fixed. By subject: 4 pages, tubes matched on condition, the replicate and the missing tube reported, placeholders filled. Every statistics cell and gate label traced and equal to its table column or gate (the same double; printed as Tables prints it; ND where the limits say). The PDF prints every traced number and none that is neither traced nor an axis tick; its record equals the trace. The deck's native tables, the workbook's cells and the Prism values exact. The four documents' fingerprints equal those the readers read; each reader's values exact | 8 pages right; 4 of 4, both notes; 124 table cells (12 ND) and 47 gate labels, all equal; 55 of 55 printed, 0 untraced; 8 of 8 slides; 32 of 32 cells; 5 Prism tables exact; fingerprints the same; openpyxl, python-pptx, pypdf and pzfx all the same |
+| `flowcal` | `calibrateBeads` (`calibration.js`) end to end | FlowCal's MEF example (external data `flowcal-mef`): three 8-level bead samples (two days, one at another gain) and 12 cell samples; FlowCal 1.3.1's results (`reference/flowcal.json`) | The same levels used as FlowCal, each level's median within 1% (one step of the 1024-step log channel is 0.9%), the slope within 0.01, the cells' MEFL (FlowCal's gated median) within 2% | The same levels in all three; medians within 0.90%; slopes within 0.005; cells within 1.56% |
 | `templates` | `buildTemplate`, `parseTemplate`, `applyTemplate` (`templates.js`) | An analysis of 19 populations on the 12 PBMC samples (polygons, quadrants, ranges, a rectangle, a Boolean, two plots, a table with a channel column, a gating-strategy figure), saved as a template through its JSON and applied to the same events written as another instrument writes them: every detector renamed and reordered, markers kept (`template-cases.mjs`); then with CD25 and CD127 not named | Every population holds the same events in every sample; every channel matched; the plots, table and figure on the new detectors. Without CD25 and CD127: only the gate on them left out, with the reason, and the rest unchanged | 19 of 19 identical (11 channels by marker, 3 by name); 2 plots, the table's 19 columns, the figure's 7 plots; Tregs only (no channel for CD25, CD127), 18 of 18 identical |
 | `strategies` | `placeRecipe` (`recipes.js`), the published strategies (`strategies.js`) through `applyTemplate`; `suggestForPopulation` (`ontology.js`) | OMIP-101 and OMIP-090 placed on one sample (D01_Unstim) of the PBMC example and shared by all 12 (the files' matrix replaced by the true one, since the strategies assume a correct matrix), against the true cell types, each population within its strategy parent's (`strategy-cases.mjs`); OMIP-090 on a panel whose CD25 and CD127 are not named | Every gate placed. Median F1 across samples ≥ 0.95 for single, live, leukocytes, lymphocytes, T, CD4 and CD8 T, naive CD4 and CD8 T and B cells (OMIP-090: lymphocytes, single, live, CD3+ CD4+); ≥ 0.85 for the memory subsets, NK cells, classical and non-classical monocytes and Tregs; ≥ 0.65 for intermediate monocytes. Without CD25 and CD127, only Tregs left out. Each strategy population's term the same as, or an ancestor or descendant of, the term suggested from the placed gate's data | 25 of 25 and 5 of 5 placed; 0.960–0.994; memory subsets 0.878–0.955, NK 0.921, classical 0.901, non-classical 0.941, Tregs 0.907 (0.82–0.85 in the stimulated samples, where conventional T cells raise CD25); intermediate 0.763; Tregs only; 21 of 22 the same, the myeloid cells' monocyte a kind of the strategy's myeloid leukocyte |
 | `autogating` | `adaptGate`, `decide` (`adapt.js`); `adaptAcrossSamples` (`autogating.js`) | The 12 PBMC samples with instrument-like shifts on all but the one the gates were drawn on: random gains up to fivefold per detector (the spillover following them) and on scatter, so the true cell type of every event stays known; the gates adapted top-down as a user would (`autogating-cases.mjs`) | Mean F1 against the true cell types no worse for any gate; no population with F1 < 0.85 reported as fitting; no proposed adjustment lowering F1 by more than 0.01; samples sent to review less accurate than the rest; after an expert corrects those, every gate no worse than the template and all within 0.02 of the gates' F1 on the sample they were drawn on; events with p ≥ 0.9 true members more often than uncertain ones, and > 85%; without shifts, ≤ 5% sent to review and no loss; one correction helps a second batch | Lymphocytes 0.902 → 0.945, monocytes 0.752 → 0.803, T cells 0.954 → 0.994, others unchanged; 4 to review (0.57 → 0.83 raised); 0 of 8; 0.616 vs 0.973; 0.969 (0.982); 90.3% vs 54.3%; 0 of 66, +0.0000; monocytes 0.842 → 0.903 |

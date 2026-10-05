@@ -19,6 +19,9 @@ import { parseFCS } from '../web/lib/fcs.js';
 import { readZip } from '../web/lib/zip.js';
 import { readFigureProvenance } from '../web/lib/figure-provenance.js';
 import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
+import { encodeFCS } from '../web/lib/simulate.js';
+import { BEAD_MEF, BEAD_TRUTH, simulatedBeads } from './calibration-cases.mjs';
+import { readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 8795;
@@ -70,6 +73,7 @@ async function refused(name, args = {}) {
   return result.ok ? null : (result.message ?? result.error);
 }
 
+const rounded = (v, digits) => (Number.isFinite(v) ? +v.toPrecision(digits) : null);
 let b;
 const page = (code) => b.eval(`(async () => { const app = window.cytoweave; ${code} })()`);
 async function waitFor(expression, timeout = 240000) {
@@ -112,6 +116,28 @@ try {
   await decide('Claude Code', true);
   const after = await page(`const ss = app.store.ws.samples; return [ss.find((s) => s.name === ${JSON.stringify(samples[0])}).meta.cohort, ss.find((s) => s.name === ${JSON.stringify(samples[1])}).meta.cohort, 'batch' in ss.find((s) => s.name === ${JSON.stringify(samples[1])}).meta];`);
   check('annotate_samples: held until accepted, then applied (a null value removes the field)', `before ${before}; after ${after.join(', ')}`, before === null && after[0] === 'A' && after[1] === 'B' && after[2] === false, 'null, then A, B, field removed');
+
+  // Differential state: the agent's result equals the library run on the same data in the page,
+  // and stimulation's rise of CD25 and HLA-DR on T cells is found (paired by donor).
+  const stateArgs = { groupBy: 'condition', groups: ['Unstimulated', 'Stimulated'], pairBy: 'subject', populations: ['Lymphocytes', 'T cells', 'Monocytes'], limit: 500 };
+  const state = (await tool('differential_analysis', stateArgs)).data;
+  const stateDirect = await page(`
+    const D = await import('/lib/differential.js');
+    const ws = app.store.ws;
+    const samples = ws.samples.filter((s) => ['Unstimulated', 'Stimulated'].includes(s.meta?.condition));
+    const views = samples.map((s) => app.data.view(s.id));
+    const gateIds = ['Lymphocytes', 'T cells', 'Monocytes'].map((n) => ws.gates.find((g) => g.name === n).id);
+    const markers = D.stateMarkerCandidates(views[0], null).state.map((c) => c.name);
+    const per = views.map((v) => D.stateMedians(v, ws, { kind: 'populations', gateIds }, markers, D.defaultCofactor(samples[0])));
+    const b = D.buildDesign(samples.map((s) => ({ group: s.meta.condition, meta: s.meta })), { levels: ['Unstimulated', 'Stimulated'], pairField: 'subject' });
+    const r = D.differentialState({ counts: per.map((p) => p.counts), medians: per.map((p) => p.medians), design: b.design, coefficient: b.coefficient, units: per[0].units, markers });
+    const name = (id) => ws.gates.find((g) => g.id === id).name;
+    const marker = (ch) => views[0].parameters.find((p) => p.name === ch)?.marker || ch;
+    return r.rows.map((row) => ({ key: name(row.unit) + '|' + marker(row.marker), p: row.p, padj: row.padj, logFC: row.logFC }));`);
+  const agentRows = new Map(state.rows.map((r) => [`${r.population.split('/').pop().trim()}|${r.marker}`, r]));
+  const stateDiffer = stateDirect.filter((r) => { const a = agentRows.get(r.key); return !a || a.p !== rounded(r.p, 6) || a.padj !== rounded(r.padj, 6) || a.logFC !== rounded(r.logFC, 4); });
+  const tCells = ['CD25', 'HLA-DR'].map((m) => agentRows.get(`T cells|${m}`));
+  check('differential_analysis (state): every population × marker test equals diffcyt-DS-limma run in the page on the same samples; CD25 and HLA-DR rise on stimulated T cells (paired by donor)', `${stateDirect.length - stateDiffer.length} of ${stateDirect.length} equal (${state.tested} tested, design ${state.design.join(' + ')}); T cells: ${tCells.map((r, i) => (r ? `${['CD25', 'HLA-DR'][i]} +${r.logFC}, adjusted p ${r.padj}` : 'missing')).join('; ')}`, stateDirect.length === state.tested && !stateDiffer.length && tCells.every((r) => r && r.logFC > 0 && r.padj < 0.05), 'all equal; both called, positive');
 
   // The FlowJo workspace carries every population of every sample with CytoWeave's own count.
   const outDir = join(temp, 'out');
@@ -186,6 +212,23 @@ try {
   const ari = exploreState.truthLabels.length ? adjustedRandIndex(Int32Array.from(exploreState.truthLabels), Int32Array.from(exploreState.clusterLabels)) : Number.NaN;
   check('explore: every T cell\'s FlowSOM cluster equals a direct run with the same settings; the clusters proposed as populations', `${exploreState.differ} of ${exploreState.total} differ; ${explored.clusters.length} clusters (${explored.clusters.slice(0, 3).map((c) => c.name).join(', ')}…); ${exploreState.gates} populations; map trustworthiness ${explored.quality?.trustworthiness}`, exploreState.differ === 0 && exploreState.total > 1000 && exploreState.gates === explored.clusters.length && explored.quality?.trustworthiness > 0.8, '0 differ; a population per cluster; trustworthiness > 0.8');
   check('explore: the clusters follow the true T-cell types (adjusted Rand index)', ari.toFixed(3), ari > 0.3, '> 0.3');
+  // Differential abundance of the clusters, on the samples that carry them (T cells beneath the
+  // accepted QC pass apply only to the samples QC checked).
+  const abundance = (await tool('differential_analysis', { test: 'abundance', groupBy: 'condition', groups: ['Unstimulated', 'Stimulated'], clusters: 'FlowSOM cluster', parent: 'T cells', limit: 100 })).data;
+  const abundanceDirect = await page(`
+    const D = await import('/lib/differential.js');
+    const H = await import('/lib/hypothesis.js');
+    const ws = app.store.ws;
+    const parent = ws.gates.find((g) => g.name === 'T cells').id;
+    const samples = ws.samples.filter((s) => ['Unstimulated', 'Stimulated'].includes(s.meta?.condition) && D.clusterCounts(app.data.view(s.id), ws, 'FlowSOM cluster', parent)?.total > 0);
+    const counts = samples.map((s) => D.clusterCounts(app.data.view(s.id), ws, 'FlowSOM cluster', parent));
+    const labels = [...new Set(counts.flatMap((c) => [...(c?.counts.keys() ?? [])]))].sort((a, b) => a - b);
+    const b = D.buildDesign(samples.map((s) => ({ group: s.meta.condition, meta: s.meta })), { levels: ['Unstimulated', 'Stimulated'] });
+    const da = H.differentialAbundance(counts.map((c) => labels.map((k) => c?.counts.get(k) ?? 0)), counts.map((c) => c?.total ?? 0), b.design, { coefficient: b.coefficient });
+    return { samples: samples.map((s) => s.name), rows: da.results.map((r, i) => ({ label: labels[i], p: r.p, padj: r.padj })) };`);
+  const agentClusters = new Map(abundance.rows.map((r) => [r.label, r]));
+  const abundanceDiffer = abundanceDirect.rows.filter((r) => { const a = agentClusters.get(r.label); return !a || a.p !== rounded(r.p, 6) || a.padj !== rounded(r.padj, 6); });
+  check('differential_analysis (abundance): only the samples that carry the clusters take part, and each FlowSOM cluster\'s test equals the quasi-binomial model run in the page on the clusters\' counts', `${abundance.tested} clusters; ${abundance.samples.length} samples (${abundance.samples.join(', ')}); ${abundanceDiffer.length} differ`, abundance.tested === abundanceDirect.rows.length && abundance.tested > 0 && abundance.samples.join() === abundanceDirect.samples.join() && !abundanceDiffer.length, 'the samples with clusters; none differ');
   await decide('Explorer', false);
   const rejected = await page(`const s = app.store.ws.samples.find((x) => x.name === ${JSON.stringify(samples[0])}); return { derived: app.store.ws.derived.filter((d) => d.outputs?.includes('FlowSOM cluster')).length, gates: app.store.ws.gates.filter((g) => g.dims[0]?.channel === 'FlowSOM cluster').length, attached: app.data.view(s.id).derived.has('FlowSOM cluster'), qcKept: app.store.ws.derived.filter((d) => d.kind === 'qc').length };`);
   check('rejecting removes the clusters, their populations and their channels, and nothing else (the accepted QC result stays)', JSON.stringify(rejected), rejected.derived === 0 && rejected.gates === 0 && !rejected.attached && rejected.qcKept === 1, 'none left; QC kept');
@@ -216,6 +259,81 @@ try {
     }
   }
   check('export_table: the CSV holds statistics_table\'s values', `${table.rows.length} rows; ${tableDiffer} cells differ`, table.rows.length > 5 && tableDiffer === 0, '0 differ');
+
+  // The same statistic as an Excel workbook (full precision) and a Prism project grouped by condition.
+  const xlsxPath = join(figureDir, 'table.xlsx');
+  await tool('export_table', { path: xlsxPath, statistic: 'freqParent' });
+  const book = await readXLSX(new Uint8Array(readFileSync(xlsxPath)));
+  const sheet = book.sheets[0];
+  let bookDiffer = 0;
+  for (const row of table.rows) {
+    const line = sheet.rows.find((r) => r[0] === row.sample);
+    for (const [population, value] of Object.entries(row.values)) {
+      const cell = line?.[sheet.rows[0].indexOf(`${population.split(' / ').at(-1)}: % of parent`)];
+      // statistics_table gives 6 significant digits; the workbook the full value.
+      if (value === null ? (cell ?? null) !== null : +Number(cell).toPrecision(6) !== value) bookDiffer += 1;
+    }
+  }
+  const pzfxPath = join(figureDir, 'table.pzfx');
+  await tool('export_table', { path: pzfxPath, statistic: 'freqParent', groupBy: 'condition' });
+  const prism = readPZFX(readFileSync(pzfxPath, 'utf8'));
+  const conditions = [...new Set(summary.samples.filter((x) => x.role === 'sample').map((x) => x.meta?.condition).filter(Boolean))];
+  check('export_table as .xlsx and .pzfx: the workbook holds statistics_table\'s values in full precision (statistics_table\'s 6 significant digits when rounded), with its provenance sheets; the Prism project has a column table per population with a column per condition', `${bookDiffer} cells differ; sheets ${book.sheets.map((x) => x.name).join(', ')}; Prism: ${prism.length} tables, grouped by ${prism[1]?.columns.map((c) => `${c.title} (${c.values.length})`).join(', ')}`, bookDiffer === 0 && sheet.rows.length === table.rows.length + 1 && book.sheets.some((x) => x.name === 'Samples') && prism.length === 1 + Object.keys(table.rows[0].values).length && prism[1].columns.length === conditions.length, '0 differ; a table per population');
+
+  // The gating-strategy figure repeated for each subject (PDF) and each sample (PowerPoint), every
+  // gate label in the record equal to its population's % of parent.
+  const reportPath = join(figureDir, 'report.pdf');
+  const reported = await tool('export_report', { path: reportPath, by: 'subject' });
+  const pdf = readPDF(new Uint8Array(readFileSync(reportPath)));
+  const reportRecord = JSON.parse(new TextDecoder().decode(pdf.attachments.get('cytoweave-report.json')));
+  const subjects = new Set(summary.samples.filter((x) => x.role === 'sample').map((x) => x.meta?.subject).filter(Boolean));
+  const labelState = await page(`
+    const { population, countOf } = await import('/lib/engine.js');
+    const trace = ${JSON.stringify(reportRecord.trace.filter((t) => t.source === 'plot'))};
+    let differ = 0;
+    for (const t of trace) {
+      const ws = app.store.ws;
+      const view = app.data.view(t.sampleId);
+      const gate = ws.gates.find((g) => g.id === t.gateId);
+      const value = 100 * countOf(population(view, ws, gate.id), view) / countOf(population(view, ws, gate.parentId ?? 'root'), view);
+      if (Math.abs(value - t.value) > 1e-9) differ += 1;
+    }
+    return { differ, n: trace.length };`);
+  const deckPath = join(figureDir, 'report.pptx');
+  const deckResult = await tool('export_report', { path: deckPath, by: 'sample' });
+  const deck = await readPPTX(new Uint8Array(readFileSync(deckPath)));
+  check('export_report: the figure by subject as a PDF (a page per subject, every gate label traced and equal to its population\'s % of parent) and by sample as a PowerPoint deck', `${pdf.pages.length} pages for ${subjects.size} subjects; ${labelState.n} gate labels, ${labelState.differ} differ; deck ${deck.slides.length} slides of ${deck.slides[0]?.pictures.length} pictures (${deckResult.data.pages.length} samples)`, pdf.pages.length === subjects.size && reported.data.pages.length === subjects.size && labelState.n > 0 && labelState.differ === 0 && deck.slides.length === deckResult.data.pages.length && deck.slides.every((x) => x.pictures.length === fig.plots.length && x.pictures.every((p) => p.present)), 'a page per subject; 0 differ; a slide per sample');
+
+  // Events of every sample, downsampled and concatenated; the T cells counted per SampleID as the
+  // app counts them in each sample's chosen events. Then a CSV of events opened by path.
+  const eventsPath = join(figureDir, 'tcells.fcs');
+  const exported = await tool('export_events', { path: eventsPath, population: 'T cells', eventsPerSample: 2000, seed: 4 });
+  const concatenated = parseFCS(new Uint8Array(readFileSync(eventsPath))).datasets[0];
+  const at = (name) => concatenated.data[concatenated.parameters.find((p) => p.name === name).index];
+  const perSample = exported.data.report.samples.map((x, k) => Array.from(at('SampleID')).filter((v) => v === k + 1).length);
+  const eventsState = await page(`
+    const { selectEvents } = await import('/lib/events.js');
+    const ws = app.store.ws;
+    const gate = ws.gates.find((g) => g.name === 'T cells');
+    const ids = ws.samples.filter((s) => s.role === 'sample').map((s) => s.id);
+    const { items } = selectEvents(ws, (id) => app.data.view(id), { sampleIds: ids, populationId: gate.id, downsample: { mode: 'count', value: 2000, seed: 4 } });
+    return items.map((it) => ({ n: it.indices.length, first: it.indices[0], last: it.indices[it.indices.length - 1] }));`);
+  const source = at('SourceEvent');
+  let offset = 0;
+  const eventsAgree = eventsState.every((x, k) => {
+    const ok = perSample[k] === x.n && source[offset] === x.first && source[offset + x.n - 1] === x.last;
+    offset += x.n;
+    return ok;
+  });
+  const h5adPath = join(figureDir, 'tcells.h5ad');
+  const h5 = await tool('export_events', { path: h5adPath, population: 'T cells', eventsPerSample: 500, channels: ['CD3', 'CD4', 'CD8'] });
+  const h5Bytes = readFileSync(h5adPath);
+  check('export_events: T cells of every sample, 2,000 each with a seed, concatenated (SampleID and SourceEvent the events the app picks with the same seed), and as AnnData with three markers', `${concatenated.eventCount} events, ${perSample.join('/')}; ${eventsAgree ? 'the same events' : 'DIFFERENT events'}; h5ad ${h5Bytes.length} bytes, X ${h5.data.report.events} × ${h5.data.report.X.join(', ')}`, eventsAgree && perSample.every((n) => n === 2000) && h5Bytes.subarray(1, 4).toString() === 'HDF' && h5.data.report.X.join() === 'CD3,CD4,CD8', 'the same events; 2,000 each; HDF5');
+  const eventsCSV = join(figureDir, 'events.csv');
+  writeFileSync(eventsCSV, ['FSC-A,SSC-A,Comp-FITC-A :: CD3,Comp-PE-A :: CD4', ...Array.from({ length: 500 }, (_, e) => [60000 + e * 7, 20000 + e * 3, (e * 37) % 9000 - 100, (e * 101) % 20000].join(','))].join('\n'));
+  const opened = await tool('open_files', { paths: [eventsCSV] });
+  const csvRead = opened.data.csv?.[0];
+  check('open_files with a CSV of events: a sample added, its columns\' kinds, markers and scales reported', `${opened.data.samples.map((x) => `${x.name} ${x.events} events`).join(', ')}; ${csvRead?.columns.map((c) => `${c.name}${c.marker ? ` (${c.marker})` : ''} ${c.kind}/${c.scale}`).join(', ')}`, opened.data.samples.length === 1 && opened.data.samples[0].events === 500 && csvRead?.columns.length === 4 && csvRead.columns[2].marker === 'CD3' && csvRead.columns[0].kind === 'scatter' && csvRead.columns[2].scale === 'logicle', 'one sample of 500 events; CD3 read');
 
   // After the QC gate, the FlowJo export says the gates on QC pass (a computed channel) are left out.
   const wspAfter = join(figureDir, 'pbmc-qc.wsp');
@@ -291,6 +409,79 @@ try {
     return { recommended: t.recommended?.row.amount.label, si: t.rows.map((r) => +r.stainIndex.toPrecision(4)), minimum: v.minimum?.voltage, maximum: v.maximum?.voltage, proposed: ws.derived.filter((d) => d.kind === 'titration' && d.proposal).length };`);
   const sameSI = titrated.rows.every((r, i) => r.stainIndex === setupState.si[i]);
   check('titration: a CD4-PE titration and a PE voltage walk on the example, the same as the analysis run directly, the saved walk proposed', `${titrated.channel}: recommended ${titrated.recommended} (direct ${setupState.recommended}), stain index of ${titrated.rows.length} steps ${sameSI ? 'equal' : 'differ'}; walk ${walked.minimumVoltage}–${walked.maximumVoltage} V (direct ${setupState.minimum?.toFixed(1)}–${setupState.maximum?.toFixed(1)}), recommended ${walked.recommendedVoltage} V; ${setupState.proposed} proposed`, titrated.channel === 'PE-A' && titrated.recommended === '125 ng' && setupState.recommended === '125 ng' && sameSI && Math.abs(walked.minimumVoltage - setupState.minimum) < 0.5 && Math.abs(walked.maximumVoltage - setupState.maximum) < 0.5 && setupState.proposed === 1, 'equal; 125 ng; proposed');
+
+  // Comparisons with the unstained tube and rare-event statistics on the same example: the tools'
+  // values equal the statistics computed directly in the page.
+  const tubes = ['CD4-PE 125 ng', 'CD4-PE 1.953 ng'];
+  const distributions = (await tool('compare_distributions', { control: 'Unstained', channel: 'PE-A', samples: tubes }, 'Setup agent')).data;
+  const tabled = (await tool('statistics_table', { statistic: 'sed', channel: 'PE-A', control: 'Unstained', populations: ['All events'] }, 'Setup agent')).data;
+  await tool('create_gate', { parent: 'All events', name: 'PE bright', type: 'range', x: 'PE-A', coordinates: { min: 30000 } }, 'Setup agent');
+  const rare = (await tool('rare_events', { population: 'PE bright', samples: tubes, cv: 5 }, 'Setup agent')).data;
+  const compareState = await page(`
+    const { computeStatistic, countOf, populationSet } = await import('/lib/engine.js');
+    const { poissonInterval } = await import('/lib/rare-events.js');
+    const ws = app.store.ws;
+    const control = ws.samples.find((s) => s.name === 'Unstained');
+    const controlView = app.data.view(control.id) ?? await app.data.ensure(control.id);
+    const bright = ws.gates.find((g) => g.name === 'PE bright').id;
+    const out = [];
+    for (const name of ${JSON.stringify(tubes)}) {
+      const s = ws.samples.find((x) => x.name === name);
+      const view = app.data.view(s.id) ?? await app.data.ensure(s.id);
+      const spec = (stat) => ({ stat, gateId: 'root', channel: 'PE-A', control: { sampleId: control.id } });
+      const context = { viewOf: (id) => (id === control.id ? controlView : null) };
+      const column = view.column('PE-A');
+      let above = 0;
+      for (let e = 0; e < column.length; e += 1) if (column[e] >= 1000) above += 1;
+      const count = countOf(populationSet(view, ws, bright), view);
+      out.push({ name, sed: computeStatistic(view, ws, spec('sed'), context), T: computeStatistic(view, ws, spec('pbT'), context), above: 100 * above / column.length, count, interval: poissonInterval(count) });
+    }
+    return out;`);
+  const close5 = (a, b) => Math.abs(a - b) <= 5e-5 * Math.max(1, Math.abs(b));
+  const agree = compareState.every((d, i) => close5(distributions.rows[i].sed, d.sed) && close5(distributions.rows[i].probabilityBinning.T, d.T) && close5(tabled.rows.find((r) => r.sample === d.name).values['All events'], d.sed));
+  const rareAgree = compareState.every((d, i) => rare.rows[i].count === d.count && close5(rare.rows[i].countInterval[0], d.interval[0]) && close5(rare.rows[i].countInterval[1], d.interval[1]));
+  check('compare_distributions, statistics_table with a control and rare_events: each tube against the unstained one, and the counts of the brightest PE events, the same as computed directly; SED near the CD4+ share (the same cells in every tube: the share above the split at the saturating 125 ng), also at 1.953 ng, where dim CD4+ cells fall below the split', `${compareState.map((d, i) => `${d.name}: SED ${distributions.rows[i].sed}% (${d.above.toFixed(1)}% above 1,000), T(χ) ${distributions.rows[i].probabilityBinning.T}`).join('; ')}; ${agree ? 'equal' : 'differ'}; PE bright ${rare.rows.map((r) => `${r.count} [${r.countInterval.join('–')}], ${r.parentEventsForTargetCV} parent events for a 5% CV`).join('; ')}; ${rareAgree ? 'equal' : 'differ'}`, agree && rareAgree && compareState.every((d, i) => Math.abs(distributions.rows[i].sed - compareState[0].above) < 3), 'equal; SED within 3 points');
+
+  // A formula channel and a bead calibration proposed by an agent, used at once.
+  await tool('add_formula_channel', { name: 'PE per FSC', expression: '[PE-A] / [FSC-A] * 1000' }, 'Setup agent');
+  const formulaTable = (await tool('statistics_table', { statistic: 'median', channel: 'PE per FSC', populations: ['All events'] }, 'Setup agent')).data;
+  const formulaState = await page(`
+    // The first three samples of the table.
+    const ws = app.store.ws;
+    const out = {};
+    for (const s of ws.samples.filter((x) => ${JSON.stringify(formulaTable.rows.slice(0, 3).map((r) => r.sample))}.includes(x.name))) {
+      const view = app.data.view(s.id) ?? await app.data.ensure(s.id);
+      const pe = view.column('PE-A');
+      const fsc = view.column('FSC-A');
+      const values = Float64Array.from(pe, (v, i) => Math.fround((v / fsc[i]) * 1000)).filter(Number.isFinite).sort();
+      const n = values.length;
+      out[s.name] = n % 2 ? values[(n - 1) / 2] : (values[n / 2 - 1] + values[n / 2]) / 2;
+    }
+    return { direct: out, proposed: Boolean(ws.derived.find((d) => d.kind === 'formula' && d.outputs[0] === 'PE per FSC')?.proposal) };`);
+  const formulaAgree = Object.entries(formulaState.direct).every(([name, v]) => Math.abs(formulaTable.rows.find((r) => r.sample === name).values['All events'] - v) <= 1e-5 * Math.abs(v));
+  check('add_formula_channel: a formula channel proposed and usable at once; its medians in statistics_table equal to the formula computed directly', `${Object.keys(formulaState.direct).length} samples ${formulaAgree ? 'equal' : 'differ'}; proposed: ${formulaState.proposed}`, formulaAgree && formulaState.proposed, 'equal; proposed');
+
+  const beadDir = join(temp, 'beads');
+  mkdirSync(beadDir);
+  const sim = simulatedBeads();
+  const beadParams = ['FSC-A', 'SSC-A', 'FL1-A', 'FL2-A'].map((name) => ({ name, label: '', range: name.startsWith('FL') ? 16384 : 262144 }));
+  writeFileSync(join(beadDir, 'Beads.fcs'), encodeFCS(beadParams, beadParams.map((p) => sim.beads[p.name]), { $CYT: 'Simulated cytometer' }));
+  const cell = sim.cells[1];
+  const n = cell.values.length;
+  writeFileSync(join(beadDir, 'Cells.fcs'), encodeFCS(beadParams, [Float32Array.from({ length: n }, () => 50000), Float32Array.from({ length: n }, () => 10000), cell.values, Float32Array.from(cell.values, (v) => v * 2)], { $CYT: 'Simulated cytometer' }));
+  await tool('open_files', { paths: [join(beadDir, 'Beads.fcs'), join(beadDir, 'Cells.fcs')] }, 'Setup agent');
+  await waitFor(`window.cytoweave.store.ws.samples.some((s) => s.name === 'Cells') && !document.querySelector('.progress-toast')`, 60000);
+  const calibrated = (await tool('calibrate_beads', { sample: 'Beads', values: { 'FL1-A': BEAD_MEF }, clustering: ['FL1-A', 'FL2-A'], unit: 'MEFL', applyTo: ['Beads', 'Cells'] }, 'Setup agent')).data;
+  const mefState = await page(`
+    const ws = app.store.ws;
+    const s = ws.samples.find((x) => x.name === 'Cells');
+    const view = app.data.view(s.id) ?? await app.data.ensure(s.id);
+    view.syncWorkspace(ws);
+    const values = Float64Array.from(view.column('FL1-A MEFL')).sort();
+    const record = ws.derived.find((d) => d.kind === 'calibration');
+    return { median: values[values.length >> 1], proposed: Boolean(record?.proposal), samples: record?.samples?.length };`);
+  const truthMedian = Float64Array.from(cell.truth).sort()[cell.truth.length >> 1];
+  check('calibrate_beads: simulated 8-level beads of known response calibrated by an agent and applied to a cell sample; the cells\' median in MEFL against the truth', `slope ${calibrated.channels['FL1-A'].slope} (true ${BEAD_TRUTH.m}), ${calibrated.channels['FL1-A'].levels.filter((l) => l.used).length} of 8 levels; cells ${mefState.median?.toFixed(0)} MEFL (true ${truthMedian.toFixed(0)}); proposed for ${mefState.samples} samples`, Math.abs(calibrated.channels['FL1-A'].slope - BEAD_TRUTH.m) < 0.01 && Math.abs(mefState.median / truthMedian - 1) < 0.02 && mefState.proposed && mefState.samples === 2, 'slope within 0.01; within 2%; proposed');
 
   // 2. The spectral example: unmix builds and proposes a reference library, then unmixes; it equals
   // the same steps run directly.

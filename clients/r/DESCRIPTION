@@ -1,0 +1,21 @@
+Package: cytoweave
+Type: Package
+Title: Remote Control of a Running 'CytoWeave'
+Version: 0.6.0
+Authors@R: person("Robert", "McDermott", email = "robert.c.mcdermott@gmail.com", role = c("aut", "cre"))
+Description: Drives 'CytoWeave', a flow, spectral and mass cytometry analysis
+    workbench, from R: every action an AI agent can take in 'CytoWeave' (open
+    data, gate, tabulate statistics, compare groups of samples, test
+    differential abundance and state, export files) is an R function that the
+    open 'CytoWeave' window performs, so the analysis stays visible and its
+    changes stay proposals the user accepts or rejects.
+License: Apache License (== 2.0)
+URL: https://github.com/robert-mcdermott/cytoweave
+BugReports: https://github.com/robert-mcdermott/cytoweave/issues
+Encoding: UTF-8
+Imports:
+    curl,
+    jsonlite
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

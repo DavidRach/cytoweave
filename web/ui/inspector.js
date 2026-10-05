@@ -4,7 +4,8 @@ import { h, icon, clear, formatCount, formatPercent, iconButton } from './dom.js
 import { showMenu, toast } from './overlays.js';
 import { channelTransform, countOf, describePopulation, gateRobustness, isMultidimensional, populationSet } from '../lib/engine.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
-import { formatStatistic, wilsonInterval } from '../lib/stats.js';
+import { formatStatistic } from '../lib/stats.js';
+import { binomialInterval, countPrecision, eventsNeeded, poissonInterval } from '../lib/rare-events.js';
 import { BOOLEAN_OPS, ROOT, channelLabel, clearOverride, effectiveGeometry, gateAncestors, gateById, gatePath, setGateGeometry, setSampleCompensation, updateGate } from '../lib/workspace.js';
 import { CATEGORICAL, colorVisionFriendly } from '../lib/colormaps.js';
 import { isInteracting } from './activity.js';
@@ -47,14 +48,28 @@ export function mountInspector(app) {
     const freqParent = gate ? (100 * count) / (parentCount || 1) : 100;
     const grand = gate?.parentId ? gateById(ws, gate.parentId) : null;
     const grandCount = grand ? countOf(populationSet(view, ws, grand.parentId ?? ROOT), view) : view.eventCount;
-    const [lo, hi] = wilsonInterval(count, parentCount || 1);
+    const [lo, hi] = binomialInterval(count, parentCount || 1);
+    const parentName = gate?.parentId ? gateById(ws, gate.parentId)?.name : 'all events';
     return section(gate ? gate.name : 'All events',
-      h('div.big-stat', h('span.value', gate ? formatPercent(freqParent) : formatCount(count)), h('span.unit', gate ? `of ${gate.parentId ? gateById(ws, gate.parentId)?.name : 'all events'}` : 'events')),
-      gate ? h('div.muted', { style: { fontSize: '11.5px', marginTop: '2px' } }, `95% CI ${formatPercent(lo * 100)} – ${formatPercent(hi * 100)} (binomial)`) : null,
+      h('div.big-stat', h('span.value', gate ? formatPercent(freqParent) : formatCount(count)), h('span.unit', gate ? `of ${parentName}` : 'events')),
+      gate ? h('div.muted', { style: { fontSize: '11.5px', marginTop: '2px' } }, `95% CI ${formatPercent(lo * 100)} – ${formatPercent(hi * 100)} (exact binomial)`) : null,
+      gate ? rareEventLine(count, parentCount, parentName) : null,
       h('div.stat-grid',
         h('div.stat-tile', h('div.k', 'Events'), h('div.v', formatCount(count))),
         h('div.stat-tile', h('div.k', '% of total'), h('div.v', formatPercent((100 * count) / (view.eventCount || 1)))),
         h('div.stat-tile', h('div.k', '% of grandparent'), h('div.v', gate?.parentId ? formatPercent((100 * count) / (grandCount || 1)) : '—'))));
+  }
+
+  // For populations of fewer than 10,000 events: the counting precision, the count's exact Poisson
+  // interval and, below a 10% CV, the parent events a 10% CV would take (rare-events.js).
+  function rareEventLine(count, parentCount, parentName) {
+    if (!(count < 10000)) return null;
+    const cv = countPrecision(count, parentCount);
+    const [lo, hi] = poissonInterval(count);
+    const need = cv > 10 && count > 0 ? eventsNeeded(10, (100 * count) / parentCount).parentEvents : null;
+    return h('div.muted', { style: { fontSize: '11.5px', marginTop: '2px' }, title: 'Rare events: the precision a count gives is set by the number of events counted (Poisson): 100 events give a 10% CV, 25 a 20% CV.' },
+      `Counting CV ${formatStatistic('countCV', cv)}%; count 95% CI ${formatStatistic('countLow', lo)} – ${formatStatistic('countHigh', hi)} (Poisson).`,
+      need ? ` A 10% CV needs about ${formatCount(need)} events of ${parentName}.` : '');
   }
 
   // The population's Cell Ontology term: confirmed, or suggested from its marker phenotype for the

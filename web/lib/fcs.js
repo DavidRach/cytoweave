@@ -209,6 +209,8 @@ export function classifyChannel(name, label = '') {
 export function markerFromLabel(label, name = '') {
   let text = String(label ?? '').trim();
   if (!text || text === name) return '';
+  // An isotope alone ("102Pd", "Pd102Di") names the mass channel, not a marker.
+  if (/^(\d{2,3}[A-Z][a-z]?|[A-Z][a-z]?\d{2,3}(Di|Dd)?)$/.test(text)) return '';
   text = text.replace(/^\d{2,3}[A-Z][a-z]?[_ -]/, ''); // CyTOF isotope prefix, e.g. 176Yb_
   text = text.replace(/^[A-Z][a-z]?\d{2,3}[_ -]/, '');
   return text.trim();

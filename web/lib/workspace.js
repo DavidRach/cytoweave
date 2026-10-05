@@ -239,6 +239,12 @@ export function channelLabel(ws, channel, options = {}) {
       return shared ? `${found.marker} · ${channel}` : found.marker;
     }
   }
+  // A calibrated channel: the marker of the channel it calibrates, with the unit.
+  const calibration = ws?.derived?.find((d) => d.kind === 'calibration' && d.outputs?.[0] === channel);
+  if (calibration) {
+    const marker = ws.samples.flatMap((s) => s.channels).find((c) => c.name === calibration.inputs[0])?.marker;
+    if (marker) return options.short ? `${marker} (${calibration.params.unit})` : `${marker} · ${channel}`;
+  }
   return channel;
 }
 
@@ -561,9 +567,15 @@ export function channelCatalog(ws, sampleIds = null) {
       map.set(channel.name, entry);
     }
   }
+  // Derived channels; `computed` says how (a calibrated channel is a fluorescence channel in other
+  // units, measuring its input's marker).
   for (const derived of ws.derived) {
     for (const output of derived.outputs ?? []) {
-      if (!map.has(output)) map.set(output, { name: output, type: 'derived', marker: '', label: '', range: 1, samples: 0, derived: derived.id });
+      if (map.has(output)) continue;
+      if (derived.kind === 'calibration') {
+        const input = map.get(derived.inputs[0]);
+        map.set(output, { name: output, type: 'fluorescence', marker: input?.marker ?? '', label: input?.label ?? '', range: input?.range ?? 1, samples: 0, derived: derived.id, computed: 'calibration', unit: derived.params?.unit });
+      } else map.set(output, { name: output, type: 'derived', marker: '', label: '', range: 1, samples: 0, derived: derived.id, computed: derived.kind });
     }
   }
   return [...map.values()];

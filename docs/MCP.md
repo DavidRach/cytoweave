@@ -47,7 +47,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0.
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0, and `compare_distributions`, `rare_events`, `add_formula_channel`, `calibrate_beads`, `export_report`, `export_events` and `differential_analysis` 0.6.0 (as do Excel and Prism files from `export_table` and CSV files of events in `open_files`).
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the
@@ -89,7 +89,7 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | Tool | What it does |
 | --- | --- |
 | `workspace_summary` | Samples (events, role, metadata, channels and markers), groups, the gating tree of the current sample with counts, compensation, derived results, and what the window shows. |
-| `open_files` | Opens FCS files, folders (each becomes a group), CytoWeave workspaces, FlowJo workspaces or Gating-ML, by absolute path. |
+| `open_files` | Opens FCS files, folders (each becomes a group), CytoWeave workspaces, FlowJo workspaces, Gating-ML, or CSV files of events (each a sample; the columns' kinds, scales and checks reported), by absolute path. |
 | `open_example` | Generates and opens a simulated example experiment. |
 | `select` | Shows a sample, population and/or view in the window. |
 | `list_populations` | Every population's path, gate, count, % of parent and % of total for a sample. |
@@ -104,6 +104,7 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `review_gate` | A gate's frequency on every sample with a robust z-score and its boundary robustness, outliers first. |
 | `adapt_gate` | Adapts a gate to every sample (density landmark registration) with a confidence for each: confident adjustments are proposed, uncertain samples listed for you to check. `groupBy` keeps one gate per donor or subject. |
 | `compare` | Tests a statistic between groups of samples defined by metadata, optionally paired. |
+| `differential_analysis` | Tests every cluster (or chosen populations) between groups of samples: differential state, each marker's median by diffcyt-DS-limma, or differential abundance, each cluster's share of the parent; with pairing and covariates in the model. |
 | `check_robustness` | Repeats a two-group comparison under other reasonable analysis choices (gate boundaries, adapted gates, QC, compensation, test) and reports whether the conclusion holds, mostly holds or is fragile, and which choices change it. |
 | `annotate_samples` | Sets samples' metadata fields, roles and stained channels (held for review). |
 | `run_qc` | Acquisition QC (refined or classic PeacoQC, flow rate, margins, drift): each sample's score, events removed and findings; the "QC pass" channel is proposed, and with `addGate` a "QC pass" gate at the top of the tree. |
@@ -116,10 +117,16 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `apply_template` | Applies a template or a strategy (`omip-101`) to the open samples: channels matched by marker (scatter and time by name), with how each matched and what could not be applied. A strategy's gates are placed on one sample's events (`sample`), each from its parent population, with suggested Cell Ontology terms. The gates and figures are proposed. |
 | `suggest_cell_types` | A Cell Ontology term for each population from its marker phenotype and scatter, never its name, with a confidence and the markers it rests on; `propose` proposes the top terms for you to confirm. |
 | `titration` | Analyzes an antibody titration (amounts from the file names or an "amount" annotation) or a detector voltage walk (voltages from `$PnV`) on one channel within a population: each step's stain and separation index, and the recommended amount (twice the amount giving 90% of saturation) or voltage range (the negative cells' rSD at 2.5 × the electronic noise; the positive cells within the linear range). `save` proposes the result for the workspace. |
+| `add_formula_channel` | Proposes a channel computed from others for every event (compensated values): channels in brackets by marker or detector, + - * / ^, log, ln, exp, sqrt, abs, asinh, min, max; for example a ratio `[CD4] / [CD8]`. Usable at once in gates, plots and statistics. |
+| `calibrate_beads` | Fits a standard curve from a multi-level bead sample, as FlowCal does (levels found, medians matched to the datasheet's MEF values, levels near the ends of the range left out), and with `applyTo` proposes "<channel> <unit>" channels (FITC-A MEFL) for the samples acquired with the beads' settings. |
+| `compare_distributions` | Compares a population's distribution on a channel in each sample with a control sample's (an FMO, an unstimulated sample): % positive by SED (Bagwell's enhanced normalized subtraction) and Overton's cumulative subtraction, probability binning's T(χ) (above 4 for p < 0.01) with Baggerly's statistic and the excess %, and the Kolmogorov–Smirnov D and p; with several channels, multivariate probability binning. |
+| `rare_events` | A rare population's count with an exact Poisson 95% interval, its % of parent with an exact binomial one, the counting CV and the parent events for a target CV; given blank (and low-level) samples, the limits of blank, detection and quantification (CLSI EP17) and each sample's status. |
 | `export_flowjo` | Writes a FlowJo workspace (.wsp, or .zip with the FCS files), optionally de-identified, with the populations not written exactly. |
 | `export_fcs` | Writes de-identified FCS files (.zip) or the workspace with them (.acs). |
 | `export_figure` | Writes a figure as SVG, PNG or PDF, carrying the analysis behind it. |
-| `export_table` | Writes a statistic of populations across samples as CSV or TSV. |
+| `export_events` | Writes a population's events in several samples, optionally downsampled with a seed: one concatenated FCS file (`SampleID` and `SourceEvent` channels; raw values with the shared spillover, or compensated), a ZIP of FCS files, or AnnData (`.h5ad`: X arcsinh or compensated values of the chosen channels; obs with sample, annotations, populations, clusters, scatter; obsm maps). |
+| `export_report` | Writes a figure repeated page after page as a PDF or a PowerPoint deck: `by` sample (the plots of the figure's main sample redrawn on each; a control's plots on every page) or by an annotation such as `subject` (each plot on that subject's matching sample). Placeholders such as `{subject}` are filled, `table` lists a Tables table's columns for each page's samples, and every number printed is recorded with its source in the file. Returns the pages and notes (a missing tube, replicates). |
+| `export_table` | Writes statistics: a statistic of populations across samples as CSV or TSV; an Excel workbook (a Tables table by `table`, a statistic, or every table) with sheets describing the columns, the samples and their checksums, the gating and the methods; or a Prism project (`.pzfx`), grouped into column tables by an annotation with `groupBy`. |
 | `methods` | A methods paragraph with numbered references. |
 | `export_gating_ml` | The gating strategy as Gating-ML 2.0. |
 
@@ -139,7 +146,22 @@ is `{"min": 1000}`. Ellipse semi-axes are fractions of the axes (0.1 is a tenth 
 
 ## Scripts without an agent
 
-`cytoweave --remote-control` accepts the same actions from programs on this computer:
+`cytoweave --remote-control` accepts the same actions from programs on this computer. The R and
+Python clients in [`clients/`](../clients/) make each action a function, found with no setup:
+
+```python
+import cytoweave
+cw = cytoweave.connect()
+cw.statistics_table(statistic="freqParent").frame()
+```
+
+```r
+library(cytoweave)
+cw_connect()
+as.data.frame(cw_statistics_table(statistic = "freqParent"))
+```
+
+From any other language, post JSON to `/api/remote/action`:
 
 ```python
 import requests
@@ -152,7 +174,10 @@ A script's changes are proposals too, shown under the name it gives in `"client"
 example `{"action": "create_gate", "client": "Plate pipeline", "args": {…}}`).
 
 `open_files` and the export tools also need the `X-CytoWeave-Token` header with the token
-CytoWeave prints when it starts, because they make the program read or write files.
+CytoWeave prints when it starts, because they make the program read or write files. CytoWeave
+also writes the address and token to `remote.json` in its data folder (readable by you only, and
+removed when it stops), where the clients find them; `GET /api/remote/tools` lists the actions with
+their arguments.
 
 ## Privacy and security
 
@@ -161,7 +186,8 @@ CytoWeave prints when it starts, because they make the program read or write fil
 - Agents act through the same window you use; nothing happens out of sight. Their changes are
   proposals you accept or reject, and every change can be undone.
 - Opening and writing files by path is limited to the agent connected over stdio (MCP) or to
-  scripts that hold the token printed at startup. Exports go only to the path given, in a folder
+  scripts that hold the token printed at startup (and written to `remote.json` in the data
+  folder, readable by you only). Exports go only to the path given, in a folder
   that exists, through a temporary file renamed into place, and never replace a file unless asked.
 
 ## How it works

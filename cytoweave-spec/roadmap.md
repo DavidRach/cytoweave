@@ -395,38 +395,157 @@ population), and adds titration and voltage walks for setting up a panel.
    - Not done: titration plates with several antibodies in one file (by well) and the dim-bead
      CV method of the voltage walk are left for later.
 
-## Then (0.6–0.8)
+## 0.6.0: the bench, batch by batch (released 2026-10-05)
 
-The order of waves 5–8 (wave 5 released as 0.5.0) comes from `research.md` §8 and a parity and
-differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza,
-SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users asked for in
-2024–2026. Within each wave:
-trust first, then the daily workbench, then what no single tool combines. Waves 6–8 are a plan,
-to be revised as each wave lands.
+Wave 6 adds what a lab does every week: comparisons with a control and rare-event limits,
+formula channels, MEF units and absolute counts, batch reports with every number traced, Excel
+and Prism, events in from CSV and out as concatenated FCS or AnnData, differential state equal to
+diffcyt in R, and R and Python clients.
 
 ### Wave 6: the bench, batch by batch
 
-1. **Statistics users already expect (G10, G11):** the population comparisons FlowJo users rely
-   on (probability binning with T(χ), Overton subtraction, SED, Kolmogorov–Smirnov; already
-   implemented and tested in `distribution.js`, not yet in any view) and rare-event statistics:
-   Poisson intervals on counts, a limit of detection and quantification against a negative
-   reference, and events needed for a target precision.
-   - Validation: flowStats and published worked examples; exact formulas.
-2. **Batch reports and spreadsheet export (R7):** a page layout iterated over samples or groups,
-   multi-page PDF and PowerPoint, Excel workbooks and GraphPad Prism (`.pzfx`) tables, built on
-   the template engine.
-   - Validation: every number in a report traced to the table it came from; files read back by
-     their own formats' readers.
-3. **Derived parameters, calibrated units and absolute counts (G12, G13):** a formula editor for
-   new channels (written to Gating-ML where it can express them); MEF/ERF units from calibration
-   beads; concentrations from counting beads with the dilution factor.
-   - Validation: FlowCal's bead files and results; simulated counting beads of known
-     concentration.
-4. **Computational users (H6, I6, M5):** differential state per cluster or population (as
-   diffcyt), concatenated and downsampled FCS export, CSV event import, AnnData export, and R and
-   Python clients for remote control (users who outgrow GUIs move to R first).
-   - Validation: diffcyt-DS in R on the mass cytometry example; AnnData read back by `anndata`;
-     the clients' calls against the HTTP API's tests.
+1. **Population comparisons and rare-event statistics (G10, G11): done.** Tables statistics
+   against a control sample's population (chosen per column, the same population or another):
+   % positive by SED and by Overton's cumulative subtraction, probability binning's T(χ) and
+   excess %, and the K-S D (`stats.js`, `engine.js` `computeStatistic` with a context that finds
+   the control's events), so Compare and agents have them too; histograms with overlaid samples
+   show SED, Overton and T(χ) against each overlay. Rare events (`rare-events.js`): count and
+   % of parent limits by exact Poisson (Garwood) and binomial (Clopper–Pearson) intervals, the
+   counting CV and, in the inspector, the parent events a 10% CV needs; a column's detection
+   limits (limit of blank, detection and quantification from chosen blank and low-level samples,
+   CLSI EP17 / Armbruster & Pry 2008, parametric or nonparametric; each sample's LLOQ never below
+   the (100/CV)² events Poisson counting needs) mark cells ND or < LLOQ and add a status column to
+   CSVs. Methods sentences and references for all of it. Agent tools `compare_distributions` and
+   `rare_events` (36 tools); `statistics_table`, `export_table` and `compare` take a control.
+   - Sources: Overton's cumulative subtraction is the K-S Dmax and SED is FlowJo's name for
+     Bagwell's enhanced normalized subtraction, both from Bagwell (1996), whose ENS formula is
+     implemented exactly; probability binning gained flowStats' bins (split while a bin holds more
+     than minEvents) and Baggerly's (2001) standardized statistic.
+   - Validation: `comparisons` (probability binning equal to flowStats 4.24.0 in 36 cases to
+     9e-15, bins included; K-S D equal to R, p to R's tolerance of 1e-6, CytoWeave's exact; SED
+     within 2 points of the true fraction in six tubes, Overton 2–8 points under where populations
+     overlap; Bagwell's simulation in his order, ENS −1.3% against his −0.85%; T(χ) > 4 in 0.5% of
+     pairs of the same cells; exact intervals equal to R and covering ≥ 95%; EP17 limits giving
+     4% false detections on new blanks and 98% detection at the LoD), agent session (19 checks).
+   - FlowJo: 11.2 has no Population Comparison platform and no derived parameters (its platforms
+     are t-SNE, UMAP, FlowSOM and X-Shift); both were FlowJo 10 features, so FlowJo 11 is no
+     reference for this slice or for slice 2's formulas.
+   - Not done: multivariate probability binning is in `compare_distributions` only, not in
+     Tables.
+2. **Formula channels, calibrated units and absolute counts (G12, G13): done.** Formula channels
+   (`formula.js`: a parser and tree evaluator, no `eval`; channels by marker or detector in
+   brackets, + − × ÷ ^, log, ln, exp, sqrt, abs, asinh, min, max) computed on compensated values
+   as derived records the engine evaluates per event, with a dialog that checks the expression
+   and previews it; they travel with templates (rebuilt from the matched channels), ratios go into
+   Gating-ML as fratio, FlowJo exports report them as not written. Calibration (`calibration.js`,
+   QC → Calibration) follows FlowCal: levels found together on chosen channels (logicle with
+   W = 0), medians matched to the datasheet, levels within 2.5 SD of the range's ends left out,
+   m·ln(x) + b = ln(MEF + MEF_beads) fitted by a local search from FlowCal's starting point (the
+   global minimum is degenerate), and "<channel> <unit>" channels added to the samples acquired
+   with the beads' settings (records with `samples`). Absolute counts from counting beads (bead
+   population, beads in the tube, µL of sample) and a dilution factor (a number or an annotation)
+   for them and for `$VOL` concentrations. Computed channels now appear in plot axis menus and
+   agent tools. Methods sentences with FlowCal and Brando et al. 2000. Agent tools
+   `add_formula_channel` and `calibrate_beads` (38 tools); `statistics_table` takes counting
+   beads and a dilution.
+   - Validation: `calibration` (the bead model on FlowCal's own selected levels: curves within
+     1.5e-4, residuals no larger; simulated beads of known response with a saturated level: slope
+     within 0.001, cells' MEFL within 0.2%; 7 formulas on 10 tubes against R, medians within
+     5e-8, events within 2e-14; a ratio gate the same after Gating-ML and on renamed detectors
+     through a template; counting beads in 40 tubes within 1%, scattered as Poisson predicts),
+     `flowcal` (external data `flowcal-mef`: FlowCal's example end to end, the same levels left
+     out, medians within one log-channel step, cells within 1.6% of FlowCal 1.3.1), agent session
+     (21 checks).
+   - Not done: FlowJo exports do not write formula channels as derived parameters (no open reader
+     computes them to check against, and FlowJo 11 cannot create them); calibrated channels stay
+     in CytoWeave (not written to exports).
+3. **Batch reports and spreadsheet export (R7): done.** Batch reports (`reports.js`, Figures →
+   Batch report…): a figure repeated by sample (the plots of the figure's followed sample redrawn
+   on each sample, other samples' plots on every page) or by an annotation's values (each plot on
+   the page's sample matching it on the annotations that tell the figure's samples apart, the one
+   sharing most of its annotations among several; a missing tube left empty and reported, an
+   undecided choice reported), text placeholders filled ({sample}, {subject}, {page}…), as a
+   multi-page PDF or a PowerPoint deck (our own writer, `pptx.js`: pictures, text, arrows and
+   native tables). A new figure item, statistics, shows a Tables table's columns for the page's
+   samples (or all rows), with ND and < LLOQ. Every number printed is traced (each statistics cell
+   to its table column, each gate label to its gate's % of parent) and the record goes into the
+   file beside the plots' provenance. PDF figures became vector (`pdf.js` `PDFPage`: Helvetica
+   text with Adobe's metrics, paths, event rasters as images; `plot.js` `sceneToPDF`). Excel
+   workbooks (`xlsx.js`, `spreadsheets.js`): every table in full precision, with Columns, Samples
+   (SHA-256), Populations and About (methods) sheets; Prism projects (`pzfx.js`): the table, and
+   grouped by an annotation a column table per statistic. Plot scenes and the Tables
+   computations moved to the library (`scene.js`, `tables.js`) so that reports and validation
+   share them. Batch choices and statistics items travel with templates. Agent tool
+   `export_report` (39 tools); `export_table` writes `.xlsx` and `.pzfx`.
+   - Validation: `reports` (by sample and by subject, every plot where the rules put it; 124
+     statistics cells and 47 gate labels traced and equal to their sources; the PDF read back
+     prints every traced number and no untraced one; deck, workbook and Prism values exact;
+     openpyxl 3.1.5, python-pptx 1.0.2, pypdf 5.4.0 and R pzfx 0.3.1 read the same documents,
+     matched by content fingerprints), agent session (23 checks). The documents also open in
+     LibreOffice 26.8 and Apple's Quick Look.
+   - Not done: plots in PowerPoint are pictures (3×), not vector; PDF text is limited to
+     WinAnsi characters (others written as their nearest ASCII); opening the files in Microsoft
+     PowerPoint and Excel themselves is a manual check.
+4. **Data in and out (I6): done.** CSV event import (`csv-events.js`, `events-io.js`): the
+   delimiter and decimal mark found, FlowJo's `name :: marker` headers, every column checked
+   (non-numbers with the first row, empty cells, short rows, constant columns, an event number
+   left out, label columns that can split a file into samples), kinds and scales guessed
+   (logicle, arcsinh cofactor 5 for mass counts, linear for scatter, time and already-transformed
+   values) and adjustable; each file stored as an FCS file. Events out (`events.js`): a
+   population's events in chosen samples, every event or downsampled (count or share, seeded per
+   sample from its checksum), as one concatenated FCS file (common channels, raw with the shared
+   spillover or compensated, `SampleID` and `SourceEvent`, the samples named and checksummed in
+   keywords), one FCS file per sample, or AnnData (`anndata.js`: X arcsinh or compensated; obs
+   sample, annotations, event, populations as True/False columns and the deepest as a category,
+   clusters, QC, scatter and time; var; obsm maps; uns provenance; encodings readable by anndata
+   0.8 and later) through our own HDF5 writer (`hdf5.js`: superblock 0, version 1 object headers,
+   symbol-table groups, contiguous datasets, enum booleans, variable-length UTF-8 strings in global
+   heaps). Agent tool `export_events` (40 tools); `open_files` opens CSV events.
+   - Validation: `events` (downsampling exact, reproducible, independent and uniform; every event
+     of a concatenated file its source's and every population counted alike per SampleID; CSV
+     round trips exact, a damaged file's faults reported; anndata 0.13.4 and 0.10.9, h5py 3.16
+     with HDF5 2.0, pyfive 1.2.1, fcsparser 0.2.8 and FlowIO 1.4.0 read the files' values exactly),
+     agent session (25 checks).
+   - Not done: AnnData files are written uncompressed (a group holds at most 256 members); sparse
+     layers and other AnnData readers (R's anndata, Julia) are not tested; a concatenated file
+     keeps each sample's time values as they were.
+5. **Differential state and R and Python clients (H6, M5): done.** diffcyt-DS-limma
+   (`differential.js`, `limma.js`; Compare → Screen marker states): per sample the median of
+   arcsinh(x / cofactor) of each marker in each cluster (or chosen population), clusters with at
+   least 3 cells in half the samples, a linear model per cluster and marker weighted by the cells
+   (pairing and covariates as fixed effects), limma's moderated t with a mean-variance trend, BH
+   across every test; the markers a clustering used left out by default; methods sentence and
+   references. limma written in JavaScript from its R and C sources (weighted least squares with
+   LINPACK's pivoting, natural-spline trend for equal residual df, weighted lowess and the prior df
+   by maximum likelihood for unequal df, as limma 3.68 chooses). Agent tool
+   `differential_analysis` (41 tools): state or abundance of clusters, or the state of
+   populations. R and Python clients (`clients/`): a function per action generated from
+   `clients/tools.json` (kept equal to `mcp.go` by a Go test) by `clients/generate.mjs`, with help
+   pages, data frames, PNG plots and errors with CytoWeave's reason; with `--remote-control`
+   CytoWeave writes `remote.json` (address and token, mode 0600, removed on exit) to its data
+   folder, where the clients find it; `GET /api/remote/tools` lists the actions. The clients'
+   versions are `main.go`'s (checked at release).
+   - Validation: `differential` (the limma port within 4e-11 of limma 3.68.5 on 11 synthetic
+     cases across its paths; diffcyt 1.32.1 in R on the cytof cohort and the barcoded plate by
+     well: counts and medians identical, 1,150 tests within 3e-11; no call where no marker
+     differs, the strong activation changes all called with 3 of 53 calls false), agent session
+     (27 checks), the clients' tests in CI against a running CytoWeave (each client's results
+     equal the HTTP API's; R CMD check clean).
+   - Fixed on the way: agent tools could read derived channels before they were restored after a
+     reload; isotope-only mass channel labels were taken as markers; Compare's cluster names.
+   - Not done: diffcyt's random-effect options (block_id, diffcyt-DS-LMM) and limma's robust
+     moderation; publishing the clients to CRAN or PyPI (a separate decision); the B-statistic.
+
+Left for later: kinetics, plates and titration plates stay in wave 7; drawing a gate from the
+keyboard (V4) stays open.
+
+## Next (0.7–0.8)
+
+The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0) comes from `research.md` §8
+and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
+Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
+asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
+single tool combines. Waves 7–8 are a plan, to be revised as each wave lands.
 
 ### Wave 7: plates, migration and the spectral doctor
 

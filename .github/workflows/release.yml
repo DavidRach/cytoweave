@@ -27,8 +27,10 @@ jobs:
         run: |
           version="$(sed -n 's/^var version = "\(.*\)"$/\1/p' main.go)"
           cff="$(sed -n 's/^version: //p' CITATION.cff)"
-          if [ "v$version" != "$GITHUB_REF_NAME" ] || [ "$cff" != "$version" ]; then
-            echo "Tag $GITHUB_REF_NAME, main.go $version, CITATION.cff $cff: they must agree."
+          python="$(sed -n 's/^version = "\(.*\)"$/\1/p' clients/python/pyproject.toml)"
+          r="$(sed -n 's/^Version: //p' clients/r/DESCRIPTION)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ] || [ "$cff" != "$version" ] || [ "$python" != "$version" ] || [ "$r" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME, main.go $version, CITATION.cff $cff, Python client $python, R client $r: they must agree (node clients/generate.mjs sets the clients' versions)."
             exit 1
           fi
           if ! grep -q "^## $version " CHANGELOG.md; then

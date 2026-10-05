@@ -136,3 +136,43 @@ test('methods describe a titration and a voltage walk, with their references', a
   assert.match(text, /507 V.*567 V; 510 V was chosen/);
   for (const key of ['stainIndex', 'separationIndex', 'titration', 'voltageSetup']) assert.ok(references.some((r) => r.key === key), key);
 });
+
+test('comparisons, rare-event intervals and detection limits in tables are described and cited', () => {
+  let ws = createWorkspace('t');
+  ws = {
+    ...ws,
+    samples: [{ id: 'c', name: 'FMO CD25', role: 'fmo', channels: [] }],
+    tables: [{ id: 't', name: 'T', columns: [
+      { id: 'a', stat: 'sed', gateId: 'root', channel: 'FITC-A', control: { sampleId: 'c' } },
+      { id: 'b', stat: 'pbT', gateId: 'root', channel: 'FITC-A', control: { sampleId: 'c' } },
+      { id: 'd', stat: 'countLow', gateId: 'root' },
+      { id: 'e', stat: 'freqParent', gateId: 'root', limits: { blankIds: ['c', 'x'], method: 'nonparametric', cvTarget: 10 } },
+    ] }],
+  };
+  const { paragraphs, references } = writeMethods(ws);
+  const text = paragraphs.join('\n');
+  assert.match(text, /control sample \(FMO CD25\) on the channel, using enhanced normalized subtraction \(SED in FlowJo\) \[\d\] and probability binning \(the T\(χ\) metric\)/);
+  assert.match(text, /counts with exact Poisson \[\d\] 95% confidence intervals/);
+  assert.match(text, /95th percentile.*CV of 10%, never below the 100 events/);
+  for (const key of ['bagwell', 'probabilityBinning', 'garwood', 'detectionLimits', 'eventsNeeded']) assert.ok(references.some((r) => r.key === key), key);
+});
+
+test('formula channels, bead calibrations and absolute counts are described and cited', () => {
+  let ws = createWorkspace('t');
+  ws = addGates(ws, [{ id: 'gb', name: 'Counting beads', parentId: null, type: 'range', dims: [{ channel: 'PE-A', transform: linear }], geometry: { min: 0.9, max: null } }]).ws;
+  ws = {
+    ...ws,
+    samples: [{ id: 's1', name: 'A', role: 'sample', channels: [] }],
+    derived: [
+      { id: 'f', kind: 'formula', inputs: ['PE-A', 'APC-A'], outputs: ['CD4/CD8'], params: { expression: '[PE-A] / [APC-A]' } },
+      { id: 'c', kind: 'calibration', inputs: ['FITC-A'], outputs: ['FITC-A MEFL'], params: { m: 1.0753, b: 2.298, unit: 'MEFL', beads: 'Beads 1', levels: [{ used: false }, { used: true }, { used: true }, { used: true }] }, samples: ['s1'] },
+    ],
+    tables: [{ id: 't', name: 'T', columns: [{ id: 'k', stat: 'absoluteCount', gateId: 'root', counting: { beadGateId: 'gb', beads: 50000, volume: 50 }, dilution: 2 }] }],
+  };
+  const { paragraphs, references } = writeMethods(ws);
+  const text = paragraphs.join('\n');
+  assert.match(text, /CD4\/CD8 = \[PE-A\] \/ \[APC-A\]/);
+  assert.match(text, /FITC-A was converted to MEFL with the multi-level calibration beads of Beads 1 as in FlowCal \[\d\].*3 of 4 levels.*m = 1\.0753.*1 sample/);
+  assert.match(text, /Absolute counts were obtained with counting beads \[\d\]: cells per µL = \(cell events \/ bead events, gated as Counting beads\) × \(50,000 beads \/ 50 µL of sample\), times each sample's dilution/);
+  assert.ok(references.some((r) => r.key === 'flowcal') && references.some((r) => r.key === 'absoluteCounts'));
+});

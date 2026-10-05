@@ -1,6 +1,6 @@
 # CytoWeave requirements
 
-What CytoWeave must do, and the status of each requirement in 0.5.0.
+What CytoWeave must do, and the status of each requirement in 0.6.0.
 - `research.md` explains why each requirement is here: the methods and
   standards of §3–4 and the design implications of §8.
 - `design.md` explains how the requirements are met.
@@ -55,10 +55,10 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | G7 | Batch tables, CSV/TSV export, heat maps | done |
 | G8 | Review a gate across samples; boundary robustness | done |
 | G9 | Learned per-sample gate adjustment with abstention (uncertainty-aware autogating) | done: landmark registration from the gate's exemplars with an ensemble confidence; confident adjustments proposed, uncertain samples sent to review; one gate per donor or subject; CLR probabilities; validated on simulated shifts (validation `autogating`) and against an expert's per-donor gates in a real ICS study (`experts`) |
-| G10 | Population comparison: probability binning, Overton subtraction, SED, Kolmogorov–Smirnov | planned (wave 6) |
-| G11 | Rare-event statistics: Poisson intervals on counts, limits of detection and quantification, events needed | planned (wave 6) |
-| G12 | Derived parameters from formulas | planned (wave 6) |
-| G13 | Calibrated units (MEF, ERF) from beads; absolute counts from counting beads | planned (wave 6) |
+| G10 | Population comparison: probability binning, Overton subtraction, SED, Kolmogorov–Smirnov | done: Tables statistics against a control sample (SED, Overton, probability binning T(χ) and excess %, K-S D), shown under overlaid histograms; probability binning equal to flowStats (validation `comparisons`) |
+| G11 | Rare-event statistics: Poisson intervals on counts, limits of detection and quantification, events needed | done: exact Poisson and binomial limits as Tables statistics, counting CV and events needed in the inspector, a column's limits of blank, detection and quantification (CLSI EP17) marking each value |
+| G12 | Derived parameters from formulas | done: formula channels by marker or detector, previewed as typed, gateable, carried by templates, ratios written to Gating-ML (fratio); equal to R on 7 formulas (validation `calibration`) |
+| G13 | Calibrated units (MEF, ERF) from beads; absolute counts from counting beads | done: QC → Calibration as FlowCal computes it (within 1.6% of FlowCal on its example, validation `flowcal`); absolute counts from counting beads with a dilution factor |
 
 ## Compensation and spectral
 
@@ -98,7 +98,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | H3 | Embedding faithfulness: trustworthiness, continuity, kNN preservation, mixing, seed stability, unreliable regions | done |
 | H4 | Differential abundance of clusters across groups | done (quasi-binomial, diffcyt-like) |
 | H5 | Placing new samples on an existing map | done: samples left out of a UMAP are placed on it with UMAP's transform, the map unchanged |
-| H6 | Differential state of markers per cluster or population across groups | planned (wave 6) |
+| H6 | Differential state of markers per cluster or population across groups | done: diffcyt-DS-limma in Compare (Screen marker states) and the `differential_analysis` tool, equal to diffcyt 1.32 and limma 3.68 in R (validation `differential`) |
 
 ## Specialized analyses
 
@@ -130,7 +130,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R4 | Publication figures (SVG, PNG, PDF) that stay live until export | done |
 | R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | done: SVG, PNG and PDF exports carry the record; opening one reports what changed since and rebuilds it from the same files (validation `figures`) |
 | R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned |
-| R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | planned (wave 6) |
+| R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | done: a figure repeated by sample or by an annotation as PDF or PowerPoint with every number traced to its source; Excel workbooks with provenance sheets and Prism projects; read back by openpyxl, python-pptx, pypdf and R pzfx (validation `reports`) |
 | R8 | Reproducibility certificate that re-runs and confirms every reported number | planned (wave 8) |
 
 ## Interchange
@@ -142,7 +142,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | I3 | CLR export; ACS containers | done |
 | I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Compatibility tested with FlowJo 11.2.0 (build 11.2.0.210156, 2026-10-03): three exports within 0.6 percentage points, most within 0.1; CytoML 2.24 reads every export. Logicle and arcsinh scales are written as FlowJo biex for FlowJo 11. FlowJo 10 not tried |
 | I5 | Analysis templates applied by marker, with a match report; OMIP gating strategies; populations mapped to Cell Ontology IDs, carried into exports and methods | done: templates matched by marker with a preview and report; OMIP-101 and OMIP-090 placed on the data; Cell Ontology suggestions confirmed by the user, written to FlowJo and Gating-ML exports, tables and methods (not CLR, which has no field for them) |
-| I6 | CSV event import; AnnData export; concatenated and downsampled FCS export | planned (wave 6) |
+| I6 | CSV event import; AnnData export (`.h5ad`); concatenated and downsampled FCS export | done: CSV events checked and imported with kinds and scales guessed; concatenated, per-sample and seeded downsampled FCS files; AnnData through our own HDF5 writer, read exactly by anndata 0.10 and 0.13, h5py and pyfive (validation `events`) |
 | I7 | Acquisition-software experiments (FACSDiva, FACSChorus, SpectroFlo) and FlowJo 11 `.flowjo` workspaces | planned (wave 7) |
 
 ## Automation
@@ -153,7 +153,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M2 | Remote control for local scripts | done |
 | M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
 | M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | done: 11 new tools (29 in all); results and figures proposed, annotations and root gates held; exports write only to the path given and never replace a file unless told to; validation `agent-session.mjs` (15 checks, in CI) |
-| M5 | R and Python clients for remote control | planned (wave 6) |
+| M5 | R and Python clients for remote control | done: `clients/r` and `clients/python`, functions generated from the tools, connection found through `remote.json`, tested in CI against a running CytoWeave (not published to CRAN or PyPI) |
 | M6 | Optional on-device assistant, without network | planned (wave 8) |
 
 ## Quality

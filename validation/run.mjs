@@ -6,7 +6,7 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, titration, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor
@@ -18,7 +18,9 @@
 import { generateExample } from '../web/lib/examples.js';
 import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
-import { SampleView, countOf, population } from '../web/lib/engine.js';
+import { SampleView, computeStatistic, countOf, population } from '../web/lib/engine.js';
+import { resolveFormula } from '../web/lib/formula.js';
+import { quantileSorted } from '../web/lib/stats.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
 import { builtCase, bundledCase, flowKitCases, importWithFiles } from './flowjo-export-cases.mjs';
 import { deidentifyFCS } from '../web/lib/deidentify.js';
@@ -30,6 +32,24 @@ import { suggestForPopulation, termById } from '../web/lib/ontology.js';
 import { applyStrategy, pbmcCohort, placeOn } from './strategy-cases.mjs';
 import { STRATEGIES, strategyById } from '../web/lib/strategies.js';
 import { runTitration, runWalk, titrationExample, titrationTubes, trueVoltageLimits, tubeStatistics } from './titration-cases.mjs';
+import { bagwellSimulation, comparisonTubes } from './comparison-cases.mjs';
+import { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } from '../web/lib/distribution.js';
+import { binomialInterval, detectionLimits, poissonInterval } from '../web/lib/rare-events.js';
+import { poisson } from '../web/lib/simulate.js';
+import { BEAD_TRUTH, COUNTING, countingTubes, simulatedBeads } from './calibration-cases.mjs';
+import { REPORT_DATE, buildReports } from './report-cases.mjs';
+import { EVENT_EXPORTS, buildEventDocuments, csvCases } from './event-cases.mjs';
+import { ACTIVATION_MARKERS, analyzeExperiment, limmaCases, stateExperiments } from './differential-cases.mjs';
+import { eBayes, lmFit } from '../web/lib/limma.js';
+import { downsample as downsampleIndices, selectEvents } from '../web/lib/events.js';
+import { analyzeCSV, csvDatasets, scaleFor } from '../web/lib/csv-events.js';
+import { readZip } from '../web/lib/zip.js';
+import { createHash } from 'node:crypto';
+import { fingerprint, readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
+import { columnLabel, columnValue, columnLimits, LIMIT_STATUS } from '../web/lib/tables.js';
+import { formatPercent, formatStatistic } from '../web/lib/stats.js';
+import { calibrateBeads, channelBounds, fitBeadModel, standardCurve } from '../web/lib/calibration.js';
+import { exportGatingML } from '../web/lib/gatingml.js';
 import { TITRATION } from '../web/lib/examples.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
@@ -502,6 +522,636 @@ const suites = {
     const ratios = same.filter((r) => r.negative).map((r) => r.percentile);
     check('titration', `FlowJo ${fj.flowjoVersion} on the same ${Object.keys(fj.samples).length} tubes (median and Robust SD of PE-A, ungated and in CD4+ and CD4- split at ${fj.split}): where a population holds the same events, FlowJo's median equals CytoWeave's and its Robust SD equals 1.4826 × the median absolute deviation; where FlowJo's display-resolution gating moves events across the split, the share moved`, `${same.length} of ${rows.length} populations hold the same events (all ${rows.filter((r) => r.pop === 'All events').length} ungated): median within ${worst(same, 'median').toExponential(1)}, Robust SD = 1.4826 × MAD within ${worst(same, 'madSD').toExponential(1)}; ${differ.length} split differently by at most ${worst(differ, 'freqDiff').toFixed(2)} points (the most at 1.95 ng, where CD4-dim monocytes straddle the split). CytoWeave's robust SD, FACSDiva's (P84.13 − P15.87) / 2, is ${Math.min(...ratios).toFixed(2)}–${Math.max(...ratios).toFixed(2)} × FlowJo's on the negative cells`, rows.filter((r) => r.pop === 'All events').every((r) => r.same) && worst(same, 'median') < 1e-5 && worst(same, 'madSD') < 1e-5 && worst(differ, 'freqDiff') <= 0.5, 'median and 1.4826 × MAD within 1e-5 (FlowJo shows four decimals); ≤ 0.5 points moved');
     check('titration', 'a walk from 500 V, too high to reach the noise floor: the noise is not estimated and the report asks for rSD_EN; given it, the minimum is extrapolated', `${highWalk.noise ? `estimated ${highWalk.noise.rsdEN.toFixed(1)}` : 'not estimated'}; given rSD_EN, minimum ${highGiven.minimum?.voltage.toFixed(1)} V (true ${truth.minimum.toFixed(1)} V)`, !highWalk.noise && highWalk.notes.some((n) => /baseline report/.test(n)) && Math.abs(highGiven.minimum.voltage - truth.minimum) <= 10, 'not estimated; within 10 V');
+  },
+  // Population comparisons and rare-event statistics (comparison-cases.mjs): tubes with known
+  // positive fractions against a negative control, flowStats and R on the same tubes
+  // (reference/flowstats.json), Bagwell's simulation, and the statistical properties of T(χ), the
+  // exact intervals and the detection limits on simulated counts.
+  comparisons() {
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowstats.json', import.meta.url), 'utf8'));
+    const tubes = comparisonTubes().map((t) => ({ ...t, columns: columnsOf(load(t)) }));
+    const tube = (name) => tubes.find((t) => t.name === name);
+    const control = tube('Control.fcs');
+    const columns = (t, channels) => channels.map((c) => t.columns[c]);
+
+    let worstPB = 0;
+    let binsEqual = 0;
+    for (const c of ref.probabilityBinning) {
+      const channels = [].concat(c.channels);
+      const a = columns(control, channels);
+      const b = columns(tube(c.test), channels);
+      const r = probabilityBinning(channels.length > 1 ? a : a[0], channels.length > 1 ? b : b[0], { minEvents: c.minEvents });
+      worstPB = Math.max(worstPB, Math.abs(r.pbStat - c.pbStat) / Math.max(1, Math.abs(c.pbStat)), Math.abs(r.chiSquare - c.chiSquare));
+      if (r.bins === c.bins) binsEqual += 1;
+    }
+    check('comparisons', `probability binning against flowStats ${ref.flowStats} (proBin, binByRef, calcPBChiSquare) on ${ref.probabilityBinning.length} cases: ${new Set(ref.probabilityBinning.map((c) => c.test)).size} tubes against the control, on FITC-A and on FITC-A × PE-A, splitting bins of more than 500 and 250 events`, `${binsEqual} of ${ref.probabilityBinning.length} with the same bins; χ² and Baggerly's statistic within ${worstPB.toExponential(1)} (relative)`, binsEqual === ref.probabilityBinning.length && worstPB < 1e-9, 'the same bins; within 1e-9');
+
+    const ks = ref.ks.map((k) => ({ ...k, ours: ksTest(control.columns['FITC-A'], tube(k.test).columns['FITC-A']) }));
+    const dWorst = Math.max(...ks.map((k) => Math.abs(k.ours.D - k.D)));
+    const pWorst = Math.max(...ks.map((k) => Math.abs(k.ours.p - k.p)));
+    check('comparisons', `two-sample Kolmogorov–Smirnov against R ${ref.R} ks.test(exact = FALSE) on the ${ks.length} tubes`, `D within ${dWorst.toExponential(1)}; p within ${pWorst.toExponential(1)} (R sums Kolmogorov's series to a tolerance of 1e-6; CytoWeave's p is exact to double precision)`, dWorst < 1e-12 && pWorst < 1e-6, 'D within 1e-12; p within 1e-6');
+
+    // Known positive fractions on FITC-A.
+    const rows = tubes.filter((t) => t.name !== 'Control.fcs').map((t) => {
+      const sed = sedSubtraction(control.columns['FITC-A'], t.columns['FITC-A']);
+      return { name: t.name.replace('.fcs', ''), truth: 100 * t.truth, sed: sed.percentPositive, overton: overtonSubtraction(control.columns['FITC-A'], t.columns['FITC-A']).percentPositive, positive: t.tube.positive > 0, T: probabilityBinning(control.columns['FITC-A'], t.columns['FITC-A']).T };
+    });
+    const positives = rows.filter((r) => r.positive);
+    const overlapping = positives.filter((r) => /Overlap|Skewed/.test(r.name));
+    const sedWorst = Math.max(...positives.map((r) => Math.abs(r.sed - r.truth)));
+    check('comparisons', `% positive against the true fraction in ${positives.length} tubes (5–40% positive; well separated, overlapping, skewed, 3,000 events): SED (Bagwell's enhanced normalized subtraction) and Overton's cumulative subtraction`, `SED within ${sedWorst.toFixed(2)} points (${positives.map((r) => `${r.name} ${r.sed.toFixed(1)}`).join(', ')}); Overton ${overlapping.map((r) => `${r.name} ${r.overton.toFixed(1)}`).join(', ')}, as Bagwell describes, an underestimate where the populations overlap`, sedWorst <= 2.5 && overlapping.every((r) => r.truth - r.overton > 2 && Math.abs(r.sed - r.truth) < r.truth - r.overton), 'SED within 2.5 points; closer than Overton where they overlap');
+    const replicate = rows.find((r) => r.name === 'Replicate');
+    const shifted = rows.find((r) => r.name === 'Shifted');
+    check('comparisons', 'a second draw of the negative cells, and the same cells 1.6 × brighter (no positive population)', `replicate: SED ${replicate.sed.toFixed(2)}%, T(χ) ${replicate.T.toFixed(2)}; shifted: SED ${shifted.sed.toFixed(1)}%, T(χ) ${shifted.T.toFixed(0)}, a difference no subtraction can tell from a positive population`, replicate.sed < 2 && replicate.T < 4 && shifted.T > 4, 'replicate SED < 2%, T(χ) < 4; shifted T(χ) > 4');
+
+    const sim = bagwellSimulation(sedSubtraction, 2000);
+    const mean = (v) => v.reduce((a, b) => a + b, 0) / v.length;
+    const [md, med, mens] = [mean(sim.dmax), mean(sim.enhancedDmax), mean(sim.ens)];
+    check('comparisons', 'Bagwell\'s (1996) simulation: 2,000 histograms of Weibull negatives and positives in 128 channels; mean relative error of the positive fraction (Bagwell: Dmax −7.73%, enhanced Dmax −2.69%, ENS −0.85%)', `Dmax ${md.toFixed(2)}%, enhanced Dmax ${med.toFixed(2)}%, ENS ${mens.toFixed(2)}%`, md < 0 && Math.abs(mens) < Math.abs(med) && Math.abs(med) < Math.abs(md) && Math.abs(mens) <= 2, 'the same order; ENS within ±2%');
+
+    const random = createRandom(5);
+    const negatives = (n) => Float64Array.from({ length: n }, () => 10 ** (2.5 + 0.22 * random.gaussian()) + 25 * random.gaussian());
+    const nulls = Array.from({ length: 200 }, () => probabilityBinning(negatives(20000), negatives(20000)));
+    const above = nulls.filter((r) => r.T > 4).length / nulls.length;
+    const baggerly = nulls.filter((r) => r.pbStat > 2.3263).length / nulls.length;
+    check('comparisons', 'T(χ) of 200 pairs of samples of the same cells (Roederer et al. 2001: T(χ) above 4 for p < 0.01), and Baggerly\'s standardized χ² above its 99th percentile', `T(χ) > 4 in ${pct(above)}; Baggerly's above 2.33 in ${pct(baggerly)}`, above <= 0.02 && baggerly <= 0.03, '≤ 2%; ≤ 3%');
+
+    const poissonWorst = Math.max(...ref.poissonIntervals.map((c) => Math.max(...poissonInterval(c.count).map((v, i) => Math.abs(v - c.interval[i]) / Math.max(1, c.interval[i])))));
+    const binomialWorst = Math.max(...ref.binomialIntervals.map((c) => Math.max(...binomialInterval(c.x, c.n).map((v, i) => Math.abs(v - c.interval[i]) / Math.max(1e-6, c.interval[i])))));
+    const coverage = [3, 20, 100].map((lambda) => {
+      let inside = 0;
+      for (let k = 0; k < 4000; k += 1) {
+        const [lo, hi] = poissonInterval(poisson(random, lambda));
+        if (lo <= lambda && lambda <= hi) inside += 1;
+      }
+      return inside / 4000;
+    });
+    check('comparisons', `exact 95% intervals: Poisson (Garwood) against R poisson.test for ${ref.poissonIntervals.length} counts, binomial (Clopper–Pearson) against binom.test for ${ref.binomialIntervals.length} proportions down to 3 in 100,000; coverage of 4,000 simulated counts at means 3, 20 and 100`, `within ${poissonWorst.toExponential(1)} and ${binomialWorst.toExponential(1)} (relative); coverage ${coverage.map(pct).join(', ')}`, poissonWorst < 1e-9 && binomialWorst < 1e-9 && coverage.every((c) => c >= 0.94), 'within 1e-9; coverage ≥ 94%');
+
+    // A rare population in 100,000 parent events: 8 background events per blank, 30 at the low level.
+    const parent = 100000;
+    const freq = (lambda) => (100 * poisson(random, lambda)) / parent;
+    const limits = detectionLimits(Array.from({ length: 60 }, () => freq(8)), [Array.from({ length: 60 }, () => freq(30))]);
+    let falsePositive = 0;
+    let detected = 0;
+    for (let k = 0; k < 4000; k += 1) {
+      if (freq(8) > limits.lob) falsePositive += 1;
+      if (freq((limits.lod * parent) / 100) > limits.lob) detected += 1;
+    }
+    check('comparisons', 'limits of blank and detection (CLSI EP17) from 60 blanks (8 background events in 100,000) and 60 low-level samples (30 events): new blanks above the LoB, and samples at the LoD above it (EP17: 5% and 95%)', `LoB ${fmt((limits.lob * parent) / 100, 1)} events, LoD ${fmt((limits.lod * parent) / 100, 1)} events; ${pct(falsePositive / 4000)} of new blanks above the LoB, ${pct(detected / 4000)} of samples at the LoD (counts are whole numbers, so 5% cannot be met exactly)`, falsePositive / 4000 <= 0.08 && detected / 4000 >= 0.93, '≤ 8%; ≥ 93%');
+  },
+  // Formula channels, calibrated units and absolute counts (calibration-cases.mjs): FlowCal's
+  // bead model fit on its own levels (reference/flowcal.json), simulated beads and cells of known
+  // MEF, formulas against R (reference/formulas.json), Gating-ML and templates, and counting beads
+  // at known concentrations.
+  calibration() {
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowcal.json', import.meta.url), 'utf8'));
+    const rss = (x, y, p) => x.reduce((acc, xi, i) => acc + (Math.log(y[i] + p.autofluorescence) - (p.m * Math.log(xi) + p.b)) ** 2, 0);
+    const fits = ref.beads.map((b) => {
+      const fit = fitBeadModel(b.selectedRFI, b.selectedMEF);
+      const curve = standardCurve(fit);
+      return { file: b.file, fit, curveWorst: Math.max(...b.curve.map((p) => Math.abs(curve(p.rfi) / p.mef - 1))), ours: rss(b.selectedRFI, b.selectedMEF, fit), theirs: rss(b.selectedRFI, b.selectedMEF, b.params), m: [fit.m, b.params.m] };
+    });
+    check('calibration', `the bead model m·ln(x) + b = ln(MEF + MEF_beads) fitted to the levels FlowCal ${ref.flowcal} selected in its ${fits.length} bead samples (reference/flowcal.json): the standard curve against FlowCal's, and the residuals`, fits.map((f) => `${f.file}: slope ${f.m[0].toFixed(5)} (FlowCal ${f.m[1].toFixed(5)}), curve within ${f.curveWorst.toExponential(1)}, residual sum ${f.ours.toExponential(4)} (FlowCal ${f.theirs.toExponential(4)})`).join('; '), fits.every((f) => f.curveWorst < 5e-4 && f.ours <= f.theirs * (1 + 1e-6)), 'curve within 5e-4; residuals no larger than FlowCal\'s');
+
+    const sim = simulatedBeads();
+    const result = calibrateBeads(sim.beads, { channels: ['FL1-A'], clustering: ['FL1-A', 'FL2-A'], values: { 'FL1-A': sim.mef }, scatter: ['FSC-A', 'SSC-A'], bounds: { 'FL1-A': [0, sim.top] }, unit: 'MEFL' });
+    const c = result.channels['FL1-A'];
+    const curve = standardCurve(c.fit);
+    const cells = sim.cells.map((cell) => {
+      const sorted = Float64Array.from(cell.values, curve).sort();
+      const truth = Float64Array.from(cell.truth).sort();
+      return { mef: cell.mef, error: sorted[sorted.length >> 1] / truth[truth.length >> 1] - 1 };
+    });
+    check('calibration', `8-level beads on a detector of known response (slope ${BEAD_TRUTH.m}, beads' fluorescence ${BEAD_TRUTH.auto} MEFL, a 14-bit range in which the brightest level saturates), and cells of known MEFL read on it`, `levels used ${c.levels.map((l) => (l.used ? 1 : 0)).join('')} (the brightest left out: ${c.levels[7].why}); slope ${c.fit.m.toFixed(4)}, beads' fluorescence ${c.fit.autofluorescence.toFixed(0)}; cells' median MEFL ${cells.map((x) => `${x.mef}: ${(100 * x.error).toFixed(2)}%`).join(', ')}`, !c.levels[7].used && c.levels.slice(0, 7).every((l) => l.used) && Math.abs(c.fit.m - BEAD_TRUTH.m) < 0.01 && Math.abs(c.fit.autofluorescence / BEAD_TRUTH.auto - 1) < 0.1 && cells.every((x) => Math.abs(x.error) < 0.02), 'the saturated level left out; slope within 0.01; cells within 2%');
+
+    // Formulas against R on the comparison tubes.
+    const formulas = JSON.parse(readFileSync(new URL('./reference/formulas.json', import.meta.url), 'utf8'));
+    const tubes = new Map(comparisonTubes().map((t) => [t.name, t]));
+    let worstMedian = 0;
+    let worstPick = 0;
+    let nonFiniteSame = true;
+    let compared = 0;
+    for (const t of formulas.tubes) {
+      const tube = tubes.get(t.tube);
+      const d = load(tube);
+      const record = { id: 'x', name: t.tube, keywords: {}, technology: 'conventional' };
+      const view = new SampleView(record, d);
+      const channels = d.parameters.map((p) => ({ name: p.name, marker: p.marker }));
+      const derived = t.formulas.map((f, i) => {
+        const r = resolveFormula(f.formula, channels);
+        return { id: `f${i}`, kind: 'formula', inputs: r.inputs, outputs: [`F${i}`], params: { expression: r.text } };
+      });
+      view.syncWorkspace({ compensations: [], derived });
+      t.formulas.forEach((f, i) => {
+        const column = view.column(`F${i}`);
+        const finite = Float64Array.from(column.filter(Number.isFinite)).sort();
+        const median = quantileSorted(finite, 0.5);
+        worstMedian = Math.max(worstMedian, Math.abs(median - f.median) / Math.max(1e-12, Math.abs(f.median)));
+        if (column.length - finite.length !== f.nonFinite) nonFiniteSame = false;
+        f.picks.forEach((e, k) => {
+          const expected = f.values[k];
+          const got = view.exactValue(`F${i}`, e);
+          if (typeof expected === 'number') worstPick = Math.max(worstPick, Math.abs(got - expected) / Math.max(1e-12, Math.abs(expected)));
+          else if (Number.isFinite(got)) nonFiniteSame = false;
+        });
+        compared += 1;
+      });
+    }
+    check('calibration', `${formulas.tubes[0].formulas.length} formula channels (ratios, logarithms, offsets, asinh, sqrt, powers, min and max, by marker and by detector) on the ${formulas.tubes.length} comparison tubes against R ${formulas.R} evaluating the same expressions in double precision`, `${compared} channels: medians within ${worstMedian.toExponential(1)} (relative; CytoWeave stores computed channels in single precision), single events within ${worstPick.toExponential(1)}; events without a value ${nonFiniteSame ? 'the same' : 'differ'}`, worstMedian < 1e-6 && worstPick < 1e-12 && nonFiniteSame, 'medians within 1e-6, events within 1e-12, the same events without a value');
+
+    // A ratio formula through Gating-ML and back, and through a template onto renamed detectors.
+    const control = load(tubes.get('Positive 40.fcs'));
+    const record = { id: 's1', name: 'Positive 40', keywords: {}, technology: 'conventional', channels: control.parameters.map((p) => ({ name: p.name, marker: p.marker, type: p.type, label: p.label ?? '', range: p.range })), compensationId: 'none', role: 'sample', meta: {} };
+    let gws = { ...createWorkspace('ratio'), samples: [record], derived: [{ id: 'r', kind: 'formula', name: 'Ratio', inputs: ['FITC-A', 'PE-A'], outputs: ['Ratio'], params: { expression: '2 * ([FITC-A] - 100) / ([PE-A] + 50)' } }] };
+    // Negative cells near 1.2, positive ones near 3.8: the gate at 2.5.
+    const linear = { type: 'linear', min: -5, max: 10 };
+    gws = addGates(gws, [{ id: 'g', name: 'High ratio', parentId: null, type: 'range', dims: [{ channel: 'Ratio', transform: linear }], geometry: { min: 0.5, max: null } }]).ws;
+    const gview = new SampleView(record, control);
+    gview.syncWorkspace(gws);
+    const before = population(gview, gws, 'g').length;
+    const xml = exportGatingML(gws);
+    const back = importGatingML(xml.xml);
+    let rws = { ...createWorkspace('back'), samples: [record], derived: back.derived };
+    rws = addGates(rws, back.gates).ws;
+    const rview = new SampleView(record, control);
+    rview.syncWorkspace(rws);
+    const after = population(rview, rws, rws.gates[0].id).length;
+    const fratio = /<transforms:fratio[^>]*transforms:A="2"[^>]*transforms:B="100"[^>]*transforms:C="-50"/.test(xml.xml);
+    check('calibration', 'a gate on the formula channel 2·([FITC-A] − 100)/([PE-A] + 50), exported as Gating-ML 2.0 (an fratio transformation) and read back', `fratio written: ${fratio ? 'yes, A = 2, B = 100, C = −50' : 'no'}; ${before} events before, ${after} after (of 20,000, 40% positive)`, fratio && before === after && before > 7000 && before < 9000, 'fratio; the same events');
+    // ...and a template of the PBMC analysis with a CD4/CD8 ratio gate, applied to renamed detectors.
+    const input = pbmcFiles(0.1);
+    const source = sourceAnalysis(input);
+    const cd4 = source.ws.samples[0].channels.find((x) => x.marker === 'CD4')?.name;
+    const cd8 = source.ws.samples[0].channels.find((x) => x.marker === 'CD8')?.name;
+    let sws = { ...source.ws, derived: [...source.ws.derived, { id: 'cd48', kind: 'formula', name: 'CD4/CD8', inputs: [cd4, cd8], outputs: ['CD4/CD8'], params: { expression: `[${cd4}] / [${cd8}]` } }] };
+    const tcell = sws.gates.find((g) => g.name === 'T cells').id;
+    sws = addGates(sws, [{ id: 'hr', name: 'CD4/CD8 above 10', parentId: tcell, type: 'range', dims: [{ channel: 'CD4/CD8', transform: { type: 'log', min: 0.01, max: 1000 } }], geometry: { min: 0.6, max: null } }]).ws;
+    for (const view of source.views.values()) view.syncWorkspace(sws);
+    const template = parseTemplate(JSON.stringify(buildTemplate(sws, { name: 'with a ratio' })));
+    const other = loadSamples(asOtherInstrument(input.files), 'other instrument');
+    const applied = applyTemplate(other.ws, template);
+    for (const view of other.views.values()) view.syncWorkspace(applied.ws);
+    const countsBefore = countsOf(sws, source.views).get('Cells / Single cells / Live / Lymphocytes / T cells / CD4/CD8 above 10');
+    const path = [...countsOf(applied.ws, other.views).keys()].find((k) => k.endsWith('CD4/CD8 above 10'));
+    const countsAfter = countsOf(applied.ws, other.views).get(path);
+    const same = countsBefore && countsAfter && [...countsBefore].every(([sample, n]) => countsAfter.get(sample) === n);
+    const formula = applied.ws.derived.find((d) => d.kind === 'formula');
+    check('calibration', 'a template of the PBMC analysis with a CD4/CD8 formula channel and a gate on it, applied to the same events with every detector renamed: the formula rebuilt from the channels CD4 and CD8 matched, and the gate holding the same events', `formula ${formula?.params.expression ?? 'not added'}; ${same ? 'the same events in all' : 'different events in some of'} ${countsBefore?.size ?? 0} samples`, Boolean(formula) && !formula.params.expression.includes(cd4) && same, 'rebuilt on the new detectors; the same events');
+
+    // Counting beads at known concentrations.
+    const { ws, tubes: countTubes } = countingTubes();
+    const counting = { beadGateId: 'beads', beads: COUNTING.beads, volume: COUNTING.volume };
+    const rows = countTubes.map((t) => {
+      t.view.syncWorkspace(ws);
+      const value = computeStatistic(t.view, ws, { stat: 'absoluteCount', gateId: 'cells', counting, dilution: { field: 'dilution' } });
+      return { ratio: value / t.truth, expectedCV: Math.sqrt(1 / t.cellEvents + 1 / t.beadEvents), dilution: t.dilution };
+    });
+    const logs = rows.map((r) => Math.log(r.ratio));
+    const meanLog = logs.reduce((a, b) => a + b, 0) / logs.length;
+    const z = rows.map((r, i) => (logs[i] - meanLog) / r.expectedCV);
+    const zsd = Math.sqrt(z.reduce((a, b) => a + b * b, 0) / (z.length - 1));
+    check('calibration', `absolute counts from counting beads in ${rows.length} simulated tubes of known concentration (200 to 8,000 cells/µL; ${COUNTING.beads.toLocaleString('en-US')} beads in ${COUNTING.volume} µL; every third tube diluted 1:4, the dilution read from an annotation): bias, and scatter against Poisson counting's √(1/cells + 1/beads)`, `mean ratio to the truth ${Math.exp(meanLog).toFixed(4)}; scatter ${zsd.toFixed(2)} × the Poisson expectation`, Math.abs(Math.exp(meanLog) - 1) < 0.01 && zsd > 0.7 && zsd < 1.3, 'within 1%; 0.7–1.3 ×');
+  },
+  // FlowCal's MEF example end to end (external data flowcal-mef): CytoWeave finds the bead levels,
+  // leaves out the same ones, and gives the cells the same MEFL as FlowCal.
+  flowcal() {
+    const set = dataset('flowcal-mef');
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowcal.json', import.meta.url), 'utf8'));
+    const rows = ref.beads.map((b) => {
+      const d = parseFCS(new Uint8Array(set.read(b.file))).datasets[0];
+      const columns = columnsOf(d);
+      const fl1 = d.parameters.find((p) => p.name === 'FL1');
+      const result = calibrateBeads(columns, { channels: ['FL1'], clustering: ['FL1', 'FL3'], values: { FL1: b.mef }, scatter: ['FSC', 'SSC'], bounds: { FL1: channelBounds(d.keywords, fl1.index, fl1.range) }, unit: 'MEFL' });
+      const c = result.channels.FL1;
+      const curve = standardCurve(c.fit);
+      return {
+        file: b.file,
+        sameLevels: c.levels.filter((l) => l.used).length === b.selectedRFI.length && c.levels.filter((l) => l.used).every((l, i) => Math.abs(l.median / b.selectedRFI[i] - 1) < 0.01),
+        medianWorst: Math.max(...c.levels.map((l, i) => Math.abs(l.median / b.peakMedians[i] - 1))),
+        m: [c.fit.m, b.params.m],
+        cellsWorst: Math.max(...b.cells.map((cell) => Math.abs(curve(cell.medianRFI) / cell.medianMEF - 1))),
+        cells: b.cells.length,
+      };
+    });
+    check('flowcal', `FlowCal's example (8-peak beads on a Cytek xP3+, FL1 log-amplified over 4 decades; ${rows.length} bead samples on two days, one at another gain) calibrated end to end: CytoWeave's levels, its choice of levels and its MEFL of the ${rows.reduce((a, r) => a + r.cells, 0)} cell samples (median of FlowCal's gated cells) against FlowCal ${ref.flowcal}'s`, rows.map((r) => `${r.file}: the same levels ${r.sameLevels ? 'used' : 'NOT used'}, medians within ${(100 * r.medianWorst).toFixed(2)}% (one step of the log channel is 0.9%), slope ${r.m[0].toFixed(4)} (FlowCal ${r.m[1].toFixed(4)}), cells within ${(100 * r.cellsWorst).toFixed(2)}%`).join('; '), rows.every((r) => r.sameLevels && r.medianWorst < 0.01 && Math.abs(r.m[0] - r.m[1]) < 0.01 && r.cellsWorst < 0.02), 'the same levels; medians within 1%; slope within 0.01; cells within 2%');
+  },
+  // Batch reports and spreadsheets (report-cases.mjs): a figure repeated by sample and by subject
+  // (the rules of which plot goes where), every number in the documents traced to the table column
+  // or gate it comes from and equal to it, and the files read back, by this validation's own
+  // readers (document-readers.mjs) and by the formats' readers (reference/reports.json from
+  // openpyxl, python-pptx and pypdf; reference/pzfx.json from R pzfx), whose readback applies when
+  // the files written here hold the same content (fingerprints).
+  async reports() {
+    const built = await buildReports();
+    const { ws, viewOf, ids } = built.experiment;
+    const byName = (name) => ws.samples.find((x) => x.name === name);
+    const nameOf = (id) => ws.samples.find((x) => x.id === id)?.name ?? null;
+    const bySample = built.reports['report-sample.pptx'].report;
+    const bySubject = built.reports['report-subject.pdf'].report;
+    // Which plot goes where.
+    const sampleOk = bySample.pages.length === ws.samples.filter((x) => x.role === 'sample').length && bySample.pages.every((p) => {
+      const at = (id) => p.items.find((i) => i.id === id).sampleId;
+      return at('p1') === p.sampleIds[0] && at('p2') === p.sampleIds[0] && at('p3') === ids.s1stim && at('p4') === ids.fmo;
+    });
+    check('reports', 'by sample: a page per sample (the controls left out); the plots of the figure\'s followed sample (S1 unstim) drawn on each page\'s sample, the plots of S1 stim and the FMO on every page', `${bySample.pages.length} pages; ${sampleOk ? 'every plot where it belongs' : 'a plot misplaced'}`, sampleOk && bySample.followed === ids.s1, '8 pages; every plot where it belongs');
+    const expect = { S1: ['S1 unstim', 'S1 stim'], S2: ['S2 unstim', 'S2 stim'], S3: ['S3 unstim', 'S3 stim'], S4: ['S4 unstim', null] };
+    const subjectRows = bySubject.pages.map((p) => {
+      const at = (id) => p.items.find((i) => i.id === id);
+      const want = expect[p.value];
+      return { value: p.value, ok: Boolean(want) && nameOf(at('p2').sampleId) === want[0] && nameOf(at('p1').sampleId) === want[0] && (want[1] ? nameOf(at('p3').sampleId) === want[1] : at('p3').sampleId === null && /S4 with condition = stim/.test(at('p3').missing)) && at('p4').sampleId === ids.fmo };
+    });
+    const notesOk = bySubject.notes.length === 2 && bySubject.notes.some((n) => /S2: 2 samples \(S2 stim, S2 stim repeat\)/.test(n)) && bySubject.notes.some((n) => /S4: no sample with condition = stim/.test(n));
+    check('reports', 'by subject: a page per subject; each subject\'s unstimulated and stimulated tubes in the places of S1\'s (matched on condition, the annotation that tells the figure\'s samples apart), the FMO on every page; S2\'s second stimulated tube reported, S4\'s missing one left empty with the reason', `${subjectRows.filter((r) => r.ok).length} of ${subjectRows.length} pages right; notes: ${bySubject.notes.join(' | ')}`, subjectRows.length === 4 && subjectRows.every((r) => r.ok) && notesOk, '4 of 4; both notes');
+    const texts = bySubject.pages.map((p) => [p.items.find((i) => i.id === 't1').text, p.items.find((i) => i.id === 't2').text]);
+    const filled = texts.every(([a, b], k) => a === `Subject S${k + 1}: CD69 on stimulation` && b.endsWith(`· page ${k + 1} of 4 · 2026-10-04`) && !/[{}]/.test(a + b));
+    check('reports', 'text placeholders ({subject}, {sample}, {page}, {pages}, {date}) filled on every page', `${texts[1].join(' / ')}`, filled, 'all filled');
+    // Every number traced, and equal to its source.
+    const all = Object.entries(built.reports).flatMap(([file, r]) => r.trace.map((t) => ({ ...t, file })));
+    const tables = all.filter((t) => t.source === 'table');
+    const limits = columnLimits(ws, ws.tables[0].columns[1], viewOf);
+    const tableBad = tables.filter((t) => {
+      const column = ws.tables[0].columns.find((c) => c.id === t.columnId);
+      const value = columnValue(ws, column, viewOf(t.sampleId), viewOf);
+      const status = column.limits ? limits.status(t.sampleId, value) : null;
+      return !Object.is(value, t.value) || formatStatistic(column.stat, value) !== t.text || t.column !== columnLabel(ws, column) || (status === 'not-detected' ? t.status !== 'ND' : status === 'detected' ? t.status !== '< LLOQ' : Boolean(t.status));
+    });
+    check('reports', 'every statistics cell in both reports traced to its table column: the value equal to the column\'s for that sample (the same double), printed as Tables prints it, ND where the detection limits say so', `${tables.length - tableBad.length} of ${tables.length} (${tables.filter((t) => t.status).length} ND)`, !tableBad.length && tables.length > 0 && tables.some((t) => t.status === 'ND'), 'all');
+    const plots = all.filter((t) => t.source === 'plot');
+    const plotBad = plots.filter((t) => {
+      const view = viewOf(t.sampleId);
+      const gate = ws.gates.find((g) => g.id === t.gateId);
+      const members = population(view, ws, gate.id);
+      const parent = population(view, ws, gate.parentId ?? 'root');
+      const value = (100 * countOf(members, view)) / (countOf(parent, view) || 1);
+      return Math.abs(value - t.value) > 1e-12 * Math.max(1, value) || formatPercent(value) !== t.text;
+    });
+    check('reports', 'every gate label on the reports\' plots traced to its gate: the % of parent recomputed from the gate and printed the same', `${plots.length - plotBad.length} of ${plots.length}`, !plotBad.length && plots.length > 0, 'all');
+    // The PDF read back.
+    const pdf = readPDF(built.files['report-subject.pdf']);
+    const scenes = built.reports['report-subject.pdf'].scenes;
+    const plain = (text) => String(text).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => String('⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(c))).replace(/⁻/g, '-').replace(/−/g, '-');
+    const shown = (t) => (t.status ? `${t.text} ${t.status}` : t.text);
+    const subjectTrace = built.reports['report-subject.pdf'].trace;
+    let printed = 0;
+    let missing = 0;
+    let untraced = [];
+    pdf.pages.forEach((page, k) => {
+      const mine = subjectTrace.filter((t) => t.page === k + 1);
+      const pool = [...page.strings];
+      for (const t of mine) {
+        const at = pool.indexOf(shown(t));
+        if (at >= 0) {
+          pool.splice(at, 1);
+          printed += 1;
+        } else missing += 1;
+      }
+      const ticks = new Set([...scenes].filter(([key]) => key.startsWith(`${k}:`)).flatMap(([, scene]) => [...scene.axes.x.ticks, ...(scene.axes.y?.ticks ?? [])].map((tick) => plain(tick.label ?? ''))));
+      untraced = untraced.concat(pool.filter((text) => /^-?[\d,]+(\.\d+)?%?( ND| < LLOQ)?$/.test(text) && !ticks.has(text)).map((text) => `page ${k + 1}: ${text}`));
+    });
+    check('reports', `the PDF by subject read back (${pdf.pages.length} pages): every traced number printed on its page, and no number printed that is neither traced nor an axis tick`, `${printed} of ${printed + missing} printed; ${untraced.length} untraced${untraced.length ? ` (${untraced.slice(0, 3).join(', ')})` : ''}`, pdf.pages.length === 4 && !missing && !untraced.length && printed > 0, 'all printed; none untraced');
+    const record = JSON.parse(new TextDecoder().decode(pdf.attachments.get('cytoweave-report.json')));
+    check('reports', 'the PDF carries its record: the pages, their samples and the trace of every number', `${record.pages.length} pages, ${record.trace.length} numbers; S4's page lists ${record.pages[3].samples.join(', ')}`, record.pages.length === 4 && record.trace.length === subjectTrace.length && record.trace.every((t, i) => Object.is(t.value, subjectTrace[i].value)), 'equal to the trace');
+    // The PowerPoint deck read back.
+    const deck = await readPPTX(built.files['report-sample.pptx']);
+    const sampleTrace = built.reports['report-sample.pptx'].trace.filter((t) => t.source === 'table');
+    const slideBad = deck.slides.filter((slide, k) => {
+      const rows = slide.tables[0]?.slice(1) ?? [];
+      const mine = sampleTrace.filter((t) => t.page === k + 1);
+      const cells = rows.flatMap((row) => row.slice(1)).filter((text) => text !== '—');
+      return cells.length !== mine.length || cells.some((text, i) => text !== shown(mine[i])) || slide.pictures.length !== 4 || slide.pictures.some((p) => !p.present);
+    });
+    check('reports', `the PowerPoint deck by sample read back (${deck.slides.length} slides): each slide's native table holds the traced values of its page in order, and its four plots as pictures`, `${deck.slides.length - slideBad.length} of ${deck.slides.length} slides; slide 2: ${deck.slides[1].tables[0].slice(1).map((r) => r.join(' ')).join('; ')}`, deck.slides.length === 8 && !slideBad.length, 'all');
+    // The workbook read back.
+    const book = await readXLSX(built.files['tables.xlsx']);
+    const sheet = book.sheets[0];
+    const header = sheet.rows[0];
+    let cells = 0;
+    const bookBad = [];
+    for (const row of sheet.rows.slice(1)) {
+      const sample = byName(row[0]);
+      ws.tables[0].columns.forEach((column) => {
+        const j = header.indexOf(columnLabel(ws, column));
+        const value = columnValue(ws, column, viewOf(sample.id), viewOf);
+        cells += 1;
+        if (Number.isFinite(value) ? !Object.is(row[j], value) : row[j] !== null) bookBad.push(`${row[0]} ${header[j]}`);
+        if (column.limits) {
+          const status = header.indexOf(`${columnLabel(ws, column)}: status`);
+          if (row[status] !== LIMIT_STATUS[limits.status(sample.id, value)]) bookBad.push(`${row[0]} status`);
+        }
+      });
+    }
+    const sheetsOk = book.sheets.map((x) => x.name).join(',') === 'Activation,Columns,Samples,Populations,About' && book.sheets[2].rows.slice(1).every((r) => r[2] === byName(r[0])?.sha256);
+    check('reports', 'the Excel workbook read back: every value in the table\'s sheet the double CytoWeave computes (not rounded), each status as the detection limits give it; sheets for the columns, the samples with their checksums, the gating and the methods', `${cells - bookBad.length} of ${cells} values; sheets ${book.sheets.map((x) => x.name).join(', ')}${bookBad.length ? `; differ: ${bookBad.slice(0, 3).join(', ')}` : ''}`, !bookBad.length && cells === 32 && sheetsOk, 'all; the five sheets');
+    // The Prism project read back.
+    const prism = readPZFX(new TextDecoder().decode(built.files['activation.pzfx']));
+    const rows = prism[0].rowTitles.map(byName);
+    const prismBad = [];
+    ws.tables[0].columns.forEach((column, j) => {
+      rows.forEach((sample, r) => {
+        const value = columnValue(ws, column, viewOf(sample.id), viewOf);
+        if (!Object.is(prism[0].columns[j].values[r], Number.isFinite(value) ? value : null)) prismBad.push(`${sample.name} ${column.id}`);
+      });
+      const grouped = prism[j + 1];
+      for (const [g, col] of grouped.columns.map((c) => [c.title, c])) {
+        const members = ws.tables[0] && rows.filter((sample) => sample.meta.condition === g);
+        if (col.values.length !== members.length || col.values.some((v, i) => !Object.is(v, columnValue(ws, column, viewOf(members[i].id), viewOf)))) prismBad.push(`${grouped.title} ${g}`);
+      }
+    });
+    check('reports', 'the Prism project read back: a row per sample with each statistic, and a column table per statistic with a column per condition (its samples down it), every value exact', `${prism.length} tables (${prism.slice(1).map((t) => t.columns.map((c) => `${c.title} n=${c.values.length}`).join('/')).at(0)} for each statistic)${prismBad.length ? `; differ: ${prismBad.slice(0, 3).join(', ')}` : ''}`, prism.length === 5 && rows.length === 8 && !prismBad.length && prism[1].columns.map((c) => c.title).join() === 'unstim,stim', 'exact');
+    // The formats' own readers (reference files).
+    const ref = JSON.parse(readFileSync(new URL('./reference/reports.json', import.meta.url), 'utf8'));
+    const refPzfx = JSON.parse(readFileSync(new URL('./reference/pzfx.json', import.meta.url), 'utf8'));
+    const prints = {};
+    for (const name of Object.keys(built.files)) prints[name] = await fingerprint(built.files[name]);
+    const stale = Object.keys(built.files).filter((name) => (name === 'activation.pzfx' ? refPzfx.fingerprint : ref.files[name]?.fingerprint) !== prints[name]);
+    check('reports', 'the documents written here hold what the formats\' readers read (content fingerprints of the four files against reference/reports.json and pzfx.json; when one differs, rerun reference/write_reports.mjs, read_reports.py and read_pzfx.R)', stale.length ? `differ: ${stale.join(', ')}` : 'all four the same', !stale.length, 'the same');
+    const xl = ref.files['tables.xlsx'].sheets[0].rows;
+    const xlBad = xl.slice(1).flatMap((row, i) => row.filter((v, j) => !Object.is(v, sheet.rows[i + 1][j]) && !(v === null && sheet.rows[i + 1][j] === null)).map(() => `row ${i + 2}`));
+    check('reports', `openpyxl ${ref.readers.openpyxl} reads the workbook's table sheet as written: every value the same double, every text the same`, `${xl.length - 1} rows; ${xlBad.length} cells differ`, !xlBad.length && xl.length === sheet.rows.length && ref.files['tables.xlsx'].sheets.length === 5, 'all the same');
+    const pp = ref.files['report-sample.pptx'];
+    const ppBad = pp.slides.filter((slide, k) => {
+      const mine = sampleTrace.filter((t) => t.page === k + 1);
+      const cells = slide.tables[0].slice(1).flatMap((row) => row.slice(1)).filter((text) => text !== '—');
+      return cells.length !== mine.length || cells.some((text, i) => text !== shown(mine[i])) || slide.pictures.length !== 4 || slide.pictures.some((p) => p.type !== 'image/png');
+    });
+    check('reports', `python-pptx ${ref.readers['python-pptx']} reads the deck: ${pp.slides.length} slides of the figure's size, each table's cells the traced values, four PNG pictures a slide, and the report record part`, `${pp.slides.length - ppBad.length} of ${pp.slides.length} slides; record ${pp.record ? `${pp.record.pages} pages, ${pp.record.trace} numbers` : 'not found'}`, pp.slides.length === 8 && !ppBad.length && pp.size[0] === 1600 * 9525 && pp.record?.trace === built.reports['report-sample.pptx'].trace.length, 'all');
+    const pd = ref.files['report-subject.pdf'];
+    const pdBad = pd.pages.flatMap((page, k) => subjectTrace.filter((t) => t.page === k + 1 && !page.text.includes(shown(t))).map((t) => `page ${k + 1}: ${shown(t)}`));
+    check('reports', `pypdf ${ref.readers.pypdf} reads the PDF: ${pd.pages.length} pages of the figure's size (1,200 × 675 pt), every traced number in its page's extracted text, the record attached`, `${subjectTrace.length - pdBad.length} of ${subjectTrace.length} found${pdBad.length ? `; missing ${pdBad.slice(0, 3).join(', ')}` : ''}; attachments ${pd.attachments.join(', ')}`, pd.pages.length === 4 && !pdBad.length && pd.pages.every((p) => p.size[0] === 1200 && p.size[1] === 675) && pd.record?.trace.length === subjectTrace.length, 'all');
+    const rBad = [];
+    refPzfx.tables.forEach((table, i) => {
+      const mine = prism[i];
+      const columns = mine.rowTitles ? ['ROWTITLE', ...mine.columns.map((c) => c.title)] : mine.columns.map((c) => c.title);
+      if (table.title !== mine.title || table.columns.join('|') !== columns.join('|')) rBad.push(`${table.title}: names`);
+      mine.columns.forEach((c) => {
+        const theirs = table.values[c.title];
+        const n = Math.max(...mine.columns.map((x) => x.values.length));
+        for (let r = 0; r < n; r += 1) if (!Object.is(theirs[r] ?? null, c.values[r] ?? null)) rBad.push(`${table.title} ${c.title} row ${r + 1}`);
+      });
+    });
+    check('reports', `R pzfx ${refPzfx.pzfx} reads the Prism project: the same tables, column names and values (exact)`, `${refPzfx.tables.length} tables${rBad.length ? `; differ: ${rBad.slice(0, 3).join(', ')}` : ', all the same'}`, refPzfx.tables.length === prism.length && !rBad.length, 'all the same');
+  },
+  // Events in and out (event-cases.mjs): seeded downsampling (exact sizes, reproducible, uniform),
+  // concatenated and per-sample FCS files (every event its source's, populations counted the same
+  // per SampleID), CSV import (CytoWeave's, FlowJo's and European files back exactly; scales
+  // guessed; a damaged file's faults reported), and AnnData files whose values the formats' readers
+  // read as CytoWeave computes them (reference/events.json: anndata 0.13.4 and 0.10.9, h5py, pyfive,
+  // fcsparser, FlowIO; matched to the files written here by their SHA-256).
+  async events() {
+    const built = await buildEventDocuments();
+    const { ws, views, viewOf } = built.experiment;
+    const samples = ws.samples;
+    const hash = (array) => createHash('sha256').update(Buffer.from(array.buffer, array.byteOffset, array.byteLength)).digest('hex');
+    const textHash = (values) => createHash('sha256').update(values.join('\n')).digest('hex');
+    const gateId = (name) => ws.gates.find((g) => g.name === name).id;
+    // Downsampling.
+    const all = Uint32Array.from({ length: 1000 }, (_, i) => i);
+    const sizes = [[{ mode: 'count', value: 100, seed: 1 }, 100], [{ mode: 'count', value: 5000, seed: 1 }, 1000], [{ mode: 'fraction', value: 0.1234, seed: 1 }, 123], [{ mode: 'fraction', value: 0.1235, seed: 1 }, 124]];
+    const sizeOk = sizes.every(([spec, k]) => downsampleIndices(all, spec, 'x').length === k);
+    const a = downsampleIndices(all, { mode: 'count', value: 100, seed: 7 }, 'x');
+    const again = downsampleIndices(all, { mode: 'count', value: 100, seed: 7 }, 'x');
+    const other = downsampleIndices(all, { mode: 'count', value: 100, seed: 8 }, 'x');
+    const alone = selectEvents(ws, viewOf, { sampleIds: [samples[3].id], downsample: { mode: 'count', value: 500, seed: 3 } }).items[0].indices;
+    const together = selectEvents(ws, viewOf, { downsample: { mode: 'count', value: 500, seed: 3 } }).items.find((it) => it.sample.id === samples[3].id).indices;
+    const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+    // Uniformity: 4,000 draws of 100 of 1,000 events; each event's count against Binomial(4000, 0.1).
+    const counts = new Float64Array(1000);
+    for (let s = 1; s <= 4000; s += 1) for (const e of downsampleIndices(all, { mode: 'count', value: 100, seed: s }, 'u')) counts[e] += 1;
+    const expected = 400;
+    const chi2 = counts.reduce((sum, c) => sum + ((c - expected) ** 2) / (expected * 0.9), 0);
+    const z = (chi2 - 999) / Math.sqrt(2 * 999);
+    check('events', 'seeded downsampling: exact sizes (up to a number, or a share rounded to the nearest event), the same events for the same seed and others for another, a sample\'s events the same exported alone or with others, and every event equally likely (4,000 draws of 100 of 1,000)', `sizes ${sizeOk ? 'exact' : 'WRONG'}; same seed ${same(a, again) ? 'identical' : 'differs'}, another seed ${same(a, other) ? 'identical' : 'differs'}; alone ${same(alone, together) ? 'identical' : 'differs'}; χ² ${chi2.toFixed(0)} on 999 df (z ${z.toFixed(2)})`, sizeOk && same(a, again) && !same(a, other) && same(alone, together) && Math.abs(z) < 3.3, 'exact; identical; differs; identical; |z| < 3.3');
+    // The concatenated FCS file, read back.
+    const doc = (name) => parseFCS(built.files[name]).datasets[0];
+    const cat = doc('concatenated.fcs');
+    const col = (d, name) => d.data[d.parameters.find((p) => p.name === name).index];
+    const sid = col(cat, 'SampleID');
+    const src = col(cat, 'SourceEvent');
+    const channels = views.get(samples[0].id).parameters.map((p) => p.name);
+    let differ = 0;
+    for (let i = 0; i < cat.eventCount; i += 1) {
+      const view = views.get(samples[sid[i] - 1].id);
+      for (const name of channels) if (!Object.is(col(cat, name)[i], view.raw.get(name)[src[i]])) differ += 1;
+    }
+    const spill = readSpillover(cat.keywords, cat.parameters);
+    const comp = views.get(samples[0].id).compensation;
+    const spillSame = spill.channels.join() === comp.channels.join() && Array.from(spill.matrix).every((v, i) => v === comp.matrix[i]);
+    check('events', `the concatenated FCS file read back: every event the raw event of the sample SampleID names, at the index SourceEvent gives (${samples.length} samples, ${cat.eventCount.toLocaleString('en-US')} events), with the samples' shared spillover matrix`, `${differ} values differ; spillover ${spillSame ? 'the same' : 'DIFFERS'}; names ${cat.keywords.CYTOWEAVE_SAMPLE_1}…${cat.keywords[`CYTOWEAVE_SAMPLE_${samples.length}`]}`, differ === 0 && cat.eventCount === samples.reduce((n, x) => n + x.eventCount, 0) && spillSame && cat.keywords.CYTOWEAVE_SAMPLE_1 === samples[0].name, 'none differ; the same');
+    // Gated in CytoWeave, the concatenated file counts every population as the samples do.
+    const catRecord = { id: 'cat', name: 'concatenated', compensationId: 'file' };
+    const catView = new SampleView(catRecord, cat);
+    catView.setCompensation({ id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) });
+    const catWs = { ...ws, samples: [...ws.samples, { ...catRecord, channels: cat.parameters }] };
+    let pairs = 0;
+    let wrong = 0;
+    for (const gate of ws.gates) {
+      const members = population(catView, catWs, gate.id);
+      const perSample = new Map();
+      for (const e of members ?? []) perSample.set(sid[e], (perSample.get(sid[e]) ?? 0) + 1);
+      samples.forEach((sample, k) => {
+        pairs += 1;
+        if ((perSample.get(k + 1) ?? 0) !== countOf(population(views.get(sample.id), ws, gate.id), views.get(sample.id))) wrong += 1;
+      });
+    }
+    check('events', 'the concatenated file opened and gated with the workspace\'s gates (its spillover applied): every population holds, per SampleID, the events it holds in that sample', `${pairs - wrong} of ${pairs} population × sample counts equal (${ws.gates.length} populations)`, wrong === 0 && pairs > 0, 'all');
+    const down = doc('downsampled.fcs');
+    const dsid = col(down, 'SampleID');
+    const dsrc = col(down, 'SourceEvent');
+    const tcells = gateId('T cells');
+    let dDiffer = 0;
+    let outside = 0;
+    const tMembers = new Map(samples.map((x) => [x.id, new Set(population(views.get(x.id), ws, tcells))]));
+    for (let i = 0; i < down.eventCount; i += 1) {
+      const sample = samples[dsid[i] - 1];
+      if (!tMembers.get(sample.id).has(dsrc[i])) outside += 1;
+      for (const name of channels) if (!Object.is(col(down, name)[i], views.get(sample.id).column(name)[dsrc[i]])) dDiffer += 1;
+    }
+    const perSampleDown = samples.map((x, k) => Array.from(dsid).filter((v) => v === k + 1).length);
+    check('events', 'the downsampled file (T cells, up to 1,000 per sample, compensated values): every event a T cell of its sample, its values the sample\'s compensated values, no spillover written', `${perSampleDown.join(', ')} events; ${outside} outside T cells; ${dDiffer} values differ; spillover ${down.keywords.$SPILLOVER ? 'written' : 'none'}`, outside === 0 && dDiffer === 0 && !down.keywords.$SPILLOVER && perSampleDown.every((n, k) => n === Math.min(1000, tMembers.get(samples[k].id).size)), 'none outside; none differ; none');
+    const zip = await readZip(built.files['tregs.zip']);
+    const tregs = gateId('Tregs');
+    const zipRows = samples.map((sample) => {
+      const d = parseFCS(zip.get(`${sample.name}.fcs`)).datasets[0];
+      const view = views.get(sample.id);
+      const members = population(view, ws, tregs);
+      const picked = downsampleIndices(members, { mode: 'fraction', value: 0.5, seed: 2 }, sample.sha256 ?? sample.id);
+      let bad = 0;
+      for (let i = 0; i < d.eventCount; i += 1) for (const name of channels) if (!Object.is(col(d, name)[i], view.raw.get(name)[picked[i]])) bad += 1;
+      return { n: d.eventCount, of: members.length, ok: d.eventCount === Math.round(members.length / 2) && bad === 0 && Boolean(d.keywords.$SPILLOVER) };
+    });
+    check('events', 'one FCS file per sample (Tregs, half of each sample\'s): each file the sample\'s chosen events, raw, with its spillover matrix', zipRows.map((r) => `${r.n} of ${r.of}`).join(', '), zipRows.every((r) => r.ok), 'all');
+    // CSV import.
+    const view0 = views.get(samples[0].id);
+    const cases = Object.fromEntries(csvCases(view0).map((c) => [c.name, { ...c, analysis: analyzeCSV(c.text, c.name) }]));
+    const back = (c) => {
+      const { datasets } = csvDatasets(c.analysis);
+      const d = parseFCS(writeFCS(datasets[0])).datasets[0];
+      return { d, datasets };
+    };
+    let csvDiffer = 0;
+    let csvValues = 0;
+    for (const name of ['cytoweave_export.csv', 'flowjo_export.csv']) {
+      const c = cases[name];
+      const { d } = back(c);
+      view0.parameters.forEach((p, j) => {
+        const column = d.data[j];
+        for (let e = 0; e < c.expect.rows; e += 1) {
+          csvValues += 1;
+          if (!Object.is(column[e], c.expect.values[j][e])) csvDiffer += 1;
+        }
+      });
+    }
+    const fj = cases['flowjo_export.csv'].analysis;
+    const fjOk = fj.columns[0].eventNumber && !fj.columns[0].include && fj.columns.slice(1).every((col2, j) => col2.name === cases['flowjo_export.csv'].expect.names[j] && col2.marker === cases['flowjo_export.csv'].expect.markers[j]);
+    check('events', 'CSV events back exactly: CytoWeave\'s own CSV export and FlowJo\'s format ("Comp-PE-A :: CD25" headers, an event number column), as FCS data', `${csvValues - csvDiffer} of ${csvValues} values identical; FlowJo: ${fjOk ? 'channels and markers read, the event number left out' : 'headers misread'}`, csvDiffer === 0 && fjOk, 'all; read');
+    const eu = cases['european.csv'];
+    const euBack = back(eu).d;
+    let euDiffer = 0;
+    eu.expect.values.forEach((values, j) => { for (let e = 0; e < eu.expect.rows; e += 1) if (!Object.is(euBack.data[j][e], Math.fround(values[e]))) euDiffer += 1; });
+    check('events', 'a European CSV (semicolons, decimal commas) read with its format found, every value the number written (as a 32-bit float)', `delimiter "${eu.analysis.format.delimiter}", decimal commas ${eu.analysis.format.decimalComma}; ${euDiffer} values differ`, eu.analysis.format.delimiter === ';' && eu.analysis.format.decimalComma && euDiffer === 0, 'found; none differ');
+    const scales = (c) => Object.fromEntries(c.analysis.columns.map((x) => [x.name, x.scale]));
+    const asinhScales = Object.values(scales(cases['arcsinh.csv']));
+    const massScales = scales(cases['mass.csv']);
+    const flowScales = cases['cytoweave_export.csv'].analysis.columns.map((x) => `${x.kind}:${x.scale}`);
+    const asinhRange = scaleFor(cases['arcsinh.csv'].analysis.columns[0]);
+    check('events', 'scales guessed from the values: arcsinh-transformed values shown linear over their range, mass cytometry counts on arcsinh (cofactor 5) and its time linear, flow intensities logicle and scatter linear', `arcsinh file: ${[...new Set(asinhScales)].join(', ')} (${asinhRange.type} ${asinhRange.min} to ${asinhRange.max}); mass: ${Object.entries(massScales).map(([k, v]) => `${k} ${v}`).join(', ')}; flow: ${[...new Set(flowScales)].join(', ')}`, asinhScales.every((x) => x === 'transformed') && asinhRange.type === 'linear' && massScales.Yb176Di === 'arcsinh' && massScales.Nd142Di === 'arcsinh' && massScales.Time === 'linear' && flowScales.every((x) => x === 'scatter:linear' || x === 'fluorescence:logicle' || x === 'time:linear'), 'as guessed');
+    const dmg = cases['damaged.csv'].analysis;
+    const fitc = dmg.columns.find((x) => x.name === 'FITC-A');
+    const split = csvDatasets(dmg, { splitBy: dmg.columns.findIndex((x) => x.name === 'Cluster') });
+    const whole = csvDatasets(dmg);
+    check('events', 'a damaged CSV: the faults found and reported (3 words in FITC-A with the first one\'s row, 3 empty cells, 1 short row), the event number left out, the cluster column recognized as labels, the 6 incomplete rows left out; split by cluster, 3 samples', `${fitc.note}; ${fitc.missing} empty; ${dmg.problems[0] ?? 'no row problem'}; event number ${dmg.columns[0].eventNumber}; labels ${dmg.columns[3].labels}; ${whole.dropped} rows left out; split: ${split.datasets.map((x) => `${x.name} ${x.rows}`).join(', ')}`, fitc.bad === 3 && /row 12/.test(fitc.note) && fitc.missing === 3 && /1 row has/.test(dmg.problems[0] ?? '') && dmg.columns[0].eventNumber && dmg.columns[3].labels && whole.dropped === 6 && split.datasets.length === 3 && split.datasets.reduce((n, x) => n + x.rows, 0) === 594, 'all reported; 6 left out; 3 samples');
+    // AnnData: what the readers read against CytoWeave's own values.
+    const ref = JSON.parse(readFileSync(new URL('./reference/events.json', import.meta.url), 'utf8'));
+    const stale = Object.keys(built.files).filter((name) => {
+      const sha = createHash('sha256').update(built.files[name]).digest('hex');
+      const entry = ref.files[name];
+      return !entry || Object.values(entry).filter((v) => v && typeof v === 'object' && v.sha256).some((v) => v.sha256 !== sha) || (entry.sha256 && entry.sha256 !== sha);
+    });
+    check('events', 'the files written here are those the readers read (SHA-256 against reference/events.json; when one differs, rerun reference/write_events.mjs and read_events.py)', stale.length ? `differ: ${stale.join(', ')}` : `all ${Object.keys(built.files).length} the same`, !stale.length, 'the same');
+    for (const spec of EVENT_EXPORTS.filter((x) => x.format === 'h5ad')) {
+      const { items, populationId } = built.selections[spec.file];
+      const xChannels = views.get(samples[0].id).parameters.filter((p) => p.type === 'fluorescence').map((p) => p.name);
+      const n = items.reduce((sum, it) => sum + it.indices.length, 0);
+      const X = new Float32Array(n * xChannels.length);
+      const names = [];
+      const sampleCodes = new Int32Array(n);
+      const events = new Int32Array(n);
+      const tregFlags = new Uint8Array(n);
+      const clusters = new Int32Array(n);
+      const fsc = new Float32Array(n);
+      const umap = new Float32Array(n * 2);
+      let r = 0;
+      items.forEach((it, k) => {
+        const tregSet = new Set(population(it.view, ws, tregs));
+        for (const e of it.indices) {
+          xChannels.forEach((c, j) => {
+            const v = it.view.column(c)[e];
+            X[r * xChannels.length + j] = spec.xValues === 'arcsinh' ? Math.asinh(v / spec.cofactor) : v;
+          });
+          names.push(`${it.sample.name}:${e}`);
+          sampleCodes[r] = k;
+          events[r] = e;
+          tregFlags[r] = tregSet.has(e) ? 1 : 0;
+          const cl = it.view.column('FlowSOM cluster')[e];
+          clusters[r] = cl >= 0 ? cl : -1;
+          fsc[r] = it.view.column('FSC-A')[e];
+          const emb = it.view.column('Embedded')[e] > 0.5;
+          umap[r * 2] = emb ? it.view.column('UMAP 1')[e] : Number.NaN;
+          umap[r * 2 + 1] = emb ? it.view.column('UMAP 2')[e] : Number.NaN;
+          r += 1;
+        }
+      });
+      const want = { X: hash(X), obs_names: textHash(names), sample: hash(sampleCodes), event: hash(events), Tregs: hash(tregFlags), cluster: hash(clusters), fsc: hash(fsc), umap: hash(umap) };
+      const entry = ref.files[spec.file];
+      const readers = Object.keys(entry).filter((k) => /^(anndata|h5py|pyfive)/.test(k));
+      const rows = readers.map((reader) => {
+        const got = entry[reader];
+        const fine = [got.X === want.X, got.obs_names === want.obs_names];
+        if (reader.startsWith('anndata')) {
+          fine.push(got.shape[0] === n && got.shape[1] === xChannels.length, got.obs.sample.codes === want.sample && got.obs.sample.categories.join() === samples.map((x) => x.name).join(), got.obs.event.values === want.event, got.obs.Tregs.values === want.Tregs, got.obs['FlowSOM cluster'].codes === want.cluster, got.obs['FSC-A'].values === want.fsc, got.obsm.X_umap === want.umap, got.var_names.join() === xChannels.map((c) => views.get(samples[0].id).parameters.find((p) => p.name === c).marker || c).join(), got.uns.samples.join() === samples.map((x) => x.name).join(), got.obs.subject?.categories.length === new Set(samples.map((x) => x.meta.subject)).size);
+        }
+        return { reader, ok: fine.every(Boolean), failed: fine.map((f, i) => (f ? null : i)).filter((x) => x !== null) };
+      });
+      check('events', `${spec.file} (${populationId === 'root' ? 'all events' : spec.population}, ${spec.downsample.value} per sample, X ${spec.xValues === 'arcsinh' ? `arcsinh(x / ${spec.cofactor})` : 'compensated'}): every reader reads X and the event names as CytoWeave computes them (SHA-256 of the values), and anndata the sample, annotations, event index, a population's True/False column, the clusters (missing where unassigned), scatter, the UMAP (NaN where not embedded), var and uns`, rows.map((x) => `${x.reader} ${x.ok ? 'exact' : `differs (${x.failed.join(',')})`}`).join('; '), rows.length === 4 && rows.every((x) => x.ok), 'all exact');
+    }
+    const fcsRows = ['concatenated.fcs', 'downsampled.fcs'].map((name) => {
+      const d = doc(name);
+      const m = new Float32Array(d.eventCount * d.parameters.length);
+      for (let e = 0; e < d.eventCount; e += 1) for (let j = 0; j < d.parameters.length; j += 1) m[e * d.parameters.length + j] = d.data[j][e];
+      const files = ref.files[name].files[name];
+      return { name, ok: files.fcsparser.data === hash(m) && files.flowio.data === hash(m) && files.fcsparser.shape[0] === d.eventCount };
+    });
+    const zipRef = ref.files['tregs.zip'];
+    const zipOk = Object.keys(zipRef.files).length === samples.length && Object.values(zipRef.files).every((f) => f.fcsparser.data === f.flowio.data && Boolean(f.fcsparser.spillover));
+    check('events', `fcsparser ${ref.files['concatenated.fcs'].fcsparser} and FlowIO ${ref.files['concatenated.fcs'].flowio} read the concatenated and downsampled files as written (every value, SHA-256), and the per-sample files with their spillover`, `${fcsRows.map((x) => `${x.name} ${x.ok ? 'exact' : 'differs'}`).join('; ')}; ZIP ${zipOk ? `${Object.keys(zipRef.files).length} files agree` : 'differs'}`, fcsRows.every((x) => x.ok) && zipOk, 'exact');
+  },
+  // Differential state (differential-cases.mjs): the limma port against limma itself on synthetic
+  // matrices that take each of its paths, and diffcyt-DS-limma end to end against diffcyt in R on
+  // the mass cytometry examples (reference/diffcyt.json), with the examples' truth: no marker
+  // differs in the cohort; activation changes eight markers on part of every T-cell population of
+  // the stimulated wells.
+  differential() {
+    const ref = JSON.parse(readFileSync(new URL('./reference/diffcyt.json', import.meta.url), 'utf8'));
+    const stale = '; if the inputs changed, rerun reference/write_differential.mjs and generate_diffcyt.R';
+    const relative = (r, mine) => (r === null ? (Number.isFinite(mine) ? Infinity : 0) : Math.abs(r - mine) / Math.max(Math.abs(r), 1e-300));
+    const worstOf = (list, mine) => list.reduce((w, r, i) => Math.max(w, relative(r, mine[i])), 0);
+    const cases = limmaCases();
+    let limmaWorst = 0;
+    let dfSame = true;
+    let priorWorst = 0;
+    const paths = new Set();
+    cases.forEach((k, i) => {
+      const r = ref.limma[i];
+      const fit = lmFit(k.y, k.design, { weights: k.weights, coefficient: k.coefficient });
+      const e = eBayes(fit, { trend: k.trend });
+      paths.add(`${e.legacy ? 'spline or constant' : 'lowess or constant'} prior`);
+      limmaWorst = Math.max(limmaWorst, worstOf(r.logFC, e.coefficient), worstOf(r.t, e.t), worstOf(r.p, e.p), worstOf(r.padj, e.padj), worstOf(r.sigma, e.sigma));
+      dfSame &&= r.df_residual.every((d, g) => d === e.dfResidual[g]);
+      priorWorst = Math.max(priorWorst, relative(r.df_prior, e.dfPrior));
+    });
+    const limmaOk = limmaWorst < 1e-9 && dfSame && priorWorst < 1e-8;
+    check('differential', `the limma port against limma ${ref.generated.limma} on ${cases.length} synthetic cases (${cases.reduce((n, k) => n + k.y.length, 0).toLocaleString('en-US')} rows; residual df equal or unequal, with and without a trend, weighted or not, rank-deficient rows and rows without residual df): coefficients, residual SDs, moderated t, p and BH-adjusted p, residual and prior df`, `within ${limmaWorst.toExponential(1)} (relative; R's values kept to 12 digits); residual df ${dfSame ? 'identical' : 'DIFFER'}; prior df within ${priorWorst.toExponential(1)}${limmaOk ? '' : stale}`, limmaOk, 'within 1e-9; identical; 1e-8');
+    for (const experiment of stateExperiments()) {
+      const r = ref.experiments.find((x) => x.name === experiment.name);
+      const a = analyzeExperiment(experiment);
+      let countDiffer = 0;
+      let medianWorst = 0;
+      let missingDiffer = 0;
+      a.perSample.forEach((p, s) => {
+        a.labels.forEach((_, u) => { if (r.counts[u][s] !== p.counts[u]) countDiffer += 1; });
+        a.markers.forEach((m, mi) => a.labels.forEach((_, u) => {
+          const theirs = r.medians[m][u][s];
+          const mine = p.medians[mi][u];
+          if (theirs === null || !Number.isFinite(mine)) missingDiffer += theirs === null && !Number.isFinite(mine) ? 0 : 1;
+          else medianWorst = Math.max(medianWorst, Math.abs(theirs - mine));
+        }));
+      });
+      const mine = new Map(a.result.rows.map((row) => [`${row.unit}|${row.marker}`, row]));
+      let rowsMissing = 0;
+      let absWorst = 0;
+      let relWorst = 0;
+      r.rows.cluster.forEach((c, i) => {
+        const row = mine.get(`${c}|${r.rows.marker[i]}`);
+        if (!row) { rowsMissing += 1; return; }
+        absWorst = Math.max(absWorst, Math.abs(r.rows.logFC[i] - row.logFC), Math.abs(r.rows.AveExpr[i] - row.aveExpr));
+        relWorst = Math.max(relWorst, relative(r.rows.t[i], row.t), relative(r.rows.p[i], row.p), relative(r.rows.padj[i], row.padj));
+      });
+      const sameOk = !countDiffer && !missingDiffer && medianWorst < 1e-12 && !rowsMissing && a.result.rows.length === r.rows.cluster.length && absWorst < 1e-12 && relWorst < 1e-9;
+      check('differential', `${experiment.title}: diffcyt-DS-limma against diffcyt ${ref.generated.diffcyt} in R (${a.samples.length} samples, ${a.labels.length} clusters, ${a.markers.length} markers CytoWeave proposes, design ${r.design.length} columns): cells per cluster and sample, marker medians, the clusters kept and every cluster × marker's logFC, average, moderated t, p and adjusted p`, `counts ${countDiffer ? `${countDiffer} differ` : 'identical'}; medians within ${medianWorst.toExponential(1)}${missingDiffer ? `, ${missingDiffer} missing differently` : ''}; ${r.rows.cluster.length - rowsMissing} of ${r.rows.cluster.length} tests (CytoWeave ${a.result.rows.length}): logFC and average within ${absWorst.toExponential(1)}, t, p and adjusted p within ${relWorst.toExponential(1)} (relative)${sameOk ? '' : stale}`, sameOk, 'identical; within 1e-12; all tests, within 1e-12 and 1e-9');
+      const markerOf = (channel) => a.views[0].parameters.find((p) => p.name === channel)?.marker ?? channel;
+      const rows = a.result.rows.map((row) => ({ ...row, cluster: experiment.clusters[row.unit - 1], markerName: markerOf(row.marker), truth: experiment.truth(experiment.clusters[row.unit - 1], markerOf(row.marker)) }));
+      const found = rows.filter((row) => row.padj < 0.05);
+      if (experiment.name === 'cohort') {
+        const nominal = rows.filter((row) => row.p < 0.05).length;
+        check('differential', `${experiment.title}: no marker differs between the groups, so no cluster × marker is called at an adjusted p below 0.05`, `${found.length} of ${rows.length} called; ${nominal} (${pct(nominal / rows.length)}) with p < 0.05 before adjustment`, found.length === 0, 'none');
+      } else {
+        const strong = rows.filter((row) => ['CD4 central memory T', 'CD4 effector memory T', 'Regulatory T', 'CD8 central memory T', 'CD8 effector memory T'].includes(row.cluster) && ['CD25', 'HLA-DR', 'CD38'].includes(row.markerName));
+        const changed = rows.filter((row) => row.truth);
+        const falseCalls = found.filter((row) => !row.truth);
+        check('differential', `${experiment.title}: CD25, HLA-DR and CD38 called in the five T-cell populations with 40–50% of cells activated, and few calls where nothing changed (activation changes ${ACTIVATION_MARKERS.filter((m) => rows.some((row) => row.markerName === m)).length} panel markers on 20–50% of every T-cell population)`, `${strong.filter((row) => row.padj < 0.05).length} of ${strong.length} strong changes called; ${changed.filter((row) => row.padj < 0.05).length} of ${changed.length} changed cluster × marker pairs called (CCR7 or CD45RA falling on cells that lack them do not move the median); ${falseCalls.length} of ${found.length} calls false (${falseCalls.map((row) => `${row.markerName} on ${row.cluster}`).join(', ') || 'none'})`, strong.every((row) => row.padj < 0.05) && falseCalls.length / Math.max(1, found.length) <= 0.1, 'all 15; at most 10% of calls false');
+      }
+    }
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});

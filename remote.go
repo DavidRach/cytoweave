@@ -82,7 +82,7 @@ type remoteResult struct {
 }
 
 // Actions that can run for a long time (analyses over many samples).
-var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true}
+var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "differential_analysis": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true}
 
 func newRemoteHub() *remoteHub {
 	return &remoteHub{
@@ -109,6 +109,7 @@ func (h *remoteHub) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/remote/output/{token}", localOnly(h.serveOutput))
 	if h.scripts {
 		mux.HandleFunc("POST /api/remote/action", localOnly(h.serveAction))
+		mux.HandleFunc("GET /api/remote/tools", localOnly(h.serveTools))
 	}
 }
 

@@ -30,6 +30,11 @@ checks each step:
 - statistics tables and group comparisons with the right test for the design,
   and a check of whether a conclusion survives other reasonable analysis
   choices;
+- samples compared with a control (SED, Overton, probability binning), and
+  rare populations reported with exact intervals and detection limits;
+- formula channels (ratios and other expressions of channels), fluorescence
+  in calibrated MEF units from multi-level beads (as FlowCal computes it),
+  and absolute counts from counting beads;
 - cell-cycle and proliferation models;
 - publication figures, a methods paragraph with references, and a MIFlowCyt
   checklist.
@@ -151,8 +156,9 @@ guides to every view, with screenshots.
     several groups, repeated measures. Each comes with a nonparametric
     counterpart, effect sizes, confidence intervals and multiple-testing
     correction.
-  - Screens of every population or cluster, with volcano plots and
-    differential abundance.
+  - Screens of every population or cluster, with volcano plots,
+    differential abundance and differential state (diffcyt-DS-limma, equal
+    to diffcyt in R).
   - **Robustness to analysis choices**: whether a comparison's conclusion
     holds across 64 analyses with the gates moved or adapted, QC removed or
     re-run, another compensation matrix or another test, with a
@@ -164,7 +170,11 @@ guides to every view, with screenshots.
     where a gate was drawn.
 - **Figures and reports.**
   - Gating-strategy and across-samples figures that stay live until you
-    export them, as SVG, PNG or PDF.
+    export them, as SVG, PNG or vector PDF, with statistics tables on the page.
+  - Batch reports: a figure repeated for each sample or each subject, as a
+    multi-page PDF or a PowerPoint deck, with every number traced to its source.
+  - Excel workbooks of the tables with sheets that say where each number comes
+    from, and GraphPad Prism projects grouped by condition.
   - A methods paragraph with numbered references, written from what the
     workspace actually did, and a MIFlowCyt checklist.
   - Exported figures carry the analysis behind them (gates, scales, matrices
@@ -178,6 +188,11 @@ guides to every view, with screenshots.
   - De-identified FCS files: only technical keywords kept, the events copied
     byte for byte.
   - Gating-ML 2.0 in and out, and classification results (CLR).
+  - Events in CSV files, checked column by column with each column's kind
+    and scale guessed; a population's events in several samples out as one
+    concatenated FCS file (with a sample identifier), one file per sample or
+    an AnnData file (`.h5ad`) for scanpy and R, optionally downsampled with a
+    seed.
   - Archival Cytometry Standard containers that bundle the workspace with its
     FCS files.
   - FCS 2.0 to 3.2.
@@ -313,7 +328,7 @@ Press ⌘K (Ctrl+K) to search samples, populations, channels and commands, and
 | `.acs`, `.zip` | An Archival Cytometry Standard container: a workspace with its FCS files |
 | `.wsp` | A FlowJo 10 workspace (see [below](#working-with-flowjo-and-other-tools)) |
 | `.xml` | Gating-ML 2.0 gates and compensation |
-| `.csv`, `.tsv` | Sample annotations: the first column names the sample or file, the other columns become fields |
+| `.csv`, `.tsv`, `.txt` | Events, a row per event and a column per channel (checked before import, below); or, when the first column names samples, sample annotations |
 | `.svg`, `.png`, `.pdf` | A figure or plot CytoWeave exported: where it came from, what changed since, and a rebuild (see [Figures](#figures)) |
 
 Drag files onto the window, use the **+** button of the sample list, or name
@@ -328,6 +343,16 @@ the inspector:
 - log-amplified integer data.
 
 Spillover is read from `$SPILLOVER`, `SPILL`, `$SPILL` or `$COMP`.
+
+**Events in CSV files** (FlowJo's *Export CSV*, FCS Express, R, Python) open
+in a dialog that checks each column first: the delimiter and decimal mark,
+FlowJo's `Comp-PE-A :: CD25` headers, cells that are not numbers (with the row
+of the first), empty cells and short rows, an event number column (left out)
+and label columns such as clusters or sample numbers (which can split the file
+into one sample per value). Each column's kind and scale are guessed (logicle
+for intensities, arcsinh for mass cytometry counts, linear for scatter, time
+and values that are already transformed) and can be changed. Each file becomes
+a sample stored as an FCS file of 32-bit floats.
 
 ## The views
 
@@ -643,14 +668,29 @@ Each result comes with a plain-language reading.
 Batch statistics: one row per sample, one column per statistic. The
 statistics are:
 - count, % of parent, % of grandparent, % of total, % of any ancestor;
-- concentration (/µL, from `$VOL`);
+- concentration (/µL, from `$VOL`), and absolute counts (/µL) from counting
+  beads, each with a dilution factor;
 - median, mean, geometric mean, SD, robust SD, CV, robust CV, median
   absolute deviation;
-- minimum, maximum, percentile, mode, and % above a threshold.
+- minimum, maximum, percentile, mode, and % above a threshold;
+- for rare events, the count's and % of parent's exact 95% limits (Poisson,
+  binomial) and the counting CV;
+- against a control sample's population (an FMO, an unstimulated sample):
+  % positive by SED (Bagwell's enhanced normalized subtraction) and by
+  Overton subtraction, probability binning's T(χ) and % positive, and the
+  Kolmogorov–Smirnov D. A histogram with the control overlaid shows the same
+  comparison under the plot.
 
 **Table of every population** builds the usual frequency table in one click.
-Tables can be shown as a heat map, copied as TSV or saved as CSV. Any column
-can be compared between groups.
+Tables can be shown as a heat map, copied as TSV, or saved as CSV, as an Excel
+workbook (every table in full precision, with sheets for each column's
+definition, the samples and their checksums, the gating and the methods) or as
+a GraphPad Prism project (a column table per statistic with a column per
+group, for Prism's t tests and ANOVA). Any column
+can be compared between groups. A count or frequency column can carry
+detection limits from blank and low-level samples (limit of blank, of
+detection and of quantification, as CLSI EP17 describes); values below them
+are marked not detected or below the LLOQ.
 
 ### Compare
 
@@ -690,6 +730,19 @@ cluster at once. Results are corrected for multiple testing
 volcano plot. Cluster abundance uses a quasi-binomial model in the manner of
 diffcyt. Clicking a point opens that sample.
 
+**Screen marker states** asks whether a marker's level changes within a
+cluster or population, with diffcyt-DS-limma (Weber et al. 2019): each
+sample's median of arcsinh-transformed expression per cluster, a linear model
+per cluster and marker weighted by the cells in each sample (pairing and
+covariates as fixed effects), and limma's moderated t-statistics with a
+mean–variance trend, adjusted across every cluster and marker. The markers the
+clusters were made from are left out by default.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-states-dark.webp">
+  <img alt="Screen marker states: FlowSOM clusters from lineage markers, activation markers tested between stimulated and unstimulated samples paired by donor; CD25 and HLA-DR up and CD127 down in the T-cell clusters" src="docs/images/compare-states-light.webp">
+</picture>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-robustness-dark.webp">
   <img alt="Robustness to analysis choices for monocytes, stimulated against unstimulated: the conclusion mostly holds, with a specification curve of 64 analyses and the choices each changed" src="docs/images/compare-robustness-light.webp">
@@ -712,9 +765,24 @@ the methods text includes a sentence on the check.
 
 Page layouts for publication: the gating strategy of a population in one
 click, a grid of the current plots across samples, or a blank page with
-plots, text and arrows. Plots stay live, following gate and compensation
-changes, until you export the page as SVG, PNG or a 300 dpi PDF. Pages come
-in slide (16:9), Letter, A4, landscape and square sizes.
+plots, text, arrows and statistics (columns of a table for the samples on the
+page). Plots stay live, following gate and compensation changes, until you
+export the page as SVG, PNG or PDF (vector: text and lines stay text and
+lines). Pages come in slide (16:9), Letter, A4, landscape and square sizes.
+
+**Batch reports** repeat a figure page after page, as a multi-page PDF or a
+PowerPoint deck (plots as pictures, statistics as native tables):
+- for each sample: the plots of the figure's main sample are redrawn on each
+  sample, while plots of other samples (a control) stay on every page;
+- for each value of an annotation, such as each subject: each plot is redrawn
+  on that subject's sample that matches it on the annotations that tell the
+  figure's samples apart (the stimulated tube where the figure shows the first
+  subject's).
+
+Text such as `{sample}`, `{subject}` or `{page}` is filled on each page, and a
+missing tube or an undecided choice between replicates is reported before the
+report is written. Every number a report prints is recorded with the table
+column or gate it comes from, in the file.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/figures-dark.webp">
@@ -924,6 +992,23 @@ does this.
 **CLR** (classification results) exports a column per population or cluster
 for every event, for tools that read memberships.
 
+**Events for other tools.** **Workspace → Export → Events…** writes a
+population's events in chosen samples, every event or downsampled (up to a
+number per sample, or a share; seeded, each sample drawn on its own, the seed
+recorded):
+- one concatenated FCS file of the channels every sample has (raw values with
+  the shared spillover matrix, or compensated values), with `SampleID`
+  numbering the samples (named in its keywords) and `SourceEvent` giving each
+  event's index in its own file;
+- one FCS file per sample, in a ZIP;
+- an AnnData file (`.h5ad`) for scanpy, muon and R (zellkonverter): `X` the
+  chosen channels as arcsinh(x / cofactor) or compensated values; `obs` the
+  sample, its annotations, each event's populations (a True/False column per
+  gate and the deepest as a category), clusters, QC, scatter and time; `var`
+  the channels and markers; `obsm` the maps (`X_umap`, `X_tsne`); `uns` where
+  it came from. CytoWeave writes the HDF5 itself (uncompressed); anndata 0.10
+  and 0.13, h5py and pyfive read it in the validation suite.
+
 ## Command-line options
 
 ```text
@@ -959,7 +1044,8 @@ window you are watching:
 - analyze an antibody titration or a detector voltage walk;
 - edit gates, compute statistics across samples and render plots;
 - review a gate across the cohort, adapt it to each sample, compare groups,
-  check a comparison's robustness, build figures and write the methods;
+  test differential abundance and state of every cluster, check a
+  comparison's robustness, build figures and write the methods;
 - watch an instrument's export folder as files are acquired;
 - export FlowJo workspaces, de-identified FCS files, figures and tables to
   files, and Gating-ML.
@@ -984,12 +1070,29 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 34 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 41 tools, other clients
 and how it works.
 
-The same actions are available to your own programs (Python, Jupyter, shell
-scripts) with `--remote-control`; [docs/MCP.md](docs/MCP.md#scripts-without-an-agent)
-shows how.
+The same actions are available to your own programs with `--remote-control`.
+The R and Python clients in [`clients/`](clients/) make each one a function
+and find the running CytoWeave themselves:
+
+```r
+library(cytoweave)          # remotes::install_github("robert-mcdermott/cytoweave", subdir = "clients/r")
+cw_connect()
+states <- cw_differential_analysis("condition", groups = c("Unstimulated", "Stimulated"),
+                                   pair_by = "subject")
+as.data.frame(states)
+```
+
+```python
+import cytoweave            # pip install "git+https://github.com/robert-mcdermott/cytoweave#subdirectory=clients/python"
+cw = cytoweave.connect()
+table = cw.statistics_table(statistic="freqParent").frame()
+```
+
+Any other language can post JSON to `/api/remote/action`;
+[docs/MCP.md](docs/MCP.md#scripts-without-an-agent) shows how.
 
 ## Validation
 
@@ -1017,8 +1120,16 @@ pipelines, as the app does, against answers known in advance:
 | Spectral library | A second experiment's controls, and a tandem that lost 5% of its emission | Independent controls all match (largest difference 0.01); the degraded PE-Cy7 flagged and nothing else; a library spectrum unmixes as well as the dye's own control |
 | Figure provenance | A 60-plot figure of 12 samples | Read back intact from SVG, PNG and PDF; rebuilt with every plot drawn from the same events; a moved gate flags exactly the plots it affects |
 | Predicted spread | Simulated controls with known photon noise and laser fluctuations | Photon noise within 1% of the truth; each control's spread predicted from the other 24 within 2× for 98% of pairs; a 15-dye panel predicted from the 25-dye fit within 2× for every pair |
+| Comparisons with a control | flowStats and R on tubes with known positive fractions; Bagwell's simulation | Probability binning identical to flowStats (36 cases, to 9e-15); SED within 2 points of the true fraction, Overton up to 8 points under where populations overlap; T(χ) above 4 in 0.5% of samples of the same cells |
+| Formula channels | R evaluating the same 7 formulas on 10 tubes; Gating-ML and a template | Medians within 5e-8, single events within 2e-14; a ratio gate the same through Gating-ML (fratio) and on renamed detectors |
+| Calibrated units (MEF) | FlowCal 1.3.1 on its own bead and cell files; simulated beads of known response | The same levels left out, medians within one step of the log channel, cells' MEFL within 1.6% of FlowCal's; a known slope within 0.001 |
+| Absolute counts | 40 simulated tubes of known concentration with counting beads | Within 1% on average, scattered as Poisson counting predicts |
+| Differential state | diffcyt 1.32 and limma 3.68 in R on the mass cytometry examples (8 samples with a batch, 20 paired wells); limma on 11 synthetic cases; activation known in advance | Every count and median identical, every moderated t, p and adjusted p within 3e-11; the known activation changes found (15 of 15 strong ones) with 3 of 53 calls false; no call where no marker differs |
+| Events in and out | Concatenated, downsampled and per-sample FCS files against their sources; CSV files from CytoWeave, FlowJo and European locales, and a damaged one; AnnData files read by anndata 0.10 and 0.13, h5py, pyfive, fcsparser and FlowIO | Every event its source's; every population counted alike per SampleID; seeded downsampling exact and uniform; CSV values back exactly, every fault reported; X, obs and maps read exactly by every reader |
+| Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
+| Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
-| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 72 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
+| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 86 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
 | Titration and voltage walks | A simulated CD4-PE titration and PE voltage walk with known binding, noise and gain | Stain index within 4.4% of the true cells' at every step; the recommended amount the binding's; the voltage range within 1 V of the truth; medians equal to FlowJo 11's on the same files |
 | Templates | A 19-population analysis applied to the same events with every detector renamed and reordered | Every population holds the same events in all 12 samples; with two markers unnamed, only the gate on them left out |
 | Published strategies | OMIP-101 and OMIP-090 placed on one sample of the PBMC example, against the true cell types | Median F1 0.96–0.99 for lineages, 0.88–0.96 for memory subsets, NK cells and classical and non-classical monocytes; Tregs 0.91; intermediate monocytes 0.76 |
@@ -1083,6 +1194,10 @@ used for diagnosis.
 - Robustness to analysis choices covers two-group comparisons of a
   population; designs of more than two groups and cluster abundances are not
   checked, and scales are not varied.
+- Differential state uses limma's standard empirical Bayes moderation and
+  enters pairing and covariates as fixed effects; diffcyt's random-effect
+  options (blocking with duplicateCorrelation, diffcyt-DS-LMM) and limma's
+  robust moderation are not offered.
 - QC as files are acquired needs the CytoWeave program (not the page served
   as a web site) and checks whole files, as acquisition software writes them,
   not events as they are acquired.
@@ -1094,7 +1209,6 @@ used for diagnosis.
   Intermediate monocytes, which lie between the classical and non-classical
   ones on CD16, are the least accurate of their populations (F1 0.76 in
   validation).
-- Event data in CSV are not imported, only annotations.
 - Imaging flow data (CellView, Amnis) are not supported.
 - Spectral unmixing needs the raw detector channels; files that hold only
   unmixed channels can be gated but not re-unmixed.
@@ -1147,6 +1261,12 @@ node validation/run.mjs
 
 `node validation/agent-session.mjs` drives every agent tool in the program and
 headless Chrome (it needs Go and Chrome) and checks each result.
+`node clients/test-clients.mjs` runs the R and Python clients' tests against
+CytoWeave in headless Chrome (it also needs Python 3, and R with curl, jsonlite
+and testthat). After changing a tool in `mcp.go`, run
+`go test -run TestTheClientsToolListIsCurrent -update` and
+`node clients/generate.mjs`; the latter also sets the clients' versions to
+`main.go`'s.
 `node validation/fuzz.mjs` fuzzes the FCS reader for longer than the suite
 does (`--cases 200000`), and `--replay <file> <seed>` repeats a failing case.
 
@@ -1181,13 +1301,15 @@ screenshots.
 
 ```text
 main.go, security.go, local.go, store.go,      Go host: server, security checks, files named on
-window.go, remote.go, mcp.go                   the command line, library, app window, remote
-                                               control, MCP server
+window.go, remote.go, mcp.go, connection.go    the command line, library, app window, remote
+                                               control, MCP server, connection file for scripts
 web/index.html, web/styles.css, web/app.js     application shell
 web/ui/                                        views and components (the only code using the DOM)
 web/lib/                                       analysis modules, each with a *.test.mjs
 web/workers/                                   module workers for heavy work
 validation/                                    end-to-end checks against known answers
+clients/                                       the R and Python clients (functions generated from
+                                               clients/tools.json by clients/generate.mjs)
 cytoweave-spec/                                design, conventions, requirements, roadmap, research
 docs/                                          installing, AI agents, screenshots, website source
 ```
@@ -1213,6 +1335,8 @@ code and in the methods text it writes, among them:
 - CytoNorm (Van Gassen et al.);
 - the spillover spreading matrix (Nguyen et al.);
 - MEM (Diggins et al.);
+- diffcyt (Weber et al. 2019) and limma's moderated t-statistics (Smyth 2004;
+  Ritchie et al. 2015; Chen et al. 2025);
 - MIFlowCyt, FCS and Gating-ML (ISAC);
 - the OMIP-101 (Imbratta et al. 2024) and OMIP-090 (Stroukov et al. 2023)
   gating strategies, and the immunophenotypes of Maecker, McCoy & Nussenblatt
@@ -1228,6 +1352,9 @@ license. Tan SZK et al. The Cell Ontology in the age of single-cell omics.
 Ported code:
 - The FlowJo biexponential algorithm is ported from FlowKit (BSD-3-Clause,
   Scott White), which ported it from cytolib.
+- The moderated t-statistics (`web/lib/limma.js`) follow the R and C sources
+  of limma 3.68.5 (GPL ≥ 2, Gordon Smyth and co-authors) and statmod 1.5
+  (Gordon Smyth), so that results equal R's.
 - The validation suite includes excerpts of BD's FlowJo transformation lookup
   tables (MIT license, © 2020 Becton, Dickinson and Company; see
   `validation/data/LICENSE-BD-FlowJo-LUTs.txt`).
