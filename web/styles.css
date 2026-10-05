@@ -513,6 +513,9 @@ textarea.input { height: auto; padding: 7px 9px; resize: vertical; }
 .plot-card-actions { display: flex; gap: 1px; opacity: 0.55; transition: opacity 0.12s; }
 .plot-card:hover .plot-card-actions { opacity: 1; }
 .plot-canvas-wrap { position: relative; height: 300px; margin: 2px 4px 4px; }
+.limit-tag { margin-left: 5px; font-size: 10.5px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 3px; }
+.plot-compare { font-size: 11.5px; color: var(--text-2); padding: 0 11px 8px; display: grid; gap: 2px; }
+.plot-compare .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .plot-canvas-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 .plot-card-foot { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; font-size: 11px; color: var(--text-3); }
 .axis-button {

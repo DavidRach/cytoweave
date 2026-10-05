@@ -10,7 +10,9 @@ import { float32 } from './memory.js';
 import { applyTransform, createTransform, defaultTransform } from './transforms.js';
 import { boundaryTest, boundaryTestN, membershipNSet, membershipSet, offsetGeometry, pointTest, pointTestN } from './gates.js';
 import { EventSet, differenceSets, intersectSets, unionSets } from './eventset.js';
-import { describe, summarize } from './stats.js';
+import { describe, gather, summarize } from './stats.js';
+import { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } from './distribution.js';
+import { binomialInterval, countPrecision, poissonInterval } from './rare-events.js';
 import { readSpillover } from './fcs.js';
 import { ROOT, effectiveGeometry, gateApplies, gateById } from './workspace.js';
 
@@ -580,11 +582,24 @@ export function populationSummary(view, ws) {
 
 // --- Statistics -------------------------------------------------------------------------------
 
-// A statistic spec: { stat, gateId, channel?, ancestorId?, value? }.
-export function computeStatistic(view, ws, spec) {
-  const key = `${view.version}|${JSON.stringify(spec)}|${spec.gateId ? gateSignature(ws, gateById(ws, spec.gateId) ?? { id: '', type: 'x', dims: [], geometry: {} }, view.id) : 'root'}`;
+// Statistics compared with a control sample's population (stats.js `needsControl`).
+export const COMPARISONS = new Set(['overton', 'sed', 'pbPositive', 'pbT', 'ksD']);
+
+// A statistic spec: { stat, gateId, channel?, ancestorId?, value?, control? }. A comparison's
+// control is { sampleId, gateId? } (the same population when gateId is omitted), and its events
+// come from context.viewOf(sampleId); without them the statistic is NaN.
+export function computeStatistic(view, ws, spec, context = {}) {
+  const signature = (v, gateId) => (gateId && gateId !== ROOT ? gateSignature(ws, gateById(ws, gateId) ?? { id: '', type: 'x', dims: [], geometry: {} }, v.id) : 'root');
+  let controlView = null;
+  let controlKey = '';
+  if (COMPARISONS.has(spec.stat)) {
+    controlView = spec.control?.sampleId ? context.viewOf?.(spec.control.sampleId) ?? null : null;
+    if (!controlView) return Number.NaN;
+    controlKey = `|${controlView.version}|${signature(controlView, spec.control.gateId ?? spec.gateId)}`;
+  }
+  const key = `${view.version}|${JSON.stringify(spec)}|${signature(view, spec.gateId)}${controlKey}`;
   if (view.statCache.has(key)) return view.statCache.get(key);
-  const value = computeStatisticUncached(view, ws, spec);
+  const value = controlView ? computeComparison(view, controlView, ws, spec) : computeStatisticUncached(view, ws, spec);
   view.statCache.set(key, value);
   if (view.statCache.size > 8192) view.statCache.delete(view.statCache.keys().next().value);
   return value;
@@ -609,6 +624,14 @@ function computeStatisticUncached(view, ws, spec) {
     }
     case 'freqTotal': return freqOf(ROOT);
     case 'freqOf': return freqOf(spec.ancestorId ?? ROOT);
+    case 'countLow': return poissonInterval(count)[0];
+    case 'countHigh': return poissonInterval(count)[1];
+    case 'countCV': return countPrecision(count);
+    case 'freqLow':
+    case 'freqHigh': {
+      const parentCount = countOf(populationSet(view, ws, gate?.parentId ?? ROOT), view);
+      return parentCount > 0 ? 100 * binomialInterval(count, parentCount)[spec.stat === 'freqLow' ? 0 : 1] : Number.NaN;
+    }
     case 'concentration': {
       // Events per µL from the acquired volume ($VOL in nL), when the instrument records it.
       const volume = Number.parseFloat(view.record.keywords?.$VOL ?? '');
@@ -623,6 +646,49 @@ function computeStatisticUncached(view, ws, spec) {
       return result[spec.stat] ?? Number.NaN;
     }
   }
+}
+
+// A population's channel values in a test sample against a control sample's population (the same
+// one unless spec.control.gateId names another), compared with distribution.js. All five are
+// computed from ranks, so they do not depend on the channel's display transform.
+function computeComparison(view, controlView, ws, spec) {
+  const testSet = populationSet(view, ws, spec.gateId ?? ROOT);
+  const controlSet = populationSet(controlView, ws, spec.control.gateId ?? spec.gateId ?? ROOT);
+  if (testSet === undefined || controlSet === undefined || !spec.channel) return Number.NaN;
+  if (!view.hasChannel(spec.channel) || !controlView.hasChannel(spec.channel)) return Number.NaN;
+  const test = gather(view.column(spec.channel), testSet);
+  const control = gather(controlView.column(spec.channel), controlSet);
+  if (control.length < 2 || !test.length) return Number.NaN;
+  switch (spec.stat) {
+    case 'overton': return overtonSubtraction(control, test).percentPositive;
+    case 'sed': return sedSubtraction(control, test).percentPositive;
+    case 'pbPositive': return probabilityBinning(control, test).percentPositive;
+    case 'pbT': return probabilityBinning(control, test).T;
+    case 'ksD': return ksTest(control, test).D;
+    default: return Number.NaN;
+  }
+}
+
+// A population's values on several channels, aligned event by event (events with a non-finite
+// value on any of them left out), each on its display scale (channelTransform), or as measured
+// with { raw: true }. Null when the population does not apply to the sample.
+export function populationColumns(view, ws, gateId, channels, options = {}) {
+  const set = populationSet(view, ws, gateId ?? ROOT);
+  if (set === undefined) return null;
+  const indices = set === null ? null : set instanceof EventSet ? set.toIndices() : set;
+  const sources = channels.map((channel) => (options.raw ? view.column(channel) : view.scaled(channel, channelTransform(ws, view, channel))));
+  const n = indices ? indices.length : view.eventCount;
+  const out = channels.map(() => new Float64Array(n));
+  let k = 0;
+  for (let i = 0; i < n; i += 1) {
+    const e = indices ? indices[i] : i;
+    let finite = true;
+    for (const source of sources) if (!Number.isFinite(source[e])) finite = false;
+    if (!finite) continue;
+    for (let d = 0; d < sources.length; d += 1) out[d][k] = sources[d][e];
+    k += 1;
+  }
+  return out.map((column) => (k === n ? column : column.slice(0, k)));
 }
 
 // Every channel's description for a population. With { basic: true }, only n, median, mean and

@@ -6,7 +6,8 @@ import { displayColormap, shownColor } from '../lib/colormaps.js';
 import { showMenu, toast } from './overlays.js';
 import { buildPlotScene, drawScene, drawGates, fromPixel, toPixel, withAlpha, PLOT_TYPES } from '../lib/plot.js';
 import { gateOutline, plotPointToGate, simplifyPolyline, pointTest, translateGeometry, quadrantGates, quadrantNames, splitGates, newId } from '../lib/gates.js';
-import { channelTransform, countOf, evaluateGate, populationSet } from '../lib/engine.js';
+import { channelTransform, computeStatistic, countOf, evaluateGate, populationSet } from '../lib/engine.js';
+import { formatStatistic } from '../lib/stats.js';
 import { EventSet } from '../lib/eventset.js';
 import { interactionEnded, interactionStarted } from './activity.js';
 import { proposalOfGate } from '../lib/proposals.js';
@@ -96,7 +97,9 @@ export function createPlotView(app, initial) {
     h('button.icon-button.small', { type: 'button', title: 'Swap axes', onclick: () => swapAxes() }, icon('swap')),
     h('button.icon-button.small', { type: 'button', title: 'More', onclick: (e) => moreMenu(e.currentTarget) }, icon('more')));
   const head = h('div.plot-card-head', titleEl, metaEl, initial.hideActions ? null : actions);
-  const el = h(`div.plot-card${compact ? '.compact' : ''}`, { tabIndex: 0, role: 'group', 'aria-label': 'Plot' }, head, wrap);
+  // Under a histogram with overlaid samples: this sample's population compared with each overlay's.
+  const compareEl = h('div.plot-compare', { hidden: true });
+  const el = h(`div.plot-card${compact ? '.compact' : ''}`, { tabIndex: 0, role: 'group', 'aria-label': 'Plot' }, head, wrap, compareEl);
   if (initial.height) wrap.style.height = `${initial.height}px`;
 
   const ws = () => store.ws;
@@ -258,6 +261,8 @@ export function createPlotView(app, initial) {
       ys,
       indices,
       overlays: is1D() ? overlays.map((o) => ({ ...o, ys: null })) : overlays,
+      // With other samples overlaid, the legend names this one too.
+      label: is1D() && spec.overlays?.length ? ws().samples.find((s) => s.id === sampleId)?.name : undefined,
       options: { ...options, color: spec.options?.color ?? populationColor() },
     });
     const ctx = sizeCanvas(base, width, height);
@@ -265,6 +270,7 @@ export function createPlotView(app, initial) {
     drawScene(ctx, scene, imageFromRaster, { gates: false });
     view.lastRender = { xs, ys, indices, dims };
     updateHeader(view, indices);
+    updateComparison(view);
     positionAxisButtons();
     renderOverlay();
     describe();
@@ -279,6 +285,28 @@ export function createPlotView(app, initial) {
     const shown = scene?.gates?.map((g) => `${g.name}${g.label ? ` ${g.label}` : ''}`).filter(Boolean) ?? [];
     base.setAttribute('aria-label', `${kind} ${axes}: ${titleEl.textContent}${Number.isFinite(lastCount) ? `, ${formatCount(lastCount)} events` : ''}${shown.length ? `. Gates: ${shown.join('; ')}` : ''}.`);
     el.setAttribute('aria-label', `Plot of ${titleEl.textContent}`);
+  }
+
+  // % positive (SED and Overton) and probability binning's T(χ) of this sample against each
+  // overlaid sample taken as the control, as Tables columns compute them.
+  function updateComparison(view) {
+    const extras = is1D() && !compact ? (spec.overlays ?? []).filter((o) => data.view(o.sampleId)) : [];
+    compareEl.hidden = !extras.length;
+    if (!extras.length) return;
+    const context = { viewOf: (id) => data.view(id) };
+    const value = (stat, extra) => {
+      try {
+        return computeStatistic(view, ws(), { stat, gateId: spec.populationId, channel: spec.x, control: { sampleId: extra.sampleId, gateId: extra.populationId ?? spec.populationId } }, context);
+      } catch {
+        return Number.NaN;
+      }
+    };
+    compareEl.replaceChildren(...extras.map((extra) => {
+      const [sed, overton, t] = ['sed', 'overton', 'pbT'].map((stat) => value(stat, extra));
+      return h('div', { title: 'This sample against the overlaid one as its control: % positive by SED (Bagwell\'s enhanced normalized subtraction) and Overton\'s cumulative subtraction, and probability binning\'s T(χ) (above 4: the distributions differ, p < 0.01).' },
+        h('span.swatch', { style: { background: extra.color } }), `vs ${extra.label}: `,
+        h('b', `${formatStatistic('sed', sed)}%`), ' positive (SED), ', `${formatStatistic('overton', overton)}% (Overton), T(χ) ${formatStatistic('pbT', t)}`);
+    }));
   }
 
   function populationColor() {

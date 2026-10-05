@@ -6,7 +6,7 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, titration, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, templates, strategies, titration, comparisons, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor
@@ -30,6 +30,10 @@ import { suggestForPopulation, termById } from '../web/lib/ontology.js';
 import { applyStrategy, pbmcCohort, placeOn } from './strategy-cases.mjs';
 import { STRATEGIES, strategyById } from '../web/lib/strategies.js';
 import { runTitration, runWalk, titrationExample, titrationTubes, trueVoltageLimits, tubeStatistics } from './titration-cases.mjs';
+import { bagwellSimulation, comparisonTubes } from './comparison-cases.mjs';
+import { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } from '../web/lib/distribution.js';
+import { binomialInterval, detectionLimits, poissonInterval } from '../web/lib/rare-events.js';
+import { poisson } from '../web/lib/simulate.js';
 import { TITRATION } from '../web/lib/examples.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
@@ -502,6 +506,83 @@ const suites = {
     const ratios = same.filter((r) => r.negative).map((r) => r.percentile);
     check('titration', `FlowJo ${fj.flowjoVersion} on the same ${Object.keys(fj.samples).length} tubes (median and Robust SD of PE-A, ungated and in CD4+ and CD4- split at ${fj.split}): where a population holds the same events, FlowJo's median equals CytoWeave's and its Robust SD equals 1.4826 × the median absolute deviation; where FlowJo's display-resolution gating moves events across the split, the share moved`, `${same.length} of ${rows.length} populations hold the same events (all ${rows.filter((r) => r.pop === 'All events').length} ungated): median within ${worst(same, 'median').toExponential(1)}, Robust SD = 1.4826 × MAD within ${worst(same, 'madSD').toExponential(1)}; ${differ.length} split differently by at most ${worst(differ, 'freqDiff').toFixed(2)} points (the most at 1.95 ng, where CD4-dim monocytes straddle the split). CytoWeave's robust SD, FACSDiva's (P84.13 − P15.87) / 2, is ${Math.min(...ratios).toFixed(2)}–${Math.max(...ratios).toFixed(2)} × FlowJo's on the negative cells`, rows.filter((r) => r.pop === 'All events').every((r) => r.same) && worst(same, 'median') < 1e-5 && worst(same, 'madSD') < 1e-5 && worst(differ, 'freqDiff') <= 0.5, 'median and 1.4826 × MAD within 1e-5 (FlowJo shows four decimals); ≤ 0.5 points moved');
     check('titration', 'a walk from 500 V, too high to reach the noise floor: the noise is not estimated and the report asks for rSD_EN; given it, the minimum is extrapolated', `${highWalk.noise ? `estimated ${highWalk.noise.rsdEN.toFixed(1)}` : 'not estimated'}; given rSD_EN, minimum ${highGiven.minimum?.voltage.toFixed(1)} V (true ${truth.minimum.toFixed(1)} V)`, !highWalk.noise && highWalk.notes.some((n) => /baseline report/.test(n)) && Math.abs(highGiven.minimum.voltage - truth.minimum) <= 10, 'not estimated; within 10 V');
+  },
+  // Population comparisons and rare-event statistics (comparison-cases.mjs): tubes with known
+  // positive fractions against a negative control, flowStats and R on the same tubes
+  // (reference/flowstats.json), Bagwell's simulation, and the statistical properties of T(χ), the
+  // exact intervals and the detection limits on simulated counts.
+  comparisons() {
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowstats.json', import.meta.url), 'utf8'));
+    const tubes = comparisonTubes().map((t) => ({ ...t, columns: columnsOf(load(t)) }));
+    const tube = (name) => tubes.find((t) => t.name === name);
+    const control = tube('Control.fcs');
+    const columns = (t, channels) => channels.map((c) => t.columns[c]);
+
+    let worstPB = 0;
+    let binsEqual = 0;
+    for (const c of ref.probabilityBinning) {
+      const channels = [].concat(c.channels);
+      const a = columns(control, channels);
+      const b = columns(tube(c.test), channels);
+      const r = probabilityBinning(channels.length > 1 ? a : a[0], channels.length > 1 ? b : b[0], { minEvents: c.minEvents });
+      worstPB = Math.max(worstPB, Math.abs(r.pbStat - c.pbStat) / Math.max(1, Math.abs(c.pbStat)), Math.abs(r.chiSquare - c.chiSquare));
+      if (r.bins === c.bins) binsEqual += 1;
+    }
+    check('comparisons', `probability binning against flowStats ${ref.flowStats} (proBin, binByRef, calcPBChiSquare) on ${ref.probabilityBinning.length} cases: ${new Set(ref.probabilityBinning.map((c) => c.test)).size} tubes against the control, on FITC-A and on FITC-A × PE-A, splitting bins of more than 500 and 250 events`, `${binsEqual} of ${ref.probabilityBinning.length} with the same bins; χ² and Baggerly's statistic within ${worstPB.toExponential(1)} (relative)`, binsEqual === ref.probabilityBinning.length && worstPB < 1e-9, 'the same bins; within 1e-9');
+
+    const ks = ref.ks.map((k) => ({ ...k, ours: ksTest(control.columns['FITC-A'], tube(k.test).columns['FITC-A']) }));
+    const dWorst = Math.max(...ks.map((k) => Math.abs(k.ours.D - k.D)));
+    const pWorst = Math.max(...ks.map((k) => Math.abs(k.ours.p - k.p)));
+    check('comparisons', `two-sample Kolmogorov–Smirnov against R ${ref.R} ks.test(exact = FALSE) on the ${ks.length} tubes`, `D within ${dWorst.toExponential(1)}; p within ${pWorst.toExponential(1)} (R sums Kolmogorov's series to a tolerance of 1e-6; CytoWeave's p is exact to double precision)`, dWorst < 1e-12 && pWorst < 1e-6, 'D within 1e-12; p within 1e-6');
+
+    // Known positive fractions on FITC-A.
+    const rows = tubes.filter((t) => t.name !== 'Control.fcs').map((t) => {
+      const sed = sedSubtraction(control.columns['FITC-A'], t.columns['FITC-A']);
+      return { name: t.name.replace('.fcs', ''), truth: 100 * t.truth, sed: sed.percentPositive, overton: overtonSubtraction(control.columns['FITC-A'], t.columns['FITC-A']).percentPositive, positive: t.tube.positive > 0, T: probabilityBinning(control.columns['FITC-A'], t.columns['FITC-A']).T };
+    });
+    const positives = rows.filter((r) => r.positive);
+    const overlapping = positives.filter((r) => /Overlap|Skewed/.test(r.name));
+    const sedWorst = Math.max(...positives.map((r) => Math.abs(r.sed - r.truth)));
+    check('comparisons', `% positive against the true fraction in ${positives.length} tubes (5–40% positive; well separated, overlapping, skewed, 3,000 events): SED (Bagwell's enhanced normalized subtraction) and Overton's cumulative subtraction`, `SED within ${sedWorst.toFixed(2)} points (${positives.map((r) => `${r.name} ${r.sed.toFixed(1)}`).join(', ')}); Overton ${overlapping.map((r) => `${r.name} ${r.overton.toFixed(1)}`).join(', ')}, as Bagwell describes, an underestimate where the populations overlap`, sedWorst <= 2.5 && overlapping.every((r) => r.truth - r.overton > 2 && Math.abs(r.sed - r.truth) < r.truth - r.overton), 'SED within 2.5 points; closer than Overton where they overlap');
+    const replicate = rows.find((r) => r.name === 'Replicate');
+    const shifted = rows.find((r) => r.name === 'Shifted');
+    check('comparisons', 'a second draw of the negative cells, and the same cells 1.6 × brighter (no positive population)', `replicate: SED ${replicate.sed.toFixed(2)}%, T(χ) ${replicate.T.toFixed(2)}; shifted: SED ${shifted.sed.toFixed(1)}%, T(χ) ${shifted.T.toFixed(0)}, a difference no subtraction can tell from a positive population`, replicate.sed < 2 && replicate.T < 4 && shifted.T > 4, 'replicate SED < 2%, T(χ) < 4; shifted T(χ) > 4');
+
+    const sim = bagwellSimulation(sedSubtraction, 2000);
+    const mean = (v) => v.reduce((a, b) => a + b, 0) / v.length;
+    const [md, med, mens] = [mean(sim.dmax), mean(sim.enhancedDmax), mean(sim.ens)];
+    check('comparisons', 'Bagwell\'s (1996) simulation: 2,000 histograms of Weibull negatives and positives in 128 channels; mean relative error of the positive fraction (Bagwell: Dmax −7.73%, enhanced Dmax −2.69%, ENS −0.85%)', `Dmax ${md.toFixed(2)}%, enhanced Dmax ${med.toFixed(2)}%, ENS ${mens.toFixed(2)}%`, md < 0 && Math.abs(mens) < Math.abs(med) && Math.abs(med) < Math.abs(md) && Math.abs(mens) <= 2, 'the same order; ENS within ±2%');
+
+    const random = createRandom(5);
+    const negatives = (n) => Float64Array.from({ length: n }, () => 10 ** (2.5 + 0.22 * random.gaussian()) + 25 * random.gaussian());
+    const nulls = Array.from({ length: 200 }, () => probabilityBinning(negatives(20000), negatives(20000)));
+    const above = nulls.filter((r) => r.T > 4).length / nulls.length;
+    const baggerly = nulls.filter((r) => r.pbStat > 2.3263).length / nulls.length;
+    check('comparisons', 'T(χ) of 200 pairs of samples of the same cells (Roederer et al. 2001: T(χ) above 4 for p < 0.01), and Baggerly\'s standardized χ² above its 99th percentile', `T(χ) > 4 in ${pct(above)}; Baggerly's above 2.33 in ${pct(baggerly)}`, above <= 0.02 && baggerly <= 0.03, '≤ 2%; ≤ 3%');
+
+    const poissonWorst = Math.max(...ref.poissonIntervals.map((c) => Math.max(...poissonInterval(c.count).map((v, i) => Math.abs(v - c.interval[i]) / Math.max(1, c.interval[i])))));
+    const binomialWorst = Math.max(...ref.binomialIntervals.map((c) => Math.max(...binomialInterval(c.x, c.n).map((v, i) => Math.abs(v - c.interval[i]) / Math.max(1e-6, c.interval[i])))));
+    const coverage = [3, 20, 100].map((lambda) => {
+      let inside = 0;
+      for (let k = 0; k < 4000; k += 1) {
+        const [lo, hi] = poissonInterval(poisson(random, lambda));
+        if (lo <= lambda && lambda <= hi) inside += 1;
+      }
+      return inside / 4000;
+    });
+    check('comparisons', `exact 95% intervals: Poisson (Garwood) against R poisson.test for ${ref.poissonIntervals.length} counts, binomial (Clopper–Pearson) against binom.test for ${ref.binomialIntervals.length} proportions down to 3 in 100,000; coverage of 4,000 simulated counts at means 3, 20 and 100`, `within ${poissonWorst.toExponential(1)} and ${binomialWorst.toExponential(1)} (relative); coverage ${coverage.map(pct).join(', ')}`, poissonWorst < 1e-9 && binomialWorst < 1e-9 && coverage.every((c) => c >= 0.94), 'within 1e-9; coverage ≥ 94%');
+
+    // A rare population in 100,000 parent events: 8 background events per blank, 30 at the low level.
+    const parent = 100000;
+    const freq = (lambda) => (100 * poisson(random, lambda)) / parent;
+    const limits = detectionLimits(Array.from({ length: 60 }, () => freq(8)), [Array.from({ length: 60 }, () => freq(30))]);
+    let falsePositive = 0;
+    let detected = 0;
+    for (let k = 0; k < 4000; k += 1) {
+      if (freq(8) > limits.lob) falsePositive += 1;
+      if (freq((limits.lod * parent) / 100) > limits.lob) detected += 1;
+    }
+    check('comparisons', 'limits of blank and detection (CLSI EP17) from 60 blanks (8 background events in 100,000) and 60 low-level samples (30 events): new blanks above the LoB, and samples at the LoD above it (EP17: 5% and 95%)', `LoB ${fmt((limits.lob * parent) / 100, 1)} events, LoD ${fmt((limits.lod * parent) / 100, 1)} events; ${pct(falsePositive / 4000)} of new blanks above the LoB, ${pct(detected / 4000)} of samples at the LoD (counts are whole numbers, so 5% cannot be met exactly)`, falsePositive / 4000 <= 0.08 && detected / 4000 >= 0.93, '≤ 8%; ≥ 93%');
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});

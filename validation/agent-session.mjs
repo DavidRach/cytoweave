@@ -292,6 +292,38 @@ try {
   const sameSI = titrated.rows.every((r, i) => r.stainIndex === setupState.si[i]);
   check('titration: a CD4-PE titration and a PE voltage walk on the example, the same as the analysis run directly, the saved walk proposed', `${titrated.channel}: recommended ${titrated.recommended} (direct ${setupState.recommended}), stain index of ${titrated.rows.length} steps ${sameSI ? 'equal' : 'differ'}; walk ${walked.minimumVoltage}–${walked.maximumVoltage} V (direct ${setupState.minimum?.toFixed(1)}–${setupState.maximum?.toFixed(1)}), recommended ${walked.recommendedVoltage} V; ${setupState.proposed} proposed`, titrated.channel === 'PE-A' && titrated.recommended === '125 ng' && setupState.recommended === '125 ng' && sameSI && Math.abs(walked.minimumVoltage - setupState.minimum) < 0.5 && Math.abs(walked.maximumVoltage - setupState.maximum) < 0.5 && setupState.proposed === 1, 'equal; 125 ng; proposed');
 
+  // Comparisons with the unstained tube and rare-event statistics on the same example: the tools'
+  // values equal the statistics computed directly in the page.
+  const tubes = ['CD4-PE 125 ng', 'CD4-PE 1.953 ng'];
+  const distributions = (await tool('compare_distributions', { control: 'Unstained', channel: 'PE-A', samples: tubes }, 'Setup agent')).data;
+  const tabled = (await tool('statistics_table', { statistic: 'sed', channel: 'PE-A', control: 'Unstained', populations: ['All events'] }, 'Setup agent')).data;
+  await tool('create_gate', { parent: 'All events', name: 'PE bright', type: 'range', x: 'PE-A', coordinates: { min: 30000 } }, 'Setup agent');
+  const rare = (await tool('rare_events', { population: 'PE bright', samples: tubes, cv: 5 }, 'Setup agent')).data;
+  const compareState = await page(`
+    const { computeStatistic, countOf, populationSet } = await import('/lib/engine.js');
+    const { poissonInterval } = await import('/lib/rare-events.js');
+    const ws = app.store.ws;
+    const control = ws.samples.find((s) => s.name === 'Unstained');
+    const controlView = app.data.view(control.id) ?? await app.data.ensure(control.id);
+    const bright = ws.gates.find((g) => g.name === 'PE bright').id;
+    const out = [];
+    for (const name of ${JSON.stringify(tubes)}) {
+      const s = ws.samples.find((x) => x.name === name);
+      const view = app.data.view(s.id) ?? await app.data.ensure(s.id);
+      const spec = (stat) => ({ stat, gateId: 'root', channel: 'PE-A', control: { sampleId: control.id } });
+      const context = { viewOf: (id) => (id === control.id ? controlView : null) };
+      const column = view.column('PE-A');
+      let above = 0;
+      for (let e = 0; e < column.length; e += 1) if (column[e] >= 1000) above += 1;
+      const count = countOf(populationSet(view, ws, bright), view);
+      out.push({ name, sed: computeStatistic(view, ws, spec('sed'), context), T: computeStatistic(view, ws, spec('pbT'), context), above: 100 * above / column.length, count, interval: poissonInterval(count) });
+    }
+    return out;`);
+  const close5 = (a, b) => Math.abs(a - b) <= 5e-5 * Math.max(1, Math.abs(b));
+  const agree = compareState.every((d, i) => close5(distributions.rows[i].sed, d.sed) && close5(distributions.rows[i].probabilityBinning.T, d.T) && close5(tabled.rows.find((r) => r.sample === d.name).values['All events'], d.sed));
+  const rareAgree = compareState.every((d, i) => rare.rows[i].count === d.count && close5(rare.rows[i].countInterval[0], d.interval[0]) && close5(rare.rows[i].countInterval[1], d.interval[1]));
+  check('compare_distributions, statistics_table with a control and rare_events: each tube against the unstained one, and the counts of the brightest PE events, the same as computed directly; SED near the CD4+ share (the same cells in every tube: the share above the split at the saturating 125 ng), also at 1.953 ng, where dim CD4+ cells fall below the split', `${compareState.map((d, i) => `${d.name}: SED ${distributions.rows[i].sed}% (${d.above.toFixed(1)}% above 1,000), T(χ) ${distributions.rows[i].probabilityBinning.T}`).join('; ')}; ${agree ? 'equal' : 'differ'}; PE bright ${rare.rows.map((r) => `${r.count} [${r.countInterval.join('–')}], ${r.parentEventsForTargetCV} parent events for a 5% CV`).join('; ')}; ${rareAgree ? 'equal' : 'differ'}`, agree && rareAgree && compareState.every((d, i) => Math.abs(distributions.rows[i].sed - compareState[0].above) < 3), 'equal; SED within 3 points');
+
   // 2. The spectral example: unmix builds and proposes a reference library, then unmixes; it equals
   // the same steps run directly.
   await tool('open_example', { id: 'spectral-25color' }, 'Spectral agent');

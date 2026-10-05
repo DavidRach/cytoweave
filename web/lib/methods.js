@@ -41,6 +41,14 @@ export const REFERENCES = {
   separationIndex: { text: 'Bigos M. Separation index: an easy-to-use metric for evaluation of different configurations on the same flow cytometer. Curr Protoc Cytom. 2007;Chapter 1:Unit 1.21.', doi: '10.1002/0471142956.cy0121s40' },
   titration: { text: 'Bonilla DL, Paul A, Gil-Pulido J, Park LM, Jaimes MC. The power of reagent titration in flow cytometry. Cells. 2024;13(20):1677.', doi: '10.3390/cells13201677' },
   voltageSetup: { text: 'Meinelt E, Reunanen M, Edinger M, et al. Standardizing application setup across multiple flow cytometers using BD FACSDiva version 6 software. BD Biosciences technical bulletin; 2012.', doi: null },
+  overton: { text: 'Overton WR. Modified histogram subtraction technique for analysis of flow cytometry data. Cytometry. 1988;9(6):619–626.', doi: '10.1002/cyto.990090617' },
+  bagwell: { text: 'Bagwell CB. A journey through flow cytometric immunofluorescence analyses: finding accurate and robust algorithms that estimate positive fraction distributions. Clin Immunol Newsl. 1996;16(3).', doi: null },
+  probabilityBinning: { text: 'Roederer M, Treister A, Moore W, Herzenberg LA. Probability binning comparison: a metric for quantitating univariate distribution differences. Cytometry. 2001;45(1):37–46.', doi: '10.1002/1097-0320(20010901)45:1<37::AID-CYTO1142>3.0.CO;2-E' },
+  ksTest: { text: 'Young IT. Proof without prejudice: use of the Kolmogorov-Smirnov test for the analysis of histograms from flow systems and other sources. J Histochem Cytochem. 1977;25(7):935–941.', doi: '10.1177/25.7.894009' },
+  garwood: { text: 'Garwood F. Fiducial limits for the Poisson distribution. Biometrika. 1936;28(3/4):437–442.', doi: '10.2307/2333958' },
+  clopperPearson: { text: 'Clopper CJ, Pearson ES. The use of confidence or fiducial limits illustrated in the case of the binomial. Biometrika. 1934;26(4):404–413.', doi: '10.1093/biomet/26.4.404' },
+  eventsNeeded: { text: 'Roederer M. How many events is enough? Are you positive? Cytometry A. 2008;73(5):384–385.', doi: '10.1002/cyto.a.20549' },
+  detectionLimits: { text: 'Armbruster DA, Pry T. Limit of blank, limit of detection and limit of quantitation. Clin Biochem Rev. 2008;29(Suppl 1):S49–S52.', doi: null },
 };
 
 const ORDER = Object.keys(REFERENCES);
@@ -218,6 +226,32 @@ export function writeMethods(ws, options = {}) {
   }
   for (const d of ws.derived.filter((r) => r.kind === 'cellcycle')) paragraphs.push(`DNA content histograms were modeled with the ${/watson/i.test(d.method ?? '') ? `Watson pragmatic model ${cite('watson')}` : `Dean–Jett–Fox model ${cite('deanJettFox')}`}.`);
   for (const d of ws.derived.filter((r) => r.kind === 'proliferation')) paragraphs.push(`Proliferation was modeled by fitting generation peaks of dye dilution; division, proliferation and expansion indices follow Roederer ${cite('proliferation')}.`);
+
+  // Tables: comparisons with control samples, rare-event statistics and detection limits.
+  const columns = (ws.tables ?? []).flatMap((t) => t.columns);
+  const stats = new Set(columns.map((c) => c.stat));
+  const comparisons = [
+    stats.has('sed') ? `enhanced normalized subtraction (SED in FlowJo) ${cite('bagwell')}` : '',
+    stats.has('overton') ? `Overton's cumulative subtraction ${cite('overton')}` : '',
+    stats.has('pbT') || stats.has('pbPositive') ? `probability binning (${stats.has('pbT') ? 'the T(χ) metric' : ''}${stats.has('pbT') && stats.has('pbPositive') ? ' and ' : ''}${stats.has('pbPositive') ? 'the share of events in excess of the control' : ''}) ${cite('probabilityBinning')}` : '',
+    stats.has('ksD') ? `the Kolmogorov–Smirnov statistic D ${cite('ksTest')}` : '',
+  ].filter(Boolean);
+  if (comparisons.length) {
+    const controls = [...new Set(columns.filter((c) => c.control?.sampleId).map((c) => ws.samples.find((x) => x.id === c.control.sampleId)?.name).filter(Boolean))];
+    paragraphs.push(`Each sample's population was compared with that of a control sample (${list(controls)}) on the channel, using ${list(comparisons)}.`);
+  }
+  const intervals = [
+    stats.has('countLow') || stats.has('countHigh') ? `counts with exact Poisson ${cite('garwood')}` : '',
+    stats.has('freqLow') || stats.has('freqHigh') ? `frequencies with exact binomial (Clopper–Pearson) ${cite('clopperPearson')}` : '',
+  ].filter(Boolean);
+  if (intervals.length) paragraphs.push(`Rare populations are reported as ${list(intervals)} 95% confidence intervals${stats.has('countCV') ? `, and with the counting CV of 100/√n for n events ${cite('eventsNeeded')}` : ''}.`);
+  for (const column of columns.filter((c) => c.limits?.blankIds?.length)) {
+    const name = column.gateId && column.gateId !== 'root' ? ws.gates.find((g) => g.id === column.gateId)?.name ?? 'the population' : 'all events';
+    const what = column.stat === 'count' ? 'count' : 'frequency';
+    const l = column.limits;
+    const cv = l.cvTarget ?? 20;
+    paragraphs.push(`Limits for the ${what} of ${name} were set as in CLSI EP17 ${cite('detectionLimits')} from ${l.blankIds.length} blank sample(s)${l.lowIds?.length ? ` and ${l.lowIds.length} low-level sample(s)` : ''}: the limit of blank as ${l.method === 'nonparametric' ? 'the blanks\' 95th percentile' : 'the blanks\' mean plus 1.645 SD'}${l.lowIds?.length ? ', the limit of detection as the limit of blank plus 1.645 times the low-level samples\' pooled SD' : ''}, and each sample's lower limit of quantification as the lowest value measured with a CV of ${cv}%, never below the ${Math.ceil((100 / cv) ** 2 - 1e-9)} events that give that CV by Poisson counting ${cite('eventsNeeded')}.`);
+  }
 
   // Statistics.
   for (const comparison of (ws.comparisons ?? []).slice(-5)) {

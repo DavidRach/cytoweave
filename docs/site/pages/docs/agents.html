@@ -12,7 +12,7 @@ lede: Ask an AI agent to open data, gate, compute statistics and write the metho
         <li>run acquisition QC, unmix spectral files, and cluster and map cells across samples;</li>
         <li>analyze an antibody titration or a detector voltage walk;</li>
         <li>save and apply <a href="templates.html">analysis templates</a> and the published OMIP-101 and OMIP-090 strategies, and name populations with Cell Ontology terms;</li>
-        <li>compute population statistics and tables across samples, and look at plots as images;</li>
+        <li>compute population statistics and tables across samples, compare samples with a control (% positive, probability binning), and report rare populations with exact intervals and detection limits, and look at plots as images;</li>
         <li>review a gate across the cohort, compare groups of samples, check a comparison against other analysis choices, build figures and write a methods paragraph;</li>
         <li>watch an instrument's export folder, checking each file as it lands;</li>
         <li>export FlowJo workspaces, de-identified FCS files, figures and tables to files, and Gating-ML.</li>
@@ -37,7 +37,7 @@ between stimulated and unstimulated samples.</code></pre></div>
     }
   }
 }</code></pre></div>
-      <p>Options go after <code>mcp</code>: <code>--port</code> (default 8770; the next free one is used), <code>--data-dir</code> (the workspace library) and <code>--window app|browser|none</code> (how the window opens when a tool needs it). Proposals and the <code>propose_compensation</code> and <code>proposals</code> tools need CytoWeave 0.2.0 or later, <code>adapt_gate</code> 0.3.0, <code>check_robustness</code> 0.4.0, and the QC, unmixing, clustering, annotation, figure, folder-watching, export, template, cell-type and titration tools 0.5.0.</p>
+      <p>Options go after <code>mcp</code>: <code>--port</code> (default 8770; the next free one is used), <code>--data-dir</code> (the workspace library) and <code>--window app|browser|none</code> (how the window opens when a tool needs it). Proposals and the <code>propose_compensation</code> and <code>proposals</code> tools need CytoWeave 0.2.0 or later, <code>adapt_gate</code> 0.3.0, <code>check_robustness</code> 0.4.0, and the QC, unmixing, clustering, annotation, figure, folder-watching, export, template, cell-type and titration tools 0.5.0, and <code>compare_distributions</code> and <code>rare_events</code> 0.6.0.</p>
 
       <h2 id="proposals">Reviewing proposals</h2>
       <shot name="agents" alt="The Gate view while Claude Code's proposal waits: a strip above the population tree says Claude Code proposes 4 changes, with Review, Accept all and Reject all; the proposed gates are in italics and dotted on the plots">An agent's proposal waiting: the strip above the tree, proposed gates dotted and in italics.</shot>
@@ -82,6 +82,8 @@ between stimulated and unstimulated samples.</code></pre></div>
             <tr><td><code>apply_template</code></td><td>Applies a template or a strategy (<code>omip-101</code>, <code>omip-090</code>) with channels matched by marker, saying how each matched and what was left out; a strategy's gates are placed on one sample's events. The gates and figures are proposed</td></tr>
             <tr><td><code>suggest_cell_types</code></td><td>A Cell Ontology term for each population from its phenotype, never its name, with a confidence and the markers it rests on; <code>propose</code> proposes the top terms for you to confirm</td></tr>
             <tr><td><code>titration</code></td><td>Analyzes an antibody titration (amounts from the file names) or a detector voltage walk (voltages from <code>$PnV</code>): each step's stain and separation index, and the recommended amount or voltage range; <code>save</code> proposes the result</td></tr>
+            <tr><td><code>compare_distributions</code></td><td>Each sample's population against a control sample's on a channel: % positive by SED and Overton, probability binning's T(χ), the K-S D; several channels for multivariate probability binning</td></tr>
+            <tr><td><code>rare_events</code></td><td>Exact intervals of a rare population's count and frequency, the events needed for a target CV, and limits of blank, detection and quantification from blank and low-level samples</td></tr>
             <tr><td><code>export_flowjo</code>, <code>export_fcs</code>, <code>export_figure</code>, <code>export_table</code></td><td>Write a FlowJo workspace, de-identified FCS files, a figure (SVG, PNG, PDF) or a statistics table to an absolute path; never replace a file unless told to</td></tr>
             <tr><td><code>methods</code></td><td>A methods paragraph with numbered references</td></tr>
             <tr><td><code>export_gating_ml</code></td><td>The gating strategy as Gating-ML 2.0</td></tr>

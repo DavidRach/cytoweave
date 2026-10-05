@@ -136,3 +136,23 @@ test('methods describe a titration and a voltage walk, with their references', a
   assert.match(text, /507 V.*567 V; 510 V was chosen/);
   for (const key of ['stainIndex', 'separationIndex', 'titration', 'voltageSetup']) assert.ok(references.some((r) => r.key === key), key);
 });
+
+test('comparisons, rare-event intervals and detection limits in tables are described and cited', () => {
+  let ws = createWorkspace('t');
+  ws = {
+    ...ws,
+    samples: [{ id: 'c', name: 'FMO CD25', role: 'fmo', channels: [] }],
+    tables: [{ id: 't', name: 'T', columns: [
+      { id: 'a', stat: 'sed', gateId: 'root', channel: 'FITC-A', control: { sampleId: 'c' } },
+      { id: 'b', stat: 'pbT', gateId: 'root', channel: 'FITC-A', control: { sampleId: 'c' } },
+      { id: 'd', stat: 'countLow', gateId: 'root' },
+      { id: 'e', stat: 'freqParent', gateId: 'root', limits: { blankIds: ['c', 'x'], method: 'nonparametric', cvTarget: 10 } },
+    ] }],
+  };
+  const { paragraphs, references } = writeMethods(ws);
+  const text = paragraphs.join('\n');
+  assert.match(text, /control sample \(FMO CD25\) on the channel, using enhanced normalized subtraction \(SED in FlowJo\) \[\d\] and probability binning \(the T\(χ\) metric\)/);
+  assert.match(text, /counts with exact Poisson \[\d\] 95% confidence intervals/);
+  assert.match(text, /95th percentile.*CV of 10%, never below the 100 events/);
+  for (const key of ['bagwell', 'probabilityBinning', 'garwood', 'detectionLimits', 'eventsNeeded']) assert.ok(references.some((r) => r.key === key), key);
+});

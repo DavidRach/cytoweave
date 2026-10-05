@@ -1,6 +1,6 @@
 ---
 title: Tables and comparisons
-description: Build statistics tables across samples in CytoWeave and compare groups with the test the design calls for: Welch's t-test, paired t-test, ANOVA or repeated measures with nonparametric counterparts, effect sizes, bootstrap confidence intervals, and screens of every population or cluster with multiple-testing correction.
+description: Build statistics tables across samples in CytoWeave, compare each sample with a control by SED, Overton and probability binning, report rare populations with exact intervals and detection limits, and compare groups with the test the design calls for, with effect sizes and screens of every population or cluster.
 lede: Turn populations into numbers for every sample, and compare groups of samples with a test chosen from the design rather than by habit.
 ---
       <h2 id="tables">Tables</h2>
@@ -19,11 +19,49 @@ lede: Turn populations into numbers for every sample, and compare groups of samp
             <tr><td>Location</td><td>Median, mean, geometric mean, mode</td></tr>
             <tr><td>Spread</td><td>SD, robust SD, CV, robust CV, median absolute deviation (MAD)</td></tr>
             <tr><td>Distribution</td><td>Minimum, maximum, any percentile, % above a threshold</td></tr>
+            <tr><td>Rare events</td><td>Lower and upper 95% limits of the count (exact Poisson) and of the % of parent (exact binomial); counting CV</td></tr>
+            <tr><td>Against a control sample</td><td>% positive by SED and by Overton subtraction; probability binning's T(χ) and % positive; the Kolmogorov–Smirnov D (<a href="#control">below</a>)</td></tr>
           </tbody>
         </table>
       </div>
       <p>The <strong>robust SD</strong> is BD FACSDiva's: half the range around the median that holds 68.26% of the events, (P84.13 − P15.87) / 2, and the robust CV is 100 × that over the median. FlowJo 11's Robust SD is 1.4826 × the median absolute deviation instead; for a symmetric population the two agree, for a skewed or two-peaked one they do not. To reproduce FlowJo's, multiply the <strong>median absolute deviation</strong> by 1.4826. Medians match FlowJo's exactly.</p>
-      <p>Show a table as a <strong>Heat map</strong>, <strong>Copy</strong> it as TSV to paste into a spreadsheet, or save it as <strong>CSV</strong>. A column's menu renames, moves or removes it, or sends it to <strong>Compare between groups</strong>. Frequencies in the inspector carry a 95% binomial confidence interval.</p>
+      <p>Show a table as a <strong>Heat map</strong>, <strong>Copy</strong> it as TSV to paste into a spreadsheet, or save it as <strong>CSV</strong>. A column's menu renames, moves or removes it, sends it to <strong>Compare between groups</strong>, or adds <a href="#limits">detection limits</a>. Frequencies in the inspector carry an exact 95% binomial confidence interval.</p>
+
+      <h2 id="control">Comparing with a control sample</h2>
+      <shot name="compare-control" alt="A histogram of CD25 on T cells in a stimulated sample with the unstimulated sample of the same donor overlaid; below it, the stimulated sample against the unstimulated one: 31.0% positive by SED, 27.4% by Overton subtraction, probability binning T(χ) 577">CD25 on T cells, stimulated, with the same donor's unstimulated sample overlaid: the comparison appears under the histogram.</shot>
+      <p>How much of a stained sample lies above its FMO, or of a stimulated sample above its unstimulated control, when the two overlap too much for a gate? Choose one of the statistics <strong>against a control sample</strong>: the column then asks for the <strong>Control sample</strong> and, if it is not the same population, the <strong>Control population</strong>. Each sample's population is compared with the control's on the column's channel.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Statistic</th><th>What it measures</th></tr></thead>
+          <tbody>
+            <tr><td>% positive (SED)</td><td>The share of the sample's events that are positive, by Bagwell's enhanced normalized subtraction, which FlowJo calls SED. It estimates the part of the positive population that overlaps the negative one, so it stays close to the true share when the two overlap.</td></tr>
+            <tr><td>% positive (Overton)</td><td>Overton's cumulative subtraction: the largest gap between the control's and the sample's cumulative distributions, which is the Kolmogorov–Smirnov D in one direction. Exact for well-separated populations, it underestimates where they overlap.</td></tr>
+            <tr><td>T(χ) (probability binning)</td><td>Roederer's metric: the control's events split into bins of equal counts and the sample's counted in them. Above 4, the distributions differ (p &lt; 0.01); about 0 for two samples of the same cells.</td></tr>
+            <tr><td>% positive (probability binning)</td><td>The share of the sample's events in excess of the control's in those bins.</td></tr>
+            <tr><td>K-S D</td><td>The largest difference between the two cumulative distributions, in either direction. With tens of thousands of events any difference is significant, so its p-value says little; D itself is a fair size of the difference.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All five come from the events' order, so they do not change with the axis scale. They assume the sample holds the control's population plus, perhaps, a positive one: a whole population shifted brighter (a voltage change, a different autofluorescence) reads as positive cells. Put such columns in <strong>Compare</strong> like any other, or choose the statistic there directly with its control.</p>
+      <p>On a histogram, overlay the control (<strong>More → Overlay other samples</strong>): the plot's sample is compared with each overlaid one and the result shown under the plot.</p>
+      <p>On simulated tubes with known shares, SED came within 2 points of the truth from 5% to 40% positive, while Overton fell 2–8 points short where the populations overlapped; CytoWeave's probability binning gives the same bins and statistic as the R package flowStats. See <a href="../science.html#validation">Validation</a>.</p>
+
+      <h2 id="rare-events">Rare events</h2>
+      <p>A rare population's frequency is only as precise as the number of its events: 100 events give a 10% CV, 25 events a 20% CV (Poisson counting). For a population of fewer than 10,000 events the inspector shows its counting CV, the exact 95% interval of the count and, below a 10% CV, how many events of the parent a 10% CV would take. In Tables, the lower and upper 95% limits of the count and of the % of parent are statistics of their own.</p>
+      <h3 id="limits">Detection limits</h3>
+      <p>Whether a small value is real depends on what samples without the population show. A count or frequency column's menu → <strong>Add detection limits</strong> asks for:</p>
+      <ul>
+        <li><strong>Blank samples</strong>, with none of the population: healthy donors for a disease marker, FMO controls, unstimulated samples for a response.</li>
+        <li><strong>Low-level samples</strong> (optional), with a little of it, for example a dilution of a positive sample; replicates of one level can share an annotation.</li>
+        <li>The <strong>target CV</strong> for quantification (20% by default).</li>
+      </ul>
+      <p>The dialog computes, as CLSI EP17 and Armbruster &amp; Pry (2008) describe:</p>
+      <ul>
+        <li>the <strong>limit of blank</strong>: the blanks' mean + 1.645 SD, or their 95th percentile;</li>
+        <li>the <strong>limit of detection</strong>: the limit of blank + 1.645 × the pooled SD of the low-level samples;</li>
+        <li>the <strong>lower limit of quantification</strong>: the lowest low-level mean measured with the target CV, and in each sample never below the events that give that CV by counting alone (25 events for 20%).</li>
+      </ul>
+      <p>Values at or below the limit of blank are marked <strong>ND</strong> (not detected), and values above it but below their sample's limit of quantification <strong>&lt; LLOQ</strong>; a CSV adds a status column. EP17 asks for 20 blank and 20 low-level results to verify limits and 60 to establish them; the dialog says when there are fewer. The limits go into the methods text.</p>
 
       <h2 id="compare">Comparing groups</h2>
       <shot name="compare" alt="The Compare view: the median CD25 of T cells, stimulated against unstimulated, paired by subject: a dot plot with lines joining each donor's samples, a paired t-test p = 3.1×10⁻⁵, the Wilcoxon signed-rank check, group summaries and effect sizes with 95% confidence intervals">Median CD25 on T cells: six donors, paired by subject, so the paired t-test was chosen.</shot>

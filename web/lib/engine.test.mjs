@@ -271,3 +271,27 @@ test('workspaces serialize and parse', () => {
   assert.equal(back.gates.length, 1);
   assert.throws(() => parseWorkspace('{"format":"other"}'), /not a CytoWeave workspace/);
 });
+
+test('comparison statistics use the control sample given by the context', () => {
+  // The test sample: 25% of events express C; the control: none do.
+  const view = makeView('test', 4000, 5);
+  const random = createRandom(9);
+  const n = 4000;
+  const control = new SampleView({ id: 'fmo', name: 'fmo', keywords: {}, technology: 'conventional' }, {
+    eventCount: n,
+    parameters: [{ index: 0, name: 'A', type: 'scatter', range: 1000 }, { index: 1, name: 'B', type: 'scatter', range: 1000 }, { index: 2, name: 'C', type: 'fluorescence', range: 1000 }],
+    data: [Float32Array.from({ length: n }, () => 200 + 30 * random.gaussian()), Float32Array.from({ length: n }, () => 200 + 30 * random.gaussian()), Float32Array.from({ length: n }, () => 10 * random.gaussian())],
+  });
+  const ws = createWorkspace('t');
+  const context = { viewOf: (id) => (id === 'fmo' ? control : null) };
+  const spec = (stat) => ({ stat, channel: 'C', control: { sampleId: 'fmo' } });
+  assert.ok(Math.abs(computeStatistic(view, ws, spec('sed'), context) - 25) < 1);
+  assert.ok(Math.abs(computeStatistic(view, ws, spec('overton'), context) - 25) < 1);
+  assert.ok(computeStatistic(view, ws, spec('pbT'), context) > 4);
+  assert.ok(Math.abs(computeStatistic(view, ws, spec('ksD'), context) - 0.25) < 0.02);
+  // Without the control's events there is no value.
+  assert.ok(Number.isNaN(computeStatistic(view, ws, spec('sed'), {})));
+  // Rare-event statistics need no control: 4000 events, Poisson limits around them.
+  const [lo, hi] = [computeStatistic(view, ws, { stat: 'countLow' }), computeStatistic(view, ws, { stat: 'countHigh' })];
+  assert.ok(lo < 4000 && hi > 4000 && hi - lo < 300);
+});

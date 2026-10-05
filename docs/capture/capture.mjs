@@ -357,6 +357,25 @@ const scenes = {
     await waitFor(`/p = /.test(${mainText})`, 60000);
     await sleep(1500);
   },
+  // A sample against a control: CD25 on T cells of a stimulated sample, the same donor's
+  // unstimulated sample overlaid, and the comparison under the histogram.
+  async 'compare-control'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await mode('gate');
+    await selectSample('D01_Stim');
+    await selectGate('T cells');
+    await app(`
+      const { addPlot, updatePlot } = await import('/lib/workspace.js');
+      const ws = app.store.ws;
+      const view = app.data.view(app.store.ui.sampleId);
+      const x = view.parameters.find((p) => p.marker === 'CD25').name;
+      const control = ws.samples.find((s) => s.name === 'D01_Unstim');
+      const added = addPlot({ ...ws, plots: [] }, { populationId: ws.gates.find((g) => g.name === 'T cells').id, x, type: 'histogram' });
+      app.store.commit(updatePlot(added.ws, added.plot.id, { overlays: [{ sampleId: control.id, color: '#e45756', label: control.name }] }), 'Compare with a control', ['plots']);`);
+    await waitFor(`[...document.querySelectorAll('.plot-compare')].some((e) => /positive \\(SED\\)/.test(e.textContent))`, 60000);
+    await sleep(1500);
+  },
   // Compare: robustness of "monocytes do not change with stimulation" to analysis choices.
   async 'compare-robustness'() {
     await example('pbmc-immunophenotyping');

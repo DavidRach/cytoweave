@@ -8,7 +8,7 @@
 import { h, icon, clear } from './dom.js';
 import { toast, progressToast } from './overlays.js';
 import { mountChart, leftAxis, bottomAxis, valueScale, withAlpha, downloadCSV, formatP, formatValue } from './charts.js';
-import { columnLabel } from './mode-tables.js';
+import { columnLabel, controlSampleOptions, statisticContext } from './mode-tables.js';
 import { computeStatistic, countOf, population } from '../lib/engine.js';
 import { STATISTICS } from '../lib/stats.js';
 import { ROOT, META_FIELDS, channelCatalog, channelLabel, gateById, gatePath, setCollection } from '../lib/workspace.js';
@@ -305,7 +305,7 @@ export function mountCompareMode(app, container) {
       const table = ws.tables.find((t) => t.id === c.tableId);
       const column = table?.columns.find((col) => col.id === c.columnId) ?? table?.columns[0];
       if (!column) return null;
-      return { kind: 'statistic', gateId: column.gateId ?? ROOT, stat: column.stat, channel: column.channel, ancestorId: column.ancestorId, value: column.value, label: columnLabel(ws, column) };
+      return { kind: 'statistic', gateId: column.gateId ?? ROOT, stat: column.stat, channel: column.channel, ancestorId: column.ancestorId, value: column.value, control: column.control, label: columnLabel(ws, column) };
     }
     if (c.source === 'cluster') {
       if (!c.clusterChannel || c.cluster === null || c.cluster === undefined) return null;
@@ -314,9 +314,16 @@ export function mountCompareMode(app, container) {
       return { kind: 'cluster', channel: c.clusterChannel, cluster: c.cluster, parentId: c.clusterParent ?? ROOT, label: `${clusterName(record, c.cluster)} (${c.clusterChannel}): % of ${parentName}` };
     }
     const stat = STATISTICS.find((s) => s.id === c.stat) ?? STATISTICS[1];
-    const spec = { kind: 'statistic', gateId: c.gateId ?? ROOT, stat: stat.id, channel: stat.needsChannel ? c.channel ?? defaultChannel() : undefined, ancestorId: stat.needsAncestor ? c.ancestorId : undefined, value: stat.needsValue ? c.value : undefined };
+    const spec = { kind: 'statistic', gateId: c.gateId ?? ROOT, stat: stat.id, channel: stat.needsChannel ? c.channel ?? defaultChannel() : undefined, ancestorId: stat.needsAncestor ? c.ancestorId : undefined, value: stat.needsValue ? c.value : undefined, control: controlOf(stat) };
     spec.label = columnLabel(ws, spec);
     return spec;
+  }
+
+  // A comparison statistic's control: the chosen sample, else the first control sample.
+  function controlOf(stat) {
+    if (!stat.needsControl) return undefined;
+    const sampleId = cfg().controlSampleId ?? controlSampleOptions(store.ws)[0]?.value;
+    return sampleId ? { sampleId } : undefined;
   }
 
   function defaultChannel() {
@@ -331,7 +338,7 @@ export function mountCompareMode(app, container) {
         if (!result || !result.total) return Number.NaN;
         return (100 * (result.counts.get(spec.cluster) ?? 0)) / result.total;
       }
-      return computeStatistic(view, ws, { stat: spec.stat, gateId: spec.gateId, channel: spec.channel, ancestorId: spec.ancestorId, value: spec.value });
+      return computeStatistic(view, ws, { stat: spec.stat, gateId: spec.gateId, channel: spec.channel, ancestorId: spec.ancestorId, value: spec.value, control: spec.control }, statisticContext(app));
     } catch {
       return Number.NaN;
     }
@@ -343,12 +350,14 @@ export function mountCompareMode(app, container) {
     const levels = selectedLevels(samples).map((l) => ({ ...l, points: [] }));
     const excluded = [];
     const unloaded = [];
+    const controlSample = spec?.control?.sampleId ? store.ws.samples.find((s) => s.id === spec.control.sampleId) : null;
+    if (controlSample && !data.view(controlSample.id)) unloaded.push(controlSample);
     for (const sample of samples) {
       const level = levelOf(sample, levels);
       if (!level) continue;
       const view = data.view(sample.id);
       if (!view) {
-        unloaded.push(sample);
+        if (sample !== controlSample) unloaded.push(sample);
         continue;
       }
       const value = spec ? valueOf(view, spec) : Number.NaN;
@@ -624,6 +633,7 @@ export function mountCompareMode(app, container) {
       pane.append(h('label.field', h('span', 'Channel'), select(channels.map((ch) => ({ value: ch.name, label: ch.marker ? `${ch.marker} (${ch.name})` : ch.name })), c.channel ?? defaultChannel(), (v) => setCfg({ channel: v }))));
     }
     if (stat.needsAncestor) pane.append(h('label.field', h('span', 'Relative to'), select(populationOptions(ws), c.ancestorId ?? ROOT, (v) => setCfg({ ancestorId: v }))));
+    if (stat.needsControl) pane.append(h('label.field', h('span', 'Control sample'), select(controlSampleOptions(ws), controlOf(stat)?.sampleId, (v) => setCfg({ controlSampleId: v }))));
     if (stat.needsValue) {
       const input = h('input.input.small', { type: 'number', step: 'any', value: c.value ?? 50 });
       input.addEventListener('change', () => setCfg({ value: Number.parseFloat(input.value) }));
@@ -1295,7 +1305,8 @@ export function mountCompareMode(app, container) {
     const samples = candidateSamples();
     const levels = selectedLevels(samples);
     const inDesign = samples.filter((s) => levelOf(s, levels));
-    const unloaded = inDesign.filter((s) => !data.view(s.id));
+    const control = controlOf(STATISTICS.find((s) => s.id === cfg().stat) ?? STATISTICS[1]);
+    const unloaded = [...inDesign, ...store.ws.samples.filter((s) => s.id === control?.sampleId && kind === 'populations')].filter((s) => !data.view(s.id));
     if (unloaded.length) await loadSamples(unloaded);
     const progress = progressToast(`Screening ${kind}…`);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1319,7 +1330,7 @@ export function mountCompareMode(app, container) {
     let testUsed = null;
     for (let i = 0; i < gates.length; i += 1) {
       const gate = gates[i];
-      const spec = { kind: 'statistic', gateId: gate.id, stat: stat.id, channel: stat.needsChannel ? c.channel ?? defaultChannel() : undefined, ancestorId: stat.needsAncestor ? c.ancestorId : undefined, value: stat.needsValue ? c.value : undefined };
+      const spec = { kind: 'statistic', gateId: gate.id, stat: stat.id, channel: stat.needsChannel ? c.channel ?? defaultChannel() : undefined, ancestorId: stat.needsAncestor ? c.ancestorId : undefined, value: stat.needsValue ? c.value : undefined, control: controlOf(stat) };
       const analysis = analyzeLight(spec);
       const row = { id: gate.id, label: gate.name, path: gatePath(ws, gate.id), spec: { ...spec, label: columnLabel(ws, spec) }, p: Number.NaN, log2fc: Number.NaN, g: Number.NaN, means: [] };
       if (analysis.design) {

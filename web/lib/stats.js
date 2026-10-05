@@ -25,7 +25,22 @@ export const STATISTICS = [
   { id: 'percentile', label: 'Percentile', needsChannel: true, needsValue: true },
   { id: 'mode', label: 'Mode', needsChannel: true },
   { id: 'positive', label: '% above threshold', needsChannel: true, needsValue: true },
+  // Rare events (rare-events.js): exact 95% intervals and the counting precision.
+  { id: 'countLow', label: 'Count, lower 95% limit', needsChannel: false },
+  { id: 'countHigh', label: 'Count, upper 95% limit', needsChannel: false },
+  { id: 'countCV', label: 'Counting CV (%)', needsChannel: false },
+  { id: 'freqLow', label: '% of parent, lower 95% limit', needsChannel: false },
+  { id: 'freqHigh', label: '% of parent, upper 95% limit', needsChannel: false },
+  // Comparisons with a control sample's population on one channel (distribution.js).
+  { id: 'overton', label: '% positive vs control (Overton)', needsChannel: true, needsControl: true },
+  { id: 'sed', label: '% positive vs control (SED)', needsChannel: true, needsControl: true },
+  { id: 'pbPositive', label: '% positive vs control (probability binning)', needsChannel: true, needsControl: true },
+  { id: 'pbT', label: 'T(χ) vs control (probability binning)', needsChannel: true, needsControl: true },
+  { id: 'ksD', label: 'K-S D vs control', needsChannel: true, needsControl: true },
 ];
+
+// Statistics expressed as percentages, formatted alike.
+const PERCENT = new Set(['positive', 'cv', 'rcv', 'countCV', 'overton', 'sed', 'pbPositive']);
 
 // Copies the selected values into a new Float64Array, dropping non-finite ones. `indices` may also
 // be an EventSet (eventset.js).
@@ -342,7 +357,9 @@ export function formatStatistic(id, value) {
   if (value === undefined || value === null || Number.isNaN(value)) return '—';
   if (!Number.isFinite(value)) return value > 0 ? '∞' : '−∞';
   if (id === 'count') return Math.round(value).toLocaleString('en-US');
-  if (id.startsWith('freq') || id === 'positive' || id === 'cv' || id === 'rcv') {
+  if (id === 'countLow' || id === 'countHigh') return value >= 1000 ? Math.round(value).toLocaleString('en-US') : value.toFixed(value >= 10 ? 1 : 2);
+  if (id === 'ksD') return value.toFixed(3);
+  if (id.startsWith('freq') || PERCENT.has(id)) {
     const abs = Math.abs(value);
     return abs >= 10 ? value.toFixed(1) : abs >= 1 ? value.toFixed(2) : abs >= 0.01 ? value.toFixed(3) : value.toPrecision(2);
   }

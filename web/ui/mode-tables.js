@@ -2,11 +2,12 @@
 // (× channel); its rows are the samples of a group. Values update as gates change.
 
 import { h, icon, clear, downloadBlob, formatCount } from './dom.js';
-import { showMenu, toast, progressToast, promptDialog } from './overlays.js';
+import { showMenu, showDialog, toast, progressToast, promptDialog } from './overlays.js';
 import { computeStatistic } from '../lib/engine.js';
 import { STATISTICS, formatStatistic } from '../lib/stats.js';
 import { ROOT, channelCatalog, channelLabel, gateById, gatePath, setCollection } from '../lib/workspace.js';
 import { newId } from '../lib/gates.js';
+import { classifyValue, detectionLimits, eventsNeeded } from '../lib/rare-events.js';
 import { colormapColor, hexToRgb, luminance, rgbToHex } from '../lib/colormaps.js';
 
 export function columnLabel(ws, column) {
@@ -16,7 +17,84 @@ export function columnLabel(ws, column) {
   const channel = column.channel ? ` ${channelLabel(ws, column.channel, { short: true })}` : '';
   const value = column.value !== undefined && column.value !== null && column.stat === 'percentile' ? ` P${column.value}` : column.stat === 'positive' ? ` ≥ ${column.value}` : '';
   const ancestor = column.stat === 'freqOf' ? ` of ${column.ancestorId && column.ancestorId !== ROOT ? gateById(ws, column.ancestorId)?.name : 'all events'}` : '';
-  return `${population}: ${stat}${channel}${value}${ancestor}`;
+  return `${population}: ${stat}${channel}${value}${ancestor}${controlLabel(ws, column)}`;
+}
+
+// " (control: FMO CD25)", or with another population " (control: FMO CD25, Lymphocytes)".
+function controlLabel(ws, column) {
+  if (!column.control?.sampleId) return '';
+  const sample = ws.samples.find((s) => s.id === column.control.sampleId)?.name ?? '(removed sample)';
+  const gateId = column.control.gateId;
+  const population = gateId && gateId !== column.gateId ? `, ${gateId === ROOT ? 'all events' : gateById(ws, gateId)?.name ?? '(deleted)'}` : '';
+  return ` (control: ${sample}${population})`;
+}
+
+// Samples to offer as a comparison's control, the controls (FMO, isotype, unstained) first.
+export function controlSampleOptions(ws) {
+  const rank = { fmo: 0, isotype: 1, unstained: 2 };
+  return ws.samples.slice().sort((a, b) => (rank[a.role] ?? 3) - (rank[b.role] ?? 3)).map((s) => ({ value: s.id, label: s.role && s.role !== 'sample' ? `${s.name} (${s.role === 'fmo' ? 'FMO' : s.role})` : s.name }));
+}
+
+// How a view or tool finds the events of a comparison's control sample.
+export function statisticContext(app) {
+  return { viewOf: (sampleId) => app.data.view(sampleId) };
+}
+
+function statisticSpec(column) {
+  return { stat: column.stat, gateId: column.gateId ?? ROOT, channel: column.channel, ancestorId: column.ancestorId, value: column.value, control: column.control };
+}
+
+// Columns that can carry detection limits: counts and frequencies.
+export const LIMIT_STATISTICS = new Set(['count', 'freqParent', 'freqGrandparent', 'freqTotal', 'freqOf']);
+export const LIMIT_STATUS = { 'not-detected': 'not detected', detected: 'below LLOQ', quantifiable: 'quantifiable' };
+
+// The limits of blank, detection and quantification of a count or frequency column from its blank
+// and low-level samples (column.limits: { blankIds, lowIds, lowGroupBy, method, cvTarget }), and
+// each sample's lower limit of quantification: the largest of the limit of detection, the
+// precision profile's limit and the value that (100/cv)² events of the population take in that
+// sample (Poisson counting). Null without limits or when none of the blanks is loaded.
+export function columnLimits(app, column) {
+  const spec = column.limits;
+  if (!spec?.blankIds?.length || !LIMIT_STATISTICS.has(column.stat)) return null;
+  const ws = app.store.ws;
+  const valueOf = (sampleId) => {
+    const view = app.data.view(sampleId);
+    if (!view) return Number.NaN;
+    try {
+      return computeStatistic(view, ws, statisticSpec(column), statisticContext(app));
+    } catch {
+      return Number.NaN;
+    }
+  };
+  const blanks = spec.blankIds.map(valueOf).filter(Number.isFinite);
+  if (!blanks.length) return null;
+  const groups = new Map();
+  let lowCount = 0;
+  for (const id of spec.lowIds ?? []) {
+    const value = valueOf(id);
+    if (!Number.isFinite(value)) continue;
+    lowCount += 1;
+    const sample = ws.samples.find((s) => s.id === id);
+    const key = spec.lowGroupBy ? String(sample?.meta?.[spec.lowGroupBy] ?? '') : 'low';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(value);
+  }
+  const limits = detectionLimits(blanks, [...groups.values()], { method: spec.method ?? 'parametric', cvTarget: spec.cvTarget ?? 20 });
+  const counted = eventsNeeded(limits.cvTarget).events;
+  const loqOf = (sampleId) => {
+    const candidates = [limits.loq, limits.lod];
+    const view = app.data.view(sampleId);
+    if (view && column.stat === 'count') candidates.push(counted);
+    else if (view) {
+      const count = computeStatistic(view, ws, { stat: 'count', gateId: column.gateId ?? ROOT });
+      const value = valueOf(sampleId);
+      if (count > 0 && value > 0) candidates.push((value * counted) / count);
+    }
+    const finite = candidates.filter(Number.isFinite);
+    return finite.length ? Math.max(...finite) : Number.NaN;
+  };
+  const missing = spec.blankIds.length + (spec.lowIds?.length ?? 0) - blanks.length - lowCount;
+  return { limits, counted, loqOf, status: (sampleId, value) => classifyValue(value, { lob: limits.lob, loq: loqOf(sampleId) }), missing };
 }
 
 // Computes a table's values for the loaded samples: Map(sampleId → values[]).
@@ -29,7 +107,7 @@ export function computeTable(app, table, sampleIds) {
     if (!view) continue;
     out.set(id, table.columns.map((column) => {
       try {
-        return computeStatistic(view, ws, { stat: column.stat, gateId: column.gateId ?? ROOT, channel: column.channel, ancestorId: column.ancestorId, value: column.value });
+        return computeStatistic(view, ws, statisticSpec(column), statisticContext(app));
       } catch {
         return Number.NaN;
       }
@@ -120,14 +198,19 @@ export function mountTablesMode(app, container) {
     const channelSelect = h('select.input.small', ...channels.map((c) => h('option', { value: c.name }, c.marker ? `${c.marker} (${c.name})` : c.name)));
     const ancestorSelect = h('select.input.small', h('option', { value: ROOT }, 'All events'), ...ws.gates.map((g) => h('option', { value: g.id }, gatePath(ws, g.id))));
     const valueInput = h('input.input.small', { type: 'number', value: 50, step: 'any' });
+    const controlSelect = h('select.input.small', ...controlSampleOptions(ws).map((o) => h('option', { value: o.value }, o.label)));
+    const controlPopSelect = h('select.input.small', h('option', { value: '' }, 'The same population'), h('option', { value: ROOT }, 'All events'), ...ws.gates.map((g) => h('option', { value: g.id }, gatePath(ws, g.id))));
     const channelField = h('label.field', h('span', 'Channel'), channelSelect);
     const ancestorField = h('label.field', h('span', 'Relative to'), ancestorSelect);
     const valueField = h('label.field', h('span', 'Value (percentile or threshold)'), valueInput);
+    const controlField = h('div', h('label.field', h('span', 'Control sample'), controlSelect), h('label.field', h('span', 'Control population'), controlPopSelect),
+      h('p.muted', { style: { fontSize: '11.5px', marginTop: 0 } }, 'Each sample\'s population is compared with the control\'s on the channel: for example a stained sample with its FMO.'));
     const sync = () => {
       const stat = STATISTICS.find((s) => s.id === statSelect.value);
       channelField.hidden = !stat?.needsChannel;
       ancestorField.hidden = !stat?.needsAncestor;
       valueField.hidden = !stat?.needsValue;
+      controlField.hidden = !stat?.needsControl;
     };
     statSelect.addEventListener('change', sync);
     sync();
@@ -135,13 +218,18 @@ export function mountTablesMode(app, container) {
     builder.append(
       h('label.field', h('span', 'Population'), popSelect),
       h('label.field', h('span', 'Statistic'), statSelect),
-      channelField, ancestorField, valueField,
+      channelField, ancestorField, valueField, controlField,
       h('div.btn-row',
         h('button.btn.primary.small', {
           type: 'button',
           onclick: () => {
             const stat = STATISTICS.find((s) => s.id === statSelect.value);
-            add([{ id: newId('col'), gateId: popSelect.value, stat: statSelect.value, channel: stat.needsChannel ? channelSelect.value : undefined, ancestorId: stat.needsAncestor ? ancestorSelect.value : undefined, value: stat.needsValue ? Number.parseFloat(valueInput.value) : undefined }]);
+            if (stat.needsControl && !controlSelect.value) {
+              toast('Add a control sample first.', { kind: 'error' });
+              return;
+            }
+            const control = stat.needsControl ? { sampleId: controlSelect.value, ...(controlPopSelect.value ? { gateId: controlPopSelect.value } : {}) } : undefined;
+            add([{ id: newId('col'), gateId: popSelect.value, stat: statSelect.value, channel: stat.needsChannel ? channelSelect.value : undefined, ancestorId: stat.needsAncestor ? ancestorSelect.value : undefined, value: stat.needsValue ? Number.parseFloat(valueInput.value) : undefined, control }]);
           },
         }, icon('plus'), 'Add column'),
         h('button.btn.small', {
@@ -168,7 +256,7 @@ export function mountTablesMode(app, container) {
     }
     tableHead.append(h('span', { style: { cursor: 'text' }, title: 'Rename', onclick: async () => { const name = await promptDialog({ title: 'Rename table', label: 'Name', value: table.name }); if (name) saveTable({ ...table, name }, 'Rename table'); } }, table.name));
     const rows = tableRows(app, table);
-    const unloaded = rows.filter((s) => !data.view(s.id));
+    const unloaded = [...rows, ...controlSamples(table)].filter((s) => !data.view(s.id));
     toolbar.append(
       unloaded.length ? h('button.btn.small.primary', { type: 'button', disabled: computing, onclick: () => computeAll(rows) }, icon('play'), `Compute all ${rows.length} samples`) : null,
       h('label.check', h('input', { type: 'checkbox', checked: table.heatmap !== false, onchange: (event) => saveTable({ ...table, heatmap: event.target.checked }, 'Table format') }), 'Heat map'),
@@ -210,6 +298,7 @@ export function mountTablesMode(app, container) {
           h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' } }, columnLabel(ws, column)),
           h('button.icon-button.small', { type: 'button', title: 'Column options', onclick: (event) => columnMenu(event.currentTarget, table, column) }, icon('chevronDown'))),
         cellType(column) ? h('div.muted', { style: { fontSize: '11px', fontWeight: 'normal', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px', marginLeft: 'auto' } }, cellType(column).label) : null)));
+    const limitsOf = table.columns.map((column) => (column.limits ? columnLimits(app, column) : null));
     const body = h('tbody');
     for (const sample of rows) {
       const row = values.get(sample.id);
@@ -219,7 +308,10 @@ export function mountTablesMode(app, container) {
         ...table.columns.map((column, j) => {
           if (!row) return h('td.r.muted', '…');
           const v = row[j];
-          const cell = h('td.r', formatStatistic(column.stat, v));
+          const status = limitsOf[j] && Number.isFinite(v) ? limitsOf[j].status(sample.id, v) : null;
+          const cell = h('td.r', formatStatistic(column.stat, v), status && status !== 'quantifiable'
+            ? h('span.limit-tag', { title: status === 'not-detected' ? `At or below the limit of blank (${formatStatistic(column.stat, limitsOf[j].limits.lob)})` : `Above the limit of blank, below this sample's lower limit of quantification (${formatStatistic(column.stat, limitsOf[j].loqOf(sample.id))})` }, status === 'not-detected' ? 'ND' : '< LLOQ')
+            : null);
           if (table.heatmap !== false && Number.isFinite(v) && ranges[j][1] > ranges[j][0]) {
             const t = (v - ranges[j][0]) / (ranges[j][1] - ranges[j][0]);
             const color = colormapColor('viridis', 0.15 + 0.8 * t);
@@ -249,11 +341,82 @@ export function mountTablesMode(app, container) {
     showMenu(anchor, [
       { label: 'Rename column…', icon: 'edit', onSelect: async () => { const label = await promptDialog({ title: 'Column name', label: 'Name', value: columnLabel(store.ws, column) }); if (label) saveTable({ ...table, columns: table.columns.map((c) => (c.id === column.id ? { ...c, label } : c)) }); } },
       { label: 'Compare between groups', icon: 'compare', onSelect: () => app.compareColumn?.(table, column) },
+      ...(LIMIT_STATISTICS.has(column.stat) ? [{ label: column.limits ? 'Detection limits…' : 'Add detection limits…', icon: 'target', onSelect: () => limitsDialog(table, column) }] : []),
       { label: 'Move left', icon: 'chevronLeft', onSelect: () => move(table, column, -1) },
       { label: 'Move right', icon: 'chevronRight', onSelect: () => move(table, column, 1) },
       '-',
       { label: 'Remove column', icon: 'trash', danger: true, onSelect: () => saveTable({ ...table, columns: table.columns.filter((c) => c.id !== column.id) }, 'Remove column') },
     ]);
+  }
+
+  // Blank and low-level samples for a count or frequency column, and the limits they give.
+  function limitsDialog(table, column) {
+    const ws = store.ws;
+    const current = column.limits ?? {};
+    const blanks = new Set(current.blankIds ?? []);
+    const lows = new Set(current.lowIds ?? []);
+    const fields = [...new Set(ws.samples.flatMap((s) => Object.keys(s.meta ?? {})))];
+    const method = h('select.input.small', h('option', { value: 'parametric', selected: current.method !== 'nonparametric' }, 'Mean + 1.645 SD of the blanks'), h('option', { value: 'nonparametric', selected: current.method === 'nonparametric' }, '95th percentile of the blanks'));
+    const cv = h('input.input.small', { type: 'number', min: 1, max: 100, step: 1, value: current.cvTarget ?? 20, style: { width: '80px' } });
+    const groupBy = h('select.input.small', h('option', { value: '' }, 'One group'), ...fields.map((f) => h('option', { value: f, selected: current.lowGroupBy === f }, f)));
+    const result = h('div', { style: { marginTop: '10px' } });
+    const draft = () => ({ blankIds: [...blanks], lowIds: [...lows], method: method.value, cvTarget: Number.parseFloat(cv.value) || 20, ...(groupBy.value ? { lowGroupBy: groupBy.value } : {}) });
+    const list = (set) => h('div', { style: { maxHeight: '180px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '8px', padding: '4px 8px' } },
+      ...ws.samples.map((sample) => h('label.check', h('input', { type: 'checkbox', checked: set.has(sample.id), onchange: (event) => { if (event.target.checked) set.add(sample.id); else set.delete(sample.id); update(); } }), sample.name)));
+    const unit = column.stat === 'count' ? ' events' : '%';
+    const fmt = (v) => (Number.isFinite(v) ? `${formatStatistic(column.stat, v)}${unit}` : '—');
+    const update = () => {
+      clear(result);
+      const chosen = [...blanks, ...lows];
+      const unloaded = ws.samples.filter((sample) => chosen.includes(sample.id) && !data.view(sample.id));
+      if (unloaded.length) {
+        result.append(h('div.callout.accent', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, h('span', { style: { flex: 1 } }, `${unloaded.length} of the chosen samples are not loaded.`),
+          h('button.btn.small.primary', { type: 'button', onclick: async () => { for (const sample of unloaded) await data.ensure(sample.id).catch(() => {}); update(); } }, icon('play'), 'Load them')));
+      }
+      if (!blanks.size) {
+        result.append(h('p.muted', 'Choose the blank samples: samples with none of the population, such as healthy donors for a disease marker or FMO controls.'));
+        return;
+      }
+      const found = columnLimits(app, { ...column, limits: draft() });
+      if (!found) return;
+      const { limits } = found;
+      result.append(h('table.data', h('tbody',
+        h('tr', h('td', 'Limit of blank (LoB)'), h('td.r', fmt(limits.lob)), h('td.muted', `${limits.blankCount} blank(s), mean ${fmt(limits.blankMean)}, SD ${fmt(limits.blankSD)}`)),
+        h('tr', h('td', 'Limit of detection (LoD)'), h('td.r', fmt(limits.lod)), h('td.muted', limits.lowGroups.length ? `LoB + 1.645 × pooled SD of the low-level samples (${fmt(limits.lowSD)})` : 'Add low-level samples')),
+        h('tr', h('td', 'Limit of quantification (precision profile)'), h('td.r', fmt(limits.loq)), h('td.muted', limits.lowGroups.length ? limits.lowGroups.map((g) => `${fmt(g.mean)} (CV ${formatStatistic('cv', g.cv)}%, n = ${g.n})`).join('; ') : '')),
+        h('tr', h('td', 'Counting limit'), h('td.r', `${found.counted} events`), h('td.muted', `The events that give a ${limits.cvTarget}% CV by Poisson counting; a sample's LLOQ is never below them.`)))),
+      limits.notes.length ? h('p.muted', { style: { fontSize: '11.5px' } }, limits.notes.join(' ')) : null);
+    };
+    for (const input of [method, cv, groupBy]) input.addEventListener('change', update);
+    showDialog({
+      title: `Detection limits: ${columnLabel(ws, column)}`,
+      width: 'wide',
+      content: [
+        h('p.muted', { style: { marginTop: 0 } }, 'The limit of blank is the highest value expected in samples without the population; the limit of detection, the lowest true value reliably told apart from it; the lower limit of quantification (LLOQ), the lowest value measured with the CV you need (CLSI EP17; Armbruster & Pry 2008). Cells below the LoB are marked ND, cells below their LLOQ < LLOQ.'),
+        h('div.split', { style: { gap: '14px' } },
+          h('div', h('div.section-title', 'Blank samples'), list(blanks)),
+          h('div', h('div.section-title', 'Low-level samples (optional)'), list(lows), h('label.field', h('span', 'Group replicates of a level by'), groupBy))),
+        h('div.row', { style: { gap: '14px', marginTop: '8px', flexWrap: 'wrap' } }, h('label.field', h('span', 'Limit of blank'), method), h('label.field', h('span', 'Target CV (%)'), cv)),
+        result,
+      ],
+      buttons: [
+        ...(column.limits ? [{ label: 'Remove limits', ghost: true, onClick: () => saveTable({ ...table, columns: table.columns.map((c) => (c.id === column.id ? { ...c, limits: undefined } : c)) }, 'Remove detection limits') }] : []),
+        { label: 'Cancel', ghost: true },
+        {
+          label: 'Save',
+          primary: true,
+          onClick: () => {
+            if (!blanks.size) {
+              toast('Choose at least one blank sample.', { kind: 'error' });
+              return false;
+            }
+            saveTable({ ...table, columns: table.columns.map((c) => (c.id === column.id ? { ...c, limits: draft() } : c)) }, 'Detection limits');
+            return true;
+          },
+        },
+      ],
+    });
+    update();
   }
 
   function move(table, column, delta) {
@@ -265,7 +428,14 @@ export function mountTablesMode(app, container) {
     saveTable({ ...table, columns }, 'Reorder columns');
   }
 
+  // The control samples the table's comparison columns need, beyond its rows.
+  function controlSamples(table) {
+    const ids = new Set(table.columns.map((c) => c.control?.sampleId).filter(Boolean));
+    return store.ws.samples.filter((s) => ids.has(s.id));
+  }
+
   async function computeAll(rows) {
+    rows = [...new Set([...controlSamples(current() ?? { columns: [] }), ...rows])];
     computing = true;
     const progress = progressToast(`Computing ${rows.length} samples…`);
     let done = 0;
@@ -284,11 +454,17 @@ export function mountTablesMode(app, container) {
     const ws = store.ws;
     const values = computeTable(app, table, rows.map((s) => s.id));
     const metaFields = [...new Set(rows.flatMap((s) => Object.keys(s.meta ?? {})))];
-    const header = ['Sample', 'File', ...metaFields, ...table.columns.map((c) => columnLabel(ws, c))];
+    // A column with detection limits is followed by each value's status.
+    const limitsOf = table.columns.map((column) => (column.limits ? columnLimits(app, column) : null));
+    const header = ['Sample', 'File', ...metaFields, ...table.columns.flatMap((c, j) => (limitsOf[j] ? [columnLabel(ws, c), `${columnLabel(ws, c)}: status`] : [columnLabel(ws, c)]))];
     const lines = [header];
     for (const sample of rows) {
       const row = values.get(sample.id);
-      lines.push([sample.name, sample.fileName, ...metaFields.map((f) => sample.meta?.[f] ?? ''), ...table.columns.map((_, j) => (row && Number.isFinite(row[j]) ? String(+row[j].toPrecision(8)) : ''))]);
+      lines.push([sample.name, sample.fileName, ...metaFields.map((f) => sample.meta?.[f] ?? ''), ...table.columns.flatMap((_, j) => {
+        const finite = row && Number.isFinite(row[j]);
+        const cell = finite ? String(+row[j].toPrecision(8)) : '';
+        return limitsOf[j] ? [cell, finite ? LIMIT_STATUS[limitsOf[j].status(sample.id, row[j])] ?? '' : ''] : [cell];
+      })]);
     }
     return lines;
   }

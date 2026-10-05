@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Comparing samples with a control.** Tables gained statistics computed against a control sample's population on a channel, for when stained and unstained cells overlap too much for a gate: % positive by SED (Bagwell's enhanced normalized subtraction, as FlowJo calls it) and by Overton's cumulative subtraction, probability binning's T(χ) (above 4: the distributions differ, p < 0.01) and the share of events in excess of the control, and the Kolmogorov–Smirnov D. A column names its control sample and, if it differs, the control's population; Compare and agents use the same statistics. A histogram with other samples overlaid shows the plot's sample against each overlay under the plot, and its legend now names the plot's own sample.
+- **Rare events.** The lower and upper 95% limits of a population's count (exact Poisson) and of its % of parent (exact binomial) and its counting CV are Tables statistics. For a population of fewer than 10,000 events the inspector shows the counting CV, the count's interval and the parent events a 10% CV would take; its frequency interval is now exact (Clopper–Pearson) rather than Wilson's.
+- **Detection limits.** A count or frequency column can carry limits from chosen blank and low-level samples, as CLSI EP17 and Armbruster & Pry (2008) describe: the limit of blank (mean + 1.645 SD of the blanks, or their 95th percentile), the limit of detection (plus 1.645 × the low-level samples' pooled SD) and each sample's lower limit of quantification (the lowest level measured with the target CV, never below the events that give that CV by counting). Values are marked ND or < LLOQ, and CSV exports add each value's status.
+- Methods paragraphs describe and cite the comparisons, intervals and limits a workspace's tables use.
+- Agents have `compare_distributions` (every comparison of samples against a control, multivariate probability binning with several channels) and `rare_events` (intervals, events needed and detection limits); `statistics_table`, `export_table` and `compare` take a control sample for the comparison statistics.
+
+### Validation
+
+- **Comparisons and rare events** (new `comparisons` suite; `comparison-cases.mjs`; `reference/flowstats.json` with `generate_flowstats.R`): probability binning gives the same bins, χ² and Baggerly's statistic as flowStats 4.24.0 in 36 cases (to 9e-15); the K-S D equals R's, and its p-value R's to R's own tolerance of 1e-6; on tubes with 5–40% positive cells SED is within 2 points of the truth while Overton falls 2–8 points short where the populations overlap; Bagwell's (1996) simulation ranks Dmax, enhanced Dmax and ENS as he did (mean errors −12.7%, −4.9% and −1.3%; his −7.7%, −2.7% and −0.85%); T(χ) exceeds 4 in 0.5% of pairs of samples of the same cells; the exact intervals equal R's poisson.test and binom.test and cover the truth at least 95% of the time; limits from 60 simulated blanks and 60 low-level samples flag 4% of new blanks and detect 98% of samples at the limit of detection. FlowJo 11.2 has no population comparison platform (a FlowJo 10 feature), so it could not serve as a reference.
+- The agent session checks the new tools against the statistics computed directly (19 checks).
+
 ## 0.5.0 (2026-10-04)
 
 CytoWeave 0.5 is sturdier, more automatable and reusable. Its FCS reader was hardened with a fuzzer and checked on files from 42 more instrument models; an AI agent can run the whole pipeline, from QC and unmixing to clusters, figures and exports, with every change a proposal you review; an analysis becomes a template that applies to another experiment by marker, published OMIP gating strategies are placed on your own data, and every population gets a Cell Ontology term to confirm; and a new Titration view finds the amount of antibody and the detector voltage to use.

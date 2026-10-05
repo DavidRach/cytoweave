@@ -2,7 +2,7 @@
 // or scripts through /api/remote/action) are performed here, in the open window, where the user
 // sees them and can undo them. Each action returns { ok, message, data }.
 
-import { channelTransform, computeStatistic, countOf, describePopulation, gateRobustness, population, populationSet } from '../lib/engine.js';
+import { COMPARISONS, channelTransform, computeStatistic, countOf, describePopulation, gateRobustness, population, populationColumns, populationSet } from '../lib/engine.js';
 import { createTransform } from '../lib/transforms.js';
 import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
@@ -205,15 +205,129 @@ export function installRemote(app) {
       const samples = w.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : s.role === 'sample' || s.role === 'reference'));
       const gateIds = args.populations?.length ? args.populations.map(resolvePopulation) : w.gates.map((g) => g.id);
       const stat = args.statistic ?? 'freqParent';
+      // Comparison statistics (overton, sed, pbPositive, pbT, ksD) need a control sample.
+      let control;
+      let context = {};
+      if (COMPARISONS.has(stat)) {
+        if (!args.control) throw new ActionError(`${stat} compares each sample with a control sample: name it with control (e.g. an FMO).`);
+        const controlSample = resolveSample(args.control);
+        const controlView = await loadedView(controlSample);
+        control = { sampleId: controlSample.id, ...(args.controlPopulation ? { gateId: resolvePopulation(args.controlPopulation) } : {}) };
+        context = { viewOf: (id) => (id === controlSample.id ? controlView : null) };
+      }
       const rows = [];
       for (const sample of samples) {
         const view = await loadedView(sample);
         const channel = args.channel ? resolveChannel(view, args.channel) : undefined;
         const values = {};
-        for (const id of gateIds) values[id === ROOT ? 'All events' : gatePath(w, id)] = round(computeStatistic(view, w, { stat, gateId: id, channel }), 6);
+        for (const id of gateIds) values[id === ROOT ? 'All events' : gatePath(w, id)] = round(computeStatistic(view, w, { stat, gateId: id, channel, control }, context), 6);
         rows.push({ sample: sample.name, meta: sample.meta, values });
       }
-      return { message: `${stat}${args.channel ? ` of ${args.channel}` : ''} for ${gateIds.length} population(s) in ${samples.length} sample(s).`, data: { statistic: stat, channel: args.channel, rows } };
+      return { message: `${stat}${args.channel ? ` of ${args.channel}` : ''}${control ? ` against ${args.control}` : ''} for ${gateIds.length} population(s) in ${samples.length} sample(s).`, data: { statistic: stat, channel: args.channel, control: args.control, rows } };
+    },
+
+    async compare_distributions(args) {
+      const { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } = await import('../lib/distribution.js');
+      const w = ws();
+      if (!args.control) throw new ActionError('Name the control sample (an FMO, isotype or unstained sample, or a reference sample).');
+      const controlSample = resolveSample(args.control);
+      const controlView = await loadedView(controlSample);
+      const names = args.channels?.length ? args.channels : args.channel ? [args.channel] : null;
+      if (!names) throw new ActionError('Name the channel (or channels) to compare.');
+      const channels = names.map((c) => resolveChannel(controlView, c));
+      const populationId = resolvePopulation(args.population);
+      const controlPopulationId = args.controlPopulation ? resolvePopulation(args.controlPopulation) : populationId;
+      const control = populationColumns(controlView, w, controlPopulationId, channels);
+      if (!control || control[0].length < 2) throw new ActionError(`The control's population has fewer than two events.`);
+      const samples = args.samples?.length ? args.samples.map(resolveSample) : w.samples.filter((s) => s.id !== controlSample.id && (s.role === 'sample' || s.role === 'reference'));
+      const r = (v) => (Number.isFinite(v) ? +v.toPrecision(5) : null);
+      const rows = [];
+      for (const sample of samples) {
+        const view = await loadedView(sample);
+        const test = populationColumns(view, w, populationId, channels.map((c) => resolveChannel(view, c)));
+        if (!test || !test[0].length) {
+          rows.push({ sample: sample.name, events: 0, note: 'The population is empty or does not apply.' });
+          continue;
+        }
+        const pb = probabilityBinning(channels.length > 1 ? control : control[0], channels.length > 1 ? test : test[0]);
+        const row = { sample: sample.name, events: test[0].length, probabilityBinning: { T: r(pb.T), pbStat: r(pb.pbStat), percentPositive: r(pb.percentPositive), bins: pb.bins } };
+        if (channels.length === 1) {
+          const sed = sedSubtraction(control[0], test[0]);
+          const ks = ksTest(control[0], test[0]);
+          Object.assign(row, { overton: r(overtonSubtraction(control[0], test[0]).percentPositive), sed: r(sed.percentPositive), enhancedDmax: r(sed.enhancedDmax), ksD: r(ks.D), ksP: ks.p < 1e-300 ? 0 : r(ks.p) });
+        }
+        rows.push(row);
+      }
+      const what = `${channels.join(' × ')} of ${populationId === ROOT ? 'all events' : gatePath(w, populationId)}`;
+      const lines = rows.filter((x) => x.events).map((x) => (channels.length === 1 ? `${x.sample}: ${x.sed}% positive (SED), ${x.overton}% (Overton), T(χ) ${x.probabilityBinning.T}` : `${x.sample}: T(χ) ${x.probabilityBinning.T}, ${x.probabilityBinning.percentPositive}% in excess of the control`));
+      return {
+        message: `${what} against ${controlSample.name}. ${lines.join('; ')}. T(χ) above 4 means the distributions differ (p < 0.01, Roederer 2001); SED is Bagwell's enhanced normalized subtraction, Overton's cumulative subtraction is the K-S Dmax and underestimates the positive fraction. With many events the K-S p-value calls trivial differences significant.`,
+        data: { control: controlSample.name, controlPopulation: controlPopulationId === ROOT ? 'All events' : gatePath(w, controlPopulationId), population: populationId === ROOT ? 'All events' : gatePath(w, populationId), channels, controlEvents: control[0].length, rows },
+      };
+    },
+
+    async rare_events(args) {
+      const { binomialInterval, classifyValue, countPrecision, detectionLimits, eventsNeeded, poissonInterval } = await import('../lib/rare-events.js');
+      const w = ws();
+      const populationId = resolvePopulation(args.population);
+      if (populationId === ROOT) throw new ActionError('Name the rare population (a gate).');
+      const gate = gateById(w, populationId);
+      const statistic = args.statistic === 'count' ? 'count' : 'freqParent';
+      const cv = Number(args.cv) > 0 ? Number(args.cv) : 20;
+      const measure = async (sample) => {
+        const view = await loadedView(sample);
+        const members = populationSet(view, w, populationId);
+        if (members === undefined) return null;
+        const count = countOf(members, view);
+        const parentCount = countOf(populationSet(view, w, gate.parentId ?? ROOT), view);
+        return { count, parentCount, value: statistic === 'count' ? count : parentCount ? (100 * count) / parentCount : Number.NaN };
+      };
+      const r = (v) => (Number.isFinite(v) ? +v.toPrecision(5) : null);
+      let limits = null;
+      if (args.blanks?.length) {
+        const blanks = [];
+        for (const ref of args.blanks) {
+          const m = await measure(resolveSample(ref));
+          if (m) blanks.push(m.value);
+        }
+        const groups = new Map();
+        for (const ref of args.low ?? []) {
+          const sample = resolveSample(ref);
+          const m = await measure(sample);
+          if (!m) continue;
+          const key = args.lowGroupBy ? String(sample.meta?.[args.lowGroupBy] ?? '') : 'low';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(m.value);
+        }
+        limits = detectionLimits(blanks, [...groups.values()], { method: args.method === 'nonparametric' ? 'nonparametric' : 'parametric', cvTarget: cv });
+      }
+      const excluded = new Set([...(args.blanks ?? []), ...(args.low ?? [])].map((ref) => resolveSample(ref).id));
+      const samples = args.samples?.length ? args.samples.map(resolveSample) : w.samples.filter((s) => !excluded.has(s.id) && (s.role === 'sample' || s.role === 'reference'));
+      const rows = [];
+      for (const sample of samples) {
+        const m = await measure(sample);
+        if (!m) {
+          rows.push({ sample: sample.name, note: 'The population does not apply.' });
+          continue;
+        }
+        const [lo, hi] = poissonInterval(m.count);
+        const [flo, fhi] = binomialInterval(m.count, m.parentCount);
+        const need = eventsNeeded(cv, m.parentCount ? (100 * m.count) / m.parentCount : null);
+        const row = { sample: sample.name, count: m.count, countInterval: [r(lo), r(hi)], parentEvents: m.parentCount, percentOfParent: r((100 * m.count) / m.parentCount), percentInterval: [r(100 * flo), r(100 * fhi)], countingCV: r(countPrecision(m.count, m.parentCount)), parentEventsForTargetCV: need.parentEvents };
+        if (limits) {
+          const poissonLimit = statistic === 'count' ? need.events : (100 * need.events) / m.parentCount;
+          const loq = Math.max(...[limits.loq, limits.lod, poissonLimit].filter(Number.isFinite));
+          row.lloq = r(loq);
+          row.status = classifyValue(m.value, { lob: limits.lob, loq });
+        }
+        rows.push(row);
+      }
+      const name = gatePath(w, populationId);
+      const limitText = limits ? ` Limit of blank ${r(limits.lob)}${statistic === 'count' ? ' events' : '%'} from ${limits.blankCount} blank(s)${Number.isFinite(limits.lod) ? `, limit of detection ${r(limits.lod)}` : ''}; each sample's lower limit of quantification is the larger of the limit of detection and the ${eventsNeeded(cv).events} events that give a ${cv}% counting CV.${limits.notes.length ? ` ${limits.notes.join(' ')}` : ''}` : '';
+      return {
+        message: `${name}: counts with exact Poisson 95% intervals, ${statistic === 'count' ? 'counts' : 'frequencies'} with exact binomial intervals, and the parent events needed for a ${cv}% CV (${eventsNeeded(cv).events} events of the population).${limitText}`,
+        data: { population: name, statistic, targetCV: cv, limits: limits && { method: limits.method, lob: r(limits.lob), lod: r(limits.lod), loq: r(limits.loq), blanks: limits.blankCount, blankMean: r(limits.blankMean), blankSD: r(limits.blankSD), lowSD: r(limits.lowSD), lowGroups: limits.lowGroups.map((g) => ({ n: g.n, mean: r(g.mean), sd: r(g.sd), cv: r(g.cv) })), notes: limits.notes }, rows },
+      };
     },
 
     async render_plot(args) {
@@ -933,11 +1047,20 @@ export function installRemote(app) {
       const field = String(args.groupBy);
       const samples = w.samples.filter((s) => (s.role === 'sample' || s.role === 'reference') && s.meta?.[field] !== undefined && s.meta[field] !== '');
       if (!samples.length) throw new ActionError(`No sample has the metadata field "${field}". Annotate samples first (fields in use: ${[...new Set(w.samples.flatMap((s) => Object.keys(s.meta ?? {})))].join(', ') || 'none'}).`);
+      let control;
+      let context = {};
+      if (COMPARISONS.has(stat)) {
+        if (!args.control) throw new ActionError(`${stat} compares each sample with a control sample: name it with control.`);
+        const controlSample = resolveSample(args.control);
+        const controlView = await loadedView(controlSample);
+        control = { sampleId: controlSample.id };
+        context = { viewOf: (sampleId) => (sampleId === controlSample.id ? controlView : null) };
+      }
       const groups = new Map();
       for (const sample of samples) {
         const view = await loadedView(sample);
         const channel = args.channel ? resolveChannel(view, args.channel) : undefined;
-        const value = computeStatistic(view, w, { stat, gateId: id, channel });
+        const value = computeStatistic(view, w, { stat, gateId: id, channel, control }, context);
         if (!Number.isFinite(value)) continue;
         const key = String(sample.meta[field]);
         if (!groups.has(key)) groups.set(key, []);

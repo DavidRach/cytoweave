@@ -395,38 +395,77 @@ population), and adds titration and voltage walks for setting up a panel.
    - Not done: titration plates with several antibodies in one file (by well) and the dim-bead
      CV method of the voltage walk are left for later.
 
-## Then (0.6–0.8)
+## Next (0.6)
 
 The order of waves 5–8 (wave 5 released as 0.5.0) comes from `research.md` §8 and a parity and
 differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza,
 SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users asked for in
-2024–2026. Within each wave:
-trust first, then the daily workbench, then what no single tool combines. Waves 6–8 are a plan,
-to be revised as each wave lands.
+2024–2026. Within each wave: trust first, then the daily workbench, then what no single tool
+combines. Waves 7–8 are a plan, to be revised as each wave lands.
 
 ### Wave 6: the bench, batch by batch
 
-1. **Statistics users already expect (G10, G11):** the population comparisons FlowJo users rely
-   on (probability binning with T(χ), Overton subtraction, SED, Kolmogorov–Smirnov; already
-   implemented and tested in `distribution.js`, not yet in any view) and rare-event statistics:
-   Poisson intervals on counts, a limit of detection and quantification against a negative
-   reference, and events needed for a target precision.
-   - Validation: flowStats and published worked examples; exact formulas.
-2. **Batch reports and spreadsheet export (R7):** a page layout iterated over samples or groups,
-   multi-page PDF and PowerPoint, Excel workbooks and GraphPad Prism (`.pzfx`) tables, built on
-   the template engine.
-   - Validation: every number in a report traced to the table it came from; files read back by
-     their own formats' readers.
-3. **Derived parameters, calibrated units and absolute counts (G12, G13):** a formula editor for
-   new channels (written to Gating-ML where it can express them); MEF/ERF units from calibration
-   beads; concentrations from counting beads with the dilution factor.
-   - Validation: FlowCal's bead files and results; simulated counting beads of known
-     concentration.
-4. **Computational users (H6, I6, M5):** differential state per cluster or population (as
-   diffcyt), concatenated and downsampled FCS export, CSV event import, AnnData export, and R and
-   Python clients for remote control (users who outgrow GUIs move to R first).
-   - Validation: diffcyt-DS in R on the mass cytometry example; AnnData read back by `anndata`;
-     the clients' calls against the HTTP API's tests.
+1. **Population comparisons and rare-event statistics (G10, G11): done.** Tables statistics
+   against a control sample's population (chosen per column, the same population or another):
+   % positive by SED and by Overton's cumulative subtraction, probability binning's T(χ) and
+   excess %, and the K-S D (`stats.js`, `engine.js` `computeStatistic` with a context that finds
+   the control's events), so Compare and agents have them too; histograms with overlaid samples
+   show SED, Overton and T(χ) against each overlay. Rare events (`rare-events.js`): count and
+   % of parent limits by exact Poisson (Garwood) and binomial (Clopper–Pearson) intervals, the
+   counting CV and, in the inspector, the parent events a 10% CV needs; a column's detection
+   limits (limit of blank, detection and quantification from chosen blank and low-level samples,
+   CLSI EP17 / Armbruster & Pry 2008, parametric or nonparametric; each sample's LLOQ never below
+   the (100/CV)² events Poisson counting needs) mark cells ND or < LLOQ and add a status column to
+   CSVs. Methods sentences and references for all of it. Agent tools `compare_distributions` and
+   `rare_events` (36 tools); `statistics_table`, `export_table` and `compare` take a control.
+   - Sources: Overton's cumulative subtraction is the K-S Dmax and SED is FlowJo's name for
+     Bagwell's enhanced normalized subtraction, both from Bagwell (1996), whose ENS formula is
+     implemented exactly; probability binning gained flowStats' bins (split while a bin holds more
+     than minEvents) and Baggerly's (2001) standardized statistic.
+   - Validation: `comparisons` (probability binning equal to flowStats 4.24.0 in 36 cases to
+     9e-15, bins included; K-S D equal to R, p to R's tolerance of 1e-6, CytoWeave's exact; SED
+     within 2 points of the true fraction in six tubes, Overton 2–8 points under where populations
+     overlap; Bagwell's simulation in his order, ENS −1.3% against his −0.85%; T(χ) > 4 in 0.5% of
+     pairs of the same cells; exact intervals equal to R and covering ≥ 95%; EP17 limits giving
+     4% false detections on new blanks and 98% detection at the LoD), agent session (19 checks).
+   - FlowJo: 11.2 has no Population Comparison platform and no derived parameters (its platforms
+     are t-SNE, UMAP, FlowSOM and X-Shift); both were FlowJo 10 features, so FlowJo 11 is no
+     reference for this slice or for slice 2's formulas.
+   - Not done: multivariate probability binning is in `compare_distributions` only, not in
+     Tables.
+2. **Formula channels, calibrated units and absolute counts (G12, G13):** a formula editor for
+   new channels (a parser, not `eval`: arithmetic, log, ln, exp, sqrt, abs, min, max; channels by
+   name or marker), gateable, kept in templates and matched by marker, written to Gating-ML where
+   it can express them (ratios) and to FlowJo exports; MEF/ERF units from calibration beads (peaks
+   found and matched to the manufacturer's values, a standard curve fitted as FlowCal does);
+   absolute counts from counting beads with the dilution factor, beside the `$VOL` counts that
+   already exist.
+   - Validation: FlowCal's bead files, with FlowCal in Python as the oracle; simulated counting
+     beads of known concentration; formula channels against the same formulas computed in R.
+3. **Batch reports and spreadsheet export (R7):** a figure layout iterated over samples or
+   groups, as multi-page PDF and PowerPoint (our own minimal writer), and Excel workbooks
+   (statistics and provenance sheets) and GraphPad Prism (`.pzfx`) tables, built on the template
+   engine. After slices 1–2, so that comparisons, units and counts can be reported.
+   - Validation: every number in a report traced to the Tables column it came from; files read
+     back by their formats' readers (openpyxl, python-pptx, pypdf, R `pzfx`).
+4. **Data in and out (I6):** concatenated FCS export with a sample-identifier channel, seeded
+   downsampling (equal numbers or a fraction), CSV event import with checks and scale guesses, and
+   AnnData export as `.h5ad` (events as the matrix; sample, population and cluster columns in
+   `obs`; markers in `var`) through a minimal HDF5 writer of our own.
+   - Validation: `.h5ad` files read back by `anndata` and `h5py`; concatenations against their
+     source files; CSV round trips.
+5. **Differential state and R and Python clients (H6, M5):** diffcyt-DS-limma (marker medians
+   per cluster or population and sample, limma's moderated t with cell-count weights) in Compare
+   beside differential abundance, with a methods sentence; an R package and a Python package in
+   `clients/` for remote control (users who outgrow GUIs move to R first), tested in CI against a
+   running server. Publishing them to CRAN or PyPI is a separate decision.
+   - Validation: diffcyt in R on the mass cytometry example; the clients' calls against the HTTP
+     API's tests.
+
+Left for later: kinetics, plates and titration plates stay in wave 7; drawing a gate from the
+keyboard (V4) stays open.
+
+## Then (0.7–0.8)
 
 ### Wave 7: plates, migration and the spectral doctor
 

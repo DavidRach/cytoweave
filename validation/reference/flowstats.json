@@ -1,0 +1,412 @@
+{
+  "about": "flowStats 4.24.0 (proBin, binByRef, calcPBChiSquare) and R 4.6.1 ks.test(exact = FALSE) on the comparison tubes (validation/comparison-cases.mjs), each test compared with Control.fcs, and R's poisson.test and binom.test intervals; written by reference/generate_flowstats.R.",
+  "flowStats": "4.24.0",
+  "R": "4.6.1",
+  "probabilityBinning": [
+    {
+      "test": "Dimmer.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.64429234887449,
+      "pbStat": 1142.35000268563
+    },
+    {
+      "test": "Dimmer.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.646768912151121,
+      "pbStat": 803.66912829897
+    },
+    {
+      "test": "Dimmer.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.614721593043788,
+      "pbStat": 1089.66255650162
+    },
+    {
+      "test": "Dimmer.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.631514249758911,
+      "pbStat": 784.525875352141
+    },
+    {
+      "test": "Overlap 40.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.333899381453819,
+      "pbStat": 589.309936327426
+    },
+    {
+      "test": "Overlap 40.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.340416137626922,
+      "pbStat": 419.223474708191
+    },
+    {
+      "test": "Overlap 40.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.332601295890505,
+      "pbStat": 586.997083262361
+    },
+    {
+      "test": "Overlap 40.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.336646412079125,
+      "pbStat": 414.492802350705
+    },
+    {
+      "test": "Positive 20.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.19469131608988,
+      "pbStat": 341.277133438143
+    },
+    {
+      "test": "Positive 20.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.211503696557456,
+      "pbStat": 257.449755701056
+    },
+    {
+      "test": "Positive 20.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.194352172572188,
+      "pbStat": 340.672867319977
+    },
+    {
+      "test": "Positive 20.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.212238427732606,
+      "pbStat": 258.371778383184
+    },
+    {
+      "test": "Positive 40.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.46884440668856,
+      "pbStat": 829.747103221695
+    },
+    {
+      "test": "Positive 40.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.486855800268625,
+      "pbStat": 602.992307562211
+    },
+    {
+      "test": "Positive 40.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.467881902630656,
+      "pbStat": 828.032169689287
+    },
+    {
+      "test": "Positive 40.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.488011193565992,
+      "pbStat": 604.442224025512
+    },
+    {
+      "test": "Positive 5.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.0363451664828879,
+      "pbStat": 59.1452094647086
+    },
+    {
+      "test": "Positive 5.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.0466040117106508,
+      "pbStat": 50.5152266558945
+    },
+    {
+      "test": "Positive 5.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.0360643530686538,
+      "pbStat": 58.6448725191495
+    },
+    {
+      "test": "Positive 5.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.0461205724240286,
+      "pbStat": 49.9085530822486
+    },
+    {
+      "test": "Replicate.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.00460500380612751,
+      "pbStat": 2.59244082808629
+    },
+    {
+      "test": "Replicate.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.00720413025730042,
+      "pbStat": 1.0718579765746
+    },
+    {
+      "test": "Replicate.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.00325171790388656,
+      "pbStat": 0.181235022116339
+    },
+    {
+      "test": "Replicate.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.00732752152247204,
+      "pbStat": 1.22670310784515
+    },
+    {
+      "test": "Shifted.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.349049083350554,
+      "pbStat": 616.302790617588
+    },
+    {
+      "test": "Shifted.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.352359431283982,
+      "pbStat": 434.211252583375
+    },
+    {
+      "test": "Shifted.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.345462245527865,
+      "pbStat": 609.91197241072
+    },
+    {
+      "test": "Shifted.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.350446742747787,
+      "pbStat": 431.810997532461
+    },
+    {
+      "test": "Skewed 30.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.291532162290699,
+      "pbStat": 513.822498928017
+    },
+    {
+      "test": "Skewed 30.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.304652169535218,
+      "pbStat": 374.342855920359
+    },
+    {
+      "test": "Skewed 30.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.291290318511049,
+      "pbStat": 513.391595802029
+    },
+    {
+      "test": "Skewed 30.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.301027442989622,
+      "pbStat": 369.794144494214
+    },
+    {
+      "test": "Small 30.fcs",
+      "channels": "FITC-A",
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.340345609881534,
+      "pbStat": 152.580888487457
+    },
+    {
+      "test": "Small 30.fcs",
+      "channels": "FITC-A",
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.369673212715752,
+      "pbStat": 113.050582573479
+    },
+    {
+      "test": "Small 30.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 500,
+      "bins": 64,
+      "chiSquare": 0.337911417353243,
+      "pbStat": 151.449470542822
+    },
+    {
+      "test": "Small 30.fcs",
+      "channels": ["FITC-A", "PE-A"],
+      "minEvents": 250,
+      "bins": 128,
+      "chiSquare": 0.365627270929258,
+      "pbStat": 111.726069706772
+    }
+  ],
+  "ks": [
+    {
+      "test": "Dimmer.fcs",
+      "D": 0.496799999999953,
+      "p": 0
+    },
+    {
+      "test": "Overlap 40.fcs",
+      "D": 0.318349999999973,
+      "p": 0
+    },
+    {
+      "test": "Positive 20.fcs",
+      "D": 0.200199999999986,
+      "p": 0
+    },
+    {
+      "test": "Positive 40.fcs",
+      "D": 0.400049999999964,
+      "p": 0
+    },
+    {
+      "test": "Positive 5.fcs",
+      "D": 0.0509000000000009,
+      "p": 6.27393857566107e-23
+    },
+    {
+      "test": "Replicate.fcs",
+      "D": 0.00774999999999998,
+      "p": 0.585298870574267
+    },
+    {
+      "test": "Shifted.fcs",
+      "D": 0.351999999999969,
+      "p": 0
+    },
+    {
+      "test": "Skewed 30.fcs",
+      "D": 0.273699999999978,
+      "p": 0
+    },
+    {
+      "test": "Small 30.fcs",
+      "D": 0.300099999999911,
+      "p": 1.71977438059193e-204
+    }
+  ],
+  "poissonIntervals": [
+    {
+      "count": 0,
+      "interval": [0, 3.68887945411394]
+    },
+    {
+      "count": 1,
+      "interval": [0.0253178079842899, 5.5716433909389]
+    },
+    {
+      "count": 2,
+      "interval": [0.242209278543965, 7.22468766772396]
+    },
+    {
+      "count": 5,
+      "interval": [1.62348639011842, 11.6683320793227]
+    },
+    {
+      "count": 10,
+      "interval": [4.79538869613243, 18.3903560420178]
+    },
+    {
+      "count": 25,
+      "interval": [16.1786818478293, 36.9049316975304]
+    },
+    {
+      "count": 100,
+      "interval": [81.3639912509232, 121.626793792426]
+    },
+    {
+      "count": 1000,
+      "interval": [938.973018407695, 1063.9521360163]
+    },
+    {
+      "count": 10000,
+      "interval": [9804.95246726018, 10197.9516246615]
+    }
+  ],
+  "binomialIntervals": [
+    {
+      "x": 0,
+      "n": 50,
+      "interval": [0, 0.0711217364641976]
+    },
+    {
+      "x": 1,
+      "n": 1000,
+      "interval": [2.53174874912941e-05, 0.00555892427982663]
+    },
+    {
+      "x": 3,
+      "n": 100000,
+      "interval": [6.18676395892204e-06, 8.7670202566362e-05]
+    },
+    {
+      "x": 17,
+      "n": 40,
+      "interval": [0.270429031268863, 0.591099419573037]
+    },
+    {
+      "x": 250,
+      "n": 1000000,
+      "interval": [0.000219971188921104, 0.000282983037250311]
+    },
+    {
+      "x": 40,
+      "n": 40,
+      "interval": [0.911902697121198, 1]
+    }
+  ]
+}
