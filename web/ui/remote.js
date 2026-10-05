@@ -82,12 +82,16 @@ export function installRemote(app) {
       ?? params.find((p) => p.marker && p.marker.toLowerCase() === lower) ?? params.find((p) => p.label && p.label.toLowerCase() === lower)
       ?? params.find((p) => p.marker && p.marker.toLowerCase().startsWith(lower));
     if (found) return found.name;
-    for (const name of view.derived.keys()) if (name.toLowerCase() === lower) return name;
-    throw new ActionError(`No channel "${ref}" in ${view.record.name}. Channels: ${params.map((p) => (p.marker ? `${p.name} (${p.marker})` : p.name)).join(', ')}`);
+    // Derived and computed channels (clusters, formulas, calibrated channels) by name.
+    const computed = [...view.computed.keys()].filter((name) => view.hasChannel(name));
+    for (const name of [...view.derived.keys(), ...computed]) if (name.toLowerCase() === lower) return name;
+    throw new ActionError(`No channel "${ref}" in ${view.record.name}. Channels: ${[...params.map((p) => (p.marker ? `${p.name} (${p.marker})` : p.name)), ...computed].join(', ')}`);
   }
 
   async function loadedView(sample) {
-    return data.ensure(sample.id);
+    const view = await data.ensure(sample.id);
+    view.syncWorkspace?.(ws());
+    return view;
   }
 
   function populationRows(view) {
@@ -205,6 +209,13 @@ export function installRemote(app) {
       const samples = w.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : s.role === 'sample' || s.role === 'reference'));
       const gateIds = args.populations?.length ? args.populations.map(resolvePopulation) : w.gates.map((g) => g.id);
       const stat = args.statistic ?? 'freqParent';
+      // Absolute counts need the counting beads; concentration and absolute counts take a dilution.
+      let counting;
+      if (stat === 'absoluteCount') {
+        if (!args.beadPopulation || !(Number(args.beadsPerTube) > 0) || !(Number(args.sampleVolume) > 0)) throw new ActionError('absoluteCount needs beadPopulation (the counting beads\' gate), beadsPerTube and sampleVolume (µL of sample in the tube).');
+        counting = { beadGateId: resolvePopulation(args.beadPopulation), beads: Number(args.beadsPerTube), volume: Number(args.sampleVolume) };
+      }
+      const dilution = args.dilution === undefined || args.dilution === null || args.dilution === '' ? undefined : Number.isFinite(Number(args.dilution)) ? Number(args.dilution) : { field: String(args.dilution) };
       // Comparison statistics (overton, sed, pbPositive, pbT, ksD) need a control sample.
       let control;
       let context = {};
@@ -220,10 +231,82 @@ export function installRemote(app) {
         const view = await loadedView(sample);
         const channel = args.channel ? resolveChannel(view, args.channel) : undefined;
         const values = {};
-        for (const id of gateIds) values[id === ROOT ? 'All events' : gatePath(w, id)] = round(computeStatistic(view, w, { stat, gateId: id, channel, control }, context), 6);
+        for (const id of gateIds) values[id === ROOT ? 'All events' : gatePath(w, id)] = round(computeStatistic(view, w, { stat, gateId: id, channel, control, counting, dilution }, context), 6);
         rows.push({ sample: sample.name, meta: sample.meta, values });
       }
       return { message: `${stat}${args.channel ? ` of ${args.channel}` : ''}${control ? ` against ${args.control}` : ''} for ${gateIds.length} population(s) in ${samples.length} sample(s).`, data: { statistic: stat, channel: args.channel, control: args.control, rows } };
+    },
+
+    async add_formula_channel(args) {
+      const { resolveFormula, evaluateColumns } = await import('../lib/formula.js');
+      const w = ws();
+      const { channelCatalog } = await import('../lib/workspace.js');
+      const catalog = channelCatalog(w).filter((c) => c.type !== 'time');
+      let resolved;
+      try {
+        resolved = resolveFormula(String(args.expression ?? ''), catalog);
+      } catch (error) {
+        throw new ActionError(`${error.message}${Number.isFinite(error.position) ? ` (at character ${error.position + 1})` : ''} Channels go in square brackets by marker or detector, as in [CD4] / [CD8].`);
+      }
+      const name = String(args.name ?? '').trim() || resolved.text.replace(/[[\]]/g, '').slice(0, 40);
+      if (catalog.some((c) => c.name === name)) throw new ActionError(`A channel is already called "${name}".`);
+      const record = { kind: 'formula', name, inputs: resolved.inputs, outputs: [name], params: { expression: resolved.text, source: String(args.expression) } };
+      store.commit(proposeDerived(w, author, record).ws, `${author} proposed the formula channel ${name}`);
+      const sample = w.samples.find((x) => x.id === store.ui.sampleId) ?? w.samples[0];
+      let summary = '';
+      if (sample) {
+        const view = await loadedView(sample);
+        const values = evaluateColumns(resolved.tree, (input) => view.column(input), view.eventCount);
+        const finite = Float64Array.from(values.filter(Number.isFinite)).sort();
+        summary = ` On ${sample.name}: median ${round(finite[Math.floor(finite.length / 2)])}${finite.length < values.length ? `, ${values.length - finite.length} events without a value (division by zero or the log of a value ≤ 0)` : ''}.`;
+      }
+      return { message: `Proposed the formula channel "${name}" = ${resolved.text}, computed for every event of every sample from the compensated values; it can be used in gates, plots and statistics at once.${summary}`, data: { name, expression: resolved.text, inputs: resolved.inputs } };
+    },
+
+    async calibrate_beads(args) {
+      const lib = await import('../lib/calibration.js');
+      const { defaultUnit } = await import('./qc-calibration.js');
+      const w = ws();
+      const beads = resolveSample(args.sample);
+      const view = await loadedView(beads);
+      const given = args.values ?? {};
+      const channels = Object.keys(given).map((c) => resolveChannel(view, c));
+      if (!channels.length) throw new ActionError('Give values: { channel: [value of each level, dimmest first; null for a level without one] } from the beads\' datasheet.');
+      const values = Object.fromEntries(Object.entries(given).map(([c, v]) => [resolveChannel(view, c), v.map((x) => (x === null || x === undefined ? null : Number(x)))]));
+      const clustering = (args.clustering?.length ? args.clustering.map((c) => resolveChannel(view, c)) : channels);
+      const needed = [...new Set([...clustering, ...channels])];
+      const columns = Object.fromEntries(needed.map((c) => [c, view.column(c)]));
+      const scatter = ['FSC-A', 'FSC', 'FSC-H'].find((c) => view.hasChannel(c));
+      const side = ['SSC-A', 'SSC', 'SSC-H'].find((c) => view.hasChannel(c));
+      if (scatter && side) Object.assign(columns, { [scatter]: view.column(scatter), [side]: view.column(side) });
+      let events = null;
+      if (args.population) {
+        const set = populationSet(view, w, resolvePopulation(args.population));
+        events = set === null || set === undefined ? null : typeof set.toIndices === 'function' ? set.toIndices() : set;
+      }
+      const bounds = Object.fromEntries(channels.map((c) => {
+        const p = view.parameters.find((x) => x.name === c);
+        return [c, lib.channelBounds(view.dataset.keywords, p.index, p.range)];
+      }));
+      const units = Object.fromEntries(channels.map((c) => [c, args.unit?.[c] ?? (typeof args.unit === 'string' ? args.unit : defaultUnit(c, view.channelInfo(c)?.marker))]));
+      let result;
+      try {
+        result = lib.calibrateBeads(columns, { channels, values, clustering, events, scatter: scatter && side ? [scatter, side] : null, bounds, unit: units });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const targets = args.applyTo?.length ? args.applyTo.map((ref) => resolveSample(ref).id) : null;
+      const r4 = (v) => (Number.isFinite(v) ? +v.toPrecision(4) : null);
+      const out = {};
+      let next = ws();
+      for (const channel of channels) {
+        const c = result.channels[channel];
+        out[channel] = { unit: units[channel], levels: c.levels.map((l) => ({ events: l.n, median: r4(l.median), value: l.value, used: l.used, ...(l.why ? { why: l.why } : {}) })), slope: r4(c.fit?.m), intercept: r4(c.fit?.b), beadAutofluorescence: r4(c.fit?.autofluorescence), error: c.error ?? undefined };
+        if (c.fit && targets) next = proposeDerived(next, author, lib.calibrationRecord(channel, c, { unit: units[channel], beads: beads.name, samples: targets })).ws;
+      }
+      if (targets) store.commit(next, `${author} proposed calibrated channels from ${beads.name}`);
+      const lines = channels.map((ch) => (out[ch].slope ? `${ch} → ${out[ch].unit}: slope ${out[ch].slope} from ${result.channels[ch].levels.filter((l) => l.used).length} of ${result.levels} levels` : `${ch}: ${out[ch].error}`));
+      return { message: `${beads.name}: ${result.levels} bead levels in ${result.events.length} events. ${lines.join('; ')}.${targets ? ` Proposed "<channel> <unit>" channels for ${targets.length} sample(s).` : ' Give applyTo (the samples acquired with the beads\' settings) to add the calibrated channels.'}`, data: { sample: beads.name, events: result.events.length, channels: out, appliedTo: targets ? targets.length : 0 } };
     },
 
     async compare_distributions(args) {

@@ -1404,6 +1404,104 @@
     }
    ]
   },
+  "flowcal-mef": {
+   "title": "FlowCal's MEF example: 8-peak calibration beads and cell samples",
+   "description": "FlowCal's example data (Castillo-Hair et al. 2016): 8-peak calibration beads and E. coli samples expressing sfGFP under a DAPG-inducible promoter, on a Cytek xP3+ (FL1, log amplification over 4 decades): three bead samples (two days, one at another gain) with their MEFL values, and twelve cell samples.",
+   "source": "https://github.com/taborlab/FlowCal (examples/FCFiles, commit 0212f41)",
+   "license": "Part of FlowCal's repository, MIT (https://github.com/taborlab/FlowCal/blob/0212f417a53b2fc76658d83b751b892f2d05f175/license.txt). CytoWeave downloads them for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "sample001.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample001.fcs",
+     "size": 796672,
+     "sha256": "f0794d5d0b0ff2936e4008baad42b00214904a0ba26b3d59d60b84162ff34c52"
+    },
+    {
+     "path": "sample006.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample006.fcs",
+     "size": 777472,
+     "sha256": "e4f516561794f5e2b769cf8a704caeef81e808325bbaff4e8ecda3f72944f23b"
+    },
+    {
+     "path": "sample007.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample007.fcs",
+     "size": 767008,
+     "sha256": "39a4523c4b6ba9e3bca9272745d32e98913873c2ae17033ee8ba15e06b717a8d"
+    },
+    {
+     "path": "sample008.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample008.fcs",
+     "size": 770320,
+     "sha256": "17f174978887cd34ed20e7b3dc613bc9d3e034948396a6f99345368388d9cf0b"
+    },
+    {
+     "path": "sample009.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample009.fcs",
+     "size": 774136,
+     "sha256": "974be9a5774d8b8b0a86241253e544f76aaf589d86d74902ea7d0cf6636504b2"
+    },
+    {
+     "path": "sample010.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample010.fcs",
+     "size": 771880,
+     "sha256": "a56993907a92567579e57994d1951330a4cc6c845ffa6561ac22b722a80d4d43"
+    },
+    {
+     "path": "sample011.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample011.fcs",
+     "size": 764080,
+     "sha256": "399bde8110057d6bad5fef603bda8152e4b71d10c7abfb9c8a50aff4e05ae08d"
+    },
+    {
+     "path": "sample012.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample012.fcs",
+     "size": 758872,
+     "sha256": "6d0a55b8f5cd55f3149fbefc5fdd1a6a002d581194ba1e671f692796ca1e141e"
+    },
+    {
+     "path": "sample013.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample013.fcs",
+     "size": 765736,
+     "sha256": "3b4815c648291d37af0ecc3806062658dfc958432fa971d02cedd899f8e70ebe"
+    },
+    {
+     "path": "sample014.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample014.fcs",
+     "size": 770008,
+     "sha256": "a5189efc3e39fdc30fd0d8354a47766acf3b9c3955c43b33b23c25bd8d40338e"
+    },
+    {
+     "path": "sample015.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/sample015.fcs",
+     "size": 786952,
+     "sha256": "e170ee3da3b8ffd98f87b080d2e5fdf68cc9ab0e576eb400640e8f3df5d288d2"
+    },
+    {
+     "path": "min/sample001.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/min/sample001.fcs",
+     "size": 797296,
+     "sha256": "e50fc1c33880be5f096454765ece49bdefbedd0eb176f0b5be5ab98c304b003b"
+    },
+    {
+     "path": "min/sample004.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/min/sample004.fcs",
+     "size": 768952,
+     "sha256": "5d084aa1a2eac27a95b2166f692a4d187c5787b443a464fcccfdac200abe0d3f"
+    },
+    {
+     "path": "max/sample002.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/max/sample002.fcs",
+     "size": 801448,
+     "sha256": "7f5e970121e198cc3ea764352603d1170906699b383c5d7ee7be4663fe9067e8"
+    },
+    {
+     "path": "max/sample008.fcs",
+     "url": "https://raw.githubusercontent.com/taborlab/FlowCal/0212f417a53b2fc76658d83b751b892f2d05f175/examples/FCFiles/max/sample008.fcs",
+     "size": 775696,
+     "sha256": "238a84002e8eb3c192632707a56c965189a92ad73214cc4a9b568eaae04ac7bd"
+    }
+   ]
+  },
   "zenodo-instruments": {
    "title": "Instrument variety from Zenodo: one or two files from each of 23 cytometers",
    "description": "Small FCS files from CC BY 4.0 Zenodo records, chosen for instrument and writer variety: Beckman Coulter CytoFLEX (big-endian), CytoFLEX S (little-endian) and DxFLEX (one complete file and one whose DATA segment is truncated); Agilent NovoCyte (NovoExpress, $UNICODE) and NovoCyte Penteon; Cytek Aurora raw 5-laser files (71 and 74 parameters) and an Aurora Evo bead file (SpectroFlo 4, UTF-8 in CREATOR); Sony SA3800, MA900 and SH800; BD FACSDiscover S8 (FCS 3.2, 440 parameters, mixed $PnDATATYPE, a 720 kB TEXT segment), FACSymphony A5 SE, FACSLyric and FACSVerse (FACSuite), FACSMelody (FACSChorus) and Influx; Thermo Fisher Bigfoot; Cytek/Luminex CellStream (84 parameters); Amnis ImageStream (IDEAS export); Guava easyCyte (InCyte, FCS 2.0 big-endian); Bio-Rad ZE5 ($CYT YETI, Propel Labs' name for it); a raw CyTOF/Helios file; BeamCyte (TEXT in GBK).",

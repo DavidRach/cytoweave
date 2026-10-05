@@ -19,6 +19,8 @@ import { parseFCS } from '../web/lib/fcs.js';
 import { readZip } from '../web/lib/zip.js';
 import { readFigureProvenance } from '../web/lib/figure-provenance.js';
 import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
+import { encodeFCS } from '../web/lib/simulate.js';
+import { BEAD_MEF, BEAD_TRUTH, simulatedBeads } from './calibration-cases.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 8795;
@@ -323,6 +325,47 @@ try {
   const agree = compareState.every((d, i) => close5(distributions.rows[i].sed, d.sed) && close5(distributions.rows[i].probabilityBinning.T, d.T) && close5(tabled.rows.find((r) => r.sample === d.name).values['All events'], d.sed));
   const rareAgree = compareState.every((d, i) => rare.rows[i].count === d.count && close5(rare.rows[i].countInterval[0], d.interval[0]) && close5(rare.rows[i].countInterval[1], d.interval[1]));
   check('compare_distributions, statistics_table with a control and rare_events: each tube against the unstained one, and the counts of the brightest PE events, the same as computed directly; SED near the CD4+ share (the same cells in every tube: the share above the split at the saturating 125 ng), also at 1.953 ng, where dim CD4+ cells fall below the split', `${compareState.map((d, i) => `${d.name}: SED ${distributions.rows[i].sed}% (${d.above.toFixed(1)}% above 1,000), T(χ) ${distributions.rows[i].probabilityBinning.T}`).join('; ')}; ${agree ? 'equal' : 'differ'}; PE bright ${rare.rows.map((r) => `${r.count} [${r.countInterval.join('–')}], ${r.parentEventsForTargetCV} parent events for a 5% CV`).join('; ')}; ${rareAgree ? 'equal' : 'differ'}`, agree && rareAgree && compareState.every((d, i) => Math.abs(distributions.rows[i].sed - compareState[0].above) < 3), 'equal; SED within 3 points');
+
+  // A formula channel and a bead calibration proposed by an agent, used at once.
+  await tool('add_formula_channel', { name: 'PE per FSC', expression: '[PE-A] / [FSC-A] * 1000' }, 'Setup agent');
+  const formulaTable = (await tool('statistics_table', { statistic: 'median', channel: 'PE per FSC', populations: ['All events'] }, 'Setup agent')).data;
+  const formulaState = await page(`
+    // The first three samples of the table.
+    const ws = app.store.ws;
+    const out = {};
+    for (const s of ws.samples.filter((x) => ${JSON.stringify(formulaTable.rows.slice(0, 3).map((r) => r.sample))}.includes(x.name))) {
+      const view = app.data.view(s.id) ?? await app.data.ensure(s.id);
+      const pe = view.column('PE-A');
+      const fsc = view.column('FSC-A');
+      const values = Float64Array.from(pe, (v, i) => Math.fround((v / fsc[i]) * 1000)).filter(Number.isFinite).sort();
+      const n = values.length;
+      out[s.name] = n % 2 ? values[(n - 1) / 2] : (values[n / 2 - 1] + values[n / 2]) / 2;
+    }
+    return { direct: out, proposed: Boolean(ws.derived.find((d) => d.kind === 'formula' && d.outputs[0] === 'PE per FSC')?.proposal) };`);
+  const formulaAgree = Object.entries(formulaState.direct).every(([name, v]) => Math.abs(formulaTable.rows.find((r) => r.sample === name).values['All events'] - v) <= 1e-5 * Math.abs(v));
+  check('add_formula_channel: a formula channel proposed and usable at once; its medians in statistics_table equal to the formula computed directly', `${Object.keys(formulaState.direct).length} samples ${formulaAgree ? 'equal' : 'differ'}; proposed: ${formulaState.proposed}`, formulaAgree && formulaState.proposed, 'equal; proposed');
+
+  const beadDir = join(temp, 'beads');
+  mkdirSync(beadDir);
+  const sim = simulatedBeads();
+  const beadParams = ['FSC-A', 'SSC-A', 'FL1-A', 'FL2-A'].map((name) => ({ name, label: '', range: name.startsWith('FL') ? 16384 : 262144 }));
+  writeFileSync(join(beadDir, 'Beads.fcs'), encodeFCS(beadParams, beadParams.map((p) => sim.beads[p.name]), { $CYT: 'Simulated cytometer' }));
+  const cell = sim.cells[1];
+  const n = cell.values.length;
+  writeFileSync(join(beadDir, 'Cells.fcs'), encodeFCS(beadParams, [Float32Array.from({ length: n }, () => 50000), Float32Array.from({ length: n }, () => 10000), cell.values, Float32Array.from(cell.values, (v) => v * 2)], { $CYT: 'Simulated cytometer' }));
+  await tool('open_files', { paths: [join(beadDir, 'Beads.fcs'), join(beadDir, 'Cells.fcs')] }, 'Setup agent');
+  await waitFor(`window.cytoweave.store.ws.samples.some((s) => s.name === 'Cells') && !document.querySelector('.progress-toast')`, 60000);
+  const calibrated = (await tool('calibrate_beads', { sample: 'Beads', values: { 'FL1-A': BEAD_MEF }, clustering: ['FL1-A', 'FL2-A'], unit: 'MEFL', applyTo: ['Beads', 'Cells'] }, 'Setup agent')).data;
+  const mefState = await page(`
+    const ws = app.store.ws;
+    const s = ws.samples.find((x) => x.name === 'Cells');
+    const view = app.data.view(s.id) ?? await app.data.ensure(s.id);
+    view.syncWorkspace(ws);
+    const values = Float64Array.from(view.column('FL1-A MEFL')).sort();
+    const record = ws.derived.find((d) => d.kind === 'calibration');
+    return { median: values[values.length >> 1], proposed: Boolean(record?.proposal), samples: record?.samples?.length };`);
+  const truthMedian = Float64Array.from(cell.truth).sort()[cell.truth.length >> 1];
+  check('calibrate_beads: simulated 8-level beads of known response calibrated by an agent and applied to a cell sample; the cells\' median in MEFL against the truth', `slope ${calibrated.channels['FL1-A'].slope} (true ${BEAD_TRUTH.m}), ${calibrated.channels['FL1-A'].levels.filter((l) => l.used).length} of 8 levels; cells ${mefState.median?.toFixed(0)} MEFL (true ${truthMedian.toFixed(0)}); proposed for ${mefState.samples} samples`, Math.abs(calibrated.channels['FL1-A'].slope - BEAD_TRUTH.m) < 0.01 && Math.abs(mefState.median / truthMedian - 1) < 0.02 && mefState.proposed && mefState.samples === 2, 'slope within 0.01; within 2%; proposed');
 
   // 2. The spectral example: unmix builds and proposes a reference library, then unmixes; it equals
   // the same steps run directly.

@@ -295,3 +295,41 @@ test('comparison statistics use the control sample given by the context', () => 
   const [lo, hi] = [computeStatistic(view, ws, { stat: 'countLow' }), computeStatistic(view, ws, { stat: 'countHigh' })];
   assert.ok(lo < 4000 && hi > 4000 && hi - lo < 300);
 });
+
+test('formula and calibrated channels are computed for the samples they apply to', () => {
+  const view = makeView('s1');
+  const other = makeView('s2');
+  let ws = createWorkspace('t');
+  ws = { ...ws, derived: [
+    { id: 'f', kind: 'formula', inputs: ['A', 'B'], outputs: ['A over B'], params: { expression: '[A] / [B]' } },
+    { id: 'c', kind: 'calibration', inputs: ['C'], outputs: ['C MEFL'], params: { m: 1, b: Math.log(40), unit: 'MEFL' }, samples: ['s1'] },
+  ] };
+  view.syncWorkspace(ws);
+  other.syncWorkspace(ws);
+  const ratio = view.column('A over B');
+  const a = view.column('A');
+  const b = view.column('B');
+  for (const e of [0, 1, 777]) assert.ok(Math.abs(ratio[e] - a[e] / b[e]) < 1e-5 * Math.abs(ratio[e]));
+  assert.equal(view.exactValue('A over B', 3), view.exactValue('A', 3) / view.exactValue('B', 3));
+  assert.ok(Math.abs(view.column('C MEFL')[5] - 40 * view.column('C')[5]) < 1e-3);
+  assert.equal(view.channelInfo('C MEFL').type, 'fluorescence');
+  assert.equal(view.channelInfo('C MEFL').unit, 'MEFL');
+  assert.ok(view.hasChannel('C MEFL'));
+  assert.ok(!other.hasChannel('C MEFL'), 'the calibration applies to s1 only');
+  assert.ok(other.hasChannel('A over B'));
+});
+
+test('absolute counts from counting beads, with a dilution from an annotation', () => {
+  const view = makeView('s1');
+  let ws = createWorkspace('t');
+  ws = { ...ws, samples: [{ id: 's1', name: 's1', channels: [], meta: { dilution: '1:4' } }] };
+  // "Beads": the second population (a quarter of the events); "cells": the rest.
+  ({ ws } = addGates(ws, [rectGate('Beads', null, [0.5, 0.5], [1, 1]), rectGate('Cells', null, [0, 0], [0.5, 0.5])]));
+  const [beads, cells] = ws.gates;
+  const counting = { beadGateId: beads.id, beads: 50000, volume: 50 };
+  // 3000 cells per 1000 beads × 1000 beads/µL = 3000 /µL, ×4 diluted.
+  assert.equal(computeStatistic(view, ws, { stat: 'absoluteCount', gateId: cells.id, counting }), 3000);
+  assert.equal(computeStatistic(view, ws, { stat: 'absoluteCount', gateId: cells.id, counting, dilution: { field: 'dilution' } }), 12000);
+  assert.equal(computeStatistic(view, ws, { stat: 'absoluteCount', gateId: cells.id, counting, dilution: 2 }), 6000);
+  assert.ok(Number.isNaN(computeStatistic(view, ws, { stat: 'absoluteCount', gateId: cells.id })));
+});

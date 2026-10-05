@@ -433,15 +433,33 @@ combines. Waves 7–8 are a plan, to be revised as each wave lands.
      reference for this slice or for slice 2's formulas.
    - Not done: multivariate probability binning is in `compare_distributions` only, not in
      Tables.
-2. **Formula channels, calibrated units and absolute counts (G12, G13):** a formula editor for
-   new channels (a parser, not `eval`: arithmetic, log, ln, exp, sqrt, abs, min, max; channels by
-   name or marker), gateable, kept in templates and matched by marker, written to Gating-ML where
-   it can express them (ratios) and to FlowJo exports; MEF/ERF units from calibration beads (peaks
-   found and matched to the manufacturer's values, a standard curve fitted as FlowCal does);
-   absolute counts from counting beads with the dilution factor, beside the `$VOL` counts that
-   already exist.
-   - Validation: FlowCal's bead files, with FlowCal in Python as the oracle; simulated counting
-     beads of known concentration; formula channels against the same formulas computed in R.
+2. **Formula channels, calibrated units and absolute counts (G12, G13): done.** Formula channels
+   (`formula.js`: a parser and tree evaluator, no `eval`; channels by marker or detector in
+   brackets, + − × ÷ ^, log, ln, exp, sqrt, abs, asinh, min, max) computed on compensated values
+   as derived records the engine evaluates per event, with a dialog that checks the expression
+   and previews it; they travel with templates (rebuilt from the matched channels), ratios go into
+   Gating-ML as fratio, FlowJo exports report them as not written. Calibration (`calibration.js`,
+   QC → Calibration) follows FlowCal: levels found together on chosen channels (logicle with
+   W = 0), medians matched to the datasheet, levels within 2.5 SD of the range's ends left out,
+   m·ln(x) + b = ln(MEF + MEF_beads) fitted by a local search from FlowCal's starting point (the
+   global minimum is degenerate), and "<channel> <unit>" channels added to the samples acquired
+   with the beads' settings (records with `samples`). Absolute counts from counting beads (bead
+   population, beads in the tube, µL of sample) and a dilution factor (a number or an annotation)
+   for them and for `$VOL` concentrations. Computed channels now appear in plot axis menus and
+   agent tools. Methods sentences with FlowCal and Brando et al. 2000. Agent tools
+   `add_formula_channel` and `calibrate_beads` (38 tools); `statistics_table` takes counting
+   beads and a dilution.
+   - Validation: `calibration` (the bead model on FlowCal's own selected levels: curves within
+     1.5e-4, residuals no larger; simulated beads of known response with a saturated level: slope
+     within 0.001, cells' MEFL within 0.2%; 7 formulas on 10 tubes against R, medians within
+     5e-8, events within 2e-14; a ratio gate the same after Gating-ML and on renamed detectors
+     through a template; counting beads in 40 tubes within 1%, scattered as Poisson predicts),
+     `flowcal` (external data `flowcal-mef`: FlowCal's example end to end, the same levels left
+     out, medians within one log-channel step, cells within 1.6% of FlowCal 1.3.1), agent session
+     (21 checks).
+   - Not done: FlowJo exports do not write formula channels as derived parameters (no open reader
+     computes them to check against, and FlowJo 11 cannot create them); calibrated channels stay
+     in CytoWeave (not written to exports).
 3. **Batch reports and spreadsheet export (R7):** a figure layout iterated over samples or
    groups, as multi-page PDF and PowerPoint (our own minimal writer), and Excel workbooks
    (statistics and provenance sheets) and GraphPad Prism (`.pzfx`) tables, built on the template

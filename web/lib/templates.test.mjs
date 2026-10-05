@@ -125,3 +125,27 @@ test('a "QC pass" gate is left out of a template and the populations under it ar
   assert.match(template.notes.join(' '), /QC pass.*left out and the populations under it are kept/);
   assert.ok(template.plots.some((p) => p.populationId === ROOT && p.type === 'dot'), 'a plot of QC pass becomes a plot of all events');
 });
+
+test('formula channels travel with the template, computed from the channels their markers match', () => {
+  let ws = source();
+  ws = { ...ws, derived: [...ws.derived, { id: 'f1', kind: 'formula', name: 'CD4/CD8', inputs: ['PE-A', 'APC-A'], outputs: ['CD4/CD8'], params: { expression: '[PE-A] / [APC-A]' } }] };
+  const t = ws.gates.find((g) => g.name === 'T cells').id;
+  ws = addGates(ws, [{ name: 'High ratio', parentId: t, type: 'range', dims: [{ channel: 'CD4/CD8', transform: lin }], geometry: { min: 0.6, max: null } }]).ws;
+  const template = parseTemplate(JSON.stringify(buildTemplate(ws, { name: 'Ratio' })));
+  assert.equal(template.formulas.length, 1);
+  assert.match(template.formulas[0].expression, /^\[c\d+\] \/ \[c\d+\]$/);
+  assert.ok(template.gates.some((g) => g.name === 'High ratio'));
+  // CD4 on BV605 and CD8 on PE-Cy7 here.
+  const other = target([ch('FSC-A', '', 'scatter'), ch('SSC-A', '', 'scatter'), ch('BV510-A', 'CD3'), ch('BV605-A', 'CD4'), ch('PE-Cy7-A', 'CD8')]);
+  const { ws: applied, report } = applyTemplate(other, template);
+  const formula = applied.derived.find((d) => d.kind === 'formula');
+  assert.equal(formula.params.expression, '[BV605-A] / [PE-Cy7-A]');
+  assert.deepEqual(formula.inputs, ['BV605-A', 'PE-Cy7-A']);
+  assert.ok(applied.gates.some((g) => g.name === 'High ratio' && g.dims[0].channel === 'CD4/CD8'));
+  assert.deepEqual(report.formulas, ['CD4/CD8']);
+  // Without CD8, the formula and its gate are left out with the reason.
+  const lacking = applyTemplate(target([ch('FSC-A', '', 'scatter'), ch('SSC-A', '', 'scatter'), ch('BV510-A', 'CD3'), ch('BV605-A', 'CD4')]), template);
+  assert.ok(!lacking.ws.derived.some((d) => d.kind === 'formula'));
+  assert.ok(lacking.report.gates.skipped.some((s) => s.gate === 'High ratio'));
+  assert.ok(lacking.report.channels.some((c) => /formula of CD8/.test(c.note ?? '')));
+});

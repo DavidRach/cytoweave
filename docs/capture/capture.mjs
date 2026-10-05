@@ -532,6 +532,62 @@ const scenes = {
     await js(`[...document.querySelectorAll('main h3')].find((e) => /titration:/.test(e.textContent))?.scrollIntoView({ block: 'start' })`);
     await sleep(1200);
   },
+  // QC → Calibration: 8-level beads (simulated in the page: a detector of slope 1.05 whose
+  // brightest level saturates) calibrated on FITC-A in MEFL.
+  async calibration() {
+    await app(`
+      const { encodeFCS } = await import('/lib/simulate.js');
+      const { createRandom } = await import('/lib/random.js');
+      const random = createRandom(21);
+      const mef = [0, 792, 2079, 6588, 16471, 47497, 137049, 271647];
+      const read = (v) => Math.min(16383, ((v / Math.exp(2)) ** (1 / 1.05)) * 10 ** (0.0128 * random.gaussian()) + 5 * random.gaussian());
+      const n = 8 * 1500;
+      const cols = [new Float32Array(n), new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+      for (let e = 0; e < n; e += 1) {
+        const level = e % 8;
+        cols[0][e] = 40000 + 1500 * random.gaussian();
+        cols[1][e] = 12000 + 600 * random.gaussian();
+        cols[2][e] = read(mef[level] + 1500);
+        cols[3][e] = read(2.5 * (mef[level] + 1500));
+      }
+      const params = [['FSC-A', 262144], ['SSC-A', 262144], ['FITC-A', 16384], ['PE-A', 16384]].map(([name, range]) => ({ name, label: '', range }));
+      const bytes = encodeFCS(params, cols, { $CYT: 'Simulated cytometer', $FIL: 'Rainbow beads.fcs' });
+      await app.importFiles([new File([bytes], 'Rainbow beads.fcs')]);
+`);
+    await waitFor(`window.cytoweave.store.ws.samples.length > 0 && !document.querySelector('.progress-toast')`, 60000);
+    await app(`await app.openCalibration();`);
+    await sleep(1200);
+    await app(`
+      const S = app.qcState.calibration;
+      S.values = { 'FITC-A': '0, 792, 2079, 6588, 16471, 47497, 137049, 271647' };
+      S.units = { 'FITC-A': 'MEFL' };
+      S.clustering = ['FITC-A', 'PE-A'];
+      app.store.setUI({}, ['selection']);`);
+    await sleep(1000);
+    await click('Calibrate', 'main button');
+    await waitFor(`/FITC-A → MEFL/.test(${mainText})`, 60000);
+    await sleep(1500);
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /bead events/.test(e.textContent))?.scrollIntoView({ block: 'start' })`);
+    await sleep(1200);
+  },
+  // A formula channel: CD4/CD8 on the PBMC example.
+  async formula() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await mode('gate');
+    await selectGate('T cells');
+    await app(`app.formulaDialog();`);
+    await sleep(800);
+    await js(`(() => {
+      const dialog = document.querySelector('.dialog');
+      const name = dialog.querySelector('input[aria-label="Channel name"]');
+      name.value = 'CD4/CD8';
+      const text = dialog.querySelector('textarea');
+      text.value = '[CD4] / [CD8]';
+      text.dispatchEvent(new Event('input'));
+    })()`);
+    await sleep(1500);
+  },
   // The Levey–Jennings chart of the aging detector's Q across the 30 runs.
   async 'levey-jennings'() {
     await scenes.instrument();

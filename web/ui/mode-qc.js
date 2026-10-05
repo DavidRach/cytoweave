@@ -16,6 +16,7 @@ import { categoricalColor } from '../lib/colormaps.js';
 import { createRandom, sampleIndices } from '../lib/random.js';
 import { createInstrumentSection } from './qc-instrument.js';
 import { createTitrationSection } from './qc-titration.js';
+import { createCalibrationSection } from './qc-calibration.js';
 import { createLiveSection } from './live-qc.js';
 import { DEFAULT_SETTINGS, QC_CHANNEL, binSpan, qcPassGate, runQC, saveDerivedMergedIn, saveQCResults, timeDomain } from './qc-run.js';
 
@@ -39,6 +40,7 @@ const SECTIONS = [
   { id: 'debarcode', label: 'Debarcode', icon: 'tag', title: 'Split barcoded samples' },
   { id: 'instrument', label: 'Instrument', icon: 'gauge', title: 'Detector efficiency Q and background B from beads, and Levey–Jennings charts across runs' },
   { id: 'titration', label: 'Titration', icon: 'flask', title: 'Reagent titration and detector voltage walks: stain index, the amount of antibody or the voltage to use' },
+  { id: 'calibration', label: 'Calibration', icon: 'gauge', title: 'Calibrated units (MEF, ERF) from multi-level beads' },
   { id: 'live', label: 'Live', icon: 'play', title: 'QC of files as they are acquired, from a watched folder' },
 ];
 
@@ -577,6 +579,7 @@ export function mountQCMode(app, container) {
 
   const instrumentSection = createInstrumentSection({ app, chart, alpha, rerender: () => scheduleRender() });
   const titrationSection = createTitrationSection({ app, rerender: () => scheduleRender() });
+  const calibrationSection = createCalibrationSection({ app, rerender: () => scheduleRender() });
   const liveSection = createLiveSection({
     app,
     rerender: () => { if (S.section === 'live') scheduleRender(); },
@@ -627,6 +630,7 @@ export function mountQCMode(app, container) {
     else if (S.section === 'debarcode') renderDebarcode();
     else if (S.section === 'instrument') instrumentSection.render(sectionHost);
     else if (S.section === 'titration') titrationSection.render(sectionHost);
+    else if (S.section === 'calibration') calibrationSection.render(sectionHost);
     else renderClean();
     const body = root.querySelector('.view-body');
     if (body) body.scrollTop = scroll;

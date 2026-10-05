@@ -20,6 +20,7 @@ import { attr, child, children, element, find, numberAttr, parseXMLDocument, ser
 import { biexToLogicle, createTransform } from './transforms.js';
 import { invertMatrix } from './compensation.js';
 import { newId } from './gates.js';
+import { asRatio, parseFormula } from './formula.js';
 
 export const GATING_NS = 'http://www.isac-net.org/std/Gating-ML/v2.0/gating';
 export const TRANSFORMS_NS = 'http://www.isac-net.org/std/Gating-ML/v2.0/transformations';
@@ -903,6 +904,17 @@ export function exportGatingML(workspace, options = {}) {
   }
   const derivedRecords = workspace.derived ?? [];
   const derivedOf = (channel) => derivedRecords.find((d) => (d.outputs ?? []).includes(channel));
+  // A ratio channel as fratio: an imported ratio, or a formula of the form A·(x − B)/(y − C).
+  const ratioOf = (d) => {
+    if (d?.kind === 'ratio' && d.inputs?.length === 2) return { inputs: d.inputs, params: d.params ?? {} };
+    if (d?.kind !== 'formula') return null;
+    try {
+      const r = asRatio(parseFormula(d.params.expression));
+      return r ? { inputs: [r.numerator, r.denominator], params: { A: r.A, B: r.B, C: r.C } } : null;
+    } catch {
+      return null;
+    }
+  };
   // Unmixing (non-square spectrum) matrices of the gates' unmixed channels: written inverted, a
   // row of fluorochrome coefficients per detector.
   const unmixIds = new Map();
@@ -935,7 +947,7 @@ export function exportGatingML(workspace, options = {}) {
       }
     }
     if (compRef === 'uncompensated') return 'uncompensated';
-    const source = d?.kind === 'ratio' ? d.inputs?.[0] : channel;
+    const source = ratioOf(d)?.inputs[0] ?? channel;
     if (compensatedChannels === null) return /^(FSC|SSC|Time|Event)/i.test(source ?? '') ? 'uncompensated' : compRefId;
     return compensatedChannels.has(source) ? compRefId : 'uncompensated';
   };
@@ -970,10 +982,13 @@ export function exportGatingML(workspace, options = {}) {
   const ratioFor = (channel) => {
     const d = derivedOf(channel);
     if (!d || d.kind === 'unmix') return null;
-    if (d.kind !== 'ratio' || d.inputs?.length !== 2) {
+    const ratio = ratioOf(d);
+    if (!ratio) {
       if (!derivedWarned.has(channel)) {
         derivedWarned.add(channel);
-        warnings.push(`The channel "${channel}" is derived (${d.kind}); Gating-ML readers need it present in the FCS data under that name.`);
+        warnings.push(d.kind === 'formula'
+          ? `The channel "${channel}" is the formula ${d.params.expression}, which Gating-ML 2.0 cannot express (of formulas, only ratios A·(x − B)/(y − C)); readers need it present in the FCS data under that name.`
+          : `The channel "${channel}" is derived (${d.kind}); Gating-ML readers need it present in the FCS data under that name.`);
       }
       return null;
     }
@@ -981,11 +996,11 @@ export function exportGatingML(workspace, options = {}) {
     if (!id) {
       id = claim(`Ratio_${channel}`);
       ratioIds.set(d.id, id);
-      const { A = 1, B = 0, C = 0 } = d.params ?? {};
+      const { A = 1, B = 0, C = 0 } = ratio.params;
       const info = withInfo ? element('data-type:custom_info', {}, [element('cytoweave:info', { channel })]) : null;
       transformElements.push(element('transforms:transformation', { 'transforms:id': id }, [info, element('transforms:fratio', { 'transforms:A': formatNumber(A), 'transforms:B': formatNumber(B), 'transforms:C': formatNumber(C) }, [
-        element('data-type:fcs-dimension', { 'data-type:name': d.inputs[0] }),
-        element('data-type:fcs-dimension', { 'data-type:name': d.inputs[1] }),
+        element('data-type:fcs-dimension', { 'data-type:name': ratio.inputs[0] }),
+        element('data-type:fcs-dimension', { 'data-type:name': ratio.inputs[1] }),
       ])]));
     }
     return id;

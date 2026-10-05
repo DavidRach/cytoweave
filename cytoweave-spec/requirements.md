@@ -57,8 +57,8 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | G9 | Learned per-sample gate adjustment with abstention (uncertainty-aware autogating) | done: landmark registration from the gate's exemplars with an ensemble confidence; confident adjustments proposed, uncertain samples sent to review; one gate per donor or subject; CLR probabilities; validated on simulated shifts (validation `autogating`) and against an expert's per-donor gates in a real ICS study (`experts`) |
 | G10 | Population comparison: probability binning, Overton subtraction, SED, Kolmogorov–Smirnov | done: Tables statistics against a control sample (SED, Overton, probability binning T(χ) and excess %, K-S D), shown under overlaid histograms; probability binning equal to flowStats (validation `comparisons`) |
 | G11 | Rare-event statistics: Poisson intervals on counts, limits of detection and quantification, events needed | done: exact Poisson and binomial limits as Tables statistics, counting CV and events needed in the inspector, a column's limits of blank, detection and quantification (CLSI EP17) marking each value |
-| G12 | Derived parameters from formulas | planned (wave 6) |
-| G13 | Calibrated units (MEF, ERF) from beads; absolute counts from counting beads | planned (wave 6) |
+| G12 | Derived parameters from formulas | done: formula channels by marker or detector, previewed as typed, gateable, carried by templates, ratios written to Gating-ML (fratio); equal to R on 7 formulas (validation `calibration`) |
+| G13 | Calibrated units (MEF, ERF) from beads; absolute counts from counting beads | done: QC → Calibration as FlowCal computes it (within 1.6% of FlowCal on its example, validation `flowcal`); absolute counts from counting beads with a dilution factor |
 
 ## Compensation and spectral
 

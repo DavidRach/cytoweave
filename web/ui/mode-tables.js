@@ -17,7 +17,19 @@ export function columnLabel(ws, column) {
   const channel = column.channel ? ` ${channelLabel(ws, column.channel, { short: true })}` : '';
   const value = column.value !== undefined && column.value !== null && column.stat === 'percentile' ? ` P${column.value}` : column.stat === 'positive' ? ` ≥ ${column.value}` : '';
   const ancestor = column.stat === 'freqOf' ? ` of ${column.ancestorId && column.ancestorId !== ROOT ? gateById(ws, column.ancestorId)?.name : 'all events'}` : '';
-  return `${population}: ${stat}${channel}${value}${ancestor}${controlLabel(ws, column)}`;
+  return `${population}: ${stat}${channel}${value}${ancestor}${controlLabel(ws, column)}${countingLabel(ws, column)}`;
+}
+
+// " (beads: Counting beads, 50,000 in 50 µL; dilution ×2)".
+function countingLabel(ws, column) {
+  const parts = [];
+  if (column.counting?.beadGateId) {
+    const beads = column.counting.beadGateId === ROOT ? 'all events' : gateById(ws, column.counting.beadGateId)?.name ?? '(deleted)';
+    parts.push(`beads: ${beads}, ${Number(column.counting.beads).toLocaleString('en-US')} in ${column.counting.volume} µL`);
+  }
+  if (typeof column.dilution === 'number' && column.dilution !== 1) parts.push(`dilution ×${column.dilution}`);
+  else if (column.dilution?.field) parts.push(`dilution from "${column.dilution.field}"`);
+  return parts.length ? ` (${parts.join('; ')})` : '';
 }
 
 // " (control: FMO CD25)", or with another population " (control: FMO CD25, Lymphocytes)".
@@ -41,7 +53,7 @@ export function statisticContext(app) {
 }
 
 function statisticSpec(column) {
-  return { stat: column.stat, gateId: column.gateId ?? ROOT, channel: column.channel, ancestorId: column.ancestorId, value: column.value, control: column.control };
+  return { stat: column.stat, gateId: column.gateId ?? ROOT, channel: column.channel, ancestorId: column.ancestorId, value: column.value, control: column.control, counting: column.counting, dilution: column.dilution };
 }
 
 // Columns that can carry detection limits: counts and frequencies.
@@ -203,6 +215,17 @@ export function mountTablesMode(app, container) {
     const channelField = h('label.field', h('span', 'Channel'), channelSelect);
     const ancestorField = h('label.field', h('span', 'Relative to'), ancestorSelect);
     const valueField = h('label.field', h('span', 'Value (percentile or threshold)'), valueInput);
+    const beadSelect = h('select.input.small', ...ws.gates.map((g) => h('option', { value: g.id, selected: /bead|count/i.test(g.name) }, gatePath(ws, g.id))));
+    const beadsInput = h('input.input.small', { type: 'number', min: 0, step: 'any', placeholder: 'e.g. 50000' });
+    const volumeInput = h('input.input.small', { type: 'number', min: 0, step: 'any', value: 50 });
+    const metaFields = [...new Set(ws.samples.flatMap((x) => Object.keys(x.meta ?? {})))];
+    const dilutionSelect = h('select.input.small', h('option', { value: 'number' }, 'The same for every sample'), ...metaFields.map((f) => h('option', { value: `field:${f}`, selected: /dilut/i.test(f) }, `From the annotation "${f}"`)));
+    const dilutionInput = h('input.input.small', { type: 'number', min: 0, step: 'any', value: 1, style: { width: '90px' } });
+    const countingField = h('div', h('label.field', h('span', 'Counting beads (population)'), beadSelect),
+      h('div.row', { style: { gap: '8px' } }, h('label.field', h('span', 'Beads in the tube'), beadsInput), h('label.field', h('span', 'Sample in the tube (µL)'), volumeInput)),
+      h('p.muted', { style: { fontSize: '11.5px', marginTop: 0 } }, 'Cells per µL = cell events ÷ bead events × beads in the tube ÷ µL of sample, times the dilution. Beads in the tube: from the lot (TruCount) or the beads per µL times the volume of beads added (CountBright).'));
+    const dilutionField = h('div', h('label.field', h('span', 'Dilution factor'), dilutionSelect), dilutionInput);
+    dilutionSelect.addEventListener('change', () => { dilutionInput.hidden = dilutionSelect.value !== 'number'; });
     const controlField = h('div', h('label.field', h('span', 'Control sample'), controlSelect), h('label.field', h('span', 'Control population'), controlPopSelect),
       h('p.muted', { style: { fontSize: '11.5px', marginTop: 0 } }, 'Each sample\'s population is compared with the control\'s on the channel: for example a stained sample with its FMO.'));
     const sync = () => {
@@ -211,6 +234,9 @@ export function mountTablesMode(app, container) {
       ancestorField.hidden = !stat?.needsAncestor;
       valueField.hidden = !stat?.needsValue;
       controlField.hidden = !stat?.needsControl;
+      countingField.hidden = !stat?.needsCounting;
+      dilutionField.hidden = !stat?.needsDilution;
+      dilutionInput.hidden = dilutionSelect.value !== 'number';
     };
     statSelect.addEventListener('change', sync);
     sync();
@@ -218,7 +244,7 @@ export function mountTablesMode(app, container) {
     builder.append(
       h('label.field', h('span', 'Population'), popSelect),
       h('label.field', h('span', 'Statistic'), statSelect),
-      channelField, ancestorField, valueField, controlField,
+      channelField, ancestorField, valueField, controlField, countingField, dilutionField,
       h('div.btn-row',
         h('button.btn.primary.small', {
           type: 'button',
@@ -229,7 +255,16 @@ export function mountTablesMode(app, container) {
               return;
             }
             const control = stat.needsControl ? { sampleId: controlSelect.value, ...(controlPopSelect.value ? { gateId: controlPopSelect.value } : {}) } : undefined;
-            add([{ id: newId('col'), gateId: popSelect.value, stat: statSelect.value, channel: stat.needsChannel ? channelSelect.value : undefined, ancestorId: stat.needsAncestor ? ancestorSelect.value : undefined, value: stat.needsValue ? Number.parseFloat(valueInput.value) : undefined, control }]);
+            let counting;
+            if (stat.needsCounting) {
+              counting = { beadGateId: beadSelect.value, beads: Number.parseFloat(beadsInput.value), volume: Number.parseFloat(volumeInput.value) };
+              if (!counting.beadGateId || !(counting.beads > 0) || !(counting.volume > 0)) {
+                toast('Choose the bead population and give the beads in the tube and the sample volume.', { kind: 'error' });
+                return;
+              }
+            }
+            const dilution = !stat.needsDilution ? undefined : dilutionSelect.value === 'number' ? (Number.parseFloat(dilutionInput.value) || 1) : { field: dilutionSelect.value.slice(6) };
+            add([{ id: newId('col'), gateId: popSelect.value, stat: statSelect.value, channel: stat.needsChannel ? channelSelect.value : undefined, ancestorId: stat.needsAncestor ? ancestorSelect.value : undefined, value: stat.needsValue ? Number.parseFloat(valueInput.value) : undefined, control, counting, ...(dilution !== undefined && dilution !== 1 ? { dilution } : {}) }]);
           },
         }, icon('plus'), 'Add column'),
         h('button.btn.small', {

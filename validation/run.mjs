@@ -6,7 +6,7 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, titration, comparisons, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor
@@ -18,7 +18,9 @@
 import { generateExample } from '../web/lib/examples.js';
 import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
-import { SampleView, countOf, population } from '../web/lib/engine.js';
+import { SampleView, computeStatistic, countOf, population } from '../web/lib/engine.js';
+import { resolveFormula } from '../web/lib/formula.js';
+import { quantileSorted } from '../web/lib/stats.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
 import { builtCase, bundledCase, flowKitCases, importWithFiles } from './flowjo-export-cases.mjs';
 import { deidentifyFCS } from '../web/lib/deidentify.js';
@@ -34,6 +36,9 @@ import { bagwellSimulation, comparisonTubes } from './comparison-cases.mjs';
 import { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } from '../web/lib/distribution.js';
 import { binomialInterval, detectionLimits, poissonInterval } from '../web/lib/rare-events.js';
 import { poisson } from '../web/lib/simulate.js';
+import { BEAD_TRUTH, COUNTING, countingTubes, simulatedBeads } from './calibration-cases.mjs';
+import { calibrateBeads, channelBounds, fitBeadModel, standardCurve } from '../web/lib/calibration.js';
+import { exportGatingML } from '../web/lib/gatingml.js';
 import { TITRATION } from '../web/lib/examples.js';
 import { buildProvenance, compareProvenance, embedPNG, embedSVG, pdfAttachment, readFigureProvenance, rebuildWorkspace } from '../web/lib/figure-provenance.js';
 import { writePDF } from '../web/lib/pdf.js';
@@ -583,6 +588,142 @@ const suites = {
       if (freq((limits.lod * parent) / 100) > limits.lob) detected += 1;
     }
     check('comparisons', 'limits of blank and detection (CLSI EP17) from 60 blanks (8 background events in 100,000) and 60 low-level samples (30 events): new blanks above the LoB, and samples at the LoD above it (EP17: 5% and 95%)', `LoB ${fmt((limits.lob * parent) / 100, 1)} events, LoD ${fmt((limits.lod * parent) / 100, 1)} events; ${pct(falsePositive / 4000)} of new blanks above the LoB, ${pct(detected / 4000)} of samples at the LoD (counts are whole numbers, so 5% cannot be met exactly)`, falsePositive / 4000 <= 0.08 && detected / 4000 >= 0.93, '≤ 8%; ≥ 93%');
+  },
+  // Formula channels, calibrated units and absolute counts (calibration-cases.mjs): FlowCal's
+  // bead model fit on its own levels (reference/flowcal.json), simulated beads and cells of known
+  // MEF, formulas against R (reference/formulas.json), Gating-ML and templates, and counting beads
+  // at known concentrations.
+  calibration() {
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowcal.json', import.meta.url), 'utf8'));
+    const rss = (x, y, p) => x.reduce((acc, xi, i) => acc + (Math.log(y[i] + p.autofluorescence) - (p.m * Math.log(xi) + p.b)) ** 2, 0);
+    const fits = ref.beads.map((b) => {
+      const fit = fitBeadModel(b.selectedRFI, b.selectedMEF);
+      const curve = standardCurve(fit);
+      return { file: b.file, fit, curveWorst: Math.max(...b.curve.map((p) => Math.abs(curve(p.rfi) / p.mef - 1))), ours: rss(b.selectedRFI, b.selectedMEF, fit), theirs: rss(b.selectedRFI, b.selectedMEF, b.params), m: [fit.m, b.params.m] };
+    });
+    check('calibration', `the bead model m·ln(x) + b = ln(MEF + MEF_beads) fitted to the levels FlowCal ${ref.flowcal} selected in its ${fits.length} bead samples (reference/flowcal.json): the standard curve against FlowCal's, and the residuals`, fits.map((f) => `${f.file}: slope ${f.m[0].toFixed(5)} (FlowCal ${f.m[1].toFixed(5)}), curve within ${f.curveWorst.toExponential(1)}, residual sum ${f.ours.toExponential(4)} (FlowCal ${f.theirs.toExponential(4)})`).join('; '), fits.every((f) => f.curveWorst < 5e-4 && f.ours <= f.theirs * (1 + 1e-6)), 'curve within 5e-4; residuals no larger than FlowCal\'s');
+
+    const sim = simulatedBeads();
+    const result = calibrateBeads(sim.beads, { channels: ['FL1-A'], clustering: ['FL1-A', 'FL2-A'], values: { 'FL1-A': sim.mef }, scatter: ['FSC-A', 'SSC-A'], bounds: { 'FL1-A': [0, sim.top] }, unit: 'MEFL' });
+    const c = result.channels['FL1-A'];
+    const curve = standardCurve(c.fit);
+    const cells = sim.cells.map((cell) => {
+      const sorted = Float64Array.from(cell.values, curve).sort();
+      const truth = Float64Array.from(cell.truth).sort();
+      return { mef: cell.mef, error: sorted[sorted.length >> 1] / truth[truth.length >> 1] - 1 };
+    });
+    check('calibration', `8-level beads on a detector of known response (slope ${BEAD_TRUTH.m}, beads' fluorescence ${BEAD_TRUTH.auto} MEFL, a 14-bit range in which the brightest level saturates), and cells of known MEFL read on it`, `levels used ${c.levels.map((l) => (l.used ? 1 : 0)).join('')} (the brightest left out: ${c.levels[7].why}); slope ${c.fit.m.toFixed(4)}, beads' fluorescence ${c.fit.autofluorescence.toFixed(0)}; cells' median MEFL ${cells.map((x) => `${x.mef}: ${(100 * x.error).toFixed(2)}%`).join(', ')}`, !c.levels[7].used && c.levels.slice(0, 7).every((l) => l.used) && Math.abs(c.fit.m - BEAD_TRUTH.m) < 0.01 && Math.abs(c.fit.autofluorescence / BEAD_TRUTH.auto - 1) < 0.1 && cells.every((x) => Math.abs(x.error) < 0.02), 'the saturated level left out; slope within 0.01; cells within 2%');
+
+    // Formulas against R on the comparison tubes.
+    const formulas = JSON.parse(readFileSync(new URL('./reference/formulas.json', import.meta.url), 'utf8'));
+    const tubes = new Map(comparisonTubes().map((t) => [t.name, t]));
+    let worstMedian = 0;
+    let worstPick = 0;
+    let nonFiniteSame = true;
+    let compared = 0;
+    for (const t of formulas.tubes) {
+      const tube = tubes.get(t.tube);
+      const d = load(tube);
+      const record = { id: 'x', name: t.tube, keywords: {}, technology: 'conventional' };
+      const view = new SampleView(record, d);
+      const channels = d.parameters.map((p) => ({ name: p.name, marker: p.marker }));
+      const derived = t.formulas.map((f, i) => {
+        const r = resolveFormula(f.formula, channels);
+        return { id: `f${i}`, kind: 'formula', inputs: r.inputs, outputs: [`F${i}`], params: { expression: r.text } };
+      });
+      view.syncWorkspace({ compensations: [], derived });
+      t.formulas.forEach((f, i) => {
+        const column = view.column(`F${i}`);
+        const finite = Float64Array.from(column.filter(Number.isFinite)).sort();
+        const median = quantileSorted(finite, 0.5);
+        worstMedian = Math.max(worstMedian, Math.abs(median - f.median) / Math.max(1e-12, Math.abs(f.median)));
+        if (column.length - finite.length !== f.nonFinite) nonFiniteSame = false;
+        f.picks.forEach((e, k) => {
+          const expected = f.values[k];
+          const got = view.exactValue(`F${i}`, e);
+          if (typeof expected === 'number') worstPick = Math.max(worstPick, Math.abs(got - expected) / Math.max(1e-12, Math.abs(expected)));
+          else if (Number.isFinite(got)) nonFiniteSame = false;
+        });
+        compared += 1;
+      });
+    }
+    check('calibration', `${formulas.tubes[0].formulas.length} formula channels (ratios, logarithms, offsets, asinh, sqrt, powers, min and max, by marker and by detector) on the ${formulas.tubes.length} comparison tubes against R ${formulas.R} evaluating the same expressions in double precision`, `${compared} channels: medians within ${worstMedian.toExponential(1)} (relative; CytoWeave stores computed channels in single precision), single events within ${worstPick.toExponential(1)}; events without a value ${nonFiniteSame ? 'the same' : 'differ'}`, worstMedian < 1e-6 && worstPick < 1e-12 && nonFiniteSame, 'medians within 1e-6, events within 1e-12, the same events without a value');
+
+    // A ratio formula through Gating-ML and back, and through a template onto renamed detectors.
+    const control = load(tubes.get('Positive 40.fcs'));
+    const record = { id: 's1', name: 'Positive 40', keywords: {}, technology: 'conventional', channels: control.parameters.map((p) => ({ name: p.name, marker: p.marker, type: p.type, label: p.label ?? '', range: p.range })), compensationId: 'none', role: 'sample', meta: {} };
+    let gws = { ...createWorkspace('ratio'), samples: [record], derived: [{ id: 'r', kind: 'formula', name: 'Ratio', inputs: ['FITC-A', 'PE-A'], outputs: ['Ratio'], params: { expression: '2 * ([FITC-A] - 100) / ([PE-A] + 50)' } }] };
+    // Negative cells near 1.2, positive ones near 3.8: the gate at 2.5.
+    const linear = { type: 'linear', min: -5, max: 10 };
+    gws = addGates(gws, [{ id: 'g', name: 'High ratio', parentId: null, type: 'range', dims: [{ channel: 'Ratio', transform: linear }], geometry: { min: 0.5, max: null } }]).ws;
+    const gview = new SampleView(record, control);
+    gview.syncWorkspace(gws);
+    const before = population(gview, gws, 'g').length;
+    const xml = exportGatingML(gws);
+    const back = importGatingML(xml.xml);
+    let rws = { ...createWorkspace('back'), samples: [record], derived: back.derived };
+    rws = addGates(rws, back.gates).ws;
+    const rview = new SampleView(record, control);
+    rview.syncWorkspace(rws);
+    const after = population(rview, rws, rws.gates[0].id).length;
+    const fratio = /<transforms:fratio[^>]*transforms:A="2"[^>]*transforms:B="100"[^>]*transforms:C="-50"/.test(xml.xml);
+    check('calibration', 'a gate on the formula channel 2·([FITC-A] − 100)/([PE-A] + 50), exported as Gating-ML 2.0 (an fratio transformation) and read back', `fratio written: ${fratio ? 'yes, A = 2, B = 100, C = −50' : 'no'}; ${before} events before, ${after} after (of 20,000, 40% positive)`, fratio && before === after && before > 7000 && before < 9000, 'fratio; the same events');
+    // ...and a template of the PBMC analysis with a CD4/CD8 ratio gate, applied to renamed detectors.
+    const input = pbmcFiles(0.1);
+    const source = sourceAnalysis(input);
+    const cd4 = source.ws.samples[0].channels.find((x) => x.marker === 'CD4')?.name;
+    const cd8 = source.ws.samples[0].channels.find((x) => x.marker === 'CD8')?.name;
+    let sws = { ...source.ws, derived: [...source.ws.derived, { id: 'cd48', kind: 'formula', name: 'CD4/CD8', inputs: [cd4, cd8], outputs: ['CD4/CD8'], params: { expression: `[${cd4}] / [${cd8}]` } }] };
+    const tcell = sws.gates.find((g) => g.name === 'T cells').id;
+    sws = addGates(sws, [{ id: 'hr', name: 'CD4/CD8 above 10', parentId: tcell, type: 'range', dims: [{ channel: 'CD4/CD8', transform: { type: 'log', min: 0.01, max: 1000 } }], geometry: { min: 0.6, max: null } }]).ws;
+    for (const view of source.views.values()) view.syncWorkspace(sws);
+    const template = parseTemplate(JSON.stringify(buildTemplate(sws, { name: 'with a ratio' })));
+    const other = loadSamples(asOtherInstrument(input.files), 'other instrument');
+    const applied = applyTemplate(other.ws, template);
+    for (const view of other.views.values()) view.syncWorkspace(applied.ws);
+    const countsBefore = countsOf(sws, source.views).get('Cells / Single cells / Live / Lymphocytes / T cells / CD4/CD8 above 10');
+    const path = [...countsOf(applied.ws, other.views).keys()].find((k) => k.endsWith('CD4/CD8 above 10'));
+    const countsAfter = countsOf(applied.ws, other.views).get(path);
+    const same = countsBefore && countsAfter && [...countsBefore].every(([sample, n]) => countsAfter.get(sample) === n);
+    const formula = applied.ws.derived.find((d) => d.kind === 'formula');
+    check('calibration', 'a template of the PBMC analysis with a CD4/CD8 formula channel and a gate on it, applied to the same events with every detector renamed: the formula rebuilt from the channels CD4 and CD8 matched, and the gate holding the same events', `formula ${formula?.params.expression ?? 'not added'}; ${same ? 'the same events in all' : 'different events in some of'} ${countsBefore?.size ?? 0} samples`, Boolean(formula) && !formula.params.expression.includes(cd4) && same, 'rebuilt on the new detectors; the same events');
+
+    // Counting beads at known concentrations.
+    const { ws, tubes: countTubes } = countingTubes();
+    const counting = { beadGateId: 'beads', beads: COUNTING.beads, volume: COUNTING.volume };
+    const rows = countTubes.map((t) => {
+      t.view.syncWorkspace(ws);
+      const value = computeStatistic(t.view, ws, { stat: 'absoluteCount', gateId: 'cells', counting, dilution: { field: 'dilution' } });
+      return { ratio: value / t.truth, expectedCV: Math.sqrt(1 / t.cellEvents + 1 / t.beadEvents), dilution: t.dilution };
+    });
+    const logs = rows.map((r) => Math.log(r.ratio));
+    const meanLog = logs.reduce((a, b) => a + b, 0) / logs.length;
+    const z = rows.map((r, i) => (logs[i] - meanLog) / r.expectedCV);
+    const zsd = Math.sqrt(z.reduce((a, b) => a + b * b, 0) / (z.length - 1));
+    check('calibration', `absolute counts from counting beads in ${rows.length} simulated tubes of known concentration (200 to 8,000 cells/µL; ${COUNTING.beads.toLocaleString('en-US')} beads in ${COUNTING.volume} µL; every third tube diluted 1:4, the dilution read from an annotation): bias, and scatter against Poisson counting's √(1/cells + 1/beads)`, `mean ratio to the truth ${Math.exp(meanLog).toFixed(4)}; scatter ${zsd.toFixed(2)} × the Poisson expectation`, Math.abs(Math.exp(meanLog) - 1) < 0.01 && zsd > 0.7 && zsd < 1.3, 'within 1%; 0.7–1.3 ×');
+  },
+  // FlowCal's MEF example end to end (external data flowcal-mef): CytoWeave finds the bead levels,
+  // leaves out the same ones, and gives the cells the same MEFL as FlowCal.
+  flowcal() {
+    const set = dataset('flowcal-mef');
+    const ref = JSON.parse(readFileSync(new URL('./reference/flowcal.json', import.meta.url), 'utf8'));
+    const rows = ref.beads.map((b) => {
+      const d = parseFCS(new Uint8Array(set.read(b.file))).datasets[0];
+      const columns = columnsOf(d);
+      const fl1 = d.parameters.find((p) => p.name === 'FL1');
+      const result = calibrateBeads(columns, { channels: ['FL1'], clustering: ['FL1', 'FL3'], values: { FL1: b.mef }, scatter: ['FSC', 'SSC'], bounds: { FL1: channelBounds(d.keywords, fl1.index, fl1.range) }, unit: 'MEFL' });
+      const c = result.channels.FL1;
+      const curve = standardCurve(c.fit);
+      return {
+        file: b.file,
+        sameLevels: c.levels.filter((l) => l.used).length === b.selectedRFI.length && c.levels.filter((l) => l.used).every((l, i) => Math.abs(l.median / b.selectedRFI[i] - 1) < 0.01),
+        medianWorst: Math.max(...c.levels.map((l, i) => Math.abs(l.median / b.peakMedians[i] - 1))),
+        m: [c.fit.m, b.params.m],
+        cellsWorst: Math.max(...b.cells.map((cell) => Math.abs(curve(cell.medianRFI) / cell.medianMEF - 1))),
+        cells: b.cells.length,
+      };
+    });
+    check('flowcal', `FlowCal's example (8-peak beads on a Cytek xP3+, FL1 log-amplified over 4 decades; ${rows.length} bead samples on two days, one at another gain) calibrated end to end: CytoWeave's levels, its choice of levels and its MEFL of the ${rows.reduce((a, r) => a + r.cells, 0)} cell samples (median of FlowCal's gated cells) against FlowCal ${ref.flowcal}'s`, rows.map((r) => `${r.file}: the same levels ${r.sameLevels ? 'used' : 'NOT used'}, medians within ${(100 * r.medianWorst).toFixed(2)}% (one step of the log channel is 0.9%), slope ${r.m[0].toFixed(4)} (FlowCal ${r.m[1].toFixed(4)}), cells within ${(100 * r.cellsWorst).toFixed(2)}%`).join('; '), rows.every((r) => r.sameLevels && r.medianWorst < 0.01 && Math.abs(r.m[0] - r.m[1]) < 0.01 && r.cellsWorst < 0.02), 'the same levels; medians within 1%; slope within 0.01; cells within 2%');
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});

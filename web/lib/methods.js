@@ -49,6 +49,8 @@ export const REFERENCES = {
   clopperPearson: { text: 'Clopper CJ, Pearson ES. The use of confidence or fiducial limits illustrated in the case of the binomial. Biometrika. 1934;26(4):404–413.', doi: '10.1093/biomet/26.4.404' },
   eventsNeeded: { text: 'Roederer M. How many events is enough? Are you positive? Cytometry A. 2008;73(5):384–385.', doi: '10.1002/cyto.a.20549' },
   detectionLimits: { text: 'Armbruster DA, Pry T. Limit of blank, limit of detection and limit of quantitation. Clin Biochem Rev. 2008;29(Suppl 1):S49–S52.', doi: null },
+  flowcal: { text: 'Castillo-Hair SM, Sexton JT, Landry BP, Olson EJ, Igoshin OA, Tabor JJ. FlowCal: a user-friendly, open source software tool for automatically converting flow cytometry data from arbitrary to calibrated units. ACS Synth Biol. 2016;5(7):774–780.', doi: '10.1021/acssynbio.5b00284' },
+  absoluteCounts: { text: 'Brando B, Barnett D, Janossy G, et al. Cytofluorometric methods for assessing absolute numbers of cell subsets in blood. Cytometry. 2000;42(6):327–346.', doi: '10.1002/1097-0320(20001215)42:6<327::AID-CYTO1000>3.0.CO;2-F' },
 };
 
 const ORDER = Object.keys(REFERENCES);
@@ -227,6 +229,15 @@ export function writeMethods(ws, options = {}) {
   for (const d of ws.derived.filter((r) => r.kind === 'cellcycle')) paragraphs.push(`DNA content histograms were modeled with the ${/watson/i.test(d.method ?? '') ? `Watson pragmatic model ${cite('watson')}` : `Dean–Jett–Fox model ${cite('deanJettFox')}`}.`);
   for (const d of ws.derived.filter((r) => r.kind === 'proliferation')) paragraphs.push(`Proliferation was modeled by fitting generation peaks of dye dilution; division, proliferation and expansion indices follow Roederer ${cite('proliferation')}.`);
 
+  // Computed channels: formulas and bead calibrations.
+  const formulas = ws.derived.filter((d) => d.kind === 'formula');
+  if (formulas.length) paragraphs.push(`${formulas.length === 1 ? 'A channel was' : `${formulas.length} channels were`} computed for every event from the compensated values: ${formulas.slice(0, 8).map((d) => `${d.outputs[0]} = ${d.params.expression}`).join('; ')}${formulas.length > 8 ? `; and ${formulas.length - 8} more` : ''}.`);
+  const calibrations = ws.derived.filter((d) => d.kind === 'calibration');
+  for (const d of calibrations) {
+    const used = d.params.levels?.filter((l) => l.used).length;
+    paragraphs.push(`${d.inputs[0]} was converted to ${d.params.unit} with ${d.params.beads ? `the multi-level calibration beads of ${d.params.beads}` : 'multi-level calibration beads'} as in FlowCal ${cite('flowcal')}: the beads' levels were found by clustering, each level's median matched to the manufacturer's value${used ? ` (${used} of ${d.params.levels.length} levels, leaving out those near the ends of the detector's range)` : ''}, and the model m·ln(x) + b = ln(${d.params.unit} + ${d.params.unit}_beads) fitted in log space (m = ${d.params.m.toFixed(4)}); values were converted with ${d.params.unit} = e^b·x^m, applied to ${d.samples ? `${d.samples.length} sample${d.samples.length === 1 ? '' : 's'} acquired with the beads' settings` : 'every sample'}.`);
+  }
+
   // Tables: comparisons with control samples, rare-event statistics and detection limits.
   const columns = (ws.tables ?? []).flatMap((t) => t.columns);
   const stats = new Set(columns.map((c) => c.stat));
@@ -245,6 +256,13 @@ export function writeMethods(ws, options = {}) {
     stats.has('freqLow') || stats.has('freqHigh') ? `frequencies with exact binomial (Clopper–Pearson) ${cite('clopperPearson')}` : '',
   ].filter(Boolean);
   if (intervals.length) paragraphs.push(`Rare populations are reported as ${list(intervals)} 95% confidence intervals${stats.has('countCV') ? `, and with the counting CV of 100/√n for n events ${cite('eventsNeeded')}` : ''}.`);
+  const counted = columns.filter((c) => c.stat === 'absoluteCount' && c.counting?.beadGateId);
+  if (counted.length) {
+    const c = counted[0].counting;
+    const beads = ws.gates.find((g) => g.id === c.beadGateId)?.name ?? 'counting beads';
+    const dilution = counted.some((x) => x.dilution) ? ', times each sample\'s dilution' : '';
+    paragraphs.push(`Absolute counts were obtained with counting beads ${cite('absoluteCounts')}: cells per µL = (cell events / bead events, gated as ${beads}) × (${Number(c.beads).toLocaleString('en-US')} beads / ${c.volume} µL of sample)${dilution}.`);
+  }
   for (const column of columns.filter((c) => c.limits?.blankIds?.length)) {
     const name = column.gateId && column.gateId !== 'root' ? ws.gates.find((g) => g.id === column.gateId)?.name ?? 'the population' : 'all events';
     const what = column.stat === 'count' ? 'count' : 'frequency';

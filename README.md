@@ -32,6 +32,9 @@ checks each step:
   choices;
 - samples compared with a control (SED, Overton, probability binning), and
   rare populations reported with exact intervals and detection limits;
+- formula channels (ratios and other expressions of channels), fluorescence
+  in calibrated MEF units from multi-level beads (as FlowCal computes it),
+  and absolute counts from counting beads;
 - cell-cycle and proliferation models;
 - publication figures, a methods paragraph with references, and a MIFlowCyt
   checklist.
@@ -645,7 +648,8 @@ Each result comes with a plain-language reading.
 Batch statistics: one row per sample, one column per statistic. The
 statistics are:
 - count, % of parent, % of grandparent, % of total, % of any ancestor;
-- concentration (/µL, from `$VOL`);
+- concentration (/µL, from `$VOL`), and absolute counts (/µL) from counting
+  beads, each with a dilution factor;
 - median, mean, geometric mean, SD, robust SD, CV, robust CV, median
   absolute deviation;
 - minimum, maximum, percentile, mode, and % above a threshold;
@@ -996,7 +1000,7 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 36 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 38 tools, other clients
 and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
@@ -1030,9 +1034,12 @@ pipelines, as the app does, against answers known in advance:
 | Figure provenance | A 60-plot figure of 12 samples | Read back intact from SVG, PNG and PDF; rebuilt with every plot drawn from the same events; a moved gate flags exactly the plots it affects |
 | Predicted spread | Simulated controls with known photon noise and laser fluctuations | Photon noise within 1% of the truth; each control's spread predicted from the other 24 within 2× for 98% of pairs; a 15-dye panel predicted from the 25-dye fit within 2× for every pair |
 | Comparisons with a control | flowStats and R on tubes with known positive fractions; Bagwell's simulation | Probability binning identical to flowStats (36 cases, to 9e-15); SED within 2 points of the true fraction, Overton up to 8 points under where populations overlap; T(χ) above 4 in 0.5% of samples of the same cells |
+| Formula channels | R evaluating the same 7 formulas on 10 tubes; Gating-ML and a template | Medians within 5e-8, single events within 2e-14; a ratio gate the same through Gating-ML (fratio) and on renamed detectors |
+| Calibrated units (MEF) | FlowCal 1.3.1 on its own bead and cell files; simulated beads of known response | The same levels left out, medians within one step of the log channel, cells' MEFL within 1.6% of FlowCal's; a known slope within 0.001 |
+| Absolute counts | 40 simulated tubes of known concentration with counting beads | Within 1% on average, scattered as Poisson counting predicts |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
-| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 74 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
+| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 78 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
 | Titration and voltage walks | A simulated CD4-PE titration and PE voltage walk with known binding, noise and gain | Stain index within 4.4% of the true cells' at every step; the recommended amount the binding's; the voltage range within 1 V of the truth; medians equal to FlowJo 11's on the same files |
 | Templates | A 19-population analysis applied to the same events with every detector renamed and reordered | Every population holds the same events in all 12 samples; with two markers unnamed, only the gate on them left out |
 | Published strategies | OMIP-101 and OMIP-090 placed on one sample of the PBMC example, against the true cell types | Median F1 0.96–0.99 for lineages, 0.88–0.96 for memory subsets, NK cells and classical and non-classical monocytes; Tregs 0.91; intermediate monocytes 0.76 |

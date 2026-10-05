@@ -10,6 +10,7 @@ import { mountInspector } from './ui/inspector.js';
 import { installActions } from './ui/actions.js';
 import { installExportDialogs } from './ui/export-dialogs.js';
 import { installTemplateDialogs } from './ui/template-dialogs.js';
+import { installChannelDialogs } from './ui/channel-dialogs.js';
 import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
 import { installAutogating } from './ui/autogate-dialog.js';
 import { installLiveQC } from './ui/live-qc.js';
@@ -98,6 +99,7 @@ async function start() {
   installActions(app);
   installExportDialogs(app);
   installTemplateDialogs(app);
+  installChannelDialogs(app);
   installFigureProvenance(app);
   installAutogating(app);
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
@@ -644,6 +646,10 @@ async function start() {
       } },
       { label: 'Save now', icon: 'save', hint: `${modKey}S`, onSelect: async () => { await saveNow(); toast('Saved.', { kind: 'ok' }); } },
       '-',
+      { section: 'Channels' },
+      { label: 'Computed channels…', icon: 'layers', onSelect: () => app.computedChannelsDialog() },
+      { label: 'New formula channel…', icon: 'plus', onSelect: () => app.formulaDialog() },
+      '-',
       { section: 'Templates' },
       { label: 'Save as a template…', icon: 'layers', onSelect: () => app.saveTemplate() },
       { label: 'Apply a template…', icon: 'layers', onSelect: () => app.applyTemplateDialog() },
@@ -684,6 +690,9 @@ async function start() {
     { label: 'Annotate samples', icon: 'tag', run: () => app.annotateSamples(store.ws.samples.map((s) => s.id)) },
     { label: 'Save as a template', icon: 'layers', run: () => app.saveTemplate(), keywords: 'template reuse strategy panel' },
     { label: 'Apply a template', icon: 'layers', run: () => app.applyTemplateDialog(), keywords: 'template reuse strategy panel omip' },
+    { label: 'New formula channel', icon: 'plus', run: () => app.formulaDialog(), keywords: 'formula ratio derived parameter channel calculate' },
+    { label: 'Computed channels', icon: 'layers', run: () => app.computedChannelsDialog(), keywords: 'formula calibration mef derived parameters' },
+    { label: 'Calibrate fluorescence with beads', icon: 'gauge', run: () => app.openCalibration(), keywords: 'mef mefl erf calibration beads rainbow units' },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
     { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },
@@ -1023,6 +1032,12 @@ async function start() {
   app.openLiveQC = async () => {
     if (app.qcState) app.qcState.section = 'live';
     else app.qcStartSection = 'live';
+    if (store.ui.mode === 'qc') store.setUI({}, ['selection']);
+    else await app.setMode('qc');
+  };
+  app.openCalibration = async () => {
+    if (app.qcState) app.qcState.section = 'calibration';
+    else app.qcStartSection = 'calibration';
     if (store.ui.mode === 'qc') store.setUI({}, ['selection']);
     else await app.setMode('qc');
   };

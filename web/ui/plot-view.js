@@ -782,7 +782,7 @@ export function createPlotView(app, initial) {
 
   function chooseChannel(anchor, axis) {
     const view = data.view(sampleId);
-    const channels = view ? [...view.parameters.map((p) => p.name), ...view.derived.keys()] : [];
+    const channels = view ? [...view.parameters.map((p) => p.name), ...view.derived.keys(), ...[...view.computed.keys()].filter((c) => view.hasChannel(c))] : [];
     const items = [];
     if (axis === 'y') items.push({ label: 'Histogram (no y axis)', icon: 'histogram', checked: is1D(), onSelect: () => setSpec({ y: null, type: 'histogram' }) }, '-');
     const groups = [['scatter', 'Scatter'], ['fluorescence', 'Fluorescence'], ['derived', 'Derived'], ['time', 'Time'], ['instrument', 'Instrument']];
@@ -793,7 +793,7 @@ export function createPlotView(app, initial) {
       for (const channel of list) {
         const info = view.channelInfo(channel);
         items.push({
-          label: info?.marker ? `${info.marker}` : channel,
+          label: info?.marker ? `${info.marker}${info.unit ? ` (${info.unit})` : ''}` : channel,
           hint: info?.marker ? channel : '',
           keywords: `${channel} ${info?.label ?? ''}`,
           checked: (axis === 'x' ? spec.x : spec.y) === channel,
@@ -801,6 +801,7 @@ export function createPlotView(app, initial) {
         });
       }
     }
+    items.push('-', { label: 'New formula channel…', icon: 'plus', keywords: 'formula ratio derived parameter', onSelect: () => app.formulaDialog?.() });
     showMenu(anchor, items, { search: true, searchPlaceholder: 'Find a channel or marker…' });
   }
 

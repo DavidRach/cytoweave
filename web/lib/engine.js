@@ -13,6 +13,8 @@ import { EventSet, differenceSets, intersectSets, unionSets } from './eventset.j
 import { describe, gather, summarize } from './stats.js';
 import { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } from './distribution.js';
 import { binomialInterval, countPrecision, poissonInterval } from './rare-events.js';
+import { evaluateColumns, evaluateFormula, parseFormula } from './formula.js';
+import { standardCurve } from './calibration.js';
 import { readSpillover } from './fcs.js';
 import { ROOT, effectiveGeometry, gateApplies, gateById } from './workspace.js';
 
@@ -234,9 +236,13 @@ export class SampleView {
   }
 
   // Defines the computed channels of derived records without stored columns: ratios
-  // ({ kind: 'ratio', inputs: [x, y], outputs: [name], params: { A, B, C } }) and unmixing
+  // ({ kind: 'ratio', inputs: [x, y], outputs: [name], params: { A, B, C } }), unmixing
   // ({ kind: 'unmix', inputs: detectors, outputs: fluorochromes, params: { matrix } }, matrix
-  // detectors × fluorochromes, row-major).
+  // detectors × fluorochromes, row-major), formulas ({ kind: 'formula', inputs, outputs: [name],
+  // params: { expression } }, formula.js) and bead calibrations ({ kind: 'calibration',
+  // inputs: [channel], outputs: [name], params: { m, b, unit }, samples }, calibration.js). A
+  // record with `samples` applies to those samples only (a calibration to the samples acquired
+  // with its beads).
   syncComputed(records = []) {
     if (records === this.computedSource) return;
     this.computedSource = records;
@@ -251,7 +257,19 @@ export class SampleView {
     };
     for (const record of records) {
       if (record.files) continue;
-      if (record.kind === 'ratio' && record.outputs?.[0] && record.inputs?.length === 2) {
+      if (record.samples && !record.samples.includes(this.id)) continue;
+      if (record.kind === 'formula' && record.outputs?.[0] && record.inputs?.length && record.params?.expression) {
+        let tree = null;
+        try {
+          tree = parseFormula(record.params.expression);
+        } catch {
+          continue;
+        }
+        define(record.outputs[0], { kind: 'formula', inputs: record.inputs, params: { tree }, key: JSON.stringify(['formula', record.params.expression]) });
+      } else if (record.kind === 'calibration' && record.outputs?.[0] && record.inputs?.length === 1) {
+        const { m, b, unit } = record.params ?? {};
+        define(record.outputs[0], { kind: 'calibration', inputs: record.inputs, params: { m, b, unit }, key: JSON.stringify(['calibration', record.inputs, m, b, unit]) });
+      } else if (record.kind === 'ratio' && record.outputs?.[0] && record.inputs?.length === 2) {
         define(record.outputs[0], { kind: 'ratio', inputs: record.inputs, params: record.params ?? {}, key: JSON.stringify(['ratio', record.inputs, record.params]) });
       } else if (record.kind === 'unmix' && record.inputs?.length && record.outputs?.length && record.params?.matrix?.length === record.inputs.length * record.outputs.length) {
         const key = hash53(JSON.stringify(['unmix', record.inputs, record.outputs, record.params.matrix]));
@@ -328,6 +346,13 @@ export class SampleView {
       const [x, y] = inputs;
       const { A = 1, B = 0, C = 0 } = entry.params;
       for (let i = 0; i < column.length; i += 1) column[i] = (A * (x[i] - B)) / (y[i] - C);
+    } else if (entry.kind === 'formula') {
+      const values = evaluateColumns(entry.params.tree, (input) => inputs[entry.inputs.indexOf(input)], column.length);
+      column.set(values);
+    } else if (entry.kind === 'calibration') {
+      const curve = standardCurve(entry.params);
+      const [x] = inputs;
+      for (let i = 0; i < column.length; i += 1) column[i] = curve(x[i]);
     } else {
       const { matrix, j, f } = entry.params;
       const weights = inputs.map((_, i) => matrix[i * f + j]);
@@ -362,6 +387,8 @@ export class SampleView {
       const { A = 1, B = 0, C = 0 } = entry.params;
       return (A * (this.exactValue(entry.inputs[0], e, ref) - B)) / (this.exactValue(entry.inputs[1], e, ref) - C);
     }
+    if (entry?.kind === 'formula') return evaluateFormula(entry.params.tree, (input) => this.exactValue(input, e, ref));
+    if (entry?.kind === 'calibration') return standardCurve(entry.params)(this.exactValue(entry.inputs[0], e, ref));
     if (entry?.kind === 'unmix') {
       const { matrix, j: k, f } = entry.params;
       let sum = 0;
@@ -420,7 +447,13 @@ export class SampleView {
   channelInfo(name) {
     const p = this.parameters.find((param) => param.name === name);
     if (p) return p;
-    if (this.derived.has(name) || this.computed.has(name)) return { name, type: 'derived', range: 1, label: '', marker: '' };
+    const entry = this.computed.get(name);
+    // A calibrated channel is the fluorescence channel it calibrates, in other units.
+    if (entry?.kind === 'calibration') {
+      const input = this.parameters.find((param) => param.name === entry.inputs[0]);
+      if (input) return { ...input, index: undefined, name, range: standardCurve(entry.params)(input.range), label: input.label, marker: input.marker, unit: entry.params.unit };
+    }
+    if (this.derived.has(name) || entry) return { name, type: 'derived', range: 1, label: '', marker: '' };
     return null;
   }
 }
@@ -633,9 +666,18 @@ function computeStatisticUncached(view, ws, spec) {
       return parentCount > 0 ? 100 * binomialInterval(count, parentCount)[spec.stat === 'freqLow' ? 0 : 1] : Number.NaN;
     }
     case 'concentration': {
-      // Events per µL from the acquired volume ($VOL in nL), when the instrument records it.
+      // Events per µL from the acquired volume ($VOL in nL), when the instrument records it, times
+      // the sample's dilution.
       const volume = Number.parseFloat(view.record.keywords?.$VOL ?? '');
-      return volume > 0 ? count / (volume / 1000) : Number.NaN;
+      return volume > 0 ? (count / (volume / 1000)) * dilutionOf(ws, view, spec.dilution) : Number.NaN;
+    }
+    case 'absoluteCount': {
+      // Cells per µL of the sample from counting beads: (cell events / bead events) × (beads in the
+      // tube / µL of sample in the tube) × the dilution.
+      const { beadGateId, beads, volume } = spec.counting ?? {};
+      if (!beadGateId || !(beads > 0) || !(volume > 0)) return Number.NaN;
+      const beadEvents = countOf(populationSet(view, ws, beadGateId), view);
+      return beadEvents > 0 ? (count / beadEvents) * (beads / volume) * dilutionOf(ws, view, spec.dilution) : Number.NaN;
     }
     default: {
       if (!spec.channel || !view.hasChannel(spec.channel)) return Number.NaN;
@@ -646,6 +688,16 @@ function computeStatisticUncached(view, ws, spec) {
       return result[spec.stat] ?? Number.NaN;
     }
   }
+}
+
+// A sample's dilution factor: a number, or { field } naming a sample annotation that holds it
+// (1 when absent).
+function dilutionOf(ws, view, dilution) {
+  if (dilution === undefined || dilution === null || dilution === '') return 1;
+  if (typeof dilution === 'number') return dilution > 0 ? dilution : Number.NaN;
+  const sample = ws.samples.find((s) => s.id === view.id);
+  const value = Number.parseFloat(String(sample?.meta?.[dilution.field] ?? '').replace(/^1:/, ''));
+  return value > 0 ? value : Number.NaN;
 }
 
 // A population's channel values in a test sample against a control sample's population (the same
@@ -760,9 +812,11 @@ function defaultFor(view, channel, info) {
     let lo = Infinity; let hi = -Infinity;
     for (let i = 0; i < column.length; i += 1) {
       const v = column[i];
+      if (!Number.isFinite(v)) continue;
       if (v < lo) lo = v;
       if (v > hi) hi = v;
     }
+    if (!Number.isFinite(lo)) return { type: 'linear', min: 0, max: 1 };
     const pad = (hi - lo) * 0.04 || 1;
     return { type: 'linear', min: lo - pad, max: hi + pad };
   }

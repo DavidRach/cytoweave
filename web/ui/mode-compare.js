@@ -305,7 +305,7 @@ export function mountCompareMode(app, container) {
       const table = ws.tables.find((t) => t.id === c.tableId);
       const column = table?.columns.find((col) => col.id === c.columnId) ?? table?.columns[0];
       if (!column) return null;
-      return { kind: 'statistic', gateId: column.gateId ?? ROOT, stat: column.stat, channel: column.channel, ancestorId: column.ancestorId, value: column.value, control: column.control, label: columnLabel(ws, column) };
+      return { kind: 'statistic', gateId: column.gateId ?? ROOT, stat: column.stat, channel: column.channel, ancestorId: column.ancestorId, value: column.value, control: column.control, counting: column.counting, dilution: column.dilution, label: columnLabel(ws, column) };
     }
     if (c.source === 'cluster') {
       if (!c.clusterChannel || c.cluster === null || c.cluster === undefined) return null;
@@ -338,7 +338,7 @@ export function mountCompareMode(app, container) {
         if (!result || !result.total) return Number.NaN;
         return (100 * (result.counts.get(spec.cluster) ?? 0)) / result.total;
       }
-      return computeStatistic(view, ws, { stat: spec.stat, gateId: spec.gateId, channel: spec.channel, ancestorId: spec.ancestorId, value: spec.value, control: spec.control }, statisticContext(app));
+      return computeStatistic(view, ws, { stat: spec.stat, gateId: spec.gateId, channel: spec.channel, ancestorId: spec.ancestorId, value: spec.value, control: spec.control, counting: spec.counting, dilution: spec.dilution }, statisticContext(app));
     } catch {
       return Number.NaN;
     }
@@ -627,7 +627,7 @@ export function mountCompareMode(app, container) {
     }
     const stat = STATISTICS.find((s) => s.id === c.stat) ?? STATISTICS[1];
     if (c.tab === 'one') pane.append(h('label.field', h('span', 'Population'), select(populationOptions(ws), c.gateId ?? ROOT, (v) => setCfg({ gateId: v }))));
-    pane.append(h('label.field', h('span', 'Statistic'), select(STATISTICS.map((s) => ({ value: s.id, label: s.label })), stat.id, (v) => setCfg({ stat: v }))));
+    pane.append(h('label.field', h('span', 'Statistic'), select(STATISTICS.filter((s) => !s.needsCounting).map((s) => ({ value: s.id, label: s.label })), stat.id, (v) => setCfg({ stat: v }))));
     if (stat.needsChannel) {
       const channels = channelCatalog(ws).filter((ch) => ch.type !== 'time');
       pane.append(h('label.field', h('span', 'Channel'), select(channels.map((ch) => ({ value: ch.name, label: ch.marker ? `${ch.marker} (${ch.name})` : ch.name })), c.channel ?? defaultChannel(), (v) => setCfg({ channel: v }))));
