@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Compensate on spectral files.** Compute spillover failed with "Cannot read properties of undefined" on spectral files, whose reference controls name their fluorochrome (for unmixing) rather than a detector. The Compensate view now says that spectral files are unmixed in the Spectral view, with a button to it; only controls assigned one of their file's detectors are used, so compensating chosen detectors of spectral files works; and an agent's `propose_compensation` gets the same explanation. The diagnostics buttons are disabled, with the reason, until there is a matrix to check (they did nothing), and the hint asks for a sample when none is selected.
+
 ## 0.6.0 (2026-10-05)
 
 CytoWeave 0.6 brings a lab's routine bench work into one place, batch by batch. Samples are compared with a control (% positive by SED, Overton and probability binning) and rare populations reported with exact intervals and detection limits; formula channels, calibrated MEF units from beads and absolute counts add the numbers a core reports; a figure becomes a batch report for every sample or subject as a PDF or a PowerPoint deck, and tables go to Excel and Prism with every number traced; events come in from CSV files and go out concatenated, downsampled or as AnnData for scanpy; Compare tests differential state with diffcyt-DS-limma, giving diffcyt's numbers in R; and R and Python clients drive CytoWeave from scripts.

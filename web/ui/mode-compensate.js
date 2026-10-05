@@ -5,7 +5,7 @@ import { h, icon, clear, formatCount } from './dom.js';
 import { shownColor } from '../lib/colormaps.js';
 import { showMenu, toast, progressToast, promptDialog, confirmDialog } from './overlays.js';
 import { conditionNumber, compensate, controlResiduals, leanCheck, identityMatrix } from '../lib/compensation.js';
-import { spilloverFromControls } from './controls.js';
+import { isDetectorOf, spectralWorkspace, spilloverFromControls } from './controls.js';
 import { readSpillover } from '../lib/fcs.js';
 import { buildPlotScene, drawScene } from '../lib/plot.js';
 import { channelTransform, population } from '../lib/engine.js';
@@ -82,7 +82,9 @@ export function mountCompensateMode(app, container) {
     const list = matrices();
     const current = selected();
     if (!list.length) {
-      listHost.append(h('p.muted', 'No compensation matrices yet. The files have no $SPILLOVER keyword; compute one from single-stain controls or create one by hand.'));
+      listHost.append(h('p.muted', spectralWorkspace(store.ws)
+        ? 'No compensation matrices. These spectral files are unmixed in the Spectral view rather than compensated.'
+        : 'No compensation matrices yet. The files have no $SPILLOVER keyword; compute one from single-stain controls or create one by hand.'));
       return;
     }
     for (const item of list) {
@@ -107,6 +109,11 @@ export function mountCompensateMode(app, container) {
       return;
     }
     const channels = [...new Set(ws.samples.flatMap((s) => s.channels.filter((c) => c.type === 'fluorescence').map((c) => c.name)))];
+    if (spectralWorkspace(ws)) {
+      controlsHost.append(h('div.callout.accent', { style: { marginBottom: '10px', flexDirection: 'column', alignItems: 'flex-start', gap: '8px' } },
+        h('span', `These are spectral files: ${channels.length} detectors for fewer fluorochromes, so each fluorochrome's signal is spread over many detectors. They are unmixed with reference spectra from these controls, not compensated with a spillover matrix.`),
+        h('button.btn.small.primary', { type: 'button', onclick: () => app.setMode('spectral') }, icon('spectral'), 'Unmix in the Spectral view')));
+    }
     const rows = h('tbody');
     for (const control of controls) {
       const select = h('select.input.small', { 'aria-label': `Stained channel of ${control.name}`, onchange: (event) => store.commit({ ...ws, samples: ws.samples.map((s) => (s.id === control.id ? { ...s, stain: event.target.value || null } : s)) }, 'Set stained channel') },
@@ -125,9 +132,9 @@ export function mountCompensateMode(app, container) {
   }
 
   async function computeFromControls(controls, gateId, unstainedId, method) {
-    const usable = controls.filter((c) => c.stain);
+    const usable = controls.filter((c) => isDetectorOf(c, c.stain));
     if (usable.length < 2) {
-      toast('Assign a stained channel to at least two controls.', { kind: 'error' });
+      toast(spectralWorkspace(store.ws) ? 'Spectral files are unmixed in the Spectral view. To compensate chosen detectors instead, assign each control its stained detector (at least two).' : 'Assign a stained channel to at least two controls.', { kind: 'error' });
       return;
     }
     const progress = progressToast('Computing spillover from controls…');
@@ -263,9 +270,10 @@ export function mountCompensateMode(app, container) {
     const item = selected();
     const ws = store.ws;
     diagnosticsHost.append(h('h3', 'Diagnostics', h('span.spacer'),
-      h('button.btn.small.primary', { type: 'button', onclick: () => runControlCheck(item), title: 'Compensate each single-stain control with this matrix and measure what is left in the other detectors: the definitive check.' }, icon('check'), 'Check against the controls'),
-      h('button.btn.small', { type: 'button', onclick: () => runLeanCheck(item), title: 'A hint only: compares bright and dim events of each channel in the current sample, where biology also differs.' }, icon('target'), 'Hint from the current sample')));
+      h('button.btn.small.primary', { type: 'button', disabled: !item, onclick: () => runControlCheck(item), title: item ? 'Compensate each single-stain control with this matrix and measure what is left in the other detectors: the definitive check.' : 'Compute or create a matrix first: these check a matrix.' }, icon('check'), 'Check against the controls'),
+      h('button.btn.small', { type: 'button', disabled: !item, onclick: () => runLeanCheck(item), title: item ? 'A hint only: compares bright and dim events of each channel in the current sample, where biology also differs.' : 'Compute or create a matrix first: these check a matrix.' }, icon('target'), 'Hint from the current sample')));
     if (ssm) diagnosticsHost.append(spreadingHeatmap(ssm));
+    else if (!item) diagnosticsHost.append(h('p.muted', 'With a matrix, check it against the single-stain controls (what each leaves in the other detectors once compensated) or, as a hint, against the current sample. The spillover spreading matrix appears after computing from controls: it shows how much each fluorochrome spreads the negative population in other detectors (Nguyen et al. 2013), the price paid for compensation.'));
     else diagnosticsHost.append(h('p.muted', 'The spillover spreading matrix appears after computing from controls: it shows how much each fluorochrome spreads the negative population in other detectors (Nguyen et al. 2013), the price paid for compensation.'));
     if (item?.lean) diagnosticsHost.append(leanList(item));
   }
@@ -323,7 +331,11 @@ export function mountCompensateMode(app, container) {
 
   async function runLeanCheck(item) {
     const sampleId = store.ui.sampleId;
-    if (!sampleId || !item) return;
+    if (!item) return;
+    if (!sampleId) {
+      toast('Select a sample (left) to look for leaning populations in it.', { kind: 'error' });
+      return;
+    }
     const view = await data.ensure(sampleId);
     const ws = store.ws;
     const indices = population(view, ws, store.ui.gateId ?? ROOT);
