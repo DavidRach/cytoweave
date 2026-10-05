@@ -110,6 +110,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | A4 | Kinetics and ratiometric (calcium) analysis | planned (wave 7) |
 | A5 | Plates: wells as samples, layouts, heat maps of any statistic | planned (wave 7) |
 | A6 | Dose-response (EC50/IC50) and Z′; bead-based immunoassay standard curves | planned (wave 7) |
+| A7 | Imaging flow cytometry: image galleries (CellView, Amnis), then image features to gate on | planned (wave 10) |
 
 ## Comparison and statistics
 
@@ -129,9 +130,10 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R3 | Methods paragraph with references, from what the workspace did; MIFlowCyt checklist | done |
 | R4 | Publication figures (SVG, PNG, PDF) that stay live until export | done |
 | R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | done: SVG, PNG and PDF exports carry the record; opening one reports what changed since and rebuilds it from the same files (validation `figures`) |
-| R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned |
+| R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned: a tamper-evident change log in wave 8; users, audit trail and signatures in wave 9, subject to a decision on GxP |
 | R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | done: a figure repeated by sample or by an annotation as PDF or PowerPoint with every number traced to its source; Excel workbooks with provenance sheets and Prism projects; read back by openpyxl, python-pptx, pypdf and R pzfx (validation `reports`) |
 | R8 | Reproducibility certificate that re-runs and confirms every reported number | planned (wave 8) |
+| R9 | A self-contained review report of an analysis, every number traced, opened without CytoWeave | planned (wave 8) |
 
 ## Interchange
 
@@ -154,7 +156,11 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
 | M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | done: 11 new tools (29 in all); results and figures proposed, annotations and root gates held; exports write only to the path given and never replace a file unless told to; validation `agent-session.mjs` (15 checks, in CI) |
 | M5 | R and Python clients for remote control | done: `clients/r` and `clients/python`, functions generated from the tools, connection found through `remote.json`, tested in CI against a running CytoWeave (not published to CRAN or PyPI) |
-| M6 | Optional on-device assistant, without network | planned (wave 8) |
+| M6 | Optional on-device assistant, without network | idea (replaced by WebMCP, M7) |
+| M7 | Tools exposed to browser agents through WebMCP | planned (wave 8) |
+| M8 | Headless runs: a template applied to a folder without a window, writing tables, reports and exports | planned (wave 7) |
+| M9 | The R and Python clients published (r-universe, PyPI) with each release | planned (wave 7) |
+| M10 | A tool contract for external algorithms (pinned WASM or container runtimes, results as derived channels) | planned (wave 10) |
 
 ## Quality
 
@@ -165,3 +171,5 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | done: ISAC's Gating-ML suite, FlowKit, FlowIO, FlowJo's saved counts, FACSDiva's spillover, and flowCore, PeacoQC, FlowSOM and CytoNorm in R |
 | V4 | Accessible: keyboard operation, labeled controls, color maps safe for color-vision deficiency | done: color-vision-friendly colors (a setting); WCAG AA contrast in both themes; keyboard tree, list, dialogs and scroll regions; plots described in text; axe-core audit of every documentation scene (`capture.mjs --audit`) and validation `accessibility`. Not done: drawing gates without a pointer; testing by screen-reader users |
 | V5 | Teaching mode on the examples | planned (wave 8) |
+| V6 | A public agent benchmark: graded tasks on the examples, scored against the truth, published per agent and model | planned (wave 8) |
+| V7 | Validation on real expert-gated data (FlowCAP, FlowRepository studies) beside the simulated truth | planned (beside wave 7) |
