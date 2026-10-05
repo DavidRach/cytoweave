@@ -2,8 +2,9 @@
 // one value (a population frequency, count or channel statistic, a table column, or a cluster's
 // share of a parent population); samples are grouped by a metadata field or by workspace groups,
 // optionally paired by subject, and compared with a test chosen from the design. Screens repeat
-// the comparison for every population, or test every cluster of a derived cluster channel for
-// differential abundance, with multiple-testing correction and a volcano plot.
+// the comparison for every population, test every cluster of a derived cluster channel for
+// differential abundance, or test marker medians of clusters or populations for differential state
+// (diffcyt-DS-limma), with multiple-testing correction and a volcano plot.
 
 import { h, icon, clear } from './dom.js';
 import { toast, progressToast } from './overlays.js';
@@ -17,6 +18,7 @@ import { categoricalColor, shownColor } from '../lib/colormaps.js';
 import { quantileSorted } from '../lib/stats.js';
 import { denominatorOf, methodsSentence, pathGates, qcGateOf } from '../lib/multiverse.js';
 import { QC_CHANNEL } from './qc-run.js';
+import { STATE_CITATIONS, buildDesign, clusterChannels as findClusterChannels, clusterCounts as countClusters, clusterNameOf, defaultCofactor, differentialState, stateMarkerCandidates, stateMedians, stateMethods } from '../lib/differential.js';
 import { checkRobustness } from './robustness.js';
 import {
   adjustPValues,
@@ -102,54 +104,13 @@ function clusterCounts(view, ws, channel, parentId) {
   }
   const cacheKey = `${channel}|${view.version}`;
   if (byChannel.has(cacheKey)) return byChannel.get(cacheKey);
-  const labels = view.column(channel);
-  const counts = new Map();
-  const n = parent ? parent.length : view.eventCount;
-  let total = 0;
-  for (let i = 0; i < n; i += 1) {
-    const v = labels[parent ? parent[i] : i];
-    total += 1;
-    if (!Number.isFinite(v) || v < 0) continue;
-    const k = Math.round(v);
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  const result = { counts, total };
+  const result = countClusters(view, ws, channel, parentId);
   byChannel.set(cacheKey, result);
   return result;
 }
 
-// Derived channels that hold cluster labels (integer categories).
-function clusterChannels(ws, data) {
-  const out = [];
-  for (const record of ws.derived ?? []) {
-    for (const output of record.outputs ?? []) {
-      const byName = /cluster|metacluster|leiden|louvain|phenograph|kmeans|som|label|population/i.test(`${record.kind} ${output}`);
-      if (byName && !/umap|tsne|t-sne|pca|pc\d|embedding|mask|score|abundance/i.test(output)) out.push({ name: output, record });
-    }
-  }
-  if (!out.length) {
-    // Fall back to any loaded derived channel with few integer values.
-    for (const view of data.views.values()) {
-      for (const [name, column] of view.derived) {
-        if (out.some((c) => c.name === name)) continue;
-        const seen = new Set();
-        let integer = true;
-        for (let i = 0; i < Math.min(column.length, 4000) && integer; i += 1) {
-          const v = column[i];
-          if (Number.isFinite(v) && v !== Math.round(v)) integer = false;
-          seen.add(v);
-        }
-        if (integer && seen.size >= 2 && seen.size <= 300) out.push({ name, record: null });
-      }
-    }
-  }
-  return out;
-}
-
-function clusterName(record, k) {
-  const names = record?.summary?.names ?? record?.summary?.labels ?? record?.names;
-  return (Array.isArray(names) ? names[k] : names?.[k]) ?? `Cluster ${k}`;
-}
+const clusterChannels = (ws, data) => findClusterChannels(ws, data.views.values());
+const clusterName = clusterNameOf;
 
 // --- Mode ----------------------------------------------------------------------------------------
 
@@ -210,6 +171,11 @@ export function mountCompareMode(app, container) {
       clusterChannel: null,
       clusterParent: ROOT,
       cluster: null,
+      stateUnits: 'clusters',
+      stateGateIds: null,
+      stateMarkers: null,
+      cofactor: null,
+      minCells: 3,
       groupBy,
       levels: null,
       reference: null,
@@ -553,7 +519,8 @@ export function mountCompareMode(app, container) {
     let done = 0;
     for (const sample of samples) {
       if (canceled) break;
-      await data.ensure(sample.id).catch(() => {});
+      // With the derived channels the library keeps (clusters), which arrive after the sample.
+      await data.ensure(sample.id).then((view) => data.restoreDerived(view)).catch(() => {});
       done += 1;
       progress.update(done / samples.length, `Loading ${sample.name} (${done}/${samples.length})`);
     }
@@ -577,7 +544,7 @@ export function mountCompareMode(app, container) {
   function renderTabs() {
     clear(tabsHost);
     const c = cfg();
-    for (const [id, label] of [['one', 'One measure'], ['populations', 'Screen populations'], ['clusters', 'Screen clusters']]) {
+    for (const [id, label] of [['one', 'One measure'], ['populations', 'Screen populations'], ['clusters', 'Screen clusters'], ['states', 'Screen marker states']]) {
       tabsHost.append(h(`button${c.tab === id ? '.active' : ''}`, { type: 'button', onclick: () => setCfg({ tab: id }, { invalidate: false }) }, label));
     }
   }
@@ -587,6 +554,7 @@ export function mountCompareMode(app, container) {
     clear(left);
     const c = cfg();
     if (c.tab === 'clusters') left.append(clusterPane());
+    else if (c.tab === 'states') left.append(statePane());
     else left.append(measurePane());
     left.append(designPane(), testPane());
   }
@@ -678,6 +646,77 @@ export function mountCompareMode(app, container) {
     return h('div.pane', h('h3', icon('explore'), 'Clusters to screen'), ...clusterFields(false));
   }
 
+  // Differential state: the markers a screen can test (those of a loaded sample, or of the first
+  // sample's channels), the default being those the cluster record was not made from.
+  function stateMarkerChoices() {
+    const ws = store.ws;
+    const c = cfg();
+    const samples = candidateSamples();
+    const loaded = samples.map((s) => data.view(s.id)).find(Boolean);
+    const view = loaded ?? (samples[0] ? { derived: new Map(), parameters: samples[0].channels } : null);
+    if (!view) return { candidates: [], state: [], clustering: [] };
+    const record = c.stateUnits === 'clusters' ? (clusterChannels(ws, data).find((x) => x.name === c.clusterChannel) ?? clusterChannels(ws, data)[0])?.record : null;
+    return stateMarkerCandidates(view, record);
+  }
+
+  function stateGateChoices(ws) {
+    return ws.gates.filter((g) => g.type !== 'category');
+  }
+
+  function statePane() {
+    const ws = store.ws;
+    const c = cfg();
+    const pane = h('div.pane', h('h3', icon('explore'), 'Marker states to screen'));
+    pane.append(h('div.segmented', { style: { marginBottom: '10px' } }, ...[['clusters', 'Clusters'], ['populations', 'Populations']].map(([id, label]) => h(`button${c.stateUnits === id ? '.active' : ''}`, { type: 'button', onclick: () => setCfg({ stateUnits: id, stateMarkers: null }) }, label))));
+    if (c.stateUnits === 'clusters') {
+      const fields = clusterFields(false);
+      if (!clusterChannels(ws, data).length) {
+        pane.append(...fields);
+        return pane;
+      }
+      pane.append(...fields.slice(0, -1));
+    } else {
+      const gates = stateGateChoices(ws);
+      if (!gates.length) {
+        pane.append(h('p.muted', 'No populations yet. Gate the samples first, or screen clusters.'));
+        return pane;
+      }
+      const chosen = new Set(c.stateGateIds ?? gates.map((g) => g.id));
+      pane.append(h('div.field-label', { style: { marginBottom: '6px' } }, `Populations (${gates.filter((g) => chosen.has(g.id)).length} of ${gates.length})`),
+        h('div', { style: { maxHeight: '150px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '10px' } }, ...gates.map((g) => h('label.check', { title: gatePath(ws, g.id) },
+          h('input', { type: 'checkbox', checked: chosen.has(g.id), onchange: (event) => {
+            const next = new Set(chosen);
+            if (event.target.checked) next.add(g.id);
+            else next.delete(g.id);
+            setCfg({ stateGateIds: gates.filter((x) => next.has(x.id)).map((x) => x.id) });
+          } }), gatePath(ws, g.id)))));
+    }
+    const { candidates, state, clustering } = stateMarkerChoices();
+    if (!candidates.length) {
+      pane.append(h('p.muted', 'The samples have no marker channels to test.'));
+      return pane;
+    }
+    const chosen = new Set(c.stateMarkers ?? state.map((m) => m.name));
+    const used = new Set(clustering.map((m) => m.name));
+    pane.append(h('div.field-label', { style: { marginBottom: '6px' } }, `Markers to test (${candidates.filter((m) => chosen.has(m.name)).length} of ${candidates.length})`),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '3px 10px', marginBottom: '6px' } }, ...candidates.map((m) => h('label.check', { title: m.label },
+        h('input', { type: 'checkbox', checked: chosen.has(m.name), onchange: (event) => {
+          const next = new Set(chosen);
+          if (event.target.checked) next.add(m.name);
+          else next.delete(m.name);
+          setCfg({ stateMarkers: candidates.filter((x) => next.has(x.name)).map((x) => x.name) });
+        } }), h('span', m.marker || m.label), used.has(m.name) ? h('span.muted', { style: { fontSize: '11px' } }, ' (clustered)') : null))));
+    if (clustering.length) pane.append(h('p.muted', { style: { fontSize: '11.5px', margin: '0 0 8px' } }, `Unchecked by default: the ${clustering.length} markers the clusters were made from. Their medians differ between clusters by construction, so diffcyt tests only the others (state markers).`));
+    const samples = candidateSamples();
+    const cofactor = h('input.input.small', { type: 'number', step: 'any', min: 0.01, value: c.cofactor ?? defaultCofactor(samples[0]) });
+    cofactor.addEventListener('change', () => setCfg({ cofactor: Number.parseFloat(cofactor.value) > 0 ? Number.parseFloat(cofactor.value) : null }));
+    const minCells = h('input.input.small', { type: 'number', step: 1, min: 1, value: c.minCells ?? 3 });
+    minCells.addEventListener('change', () => setCfg({ minCells: Math.max(1, Math.round(Number.parseFloat(minCells.value) || 3)) }));
+    pane.append(h('div.row', h('label.field', { style: { flex: 1 } }, h('span', 'arcsinh cofactor'), cofactor), h('label.field', { style: { flex: 1 } }, h('span', 'Cells per sample, at least'), minCells)),
+      h('p.muted', { style: { fontSize: '11.5px', margin: 0 } }, `Per sample, the median of arcsinh(x / cofactor) of each marker (compensated values) in each ${c.stateUnits === 'clusters' ? 'cluster' : 'population'}; diffcyt uses 5 for mass cytometry and 150 for fluorescence. Tested where at least this many cells are found in at least half the samples.`));
+    return pane;
+  }
+
   function designPane() {
     const ws = store.ws;
     const c = cfg();
@@ -714,7 +753,7 @@ export function mountCompareMode(app, container) {
     }
     const pairFields = fields.filter((f) => `meta:${f}` !== c.groupBy);
     pane.append(h('label.field', h('span', 'Pair samples by (same subject in each group)'), select([{ value: '', label: 'No pairing (independent samples)' }, ...pairFields.map((f) => ({ value: `meta:${f}`, label: f }))], c.pairBy, (v) => setCfg({ pairBy: v }))));
-    if (c.tab === 'clusters') {
+    if (c.tab === 'clusters' || c.tab === 'states') {
       const covariateFields = pairFields.filter((f) => `meta:${f}` !== c.pairBy);
       if (covariateFields.length) {
         pane.append(h('div.field-label', { style: { marginBottom: '6px' } }, 'Covariates (fixed effects)'),
@@ -728,12 +767,14 @@ export function mountCompareMode(app, container) {
 
   function testPane() {
     const c = cfg();
-    const pane = h('div.pane', h('h3', icon('flask'), c.tab === 'clusters' ? 'Model' : 'Test'));
-    if (c.tab === 'clusters') {
+    const pane = h('div.pane', h('h3', icon('flask'), c.tab === 'clusters' || c.tab === 'states' ? 'Model' : 'Test'));
+    if (c.tab === 'clusters' || c.tab === 'states') {
       const samples = candidateSamples();
       const levels = selectedLevels(samples);
       if (levels.length > 2) pane.append(h('label.field', h('span', 'Contrast'), select(levels.slice(1).map((l) => ({ value: l.key, label: `${l.label} vs ${levels[0].label}` })), c.contrast ?? levels[1].key, (v) => setCfg({ contrast: v }))));
-      pane.append(h('p.muted', { style: { fontSize: '11.5px' } }, 'Per cluster: cells of the cluster out of the parent population in each sample, modeled by a quasi-binomial generalized linear model (logit link) with the design above, and tested by a likelihood-ratio F test. This approximates diffcyt’s edgeR/GLMM approach.'));
+      pane.append(h('p.muted', { style: { fontSize: '11.5px' } }, c.tab === 'clusters'
+        ? 'Per cluster: cells of the cluster out of the parent population in each sample, modeled by a quasi-binomial generalized linear model (logit link) with the design above, and tested by a likelihood-ratio F test. This approximates diffcyt’s edgeR/GLMM approach.'
+        : 'diffcyt-DS-limma: per cluster and marker, the samples’ medians modeled with the design above, each sample weighted by its cells, with limma’s moderated t-statistics and a mean–variance trend. Adjusted across every cluster and marker tested.'));
     } else {
       const options = [{ value: 'auto', label: 'Automatic (from the design)' }, ...Object.entries(TESTS).map(([id, t]) => ({ value: id, label: t.label }))];
       pane.append(h('label.field', h('span', 'Test'), select(options, c.test, (v) => setCfg({ test: v }))));
@@ -750,7 +791,7 @@ export function mountCompareMode(app, container) {
       alpha.addEventListener('change', () => setCfg({ alpha: Math.min(0.5, Math.max(0.0001, Number.parseFloat(alpha.value) || 0.05)) }, { invalidate: false }));
       const fc = h('input.input.small', { type: 'number', step: 0.25, min: 0, value: c.fcThreshold });
       fc.addEventListener('change', () => setCfg({ fcThreshold: Math.max(0, Number.parseFloat(fc.value) || 0) }, { invalidate: false }));
-      pane.append(h('div.row', h('label.field', { style: { flex: 1 } }, h('span', 'q threshold'), alpha), h('label.field', { style: { flex: 1 } }, h('span', '|log₂ FC| threshold'), fc)));
+      pane.append(h('div.row', h('label.field', { style: { flex: 1 } }, h('span', 'q threshold'), alpha), h('label.field', { style: { flex: 1 } }, h('span', c.tab === 'states' ? '|Δ median| threshold' : '|log₂ FC| threshold'), fc)));
     }
     return pane;
   }
@@ -1234,17 +1275,19 @@ export function mountCompareMode(app, container) {
     const inDesign = samples.filter((s) => levelOf(s, levels));
     const unloaded = inDesign.filter((s) => !data.view(s.id));
     const pane = h('div.pane');
-    const head = h('h3', icon(c.tab === 'clusters' ? 'explore' : 'gate'), c.tab === 'clusters' ? 'Differential abundance of clusters' : 'Every population', h('span.spacer'));
+    const kind = c.tab === 'clusters' || c.tab === 'states' ? c.tab : 'populations';
+    const head = h('h3', icon(kind === 'populations' ? 'gate' : 'explore'), { clusters: 'Differential abundance of clusters', states: 'Differential state of markers', populations: 'Every population' }[kind], h('span.spacer'));
     pane.append(head);
     right.append(pane);
-    const kind = c.tab === 'clusters' ? 'clusters' : 'populations';
     const current = screenResult?.kind === kind ? screenResult : null;
     head.append(h('button.btn.small.primary', { type: 'button', disabled: Boolean(loading), onclick: () => runScreen(kind) }, icon('play'), current ? 'Run again' : 'Run screen'));
     if (!current) {
-      pane.append(h('div.empty', icon(kind === 'clusters' ? 'explore' : 'gate'), h('h3', kind === 'clusters' ? 'Test every cluster' : 'Test every population'),
-        h('p', kind === 'clusters'
-          ? `Counts each cluster in the parent population of every sample (${inDesign.length} samples in ${levels.length} groups) and fits a quasi-binomial model per cluster. Results are adjusted for the number of clusters.`
-          : `Computes the chosen statistic for each population in every sample (${inDesign.length} samples in ${levels.length} groups), runs the test chosen from the design, and adjusts the p-values for the number of populations.`),
+      pane.append(h('div.empty', icon(kind === 'populations' ? 'gate' : 'explore'), h('h3', { clusters: 'Test every cluster', states: 'Test every marker in every cluster or population', populations: 'Test every population' }[kind]),
+        h('p', {
+          clusters: `Counts each cluster in the parent population of every sample (${inDesign.length} samples in ${levels.length} groups) and fits a quasi-binomial model per cluster. Results are adjusted for the number of clusters.`,
+          states: `Takes the median of each chosen marker in each ${c.stateUnits === 'clusters' ? 'cluster' : 'population'} of every sample (${inDesign.length} samples in ${levels.length} groups) and tests the medians with diffcyt-DS-limma. Results are adjusted for the number of tests.`,
+          populations: `Computes the chosen statistic for each population in every sample (${inDesign.length} samples in ${levels.length} groups), runs the test chosen from the design, and adjusts the p-values for the number of populations.`,
+        }[kind]),
         unloaded.length ? h('p.muted', `${unloaded.length} sample(s) will be loaded first.`) : null));
       return;
     }
@@ -1256,30 +1299,34 @@ export function mountCompareMode(app, container) {
     const q = adjustPValues(current.rows.map((r) => r.p), c.adjust);
     current.rows.forEach((r, i) => { r.q = q[i]; });
     const significant = current.rows.filter((r) => r.q < c.alpha && (!(c.fcThreshold > 0) || Math.abs(r.log2fc) >= c.fcThreshold));
+    const effectName = kind === 'states' ? 'Δ median' : 'log₂ FC';
     pane.append(h('p', { style: { margin: '0 0 10px', color: 'var(--text-2)' } },
-      `${significant.length} of ${current.rows.filter((r) => Number.isFinite(r.p)).length} ${kind} with q < ${c.alpha}${c.fcThreshold > 0 ? ` and |log₂ FC| ≥ ${c.fcThreshold}` : ''} (${ADJUST.find((a) => a.id === c.adjust).label}). ${current.description}`));
+      `${significant.length} of ${current.rows.filter((r) => Number.isFinite(r.p)).length} ${kind === 'states' ? `${current.unitsKind === 'clusters' ? 'cluster' : 'population'} × marker tests` : kind} with q < ${c.alpha}${c.fcThreshold > 0 ? ` and |${effectName}| ≥ ${c.fcThreshold}` : ''} (${ADJUST.find((a) => a.id === c.adjust).label}). ${current.description}`));
     volcano = mountChart({
       height: 340,
       build: (width, height, colors) => buildVolcano(width, height, colors, current, c),
-      tooltip: (row) => [h('b', row.label), h('div', `log₂ FC ${formatValue(row.log2fc)} · p ${formatP(row.p)} · q ${formatP(row.q)}`), h('div.muted', 'Click to compare this one')],
+      tooltip: (row) => [h('b', row.label), h('div', `${effectName} ${formatValue(row.log2fc)} · p ${formatP(row.p)} · q ${formatP(row.q)}`), canOpen(row, current) ? h('div.muted', 'Click to compare this one') : null],
       onClick: (row) => openRow(row, current),
       name: () => `volcano-${kind}`,
     });
     head.append(
       h('button.btn.small', { type: 'button', onclick: () => volcano.exportSVG() }, icon('download'), 'SVG'),
       h('button.btn.small', { type: 'button', onclick: () => volcano.exportPNG() }, icon('download'), 'PNG'));
-    pane.append(volcano.el, h('p.muted', { style: { fontSize: '11px', margin: '6px 0 0' } }, `${current.xLabel} against −log₁₀ q. Dashed lines mark the thresholds; click a point to open its per-sample comparison.`));
+    pane.append(volcano.el, h('p.muted', { style: { fontSize: '11px', margin: '6px 0 0' } }, `${current.xLabel} against −log₁₀ q. Dashed lines mark the thresholds${current.kind === 'states' && current.unitsKind === 'clusters' ? '' : '; click a point to open its per-sample comparison'}.`));
     requestAnimationFrame(() => volcano?.redraw());
 
     const sorted = [...current.rows].sort((a, b) => (Number.isFinite(a.p) ? a.p : 2) - (Number.isFinite(b.p) ? b.p : 2));
     const body = h('tbody');
     for (const row of sorted) {
       const sig = significant.includes(row);
-      body.append(h(`tr${sig ? '.selected' : ''}`, { style: { cursor: 'pointer' }, onclick: () => openRow(row, current) },
-        h('td', { title: row.path ?? row.label, style: { maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, row.label),
+      const states = current.kind === 'states';
+      body.append(h(`tr${sig ? '.selected' : ''}`, { style: { cursor: canOpen(row, current) ? 'pointer' : 'default' }, onclick: () => openRow(row, current) },
+        h('td', { title: row.path ?? row.label, style: { maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, states ? row.unitLabel : row.label),
+        states ? h('td', row.markerLabel) : null,
         ...current.levels.map((l, j) => h('td.r', formatValue(row.means?.[j]))),
         h('td.r', formatValue(row.log2fc)),
         current.kind === 'populations' ? h('td.r', formatValue(row.g)) : null,
+        states ? h('td.r', formatValue(row.t)) : null,
         h('td.r', formatP(row.p)),
         h('td.r', h(sig ? 'b' : 'span', formatP(row.q))),
         h('td.muted', row.note ?? '')));
@@ -1287,10 +1334,12 @@ export function mountCompareMode(app, container) {
     const tablePane = h('div.pane', h('h3', icon('table'), 'Results', h('span.spacer'),
       h('button.btn.small', { type: 'button', onclick: () => exportScreen(current) }, icon('download'), 'CSV')),
     h('div', { style: { maxHeight: '420px', overflow: 'auto' } }, h('table.data', h('thead', h('tr',
-      h('th', current.kind === 'clusters' ? 'Cluster' : 'Population'),
-      ...current.levels.map((l) => h('th.r', `${current.kind === 'clusters' ? '%' : 'Mean'} ${l.label}`)),
-      h('th.r', current.kind === 'clusters' ? 'log₂ OR' : 'log₂ FC'),
+      h('th', current.kind === 'clusters' || (current.kind === 'states' && current.unitsKind === 'clusters') ? 'Cluster' : 'Population'),
+      current.kind === 'states' ? h('th', 'Marker') : null,
+      ...current.levels.map((l) => h('th.r', `${{ clusters: '%', states: 'Median' }[current.kind] ?? 'Mean'} ${l.label}`)),
+      h('th.r', { clusters: 'log₂ OR', states: 'Δ median' }[current.kind] ?? 'log₂ FC'),
       current.kind === 'populations' ? h('th.r', "Hedges' g") : null,
+      current.kind === 'states' ? h('th.r', 't') : null,
       h('th.r', 'p'), h('th.r', 'q'), h('th', ''))), body)),
     h('p.muted.fine-print', `Methods: ${current.methods}`),
     h('p.muted.fine-print', `References — ${current.citations.join('; ')}; ${ADJUST.find((a) => a.id === c.adjust).cite}.`));
@@ -1308,11 +1357,12 @@ export function mountCompareMode(app, container) {
     const control = controlOf(STATISTICS.find((s) => s.id === cfg().stat) ?? STATISTICS[1]);
     const unloaded = [...inDesign, ...store.ws.samples.filter((s) => s.id === control?.sampleId && kind === 'populations')].filter((s) => !data.view(s.id));
     if (unloaded.length) await loadSamples(unloaded);
-    const progress = progressToast(`Screening ${kind}…`);
+    await Promise.all(inDesign.map((s) => data.view(s.id)).filter(Boolean).map((view) => data.restoreDerived(view)));
+    const progress = progressToast(kind === 'states' ? 'Screening marker states…' : `Screening ${kind}…`);
     await new Promise((resolve) => setTimeout(resolve, 0));
     try {
-      screenResult = kind === 'clusters' ? await screenClusters(levels, progress) : await screenPopulations(levels, progress);
-      progress.done(`Screened ${screenResult.rows.length} ${kind}.`);
+      screenResult = kind === 'clusters' ? await screenClusters(levels, progress) : kind === 'states' ? await screenStates(levels, progress) : await screenPopulations(levels, progress);
+      progress.done(kind === 'states' ? `Tested ${screenResult.rows.length} ${screenResult.unitsKind === 'clusters' ? 'cluster' : 'population'} × marker combinations.` : `Screened ${screenResult.rows.length} ${kind}.`);
     } catch (error) {
       screenResult = { kind, error: error.message, rows: [] };
       progress.fail(error.message);
@@ -1444,6 +1494,85 @@ export function mountCompareMode(app, container) {
     };
   }
 
+  // diffcyt-DS-limma on the chosen clusters or populations and markers (lib/differential.js).
+  async function screenStates(levels, progress) {
+    const ws = store.ws;
+    const c = cfg();
+    if (levels.length < 2) throw new Error('Choose at least two groups.');
+    let samples = candidateSamples().filter((s) => levelOf(s, levels) && data.view(s.id));
+    let units;
+    let unitName;
+    let unitsLabel;
+    let channel = null;
+    const parentId = c.clusterParent ?? ROOT;
+    if (c.stateUnits === 'clusters') {
+      const channels = clusterChannels(ws, data);
+      channel = channels.find((x) => x.name === c.clusterChannel) ?? channels[0];
+      if (!channel) throw new Error('There is no cluster channel to screen. Cluster the data in the Explore view first, or screen populations.');
+      samples = samples.filter((s) => clusterCounts(data.view(s.id), ws, channel.name, parentId)?.total > 0);
+      const labels = new Set();
+      for (const s of samples) for (const k of clusterCounts(data.view(s.id), ws, channel.name, parentId).counts.keys()) labels.add(k);
+      units = { kind: 'clusters', channel: channel.name, parentId, labels: [...labels].sort((a, b) => a - b) };
+      unitName = (k) => clusterName(channel.record, k);
+      unitsLabel = `${units.labels.length} clusters (${channel.name}${parentId !== ROOT ? ` of ${gateById(ws, parentId)?.name ?? 'the parent'}` : ''})`;
+    } else {
+      const gateIds = (c.stateGateIds ?? stateGateChoices(ws).map((g) => g.id)).filter((id) => gateById(ws, id));
+      if (!gateIds.length) throw new Error('Choose at least one population.');
+      samples = samples.filter((s) => gateIds.some((id) => population(data.view(s.id), ws, id) !== undefined));
+      units = { kind: 'populations', gateIds };
+      unitName = (id) => gateById(ws, id)?.name ?? id;
+      unitsLabel = `${gateIds.length} populations`;
+    }
+    if (samples.length < 3) throw new Error(`Only ${samples.length} loaded sample(s) in the chosen groups${channel ? ` carry the channel "${channel.name}"` : ''}.`);
+    const { candidates, state } = stateMarkerChoices();
+    const markers = (c.stateMarkers ?? state.map((m) => m.name)).filter((m) => candidates.some((x) => x.name === m));
+    if (!markers.length) throw new Error('Choose at least one marker to test.');
+    const markerLabel = (name) => { const m = candidates.find((x) => x.name === name); return m?.marker || m?.label || name; };
+    const cofactor = c.cofactor ?? defaultCofactor(samples[0]);
+    const perSample = [];
+    for (const [i, sample] of samples.entries()) {
+      perSample.push(stateMedians(data.view(sample.id), ws, units, markers, cofactor));
+      progress.update(0.1 + (0.6 * (i + 1)) / samples.length, `Marker medians of ${sample.name} (${i + 1}/${samples.length})`);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const contrastLevel = levels.find((l) => l.key === c.contrast) ?? levels[1];
+    const pairField = c.pairBy ? c.pairBy.slice(5) : null;
+    const { design, coefficient, covariates } = buildDesign(samples.map((s) => ({ group: levelOf(s, levels).key, meta: s.meta })), {
+      levels: levels.map((l) => l.key), contrast: contrastLevel.key, pairField, covariates: c.covariates.filter((f) => `meta:${f}` !== c.groupBy),
+    });
+    progress.update(0.8, 'Fitting the linear models…');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const minCells = c.minCells ?? 3;
+    const result = differentialState({ counts: perSample.map((p) => p.counts), medians: perSample.map((p) => p.medians), design, coefficient, units: perSample[0].units, markers, minCells });
+    const levelIndex = samples.map((s) => levels.indexOf(levelOf(s, levels)));
+    const rows = result.rows.map((r) => {
+      const means = levels.map((_, j) => {
+        const values = perSample.map((p, i) => (levelIndex[i] === j ? p.medians[r.m][r.u] : Number.NaN)).filter(Number.isFinite);
+        return values.length ? meanOf(values) : Number.NaN;
+      });
+      return {
+        id: `${r.unit}|${r.marker}`, unit: r.unit, marker: r.marker, unitLabel: unitName(r.unit), markerLabel: markerLabel(r.marker), label: `${markerLabel(r.marker)} · ${unitName(r.unit)}`,
+        p: r.p, log2fc: r.logFC, t: r.t, aveExpr: r.aveExpr, means, note: r.samples < samples.length ? `cells in ${r.samples} of ${samples.length} samples` : '',
+      };
+    });
+    const unitWord = units.kind === 'clusters' ? 'cluster' : 'population';
+    return {
+      kind: 'states',
+      unitsKind: units.kind,
+      rows,
+      levels,
+      channel: channel?.name ?? null,
+      parentId,
+      markers,
+      cofactor,
+      coefficient,
+      xLabel: `Δ median arcsinh(x / ${cofactor}) (${contrastLevel.label} − ${levels[0].label})`,
+      description: `Model: median per ${unitWord} and marker ~ group${covariates.length ? ` + ${covariates.join(' + ')}` : ''}, weighted by cells; ${samples.length} samples; ${result.kept.length} of ${perSample[0].units.length} ${unitWord}s with at least ${minCells} cells in at least ${result.minSamples} samples${result.filtered.length ? ` (left out: ${result.filtered.slice(0, 6).map(unitName).join(', ')}${result.filtered.length > 6 ? ', …' : ''})` : ''}; prior df ${formatValue(result.dfPrior)}.`,
+      methods: stateMethods({ unitsLabel, markers, contrastLabel: contrastLevel.label, referenceLabel: levels[0].label, covariates, cofactor, minCells, minSamples: result.minSamples, tested: rows.length, version: app.version ?? '' }),
+      citations: STATE_CITATIONS,
+    };
+  }
+
   function buildVolcano(width, height, colors, result, c) {
     const items = [];
     const hits = [];
@@ -1468,7 +1597,24 @@ export function mountCompareMode(app, container) {
     const up = '#e45563';
     const down = '#4c78e0';
     const ranked = rows.map((r, i) => ({ r, yv: ys[i] })).sort((a, b) => a.yv - b.yv);
-    const labeled = new Set([...ranked].reverse().filter(({ r }) => r.q < c.alpha).slice(0, 10).map(({ r }) => r));
+    // Labels for the ten most significant points, right of the point or else left of it, and none
+    // where it would overlap a label already placed or run off the plot.
+    const labels = new Map();
+    const boxes = [];
+    for (const { r, yv } of [...ranked].reverse().filter(({ r }) => r.q < c.alpha).slice(0, 10)) {
+      const text = r.label.length > 22 ? `${r.label.slice(0, 21)}…` : r.label;
+      const w = text.length * 5.8;
+      const px = x.map(r.log2fc);
+      const py = y.map(yv);
+      for (const [left, align] of [[px + 7, 'start'], [px - 7 - w, 'end']]) {
+        const box = { x0: left, x1: left + w, y0: py - 16, y1: py - 2 };
+        if (box.x0 < rect.x || box.x1 > rect.x + rect.w || box.y0 < 0) continue;
+        if (boxes.some((o) => box.x0 < o.x1 && box.x1 > o.x0 && box.y0 < o.y1 && box.y1 > o.y0)) continue;
+        boxes.push(box);
+        labels.set(r, { text, x: align === 'start' ? px + 7 : px - 7, align });
+        break;
+      }
+    }
     for (const { r, yv } of ranked) {
       const sig = r.q < c.alpha && (!(c.fcThreshold > 0) || Math.abs(r.log2fc) >= c.fcThreshold);
       const px = x.map(r.log2fc);
@@ -1476,13 +1622,23 @@ export function mountCompareMode(app, container) {
       const color = sig ? (r.log2fc >= 0 || !twoSided ? up : down) : colors.muted;
       items.push({ t: 'circle', x: px, y: py, r: sig ? 5 : 3.8, fill: withAlpha(color.startsWith('#') ? color : '#9aa3b4', sig ? 0.85 : 0.45), stroke: sig ? colors.bg : null, width: 1 });
       hits.push({ x: px, y: py, r: 6, data: r });
-      if (labeled.has(r)) items.push({ t: 'text', x: px + 7, y: py - 6, text: r.label.length > 22 ? `${r.label.slice(0, 21)}…` : r.label, fill: colors.text2, size: 10.5 });
+      const label = labels.get(r);
+      if (label) items.push({ t: 'text', x: label.x, y: py - 6, text: label.text, fill: colors.text2, size: 10.5, align: label.align });
     }
     return { items, hits };
   }
 
+  // Rows with a per-sample comparison to open: clusters and populations, and population × marker
+  // states (the marker's median); a cluster's marker median has no single-measure view.
+  function canOpen(row, result) {
+    return !(result.kind === 'states' && result.unitsKind === 'clusters');
+  }
+
   function openRow(row, result) {
-    if (result.kind === 'clusters') {
+    if (!canOpen(row, result)) return;
+    if (result.kind === 'states') {
+      setCfg({ tab: 'one', source: 'population', gateId: row.unit, stat: 'median', channel: row.marker }, { invalidate: false });
+    } else if (result.kind === 'clusters') {
       setCfg({ tab: 'one', source: 'cluster', clusterChannel: result.channel, clusterParent: result.parentId, cluster: row.cluster }, { invalidate: false });
     } else {
       const spec = row.spec;
@@ -1491,6 +1647,14 @@ export function mountCompareMode(app, container) {
   }
 
   function exportScreen(result) {
+    if (result.kind === 'states') {
+      const rows = [[result.unitsKind === 'clusters' ? 'Cluster' : 'Population', 'Marker', 'Channel', ...result.levels.map((l) => `Median arcsinh ${l.label}`), 'Difference of medians (logFC)', 'Average (AveExpr)', 't', 'p', `q (${cfg().adjust})`, 'Note']];
+      for (const r of result.rows) rows.push([r.unitLabel, r.markerLabel, r.marker, ...r.means, r.log2fc, r.aveExpr, r.t, r.p, r.q, r.note ?? '']);
+      rows.push([], ['Methods', result.methods]);
+      downloadCSV(rows, 'screen-marker-states');
+      saveComparison(recordScreen(result), { quiet: true });
+      return;
+    }
     const header = [result.kind === 'clusters' ? 'Cluster' : 'Population', ...(result.kind === 'populations' ? ['Path'] : []), ...result.levels.map((l) => `${result.kind === 'clusters' ? '% of parent' : 'Mean'} ${l.label}`), result.kind === 'clusters' ? 'log2 odds ratio' : 'log2 fold change', ...(result.kind === 'populations' ? ["Hedges' g"] : ['SE (logit)', 'Dispersion']), 'p', `q (${cfg().adjust})`, 'Note'];
     const rows = [header];
     for (const r of result.rows) {
@@ -1503,6 +1667,20 @@ export function mountCompareMode(app, container) {
 
   function recordScreen(result) {
     const c = cfg();
+    if (result.kind === 'states') {
+      return {
+        id: newId('cmp'),
+        name: `Differential state: ${result.unitsKind === 'clusters' ? result.channel : 'populations'} by ${groupingLabel()}`,
+        kind: 'screen-states',
+        measure: { kind: 'state', units: result.unitsKind, channel: result.channel, parentId: result.parentId, markers: result.markers, cofactor: result.cofactor },
+        grouping: { by: c.groupBy, levels: result.levels.map((l) => l.label), reference: result.levels[0]?.label },
+        pairing: c.pairBy ? c.pairBy.slice(5) : null,
+        test: { id: 'diffcyt-ds-limma', name: 'diffcyt-DS-limma (limma moderated t, cells as weights, mean–variance trend)', adjust: c.adjust, alpha: c.alpha },
+        results: result.rows.map((r) => ({ id: r.id, label: r.label, means: r.means, log2fc: r.log2fc, t: r.t, p: r.p, q: r.q })),
+        methods: result.methods,
+        created: new Date().toISOString(),
+      };
+    }
     return {
       id: newId('cmp'),
       name: result.kind === 'clusters' ? `Differential abundance: ${result.channel} by ${groupingLabel()}` : `Population screen: ${STATISTICS.find((s) => s.id === c.stat)?.label ?? c.stat} by ${groupingLabel()}`,

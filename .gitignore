@@ -8,3 +8,7 @@
 /.claude/
 /product_research/
 docs/capture/audit.json
+__pycache__/
+*.egg-info/
+/clients/r/*.tar.gz
+/cytoweave.Rcheck/

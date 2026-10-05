@@ -90,6 +90,8 @@ export function installRemote(app) {
 
   async function loadedView(sample) {
     const view = await data.ensure(sample.id);
+    // Derived channels kept in the library (clusters, maps, QC) arrive after the sample loads.
+    await data.restoreDerived(view);
     view.syncWorkspace?.(ws());
     return view;
   }
@@ -1252,6 +1254,106 @@ export function installRemote(app) {
       const label = `${stat}${args.channel ? ` of ${args.channel}` : ''} of ${id === ROOT ? 'all events' : gatePath(w, id)}`;
       const clean = JSON.parse(JSON.stringify(tests, (k, v) => (typeof v === 'number' ? round(v, 6) : v)));
       return { message: `${label} by ${field}: ${summary.map((s) => `${s.group} median ${s.median} (n=${s.n})`).join(' vs ')}${clean[0]?.p !== undefined ? `; ${clean[0].method} p = ${clean[0].p}` : ''}. Each sample is one observation.`, data: { measure: label, groupBy: field, pairBy: args.pairBy, groups: summary, tests: clean } };
+    },
+
+    // Differential state (diffcyt-DS-limma: marker medians per cluster or population and sample)
+    // or abundance (cluster counts, quasi-binomial GLM) between groups of samples.
+    async differential_analysis(args) {
+      const differential = await import('../lib/differential.js');
+      const hypothesis = await import('../lib/hypothesis.js');
+      const w = ws();
+      const test = args.test ?? 'state';
+      if (!['state', 'abundance'].includes(test)) throw new ActionError('test is "state" (marker medians) or "abundance" (cluster frequencies).');
+      const field = String(args.groupBy ?? '');
+      const inGroups = w.samples.filter((s) => (s.role === 'sample' || s.role === 'reference') && s.meta?.[field] !== undefined && String(s.meta[field]).trim() !== '');
+      if (!inGroups.length) throw new ActionError(`No sample has the metadata field "${field}". Annotate samples first (fields in use: ${[...new Set(w.samples.flatMap((s) => Object.keys(s.meta ?? {})))].join(', ') || 'none'}).`);
+      const levels = args.groups?.length ? args.groups.map(String) : [...new Set(inGroups.map((s) => String(s.meta[field])))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+      if (levels.length < 2) throw new ActionError(`"${field}" needs at least two groups; it has ${levels.join(', ')}.`);
+      const contrast = args.contrast !== undefined ? String(args.contrast) : levels[1];
+      if (!levels.includes(contrast) || contrast === levels[0]) throw new ActionError(`contrast must be one of ${levels.slice(1).join(', ')} (tested against ${levels[0]}, the first group).`);
+      let chosen = inGroups.filter((s) => levels.includes(String(s.meta[field])));
+      // The views themselves are kept: a large cohort can push early samples out of memory.
+      let views = [];
+      for (const sample of chosen) views.push(await loadedView(sample));
+      const pairField = args.pairBy ? String(args.pairBy) : null;
+      const covariates = (args.covariates ?? []).map(String).filter((f) => f !== field);
+      const parentId = args.parent ? resolvePopulation(args.parent) : ROOT;
+      let units;
+      let unitName;
+      let channel = null;
+      let unitsLabel;
+      if (args.populations?.length) {
+        if (test === 'abundance') throw new ActionError('Differential abundance tests clusters; for populations use compare (a frequency per sample).');
+        const gateIds = args.populations.map((p) => resolvePopulation(p));
+        // Only the samples where the populations apply take part (a gate beneath a QC result
+        // applies only to the samples checked).
+        const apply = views.map((view) => gateIds.some((id) => population(view, w, id) !== undefined));
+        chosen = chosen.filter((_, i) => apply[i]);
+        views = views.filter((_, i) => apply[i]);
+        if (chosen.length < 3) throw new ActionError(`The populations apply to only ${chosen.length} of the samples in these groups.`);
+        units = { kind: 'populations', gateIds };
+        unitName = (id) => (id === ROOT ? 'All events' : gatePath(w, id));
+        unitsLabel = `${gateIds.length} populations`;
+      } else {
+        const channels = differential.clusterChannels(w, app.data.views.values());
+        channel = args.clusters ? channels.find((c) => c.name.toLowerCase() === String(args.clusters).toLowerCase()) : channels[0];
+        if (!channel) throw new ActionError(channels.length ? `No cluster channel "${args.clusters}". Cluster channels: ${channels.map((c) => c.name).join(', ')}.` : 'There is no cluster channel: cluster the samples first (explore), or test populations.');
+        // Only the samples that carry the clusters (with events in the parent) take part.
+        const carry = views.map((view) => differential.clusterCounts(view, w, channel.name, parentId)?.total > 0);
+        chosen = chosen.filter((_, i) => carry[i]);
+        views = views.filter((_, i) => carry[i]);
+        if (chosen.length < 3) throw new ActionError(`Only ${chosen.length} of the samples in these groups carry the channel "${channel.name}" with events in the parent population.`);
+        const labels = new Set();
+        for (const view of views) for (const k of differential.clusterCounts(view, w, channel.name, parentId)?.counts.keys() ?? []) labels.add(k);
+        units = { kind: 'clusters', channel: channel.name, parentId, labels: [...labels].sort((a, b) => a - b) };
+        unitName = (k) => differential.clusterNameOf(channel.record, k);
+        unitsLabel = `${units.labels.length} clusters (${channel.name}${parentId !== ROOT ? ` of ${gatePath(w, parentId)}` : ''})`;
+      }
+      const designSamples = chosen.map((s) => ({ group: String(s.meta[field]), meta: s.meta }));
+      let built;
+      try {
+        built = differential.buildDesign(designSamples, { levels, contrast, pairField, covariates });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const finish = (rows, extra) => {
+        const sorted = [...rows].sort((a, b) => (Number.isFinite(a.p) ? a.p : 2) - (Number.isFinite(b.p) ? b.p : 2));
+        const limit = Math.max(1, Math.min(500, Number(args.limit ?? 40)));
+        const significant = rows.filter((r) => r.padj < 0.05).length;
+        return { sorted: sorted.slice(0, limit), significant, total: rows.length, extra };
+      };
+      if (test === 'abundance') {
+        const counts = views.map((view) => differential.clusterCounts(view, w, units.channel, parentId));
+        const da = hypothesis.differentialAbundance(counts.map((c) => units.labels.map((k) => c?.counts.get(k) ?? 0)), counts.map((c) => c?.total ?? 0), built.design, { coefficient: built.coefficient, clusterNames: units.labels.map(unitName) });
+        const rows = da.results.map((r, i) => ({ cluster: r.cluster, label: units.labels[i], log2OddsRatio: round(r.log2OddsRatio), p: r.p, padj: r.padj, note: r.note }));
+        const out = finish(rows);
+        const methods = `Differential abundance of ${unitsLabel} between ${contrast} and ${levels[0]} was tested per cluster with a quasi-binomial generalized linear model (logit link; cluster cells out of ${parentId === ROOT ? 'all events' : gatePath(w, parentId)} per sample; design ~ group${built.covariates.length ? ` + ${built.covariates.join(' + ')}` : ''}) by likelihood-ratio F test, approximating diffcyt (Weber et al. 2019), with p-values adjusted across clusters by the Benjamini–Hochberg procedure, in CytoWeave ${app.version ?? ''}.`;
+        return {
+          message: `Differential abundance of ${unitsLabel}, ${contrast} vs ${levels[0]} (design ${built.design.names.join(' + ')}; ${chosen.length} samples): ${out.significant} of ${out.total} clusters at adjusted p < 0.05${out.sorted[0] ? `; lowest p: ${out.sorted[0].cluster} (log2 odds ratio ${out.sorted[0].log2OddsRatio}, p ${round(out.sorted[0].p, 3)}, adjusted ${round(out.sorted[0].padj, 3)})` : ''}.`,
+          data: { test, groupBy: field, groups: levels, contrast, design: built.design.names, samples: chosen.map((s) => s.name), significant: out.significant, tested: out.total, rows: out.sorted.map((r) => ({ ...r, p: round(r.p, 6), padj: round(r.padj, 6) })), methods },
+        };
+      }
+      const { candidates, state } = differential.stateMarkerCandidates(views[0], channel?.record ?? null);
+      const markers = args.markers?.length ? args.markers.map((m) => resolveChannel(views[0], m)) : state.map((c) => c.name);
+      if (!markers.length) throw new ActionError('No markers to test: name them with markers.');
+      const markerName = (name) => candidates.find((c) => c.name === name)?.marker || views[0].parameters.find((p) => p.name === name)?.marker || name;
+      const cofactor = Number(args.cofactor ?? differential.defaultCofactor(chosen[0]));
+      const perSample = views.map((view) => differential.stateMedians(view, w, units, markers, cofactor));
+      const minCells = Number(args.minCells ?? 3);
+      let result;
+      try {
+        result = differential.differentialState({ counts: perSample.map((p) => p.counts), medians: perSample.map((p) => p.medians), design: built.design, coefficient: built.coefficient, units: perSample[0].units, markers, minCells, minSamples: args.minSamples !== undefined ? Number(args.minSamples) : null });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const rows = result.rows.map((r) => ({ [units.kind === 'clusters' ? 'cluster' : 'population']: unitName(r.unit), marker: markerName(r.marker), channel: r.marker, logFC: round(r.logFC), average: round(r.aveExpr), t: round(r.t), p: r.p, padj: r.padj, samples: r.samples }));
+      const out = finish(rows);
+      const methods = differential.stateMethods({ unitsLabel, markers, contrastLabel: contrast, referenceLabel: levels[0], covariates: built.covariates, cofactor, minCells, minSamples: result.minSamples, tested: rows.length, version: app.version ?? '' });
+      const top = out.sorted[0];
+      return {
+        message: `Differential state of ${markers.length} markers in ${unitsLabel}, ${contrast} vs ${levels[0]} (diffcyt-DS-limma; design ${built.design.names.join(' + ')}; ${chosen.length} samples; arcsinh cofactor ${cofactor}): ${out.significant} of ${out.total} ${units.kind === 'clusters' ? 'cluster' : 'population'} × marker tests at adjusted p < 0.05${top ? `; lowest p: ${top.marker} in ${top.cluster ?? top.population} (difference of medians ${top.logFC}, p ${round(top.p, 3)}, adjusted ${round(top.padj, 3)})` : ''}${result.filtered.length ? `. Left out (fewer than ${minCells} cells in more than half the samples): ${result.filtered.map(unitName).join(', ')}` : ''}.`,
+        data: { test, groupBy: field, groups: levels, contrast, design: built.design.names, samples: chosen.map((s) => s.name), markers: markers.map(markerName), cofactor, kept: result.kept.map(unitName), filtered: result.filtered.map(unitName), priorDf: round(result.dfPrior), significant: out.significant, tested: out.total, rows: out.sorted.map((r) => ({ ...r, p: round(r.p, 6), padj: round(r.padj, 6) })), methods, citations: differential.STATE_CITATIONS },
+      };
     },
 
     async check_robustness(args) {

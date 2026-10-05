@@ -98,7 +98,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | H3 | Embedding faithfulness: trustworthiness, continuity, kNN preservation, mixing, seed stability, unreliable regions | done |
 | H4 | Differential abundance of clusters across groups | done (quasi-binomial, diffcyt-like) |
 | H5 | Placing new samples on an existing map | done: samples left out of a UMAP are placed on it with UMAP's transform, the map unchanged |
-| H6 | Differential state of markers per cluster or population across groups | planned (wave 6) |
+| H6 | Differential state of markers per cluster or population across groups | done: diffcyt-DS-limma in Compare (Screen marker states) and the `differential_analysis` tool, equal to diffcyt 1.32 and limma 3.68 in R (validation `differential`) |
 
 ## Specialized analyses
 
@@ -153,7 +153,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M2 | Remote control for local scripts | done |
 | M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
 | M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | done: 11 new tools (29 in all); results and figures proposed, annotations and root gates held; exports write only to the path given and never replace a file unless told to; validation `agent-session.mjs` (15 checks, in CI) |
-| M5 | R and Python clients for remote control | planned (wave 6) |
+| M5 | R and Python clients for remote control | done: `clients/r` and `clients/python`, functions generated from the tools, connection found through `remote.json`, tested in CI against a running CytoWeave (not published to CRAN or PyPI) |
 | M6 | Optional on-device assistant, without network | planned (wave 8) |
 
 ## Quality

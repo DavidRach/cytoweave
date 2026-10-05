@@ -73,6 +73,7 @@ async function refused(name, args = {}) {
   return result.ok ? null : (result.message ?? result.error);
 }
 
+const rounded = (v, digits) => (Number.isFinite(v) ? +v.toPrecision(digits) : null);
 let b;
 const page = (code) => b.eval(`(async () => { const app = window.cytoweave; ${code} })()`);
 async function waitFor(expression, timeout = 240000) {
@@ -115,6 +116,28 @@ try {
   await decide('Claude Code', true);
   const after = await page(`const ss = app.store.ws.samples; return [ss.find((s) => s.name === ${JSON.stringify(samples[0])}).meta.cohort, ss.find((s) => s.name === ${JSON.stringify(samples[1])}).meta.cohort, 'batch' in ss.find((s) => s.name === ${JSON.stringify(samples[1])}).meta];`);
   check('annotate_samples: held until accepted, then applied (a null value removes the field)', `before ${before}; after ${after.join(', ')}`, before === null && after[0] === 'A' && after[1] === 'B' && after[2] === false, 'null, then A, B, field removed');
+
+  // Differential state: the agent's result equals the library run on the same data in the page,
+  // and stimulation's rise of CD25 and HLA-DR on T cells is found (paired by donor).
+  const stateArgs = { groupBy: 'condition', groups: ['Unstimulated', 'Stimulated'], pairBy: 'subject', populations: ['Lymphocytes', 'T cells', 'Monocytes'], limit: 500 };
+  const state = (await tool('differential_analysis', stateArgs)).data;
+  const stateDirect = await page(`
+    const D = await import('/lib/differential.js');
+    const ws = app.store.ws;
+    const samples = ws.samples.filter((s) => ['Unstimulated', 'Stimulated'].includes(s.meta?.condition));
+    const views = samples.map((s) => app.data.view(s.id));
+    const gateIds = ['Lymphocytes', 'T cells', 'Monocytes'].map((n) => ws.gates.find((g) => g.name === n).id);
+    const markers = D.stateMarkerCandidates(views[0], null).state.map((c) => c.name);
+    const per = views.map((v) => D.stateMedians(v, ws, { kind: 'populations', gateIds }, markers, D.defaultCofactor(samples[0])));
+    const b = D.buildDesign(samples.map((s) => ({ group: s.meta.condition, meta: s.meta })), { levels: ['Unstimulated', 'Stimulated'], pairField: 'subject' });
+    const r = D.differentialState({ counts: per.map((p) => p.counts), medians: per.map((p) => p.medians), design: b.design, coefficient: b.coefficient, units: per[0].units, markers });
+    const name = (id) => ws.gates.find((g) => g.id === id).name;
+    const marker = (ch) => views[0].parameters.find((p) => p.name === ch)?.marker || ch;
+    return r.rows.map((row) => ({ key: name(row.unit) + '|' + marker(row.marker), p: row.p, padj: row.padj, logFC: row.logFC }));`);
+  const agentRows = new Map(state.rows.map((r) => [`${r.population.split('/').pop().trim()}|${r.marker}`, r]));
+  const stateDiffer = stateDirect.filter((r) => { const a = agentRows.get(r.key); return !a || a.p !== rounded(r.p, 6) || a.padj !== rounded(r.padj, 6) || a.logFC !== rounded(r.logFC, 4); });
+  const tCells = ['CD25', 'HLA-DR'].map((m) => agentRows.get(`T cells|${m}`));
+  check('differential_analysis (state): every population × marker test equals diffcyt-DS-limma run in the page on the same samples; CD25 and HLA-DR rise on stimulated T cells (paired by donor)', `${stateDirect.length - stateDiffer.length} of ${stateDirect.length} equal (${state.tested} tested, design ${state.design.join(' + ')}); T cells: ${tCells.map((r, i) => (r ? `${['CD25', 'HLA-DR'][i]} +${r.logFC}, adjusted p ${r.padj}` : 'missing')).join('; ')}`, stateDirect.length === state.tested && !stateDiffer.length && tCells.every((r) => r && r.logFC > 0 && r.padj < 0.05), 'all equal; both called, positive');
 
   // The FlowJo workspace carries every population of every sample with CytoWeave's own count.
   const outDir = join(temp, 'out');
@@ -189,6 +212,23 @@ try {
   const ari = exploreState.truthLabels.length ? adjustedRandIndex(Int32Array.from(exploreState.truthLabels), Int32Array.from(exploreState.clusterLabels)) : Number.NaN;
   check('explore: every T cell\'s FlowSOM cluster equals a direct run with the same settings; the clusters proposed as populations', `${exploreState.differ} of ${exploreState.total} differ; ${explored.clusters.length} clusters (${explored.clusters.slice(0, 3).map((c) => c.name).join(', ')}…); ${exploreState.gates} populations; map trustworthiness ${explored.quality?.trustworthiness}`, exploreState.differ === 0 && exploreState.total > 1000 && exploreState.gates === explored.clusters.length && explored.quality?.trustworthiness > 0.8, '0 differ; a population per cluster; trustworthiness > 0.8');
   check('explore: the clusters follow the true T-cell types (adjusted Rand index)', ari.toFixed(3), ari > 0.3, '> 0.3');
+  // Differential abundance of the clusters, on the samples that carry them (T cells beneath the
+  // accepted QC pass apply only to the samples QC checked).
+  const abundance = (await tool('differential_analysis', { test: 'abundance', groupBy: 'condition', groups: ['Unstimulated', 'Stimulated'], clusters: 'FlowSOM cluster', parent: 'T cells', limit: 100 })).data;
+  const abundanceDirect = await page(`
+    const D = await import('/lib/differential.js');
+    const H = await import('/lib/hypothesis.js');
+    const ws = app.store.ws;
+    const parent = ws.gates.find((g) => g.name === 'T cells').id;
+    const samples = ws.samples.filter((s) => ['Unstimulated', 'Stimulated'].includes(s.meta?.condition) && D.clusterCounts(app.data.view(s.id), ws, 'FlowSOM cluster', parent)?.total > 0);
+    const counts = samples.map((s) => D.clusterCounts(app.data.view(s.id), ws, 'FlowSOM cluster', parent));
+    const labels = [...new Set(counts.flatMap((c) => [...(c?.counts.keys() ?? [])]))].sort((a, b) => a - b);
+    const b = D.buildDesign(samples.map((s) => ({ group: s.meta.condition, meta: s.meta })), { levels: ['Unstimulated', 'Stimulated'] });
+    const da = H.differentialAbundance(counts.map((c) => labels.map((k) => c?.counts.get(k) ?? 0)), counts.map((c) => c?.total ?? 0), b.design, { coefficient: b.coefficient });
+    return { samples: samples.map((s) => s.name), rows: da.results.map((r, i) => ({ label: labels[i], p: r.p, padj: r.padj })) };`);
+  const agentClusters = new Map(abundance.rows.map((r) => [r.label, r]));
+  const abundanceDiffer = abundanceDirect.rows.filter((r) => { const a = agentClusters.get(r.label); return !a || a.p !== rounded(r.p, 6) || a.padj !== rounded(r.padj, 6); });
+  check('differential_analysis (abundance): only the samples that carry the clusters take part, and each FlowSOM cluster\'s test equals the quasi-binomial model run in the page on the clusters\' counts', `${abundance.tested} clusters; ${abundance.samples.length} samples (${abundance.samples.join(', ')}); ${abundanceDiffer.length} differ`, abundance.tested === abundanceDirect.rows.length && abundance.tested > 0 && abundance.samples.join() === abundanceDirect.samples.join() && !abundanceDiffer.length, 'the samples with clusters; none differ');
   await decide('Explorer', false);
   const rejected = await page(`const s = app.store.ws.samples.find((x) => x.name === ${JSON.stringify(samples[0])}); return { derived: app.store.ws.derived.filter((d) => d.outputs?.includes('FlowSOM cluster')).length, gates: app.store.ws.gates.filter((g) => g.dims[0]?.channel === 'FlowSOM cluster').length, attached: app.data.view(s.id).derived.has('FlowSOM cluster'), qcKept: app.store.ws.derived.filter((d) => d.kind === 'qc').length };`);
   check('rejecting removes the clusters, their populations and their channels, and nothing else (the accepted QC result stays)', JSON.stringify(rejected), rejected.derived === 0 && rejected.gates === 0 && !rejected.attached && rejected.qcKept === 1, 'none left; QC kept');

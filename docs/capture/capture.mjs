@@ -390,6 +390,22 @@ const scenes = {
     await js(`[...document.querySelectorAll('.pane')].find((p) => /Robustness/.test(p.querySelector('h3')?.textContent)).scrollIntoView({ block: 'start' })`);
     await sleep(1500);
   },
+  // Compare: differential state (diffcyt-DS-limma) of the activation markers in FlowSOM clusters of
+  // live cells made from lineage markers, stimulated against unstimulated, paired by donor.
+  async 'compare-states'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await agent('explore', { population: 'Live', markers: ['CD45', 'CD3', 'CD4', 'CD8', 'CD19', 'CD56', 'CD14', 'CD16'], clustering: 'flowsom', embedding: 'none', k: 10, eventsPerSample: 3000 });
+    await mode('compare');
+    await app(`
+      const live = app.store.ws.gates.find((g) => g.name === 'Live').id;
+      app.store.ui.compare = { ...app.store.ui.compare, tab: 'states', stateUnits: 'clusters', stateMarkers: null, clusterParent: live, groupBy: 'meta:condition', levels: ['Unstimulated', 'Stimulated'], reference: 'Unstimulated', pairBy: 'meta:subject', covariates: [] };`);
+    await mode('tables');
+    await mode('compare');
+    await click('Run screen');
+    await waitFor(`/cluster × marker tests/.test(${mainText}) && !document.querySelector('.progress-toast')`, 300000);
+    await sleep(2000);
+  },
   // Figures: a publication figure assembled from live plots.
   async figures() {
     await example('pbmc-immunophenotyping');

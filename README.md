@@ -156,8 +156,9 @@ guides to every view, with screenshots.
     several groups, repeated measures. Each comes with a nonparametric
     counterpart, effect sizes, confidence intervals and multiple-testing
     correction.
-  - Screens of every population or cluster, with volcano plots and
-    differential abundance.
+  - Screens of every population or cluster, with volcano plots,
+    differential abundance and differential state (diffcyt-DS-limma, equal
+    to diffcyt in R).
   - **Robustness to analysis choices**: whether a comparison's conclusion
     holds across 64 analyses with the gates moved or adapted, QC removed or
     re-run, another compensation matrix or another test, with a
@@ -729,6 +730,19 @@ cluster at once. Results are corrected for multiple testing
 volcano plot. Cluster abundance uses a quasi-binomial model in the manner of
 diffcyt. Clicking a point opens that sample.
 
+**Screen marker states** asks whether a marker's level changes within a
+cluster or population, with diffcyt-DS-limma (Weber et al. 2019): each
+sample's median of arcsinh-transformed expression per cluster, a linear model
+per cluster and marker weighted by the cells in each sample (pairing and
+covariates as fixed effects), and limma's moderated t-statistics with a
+mean–variance trend, adjusted across every cluster and marker. The markers the
+clusters were made from are left out by default.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-states-dark.webp">
+  <img alt="Screen marker states: FlowSOM clusters from lineage markers, activation markers tested between stimulated and unstimulated samples paired by donor; CD25 and HLA-DR up and CD127 down in the T-cell clusters" src="docs/images/compare-states-light.webp">
+</picture>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-robustness-dark.webp">
   <img alt="Robustness to analysis choices for monocytes, stimulated against unstimulated: the conclusion mostly holds, with a specification curve of 64 analyses and the choices each changed" src="docs/images/compare-robustness-light.webp">
@@ -1030,7 +1044,8 @@ window you are watching:
 - analyze an antibody titration or a detector voltage walk;
 - edit gates, compute statistics across samples and render plots;
 - review a gate across the cohort, adapt it to each sample, compare groups,
-  check a comparison's robustness, build figures and write the methods;
+  test differential abundance and state of every cluster, check a
+  comparison's robustness, build figures and write the methods;
 - watch an instrument's export folder as files are acquired;
 - export FlowJo workspaces, de-identified FCS files, figures and tables to
   files, and Gating-ML.
@@ -1055,12 +1070,29 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 40 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 41 tools, other clients
 and how it works.
 
-The same actions are available to your own programs (Python, Jupyter, shell
-scripts) with `--remote-control`; [docs/MCP.md](docs/MCP.md#scripts-without-an-agent)
-shows how.
+The same actions are available to your own programs with `--remote-control`.
+The R and Python clients in [`clients/`](clients/) make each one a function
+and find the running CytoWeave themselves:
+
+```r
+library(cytoweave)          # remotes::install_github("robert-mcdermott/cytoweave", subdir = "clients/r")
+cw_connect()
+states <- cw_differential_analysis("condition", groups = c("Unstimulated", "Stimulated"),
+                                   pair_by = "subject")
+as.data.frame(states)
+```
+
+```python
+import cytoweave            # pip install "git+https://github.com/robert-mcdermott/cytoweave#subdirectory=clients/python"
+cw = cytoweave.connect()
+table = cw.statistics_table(statistic="freqParent").frame()
+```
+
+Any other language can post JSON to `/api/remote/action`;
+[docs/MCP.md](docs/MCP.md#scripts-without-an-agent) shows how.
 
 ## Validation
 
@@ -1092,11 +1124,12 @@ pipelines, as the app does, against answers known in advance:
 | Formula channels | R evaluating the same 7 formulas on 10 tubes; Gating-ML and a template | Medians within 5e-8, single events within 2e-14; a ratio gate the same through Gating-ML (fratio) and on renamed detectors |
 | Calibrated units (MEF) | FlowCal 1.3.1 on its own bead and cell files; simulated beads of known response | The same levels left out, medians within one step of the log channel, cells' MEFL within 1.6% of FlowCal's; a known slope within 0.001 |
 | Absolute counts | 40 simulated tubes of known concentration with counting beads | Within 1% on average, scattered as Poisson counting predicts |
+| Differential state | diffcyt 1.32 and limma 3.68 in R on the mass cytometry examples (8 samples with a batch, 20 paired wells); limma on 11 synthetic cases; activation known in advance | Every count and median identical, every moderated t, p and adjusted p within 3e-11; the known activation changes found (15 of 15 strong ones) with 3 of 53 calls false; no call where no marker differs |
 | Events in and out | Concatenated, downsampled and per-sample FCS files against their sources; CSV files from CytoWeave, FlowJo and European locales, and a damaged one; AnnData files read by anndata 0.10 and 0.13, h5py, pyfive, fcsparser and FlowIO | Every event its source's; every population counted alike per SampleID; seeded downsampling exact and uniform; CSV values back exactly, every fault reported; X, obs and maps read exactly by every reader |
 | Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
-| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 84 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
+| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 86 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
 | Titration and voltage walks | A simulated CD4-PE titration and PE voltage walk with known binding, noise and gain | Stain index within 4.4% of the true cells' at every step; the recommended amount the binding's; the voltage range within 1 V of the truth; medians equal to FlowJo 11's on the same files |
 | Templates | A 19-population analysis applied to the same events with every detector renamed and reordered | Every population holds the same events in all 12 samples; with two markers unnamed, only the gate on them left out |
 | Published strategies | OMIP-101 and OMIP-090 placed on one sample of the PBMC example, against the true cell types | Median F1 0.96–0.99 for lineages, 0.88–0.96 for memory subsets, NK cells and classical and non-classical monocytes; Tregs 0.91; intermediate monocytes 0.76 |
@@ -1161,6 +1194,10 @@ used for diagnosis.
 - Robustness to analysis choices covers two-group comparisons of a
   population; designs of more than two groups and cluster abundances are not
   checked, and scales are not varied.
+- Differential state uses limma's standard empirical Bayes moderation and
+  enters pairing and covariates as fixed effects; diffcyt's random-effect
+  options (blocking with duplicateCorrelation, diffcyt-DS-LMM) and limma's
+  robust moderation are not offered.
 - QC as files are acquired needs the CytoWeave program (not the page served
   as a web site) and checks whole files, as acquisition software writes them,
   not events as they are acquired.
@@ -1172,7 +1209,6 @@ used for diagnosis.
   Intermediate monocytes, which lie between the classical and non-classical
   ones on CD16, are the least accurate of their populations (F1 0.76 in
   validation).
-- Event data in CSV are not imported, only annotations.
 - Imaging flow data (CellView, Amnis) are not supported.
 - Spectral unmixing needs the raw detector channels; files that hold only
   unmixed channels can be gated but not re-unmixed.
@@ -1225,6 +1261,12 @@ node validation/run.mjs
 
 `node validation/agent-session.mjs` drives every agent tool in the program and
 headless Chrome (it needs Go and Chrome) and checks each result.
+`node clients/test-clients.mjs` runs the R and Python clients' tests against
+CytoWeave in headless Chrome (it also needs Python 3, and R with curl, jsonlite
+and testthat). After changing a tool in `mcp.go`, run
+`go test -run TestTheClientsToolListIsCurrent -update` and
+`node clients/generate.mjs`; the latter also sets the clients' versions to
+`main.go`'s.
 `node validation/fuzz.mjs` fuzzes the FCS reader for longer than the suite
 does (`--cases 200000`), and `--replay <file> <seed>` repeats a failing case.
 
@@ -1259,13 +1301,15 @@ screenshots.
 
 ```text
 main.go, security.go, local.go, store.go,      Go host: server, security checks, files named on
-window.go, remote.go, mcp.go                   the command line, library, app window, remote
-                                               control, MCP server
+window.go, remote.go, mcp.go, connection.go    the command line, library, app window, remote
+                                               control, MCP server, connection file for scripts
 web/index.html, web/styles.css, web/app.js     application shell
 web/ui/                                        views and components (the only code using the DOM)
 web/lib/                                       analysis modules, each with a *.test.mjs
 web/workers/                                   module workers for heavy work
 validation/                                    end-to-end checks against known answers
+clients/                                       the R and Python clients (functions generated from
+                                               clients/tools.json by clients/generate.mjs)
 cytoweave-spec/                                design, conventions, requirements, roadmap, research
 docs/                                          installing, AI agents, screenshots, website source
 ```
@@ -1291,6 +1335,8 @@ code and in the methods text it writes, among them:
 - CytoNorm (Van Gassen et al.);
 - the spillover spreading matrix (Nguyen et al.);
 - MEM (Diggins et al.);
+- diffcyt (Weber et al. 2019) and limma's moderated t-statistics (Smyth 2004;
+  Ritchie et al. 2015; Chen et al. 2025);
 - MIFlowCyt, FCS and Gating-ML (ISAC);
 - the OMIP-101 (Imbratta et al. 2024) and OMIP-090 (Stroukov et al. 2023)
   gating strategies, and the immunophenotypes of Maecker, McCoy & Nussenblatt
@@ -1306,6 +1352,9 @@ license. Tan SZK et al. The Cell Ontology in the age of single-cell omics.
 Ported code:
 - The FlowJo biexponential algorithm is ported from FlowKit (BSD-3-Clause,
   Scott White), which ported it from cytolib.
+- The moderated t-statistics (`web/lib/limma.js`) follow the R and C sources
+  of limma 3.68.5 (GPL ≥ 2, Gordon Smyth and co-authors) and statmod 1.5
+  (Gordon Smyth), so that results equal R's.
 - The validation suite includes excerpts of BD's FlowJo transformation lookup
   tables (MIT license, © 2020 Becton, Dickinson and Company; see
   `validation/data/LICENSE-BD-FlowJo-LUTs.txt`).

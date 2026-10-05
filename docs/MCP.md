@@ -47,7 +47,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0, and `compare_distributions`, `rare_events`, `add_formula_channel`, `calibrate_beads`, `export_report` and `export_events` 0.6.0 (as do Excel and Prism files from `export_table` and CSV files of events in `open_files`).
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0, and `compare_distributions`, `rare_events`, `add_formula_channel`, `calibrate_beads`, `export_report`, `export_events` and `differential_analysis` 0.6.0 (as do Excel and Prism files from `export_table` and CSV files of events in `open_files`).
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the
@@ -104,6 +104,7 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `review_gate` | A gate's frequency on every sample with a robust z-score and its boundary robustness, outliers first. |
 | `adapt_gate` | Adapts a gate to every sample (density landmark registration) with a confidence for each: confident adjustments are proposed, uncertain samples listed for you to check. `groupBy` keeps one gate per donor or subject. |
 | `compare` | Tests a statistic between groups of samples defined by metadata, optionally paired. |
+| `differential_analysis` | Tests every cluster (or chosen populations) between groups of samples: differential state, each marker's median by diffcyt-DS-limma, or differential abundance, each cluster's share of the parent; with pairing and covariates in the model. |
 | `check_robustness` | Repeats a two-group comparison under other reasonable analysis choices (gate boundaries, adapted gates, QC, compensation, test) and reports whether the conclusion holds, mostly holds or is fragile, and which choices change it. |
 | `annotate_samples` | Sets samples' metadata fields, roles and stained channels (held for review). |
 | `run_qc` | Acquisition QC (refined or classic PeacoQC, flow rate, margins, drift): each sample's score, events removed and findings; the "QC pass" channel is proposed, and with `addGate` a "QC pass" gate at the top of the tree. |
@@ -145,7 +146,22 @@ is `{"min": 1000}`. Ellipse semi-axes are fractions of the axes (0.1 is a tenth 
 
 ## Scripts without an agent
 
-`cytoweave --remote-control` accepts the same actions from programs on this computer:
+`cytoweave --remote-control` accepts the same actions from programs on this computer. The R and
+Python clients in [`clients/`](../clients/) make each action a function, found with no setup:
+
+```python
+import cytoweave
+cw = cytoweave.connect()
+cw.statistics_table(statistic="freqParent").frame()
+```
+
+```r
+library(cytoweave)
+cw_connect()
+as.data.frame(cw_statistics_table(statistic = "freqParent"))
+```
+
+From any other language, post JSON to `/api/remote/action`:
 
 ```python
 import requests
@@ -158,7 +174,10 @@ A script's changes are proposals too, shown under the name it gives in `"client"
 example `{"action": "create_gate", "client": "Plate pipeline", "args": {…}}`).
 
 `open_files` and the export tools also need the `X-CytoWeave-Token` header with the token
-CytoWeave prints when it starts, because they make the program read or write files.
+CytoWeave prints when it starts, because they make the program read or write files. CytoWeave
+also writes the address and token to `remote.json` in its data folder (readable by you only, and
+removed when it stops), where the clients find them; `GET /api/remote/tools` lists the actions with
+their arguments.
 
 ## Privacy and security
 
@@ -167,7 +186,8 @@ CytoWeave prints when it starts, because they make the program read or write fil
 - Agents act through the same window you use; nothing happens out of sight. Their changes are
   proposals you accept or reject, and every change can be undone.
 - Opening and writing files by path is limited to the agent connected over stdio (MCP) or to
-  scripts that hold the token printed at startup. Exports go only to the path given, in a folder
+  scripts that hold the token printed at startup (and written to `remote.json` in the data
+  folder, readable by you only). Exports go only to the path given, in a folder
   that exists, through a temporary file renamed into place, and never replace a file unless asked.
 
 ## How it works

@@ -39,6 +39,8 @@ import { poisson } from '../web/lib/simulate.js';
 import { BEAD_TRUTH, COUNTING, countingTubes, simulatedBeads } from './calibration-cases.mjs';
 import { REPORT_DATE, buildReports } from './report-cases.mjs';
 import { EVENT_EXPORTS, buildEventDocuments, csvCases } from './event-cases.mjs';
+import { ACTIVATION_MARKERS, analyzeExperiment, limmaCases, stateExperiments } from './differential-cases.mjs';
+import { eBayes, lmFit } from '../web/lib/limma.js';
 import { downsample as downsampleIndices, selectEvents } from '../web/lib/events.js';
 import { analyzeCSV, csvDatasets, scaleFor } from '../web/lib/csv-events.js';
 import { readZip } from '../web/lib/zip.js';
@@ -1083,6 +1085,73 @@ const suites = {
     const zipRef = ref.files['tregs.zip'];
     const zipOk = Object.keys(zipRef.files).length === samples.length && Object.values(zipRef.files).every((f) => f.fcsparser.data === f.flowio.data && Boolean(f.fcsparser.spillover));
     check('events', `fcsparser ${ref.files['concatenated.fcs'].fcsparser} and FlowIO ${ref.files['concatenated.fcs'].flowio} read the concatenated and downsampled files as written (every value, SHA-256), and the per-sample files with their spillover`, `${fcsRows.map((x) => `${x.name} ${x.ok ? 'exact' : 'differs'}`).join('; ')}; ZIP ${zipOk ? `${Object.keys(zipRef.files).length} files agree` : 'differs'}`, fcsRows.every((x) => x.ok) && zipOk, 'exact');
+  },
+  // Differential state (differential-cases.mjs): the limma port against limma itself on synthetic
+  // matrices that take each of its paths, and diffcyt-DS-limma end to end against diffcyt in R on
+  // the mass cytometry examples (reference/diffcyt.json), with the examples' truth: no marker
+  // differs in the cohort; activation changes eight markers on part of every T-cell population of
+  // the stimulated wells.
+  differential() {
+    const ref = JSON.parse(readFileSync(new URL('./reference/diffcyt.json', import.meta.url), 'utf8'));
+    const stale = '; if the inputs changed, rerun reference/write_differential.mjs and generate_diffcyt.R';
+    const relative = (r, mine) => (r === null ? (Number.isFinite(mine) ? Infinity : 0) : Math.abs(r - mine) / Math.max(Math.abs(r), 1e-300));
+    const worstOf = (list, mine) => list.reduce((w, r, i) => Math.max(w, relative(r, mine[i])), 0);
+    const cases = limmaCases();
+    let limmaWorst = 0;
+    let dfSame = true;
+    let priorWorst = 0;
+    const paths = new Set();
+    cases.forEach((k, i) => {
+      const r = ref.limma[i];
+      const fit = lmFit(k.y, k.design, { weights: k.weights, coefficient: k.coefficient });
+      const e = eBayes(fit, { trend: k.trend });
+      paths.add(`${e.legacy ? 'spline or constant' : 'lowess or constant'} prior`);
+      limmaWorst = Math.max(limmaWorst, worstOf(r.logFC, e.coefficient), worstOf(r.t, e.t), worstOf(r.p, e.p), worstOf(r.padj, e.padj), worstOf(r.sigma, e.sigma));
+      dfSame &&= r.df_residual.every((d, g) => d === e.dfResidual[g]);
+      priorWorst = Math.max(priorWorst, relative(r.df_prior, e.dfPrior));
+    });
+    const limmaOk = limmaWorst < 1e-9 && dfSame && priorWorst < 1e-8;
+    check('differential', `the limma port against limma ${ref.generated.limma} on ${cases.length} synthetic cases (${cases.reduce((n, k) => n + k.y.length, 0).toLocaleString('en-US')} rows; residual df equal or unequal, with and without a trend, weighted or not, rank-deficient rows and rows without residual df): coefficients, residual SDs, moderated t, p and BH-adjusted p, residual and prior df`, `within ${limmaWorst.toExponential(1)} (relative; R's values kept to 12 digits); residual df ${dfSame ? 'identical' : 'DIFFER'}; prior df within ${priorWorst.toExponential(1)}${limmaOk ? '' : stale}`, limmaOk, 'within 1e-9; identical; 1e-8');
+    for (const experiment of stateExperiments()) {
+      const r = ref.experiments.find((x) => x.name === experiment.name);
+      const a = analyzeExperiment(experiment);
+      let countDiffer = 0;
+      let medianWorst = 0;
+      let missingDiffer = 0;
+      a.perSample.forEach((p, s) => {
+        a.labels.forEach((_, u) => { if (r.counts[u][s] !== p.counts[u]) countDiffer += 1; });
+        a.markers.forEach((m, mi) => a.labels.forEach((_, u) => {
+          const theirs = r.medians[m][u][s];
+          const mine = p.medians[mi][u];
+          if (theirs === null || !Number.isFinite(mine)) missingDiffer += theirs === null && !Number.isFinite(mine) ? 0 : 1;
+          else medianWorst = Math.max(medianWorst, Math.abs(theirs - mine));
+        }));
+      });
+      const mine = new Map(a.result.rows.map((row) => [`${row.unit}|${row.marker}`, row]));
+      let rowsMissing = 0;
+      let absWorst = 0;
+      let relWorst = 0;
+      r.rows.cluster.forEach((c, i) => {
+        const row = mine.get(`${c}|${r.rows.marker[i]}`);
+        if (!row) { rowsMissing += 1; return; }
+        absWorst = Math.max(absWorst, Math.abs(r.rows.logFC[i] - row.logFC), Math.abs(r.rows.AveExpr[i] - row.aveExpr));
+        relWorst = Math.max(relWorst, relative(r.rows.t[i], row.t), relative(r.rows.p[i], row.p), relative(r.rows.padj[i], row.padj));
+      });
+      const sameOk = !countDiffer && !missingDiffer && medianWorst < 1e-12 && !rowsMissing && a.result.rows.length === r.rows.cluster.length && absWorst < 1e-12 && relWorst < 1e-9;
+      check('differential', `${experiment.title}: diffcyt-DS-limma against diffcyt ${ref.generated.diffcyt} in R (${a.samples.length} samples, ${a.labels.length} clusters, ${a.markers.length} markers CytoWeave proposes, design ${r.design.length} columns): cells per cluster and sample, marker medians, the clusters kept and every cluster × marker's logFC, average, moderated t, p and adjusted p`, `counts ${countDiffer ? `${countDiffer} differ` : 'identical'}; medians within ${medianWorst.toExponential(1)}${missingDiffer ? `, ${missingDiffer} missing differently` : ''}; ${r.rows.cluster.length - rowsMissing} of ${r.rows.cluster.length} tests (CytoWeave ${a.result.rows.length}): logFC and average within ${absWorst.toExponential(1)}, t, p and adjusted p within ${relWorst.toExponential(1)} (relative)${sameOk ? '' : stale}`, sameOk, 'identical; within 1e-12; all tests, within 1e-12 and 1e-9');
+      const markerOf = (channel) => a.views[0].parameters.find((p) => p.name === channel)?.marker ?? channel;
+      const rows = a.result.rows.map((row) => ({ ...row, cluster: experiment.clusters[row.unit - 1], markerName: markerOf(row.marker), truth: experiment.truth(experiment.clusters[row.unit - 1], markerOf(row.marker)) }));
+      const found = rows.filter((row) => row.padj < 0.05);
+      if (experiment.name === 'cohort') {
+        const nominal = rows.filter((row) => row.p < 0.05).length;
+        check('differential', `${experiment.title}: no marker differs between the groups, so no cluster × marker is called at an adjusted p below 0.05`, `${found.length} of ${rows.length} called; ${nominal} (${pct(nominal / rows.length)}) with p < 0.05 before adjustment`, found.length === 0, 'none');
+      } else {
+        const strong = rows.filter((row) => ['CD4 central memory T', 'CD4 effector memory T', 'Regulatory T', 'CD8 central memory T', 'CD8 effector memory T'].includes(row.cluster) && ['CD25', 'HLA-DR', 'CD38'].includes(row.markerName));
+        const changed = rows.filter((row) => row.truth);
+        const falseCalls = found.filter((row) => !row.truth);
+        check('differential', `${experiment.title}: CD25, HLA-DR and CD38 called in the five T-cell populations with 40–50% of cells activated, and few calls where nothing changed (activation changes ${ACTIVATION_MARKERS.filter((m) => rows.some((row) => row.markerName === m)).length} panel markers on 20–50% of every T-cell population)`, `${strong.filter((row) => row.padj < 0.05).length} of ${strong.length} strong changes called; ${changed.filter((row) => row.padj < 0.05).length} of ${changed.length} changed cluster × marker pairs called (CCR7 or CD45RA falling on cells that lack them do not move the median); ${falseCalls.length} of ${found.length} calls false (${falseCalls.map((row) => `${row.markerName} on ${row.cluster}`).join(', ') || 'none'})`, strong.every((row) => row.padj < 0.05) && falseCalls.length / Math.max(1, found.length) <= 0.1, 'all 15; at most 10% of calls false');
+      }
+    }
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});

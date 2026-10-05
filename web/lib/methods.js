@@ -51,6 +51,10 @@ export const REFERENCES = {
   detectionLimits: { text: 'Armbruster DA, Pry T. Limit of blank, limit of detection and limit of quantitation. Clin Biochem Rev. 2008;29(Suppl 1):S49–S52.', doi: null },
   flowcal: { text: 'Castillo-Hair SM, Sexton JT, Landry BP, Olson EJ, Igoshin OA, Tabor JJ. FlowCal: a user-friendly, open source software tool for automatically converting flow cytometry data from arbitrary to calibrated units. ACS Synth Biol. 2016;5(7):774–780.', doi: '10.1021/acssynbio.5b00284' },
   absoluteCounts: { text: 'Brando B, Barnett D, Janossy G, et al. Cytofluorometric methods for assessing absolute numbers of cell subsets in blood. Cytometry. 2000;42(6):327–346.', doi: '10.1002/1097-0320(20001215)42:6<327::AID-CYTO1000>3.0.CO;2-F' },
+  diffcyt: { text: 'Weber LM, Nowicka M, Soneson C, Robinson MD. diffcyt: Differential discovery in high-dimensional cytometry via high-resolution clustering. Commun Biol. 2019;2:183.', doi: '10.1038/s42003-019-0415-5' },
+  limma: { text: 'Ritchie ME, Phipson B, Wu D, Hu Y, Law CW, Shi W, Smyth GK. limma powers differential expression analyses for RNA-sequencing and microarray studies. Nucleic Acids Res. 2015;43(7):e47.', doi: '10.1093/nar/gkv007' },
+  moderatedT: { text: 'Smyth GK. Linear models and empirical Bayes methods for assessing differential expression in microarray experiments. Stat Appl Genet Mol Biol. 2004;3:Article 3.', doi: '10.2202/1544-6115.1027' },
+  unequalDf: { text: 'Chen Y, Chen L, Lun ATL, Baldoni PL, Smyth GK. edgeR v4: powerful differential analysis of sequencing data with expanded functionality and improved support for small counts and larger datasets. Nucleic Acids Res. 2025;53(2):gkaf018.', doi: '10.1093/nar/gkaf018' },
 };
 
 const ORDER = Object.keys(REFERENCES);
@@ -273,6 +277,9 @@ export function writeMethods(ws, options = {}) {
 
   // Statistics.
   for (const comparison of (ws.comparisons ?? []).slice(-5)) {
+    // Differential state (diffcyt-DS-limma) and abundance (approximating diffcyt) cite their sources.
+    if (comparison.kind === 'screen-states') ['diffcyt', 'limma', 'moderatedT', 'unequalDf'].forEach(cite);
+    if (comparison.kind === 'screen-clusters') cite('diffcyt');
     const adjusted = comparison.adjustment ? `, with ${comparison.adjustment === 'BH' ? `Benjamini–Hochberg correction ${cite('bh')}` : `${comparison.adjustment} correction`}` : '';
     paragraphs.push(`${comparison.methods ?? `${comparison.measure ?? 'Values'} were compared between groups with ${comparison.test ?? 'a two-sided test'}`}${adjusted}; each sample was one observation.`.replace(/\.\./g, '.'));
   }

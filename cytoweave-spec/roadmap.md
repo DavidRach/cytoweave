@@ -510,13 +510,32 @@ combines. Waves 7–8 are a plan, to be revised as each wave lands.
    - Not done: AnnData files are written uncompressed (a group holds at most 256 members); sparse
      layers and other AnnData readers (R's anndata, Julia) are not tested; a concatenated file
      keeps each sample's time values as they were.
-5. **Differential state and R and Python clients (H6, M5):** diffcyt-DS-limma (marker medians
-   per cluster or population and sample, limma's moderated t with cell-count weights) in Compare
-   beside differential abundance, with a methods sentence; an R package and a Python package in
-   `clients/` for remote control (users who outgrow GUIs move to R first), tested in CI against a
-   running server. Publishing them to CRAN or PyPI is a separate decision.
-   - Validation: diffcyt in R on the mass cytometry example; the clients' calls against the HTTP
-     API's tests.
+5. **Differential state and R and Python clients (H6, M5): done.** diffcyt-DS-limma
+   (`differential.js`, `limma.js`; Compare → Screen marker states): per sample the median of
+   arcsinh(x / cofactor) of each marker in each cluster (or chosen population), clusters with at
+   least 3 cells in half the samples, a linear model per cluster and marker weighted by the cells
+   (pairing and covariates as fixed effects), limma's moderated t with a mean-variance trend, BH
+   across every test; the markers a clustering used left out by default; methods sentence and
+   references. limma written in JavaScript from its R and C sources (weighted least squares with
+   LINPACK's pivoting, natural-spline trend for equal residual df, weighted lowess and the prior df
+   by maximum likelihood for unequal df, as limma 3.68 chooses). Agent tool
+   `differential_analysis` (41 tools): state or abundance of clusters, or the state of
+   populations. R and Python clients (`clients/`): a function per action generated from
+   `clients/tools.json` (kept equal to `mcp.go` by a Go test) by `clients/generate.mjs`, with help
+   pages, data frames, PNG plots and errors with CytoWeave's reason; with `--remote-control`
+   CytoWeave writes `remote.json` (address and token, mode 0600, removed on exit) to its data
+   folder, where the clients find it; `GET /api/remote/tools` lists the actions. The clients'
+   versions are `main.go`'s (checked at release).
+   - Validation: `differential` (the limma port within 4e-11 of limma 3.68.5 on 11 synthetic
+     cases across its paths; diffcyt 1.32.1 in R on the cytof cohort and the barcoded plate by
+     well: counts and medians identical, 1,150 tests within 3e-11; no call where no marker
+     differs, the strong activation changes all called with 3 of 53 calls false), agent session
+     (27 checks), the clients' tests in CI against a running CytoWeave (each client's results
+     equal the HTTP API's; R CMD check clean).
+   - Fixed on the way: agent tools could read derived channels before they were restored after a
+     reload; isotope-only mass channel labels were taken as markers; Compare's cluster names.
+   - Not done: diffcyt's random-effect options (block_id, diffcyt-DS-LMM) and limma's robust
+     moderation; publishing the clients to CRAN or PyPI (a separate decision); the B-statistic.
 
 Left for later: kinetics, plates and titration plates stay in wave 7; drawing a gate from the
 keyboard (V4) stays open.

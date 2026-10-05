@@ -165,6 +165,8 @@ test('channel classification and markers', () => {
   assert.equal(markerFromLabel('176Yb_CD56', 'Yb176Di'), 'CD56');
   assert.equal(markerFromLabel('CD3', 'FITC-A'), 'CD3');
   assert.equal(markerFromLabel('FITC-A', 'FITC-A'), '');
+  assert.equal(markerFromLabel('102Pd', 'Pd102Di'), '');
+  assert.equal(markerFromLabel('Pd102Di', 'Pd102'), '');
 });
 
 test('technology detection and acquisition summary', () => {

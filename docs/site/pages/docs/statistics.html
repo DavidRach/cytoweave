@@ -1,6 +1,6 @@
 ---
 title: Tables and comparisons
-description: Build statistics tables across samples in CytoWeave, with absolute counts from counting beads, compare each sample with a control by SED, Overton and probability binning, report rare populations with exact intervals and detection limits, and compare groups with the test the design calls for, with effect sizes and screens of every population or cluster.
+description: Build statistics tables across samples in CytoWeave, with absolute counts from counting beads, compare each sample with a control by SED, Overton and probability binning, report rare populations with exact intervals and detection limits, and compare groups with the test the design calls for, with effect sizes and screens of every population or cluster, including differential abundance and differential state (diffcyt-DS-limma).
 lede: Turn populations into numbers for every sample, and compare groups of samples with a test chosen from the design rather than by habit.
 ---
       <h2 id="tables">Tables</h2>
@@ -125,12 +125,25 @@ lede: Turn populations into numbers for every sample, and compare groups of samp
       <p>On an intracellular cytokine study (four donors), every PMA comparison holds in all analyses. One small peptide response (IL-4, 0.27 points) is fragile: it depends on the expert's per-donor gate adjustments and on 2% of a scatter gate.</p>
 
       <h2 id="screens">Screening every population or cluster</h2>
-      <p><strong>Screen populations</strong> tests one statistic for every population at once, and <strong>Screen clusters</strong> tests the abundance of every cluster of a clustering channel. Results are corrected for multiple testing (<strong>Benjamini–Hochberg</strong>, <strong>Benjamini–Yekutieli</strong>, <strong>Holm</strong> or <strong>Bonferroni</strong>) and shown on a volcano plot of effect against significance; click a point to compare that one in detail.</p>
+      <p><strong>Screen populations</strong> tests one statistic for every population at once, <strong>Screen clusters</strong> tests the abundance of every cluster of a clustering channel, and <strong>Screen marker states</strong> tests the expression of every marker in every cluster or population. Results are corrected for multiple testing (<strong>Benjamini–Hochberg</strong>, <strong>Benjamini–Yekutieli</strong>, <strong>Holm</strong> or <strong>Bonferroni</strong>) and shown on a volcano plot of effect against significance; click a point to compare that one in detail.</p>
       <p>Cluster abundance (cells of the cluster ÷ cells of the parent population, per sample) is tested with a quasi-binomial GLM and a likelihood-ratio F test, in the manner of diffcyt, with optional covariates as fixed effects. Try it on the mass cytometry cohort example, where non-classical monocytes are doubled in the case group.</p>
+
+      <h3 id="states">Differential state</h3>
+      <p>A cell type can stay as frequent while its cells change: stimulated T cells raise CD25 and HLA-DR. <strong>Screen marker states</strong> asks, for each cluster (or population) and each marker, whether the marker's level differs between the groups, with <strong>diffcyt-DS-limma</strong> (Weber et al. 2019):</p>
+      <ul>
+        <li>Per sample, the median of arcsinh(x / cofactor) of each marker in each cluster, on compensated values. diffcyt's cofactors are the defaults: 5 for mass cytometry, 150 for fluorescence.</li>
+        <li>Clusters with at least 3 cells in at least half the samples are tested; the others are listed as left out.</li>
+        <li>A linear model per cluster and marker, with the design of the Design panel (the groups, pairing and covariates as fixed effects), each sample weighted by its cells in the cluster.</li>
+        <li>limma's moderated t-statistics: each model's variance shrunk toward a trend over the average level (empirical Bayes; Smyth 2004), and p-values adjusted across every cluster and marker tested.</li>
+      </ul>
+      <p>By default the markers the clustering was made from are left out (in diffcyt's terms, the "type" markers): their medians differ between clusters by construction, so only the others ("state" markers) are tested. The table gives each group's mean of the samples' medians, their difference (the effect, on the arcsinh scale), t, p and q.</p>
+      <shot name="compare-states" alt="Screen marker states: FlowSOM clusters of live cells from lineage markers, five activation markers tested between stimulated and unstimulated samples paired by donor; CD25 and HLA-DR up and CD127 down in the T-cell clusters">Differential state in the PBMC example: clusters made from lineage markers, the activation markers tested, stimulated against unstimulated with donors paired. CD25 and HLA-DR rise and CD127 falls in the T-cell clusters.</shot>
+      <p>CytoWeave computes diffcyt's statistics itself, and the validation suite checks them against diffcyt 1.32 and limma 3.68 in R: on the mass cytometry examples every count and median is identical and every moderated t, p and adjusted p agrees within 3e-11. On ten donors' wells of the barcoded plate it finds the activation markers that change and calls few others; on the cohort, where no marker differs, it calls none. Agents and scripts run the same test with <code>differential_analysis</code>.</p>
 
       <h2 id="next">Where to go next</h2>
       <div class="card-grid">
         <a class="card" href="figures.html"><h3>Figures and methods</h3><p>Cite the comparison in the methods paragraph.</p></a>
         <a class="card" href="explore.html"><h3>Clustering</h3><p>Make the clusters to screen.</p></a>
+        <a class="card" href="scripting.html#clients"><h3>R and Python</h3><p>Run the screens from a script.</p></a>
         <a class="card" href="opening-data.html#annotate"><h3>Annotations</h3><p>Groups and pairing come from them.</p></a>
       </div>

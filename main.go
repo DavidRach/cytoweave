@@ -122,9 +122,14 @@ type runningServer struct {
 	url          string
 	cancel       context.CancelFunc
 	windowClosed <-chan struct{}
+	// connection: the remote.json scripts read (connection.go), removed on stop.
+	connection string
 }
 
 func (s *runningServer) stop(timeout time.Duration) {
+	if s.connection != "" {
+		removeConnectionFile(s.connection, s.app.control.token)
+	}
 	s.cancel()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -153,14 +158,21 @@ func start(cfg config, out io.Writer) (*runningServer, error) {
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 	url := "http://" + net.JoinHostPort(cfg.host, strconv.Itoa(actualPort))
-	a.printBanner(out, url)
+	connection := ""
+	if a.control != nil && a.control.scripts && cfg.dataDir != "" {
+		if connection, err = writeConnectionFile(cfg.dataDir, url, a.control.token); err != nil {
+			log.Printf("could not write the connection file for scripts: %v", err)
+			connection = ""
+		}
+	}
+	a.printBanner(out, url, connection)
 	base, cancel := context.WithCancel(context.Background())
 	server := &http.Server{
 		Handler:           protect(handler, cfg.host, actualPort),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return base },
 	}
-	running := &runningServer{app: a, server: server, listener: listener, url: url, cancel: cancel}
+	running := &runningServer{app: a, server: server, listener: listener, url: url, cancel: cancel, connection: connection}
 	if cfg.window != "none" {
 		closed := make(chan struct{})
 		running.windowClosed = closed
@@ -286,7 +298,7 @@ func newApp(cfg config) (*app, error) {
 	return a, nil
 }
 
-func (a *app) printBanner(out io.Writer, url string) {
+func (a *app) printBanner(out io.Writer, url, connection string) {
 	fmt.Fprintf(out, "CytoWeave %s is running at %s\n", version, url)
 	if a.dev {
 		fmt.Fprintf(out, "Dev mode: serving web/ from disk in %s (no-store)\n", a.assetDir)
@@ -305,6 +317,9 @@ func (a *app) printBanner(out io.Writer, url string) {
 	if a.control != nil && a.control.scripts {
 		fmt.Fprintf(out, "Remote control: POST {\"action\": ..., \"args\": {...}} to %s/api/remote/action\n", url)
 		fmt.Fprintf(out, "Opening files by path (open_files) and writing files (the export actions) need the header %s: %s\n", remoteTokenHeader, a.control.token)
+		if connection != "" {
+			fmt.Fprintln(out, connectionNotice(connection))
+		}
 	}
 	fmt.Fprintln(out, "Press Ctrl+C to stop.")
 }
