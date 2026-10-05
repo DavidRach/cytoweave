@@ -402,6 +402,9 @@ formula channels, MEF units and absolute counts, batch reports with every number
 and Prism, events in from CSV and out as concatenated FCS or AnnData, differential state equal to
 diffcyt in R, and R and Python clients.
 
+0.6.1 (2026-10-05) fixes Compute spillover on spectral files, whose reference controls name
+fluorochromes rather than detectors: the Compensate view now points to unmixing.
+
 ### Wave 6: the bench, batch by batch
 
 1. **Population comparisons and rare-event statistics (G10, G11): done.** Tables statistics

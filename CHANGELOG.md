@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 (2026-10-05)
+
+CytoWeave 0.6.1 fixes computing a compensation matrix from the controls of spectral files.
 
 ### Fixed
 
