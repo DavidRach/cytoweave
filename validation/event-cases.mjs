@@ -9,6 +9,9 @@ import { createHash } from 'node:crypto';
 import { pbmcFiles, sourceAnalysis } from './template-cases.mjs';
 
 export const EVENTS_DATE = new Date('2026-10-04T12:00:00Z');
+// ZIP entries store local wall-clock time (DOS dates), so the archive's date is built from local
+// fields: noon on 4 October 2026 wherever the suite runs, and the same bytes in every time zone.
+export const ZIP_DATE = new Date(2026, 9, 4, 12, 0, 0);
 
 export function eventExperiment(scale = 0.04) {
   const files = pbmcFiles(scale);
@@ -114,7 +117,7 @@ export async function buildEventDocuments() {
     const { items } = selectEvents(ws, viewOf, { populationId, downsample: spec.downsample });
     selections[spec.file] = { items, populationId };
     if (spec.format === 'fcs') files[spec.file] = concatenatedFCS(ws, items, { populationId, downsample: spec.downsample, values: spec.values, version: 'validation' }).bytes;
-    else if (spec.format === 'zip') files[spec.file] = await createZip(items.map((item) => ({ name: `${item.sample.name.replace(/\.fcs$/i, '')}.fcs`, data: sampleFCS(item, { downsample: spec.downsample }) })), { date: EVENTS_DATE, compress: false });
+    else if (spec.format === 'zip') files[spec.file] = await createZip(items.map((item) => ({ name: `${item.sample.name.replace(/\.fcs$/i, '')}.fcs`, data: sampleFCS(item, { downsample: spec.downsample }) })), { date: ZIP_DATE, compress: false });
     else files[spec.file] = writeAnnData(ws, items, { populationId, downsample: spec.downsample, values: spec.xValues, cofactor: spec.cofactor, version: 'validation', date: EVENTS_DATE }).bytes;
   }
   return { experiment, files, selections };
