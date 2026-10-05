@@ -169,7 +169,11 @@ guides to every view, with screenshots.
     where a gate was drawn.
 - **Figures and reports.**
   - Gating-strategy and across-samples figures that stay live until you
-    export them, as SVG, PNG or PDF.
+    export them, as SVG, PNG or vector PDF, with statistics tables on the page.
+  - Batch reports: a figure repeated for each sample or each subject, as a
+    multi-page PDF or a PowerPoint deck, with every number traced to its source.
+  - Excel workbooks of the tables with sheets that say where each number comes
+    from, and GraphPad Prism projects grouped by condition.
   - A methods paragraph with numbered references, written from what the
     workspace actually did, and a MIFlowCyt checklist.
   - Exported figures carry the analysis behind them (gates, scales, matrices
@@ -662,7 +666,11 @@ statistics are:
   comparison under the plot.
 
 **Table of every population** builds the usual frequency table in one click.
-Tables can be shown as a heat map, copied as TSV or saved as CSV. Any column
+Tables can be shown as a heat map, copied as TSV, or saved as CSV, as an Excel
+workbook (every table in full precision, with sheets for each column's
+definition, the samples and their checksums, the gating and the methods) or as
+a GraphPad Prism project (a column table per statistic with a column per
+group, for Prism's t tests and ANOVA). Any column
 can be compared between groups. A count or frequency column can carry
 detection limits from blank and low-level samples (limit of blank, of
 detection and of quantification, as CLSI EP17 describes); values below them
@@ -728,9 +736,24 @@ the methods text includes a sentence on the check.
 
 Page layouts for publication: the gating strategy of a population in one
 click, a grid of the current plots across samples, or a blank page with
-plots, text and arrows. Plots stay live, following gate and compensation
-changes, until you export the page as SVG, PNG or a 300 dpi PDF. Pages come
-in slide (16:9), Letter, A4, landscape and square sizes.
+plots, text, arrows and statistics (columns of a table for the samples on the
+page). Plots stay live, following gate and compensation changes, until you
+export the page as SVG, PNG or PDF (vector: text and lines stay text and
+lines). Pages come in slide (16:9), Letter, A4, landscape and square sizes.
+
+**Batch reports** repeat a figure page after page, as a multi-page PDF or a
+PowerPoint deck (plots as pictures, statistics as native tables):
+- for each sample: the plots of the figure's main sample are redrawn on each
+  sample, while plots of other samples (a control) stay on every page;
+- for each value of an annotation, such as each subject: each plot is redrawn
+  on that subject's sample that matches it on the annotations that tell the
+  figure's samples apart (the stimulated tube where the figure shows the first
+  subject's).
+
+Text such as `{sample}`, `{subject}` or `{page}` is filled on each page, and a
+missing tube or an undecided choice between replicates is reported before the
+report is written. Every number a report prints is recorded with the table
+column or gate it comes from, in the file.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/figures-dark.webp">
@@ -1000,7 +1023,7 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 38 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 39 tools, other clients
 and how it works.
 
 The same actions are available to your own programs (Python, Jupyter, shell
@@ -1037,9 +1060,10 @@ pipelines, as the app does, against answers known in advance:
 | Formula channels | R evaluating the same 7 formulas on 10 tubes; Gating-ML and a template | Medians within 5e-8, single events within 2e-14; a ratio gate the same through Gating-ML (fratio) and on renamed detectors |
 | Calibrated units (MEF) | FlowCal 1.3.1 on its own bead and cell files; simulated beads of known response | The same levels left out, medians within one step of the log channel, cells' MEFL within 1.6% of FlowCal's; a known slope within 0.001 |
 | Absolute counts | 40 simulated tubes of known concentration with counting beads | Within 1% on average, scattered as Poisson counting predicts |
+| Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
-| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 78 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
+| Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 80 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
 | Titration and voltage walks | A simulated CD4-PE titration and PE voltage walk with known binding, noise and gain | Stain index within 4.4% of the true cells' at every step; the recommended amount the binding's; the voltage range within 1 V of the truth; medians equal to FlowJo 11's on the same files |
 | Templates | A 19-population analysis applied to the same events with every detector renamed and reordered | Every population holds the same events in all 12 samples; with two markers unnamed, only the gate on them left out |
 | Published strategies | OMIP-101 and OMIP-090 placed on one sample of the PBMC example, against the true cell types | Median F1 0.96–0.99 for lineages, 0.88–0.96 for memory subsets, NK cells and classical and non-classical monocytes; Tregs 0.91; intermediate monocytes 0.76 |

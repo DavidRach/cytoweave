@@ -916,11 +916,12 @@ export function installRemote(app) {
       const exporter = await import('./figure-export.js');
       const provenance = args.provenance !== false;
       const file = extension === '.svg' ? await exporter.figureSVG(app, fig, { provenance }) : extension === '.png' ? await exporter.figurePNG(app, fig, { provenance }) : await exporter.figurePDF(app, fig, { provenance });
-      return { file, message: `The figure "${fig.name}" as ${extension.slice(1).toUpperCase()}${extension === '.pdf' ? ' (300 dpi)' : extension === '.png' ? ' (3×)' : ''}${provenance ? ', carrying the analysis behind its plots (opening it in CytoWeave shows what changed since)' : ''}.${fig.proposal ? ' The figure is still part of your proposal.' : ''}` };
+      return { file, message: `The figure "${fig.name}" as ${extension.slice(1).toUpperCase()}${extension === '.pdf' ? ' (vector)' : extension === '.png' ? ' (3×)' : ''}${provenance ? ', carrying the analysis behind its plots (opening it in CytoWeave shows what changed since)' : ''}.${fig.proposal ? ' The figure is still part of your proposal.' : ''}` };
     },
 
     async export_table(args) {
-      const extension = requireExtension(args.path, ['.csv', '.tsv'], 'a table');
+      const extension = requireExtension(args.path, ['.csv', '.tsv', '.xlsx', '.pzfx'], 'a table');
+      if (extension === '.xlsx' || extension === '.pzfx') return exportSpreadsheet(args, extension);
       const table = await actions.statistics_table(args);
       const separator = extension === '.tsv' ? '\t' : ',';
       const quote = (v) => {
@@ -932,6 +933,44 @@ export function installRemote(app) {
       const columns = rows.length ? Object.keys(rows[0].values) : [];
       const lines = [['Sample', ...fields, ...columns].map(quote).join(separator), ...rows.map((r) => [r.sample, ...fields.map((f) => r.meta?.[f] ?? ''), ...columns.map((c) => r.values[c])].map(quote).join(separator))];
       return { file: `${lines.join('\n')}\n`, message: `${table.message} ${rows.length} rows, ${columns.length} population column${columns.length === 1 ? '' : 's'}.` };
+    },
+
+    async export_report(args) {
+      const extension = requireExtension(args.path, ['.pdf', '.pptx'], 'a report');
+      const figures = ws().figures;
+      if (!figures.length) throw new ActionError('The workspace has no figures; build_figure or apply_template makes one.');
+      let fig = args.figure ? figures.find((f) => f.name.toLowerCase() === String(args.figure).toLowerCase()) ?? figures.find((f) => f.name.toLowerCase().includes(String(args.figure).toLowerCase())) : figures.at(-1);
+      if (!fig) throw new ActionError(`No figure "${args.figure}". Figures: ${figures.map((f) => f.name).join(', ')}.`);
+      const { reportFields } = await import('../lib/reports.js');
+      const by = args.by ? String(args.by) : fig.batch?.by ?? 'sample';
+      const fields = reportFields(ws());
+      const field = by.toLowerCase() === 'sample' ? 'sample' : fields.find((f) => f.toLowerCase() === by.toLowerCase());
+      if (!field) throw new ActionError(`by is sample or an annotation field; the samples have ${fields.length ? fields.join(', ') : 'no annotations (annotate_samples sets them)'}.`);
+      const group = args.group ? ws().groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase()) : null;
+      if (args.group && !group) throw new ActionError(`No group "${args.group}". Groups: ${ws().groups.map((g) => g.name).join(', ') || 'none'}.`);
+      const sampleId = args.sample ? resolveSample(args.sample).id : undefined;
+      // A table to list on each page, below the plots, when the figure has none.
+      if (args.table && !fig.items.some((i) => i.kind === 'stats')) {
+        const table = ws().tables.find((t) => t.name.toLowerCase() === String(args.table).toLowerCase());
+        if (!table) throw new ActionError(`No table "${args.table}". Tables: ${ws().tables.map((t) => t.name).join(', ') || 'none'}.`);
+        const bottom = Math.max(0, ...fig.items.map((i) => i.y + i.h));
+        fig = { ...fig, height: Math.max(fig.height, bottom + 240), items: [...fig.items, { id: 'agent-stats', kind: 'stats', x: 40, y: bottom + 20, w: fig.width - 80, h: 200, tableId: table.id, rows: 'page', size: 11 }] };
+      }
+      const exporter = await import('./figure-export.js');
+      const options = { by: field, groupId: group?.id ?? null, ...(sampleId ? { sampleId } : {}), provenance: args.provenance !== false };
+      let out;
+      try {
+        out = extension === '.pptx' ? await exporter.reportPPTX(app, fig, options) : await exporter.reportPDF(app, fig, options);
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const { report, trace } = out;
+      const fromTables = trace.filter((t) => t.source === 'table').length;
+      return {
+        file: out.bytes,
+        message: `"${fig.name}" by ${field}: ${report.pages.length} page${report.pages.length === 1 ? '' : 's'} as ${extension === '.pptx' ? 'a PowerPoint deck (statistics as native tables)' : 'a PDF'}; ${trace.length} numbers traced (${fromTables} to table columns, ${trace.length - fromTables} gate labels to their gates' % of parent)${options.provenance ? ', with the analysis and the record embedded' : ''}.${report.notes.length ? ` Notes: ${report.notes.join(' ')}` : ''}`,
+        data: { pages: report.pages.slice(0, 100).map((p) => ({ page: p.index + 1, label: p.label, samples: p.sampleIds.map((id) => ws().samples.find((x) => x.id === id)?.name) })), notes: report.notes, numbers: trace.length },
+      };
     },
 
     async list_templates() {
@@ -1233,6 +1272,51 @@ export function installRemote(app) {
   };
 
   // The extension of an export's path, which must be one of `allowed`.
+  // Excel and Prism exports of a Tables table, every table, or a statistic given as statistics_table
+  // takes it (made into a table of one column per population, not kept).
+  async function exportSpreadsheet(args, extension) {
+    const w = ws();
+    let tables;
+    if (args.table) {
+      const table = w.tables.find((t) => t.name.toLowerCase() === String(args.table).toLowerCase());
+      if (!table) throw new ActionError(`No table "${args.table}". Tables: ${w.tables.map((t) => t.name).join(', ') || 'none'}.`);
+      tables = [table];
+    } else if (args.statistic || args.populations?.length || extension === '.pzfx' || !w.tables.length) {
+      const group = args.group ? w.groups.find((g) => g.name.toLowerCase() === String(args.group).toLowerCase()) : null;
+      if (args.group && !group) throw new ActionError(`No group "${args.group}".`);
+      const stat = args.statistic ?? 'freqParent';
+      const gateIds = args.populations?.length ? args.populations.map(resolvePopulation) : w.gates.map((g) => g.id);
+      const first = w.samples.find((x) => (group ? group.sampleIds.includes(x.id) : x.role === 'sample'));
+      const channel = args.channel && first ? resolveChannel(await loadedView(first), args.channel) : undefined;
+      const control = args.control ? { sampleId: resolveSample(args.control).id, ...(args.controlPopulation ? { gateId: resolvePopulation(args.controlPopulation) } : {}) } : undefined;
+      const counting = args.beadPopulation ? { beadGateId: resolvePopulation(args.beadPopulation), beads: Number(args.beadsPerTube), volume: Number(args.sampleVolume) } : undefined;
+      const dilution = args.dilution === undefined || args.dilution === null || args.dilution === '' ? undefined : Number.isFinite(Number(args.dilution)) ? Number(args.dilution) : { field: String(args.dilution) };
+      tables = [{ id: 'agent-table', name: `${stat}${args.channel ? ` ${args.channel}` : ''}`, groupId: group?.id ?? null, includeControls: Boolean(group), columns: gateIds.map((id, k) => ({ id: `c${k}`, gateId: id, stat, channel, control, counting, ...(dilution !== undefined ? { dilution } : {}) })) }];
+    } else {
+      tables = w.tables;
+    }
+    const { tableSamples, tableControlSamples } = await import('../lib/tables.js');
+    for (const table of tables) {
+      const ids = new Set([...tableSamples(w, table), ...tableControlSamples(w, table)].map((x) => x.id));
+      for (const c of table.columns) for (const id of [...(c.limits?.blankIds ?? []), ...(c.limits?.lowIds ?? [])]) ids.add(id);
+      for (const id of ids) await loadedView(w.samples.find((x) => x.id === id));
+    }
+    const viewOf = (id) => app.data.view(id);
+    if (extension === '.xlsx') {
+      const { tablesWorkbook } = await import('../lib/spreadsheets.js');
+      const { writeXLSX } = await import('../lib/xlsx.js');
+      const book = tablesWorkbook(w, tables, viewOf, { version: app.version });
+      return { file: await writeXLSX(book.sheets, { title: `${w.name} tables` }), message: `Excel workbook: ${tables.map((t) => t.name).join(', ')} (${book.traced.length} values in full precision), with sheets Columns (each column's definition), Samples (files and checksums), Populations and About (with the methods).` };
+    }
+    const fields = [...new Set(w.samples.flatMap((x) => Object.keys(x.meta ?? {})))];
+    const groupBy = args.groupBy ? fields.find((f) => f.toLowerCase() === String(args.groupBy).toLowerCase()) : null;
+    if (args.groupBy && !groupBy) throw new ActionError(`No annotation "${args.groupBy}". Annotations: ${fields.join(', ') || 'none'}.`);
+    const { prismTables } = await import('../lib/spreadsheets.js');
+    const { writePZFX } = await import('../lib/pzfx.js');
+    const out = prismTables(w, tables[0], viewOf, { groupBy });
+    return { file: writePZFX(out.tables, { version: app.version, project: w.name, notes: `Exported from CytoWeave by ${author}: ${w.name}, ${tables[0].name}.` }), message: `Prism project: ${out.tables.length} table${out.tables.length === 1 ? '' : 's'} (${tables[0].name}${groupBy ? `, and one column table per statistic grouped by ${groupBy}` : ''}).${out.notes.length ? ` ${out.notes.join(' ')}` : ''}` };
+  }
+
   function requireExtension(path, allowed, what) {
     const match = /\.[a-z0-9]+$/i.exec(String(path ?? ''));
     const extension = match ? match[0].toLowerCase() : '';

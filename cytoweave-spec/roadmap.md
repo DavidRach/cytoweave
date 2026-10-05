@@ -460,12 +460,33 @@ combines. Waves 7–8 are a plan, to be revised as each wave lands.
    - Not done: FlowJo exports do not write formula channels as derived parameters (no open reader
      computes them to check against, and FlowJo 11 cannot create them); calibrated channels stay
      in CytoWeave (not written to exports).
-3. **Batch reports and spreadsheet export (R7):** a figure layout iterated over samples or
-   groups, as multi-page PDF and PowerPoint (our own minimal writer), and Excel workbooks
-   (statistics and provenance sheets) and GraphPad Prism (`.pzfx`) tables, built on the template
-   engine. After slices 1–2, so that comparisons, units and counts can be reported.
-   - Validation: every number in a report traced to the Tables column it came from; files read
-     back by their formats' readers (openpyxl, python-pptx, pypdf, R `pzfx`).
+3. **Batch reports and spreadsheet export (R7): done.** Batch reports (`reports.js`, Figures →
+   Batch report…): a figure repeated by sample (the plots of the figure's followed sample redrawn
+   on each sample, other samples' plots on every page) or by an annotation's values (each plot on
+   the page's sample matching it on the annotations that tell the figure's samples apart, the one
+   sharing most of its annotations among several; a missing tube left empty and reported, an
+   undecided choice reported), text placeholders filled ({sample}, {subject}, {page}…), as a
+   multi-page PDF or a PowerPoint deck (our own writer, `pptx.js`: pictures, text, arrows and
+   native tables). A new figure item, statistics, shows a Tables table's columns for the page's
+   samples (or all rows), with ND and < LLOQ. Every number printed is traced (each statistics cell
+   to its table column, each gate label to its gate's % of parent) and the record goes into the
+   file beside the plots' provenance. PDF figures became vector (`pdf.js` `PDFPage`: Helvetica
+   text with Adobe's metrics, paths, event rasters as images; `plot.js` `sceneToPDF`). Excel
+   workbooks (`xlsx.js`, `spreadsheets.js`): every table in full precision, with Columns, Samples
+   (SHA-256), Populations and About (methods) sheets; Prism projects (`pzfx.js`): the table, and
+   grouped by an annotation a column table per statistic. Plot scenes and the Tables
+   computations moved to the library (`scene.js`, `tables.js`) so that reports and validation
+   share them. Batch choices and statistics items travel with templates. Agent tool
+   `export_report` (39 tools); `export_table` writes `.xlsx` and `.pzfx`.
+   - Validation: `reports` (by sample and by subject, every plot where the rules put it; 124
+     statistics cells and 47 gate labels traced and equal to their sources; the PDF read back
+     prints every traced number and no untraced one; deck, workbook and Prism values exact;
+     openpyxl 3.1.5, python-pptx 1.0.2, pypdf 5.4.0 and R pzfx 0.3.1 read the same documents,
+     matched by content fingerprints), agent session (23 checks). The documents also open in
+     LibreOffice 26.8 and Apple's Quick Look.
+   - Not done: plots in PowerPoint are pictures (3×), not vector; PDF text is limited to
+     WinAnsi characters (others written as their nearest ASCII); opening the files in Microsoft
+     PowerPoint and Excel themselves is a manual check.
 4. **Data in and out (I6):** concatenated FCS export with a sample-identifier channel, seeded
    downsampling (equal numbers or a fraction), CSV event import with checks and scale guesses, and
    AnnData export as `.h5ad` (events as the matrix; sample, population and cluster columns in

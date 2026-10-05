@@ -3,135 +3,68 @@
 
 import { h, icon, clear, downloadBlob, formatCount } from './dom.js';
 import { showMenu, showDialog, toast, progressToast, promptDialog } from './overlays.js';
-import { computeStatistic } from '../lib/engine.js';
 import { STATISTICS, formatStatistic } from '../lib/stats.js';
-import { ROOT, channelCatalog, channelLabel, gateById, gatePath, setCollection } from '../lib/workspace.js';
+import { ROOT, channelCatalog, gateById, gatePath, setCollection } from '../lib/workspace.js';
 import { newId } from '../lib/gates.js';
-import { classifyValue, detectionLimits, eventsNeeded } from '../lib/rare-events.js';
+import { LIMIT_STATISTICS, LIMIT_STATUS, columnLabel, columnLimits as libColumnLimits, controlSampleOptions, tableControlSamples, tableMatrix, tableSamples, tableValues } from '../lib/tables.js';
 import { colormapColor, hexToRgb, luminance, rgbToHex } from '../lib/colormaps.js';
 
-export function columnLabel(ws, column) {
-  if (column.label) return column.label;
-  const population = column.gateId && column.gateId !== ROOT ? gateById(ws, column.gateId)?.name ?? '(deleted)' : 'All events';
-  const stat = STATISTICS.find((s) => s.id === column.stat)?.label ?? column.stat;
-  const channel = column.channel ? ` ${channelLabel(ws, column.channel, { short: true })}` : '';
-  const value = column.value !== undefined && column.value !== null && column.stat === 'percentile' ? ` P${column.value}` : column.stat === 'positive' ? ` ≥ ${column.value}` : '';
-  const ancestor = column.stat === 'freqOf' ? ` of ${column.ancestorId && column.ancestorId !== ROOT ? gateById(ws, column.ancestorId)?.name : 'all events'}` : '';
-  return `${population}: ${stat}${channel}${value}${ancestor}${controlLabel(ws, column)}${countingLabel(ws, column)}`;
-}
-
-// " (beads: Counting beads, 50,000 in 50 µL; dilution ×2)".
-function countingLabel(ws, column) {
-  const parts = [];
-  if (column.counting?.beadGateId) {
-    const beads = column.counting.beadGateId === ROOT ? 'all events' : gateById(ws, column.counting.beadGateId)?.name ?? '(deleted)';
-    parts.push(`beads: ${beads}, ${Number(column.counting.beads).toLocaleString('en-US')} in ${column.counting.volume} µL`);
-  }
-  if (typeof column.dilution === 'number' && column.dilution !== 1) parts.push(`dilution ×${column.dilution}`);
-  else if (column.dilution?.field) parts.push(`dilution from "${column.dilution.field}"`);
-  return parts.length ? ` (${parts.join('; ')})` : '';
-}
-
-// " (control: FMO CD25)", or with another population " (control: FMO CD25, Lymphocytes)".
-function controlLabel(ws, column) {
-  if (!column.control?.sampleId) return '';
-  const sample = ws.samples.find((s) => s.id === column.control.sampleId)?.name ?? '(removed sample)';
-  const gateId = column.control.gateId;
-  const population = gateId && gateId !== column.gateId ? `, ${gateId === ROOT ? 'all events' : gateById(ws, gateId)?.name ?? '(deleted)'}` : '';
-  return ` (control: ${sample}${population})`;
-}
-
-// Samples to offer as a comparison's control, the controls (FMO, isotype, unstained) first.
-export function controlSampleOptions(ws) {
-  const rank = { fmo: 0, isotype: 1, unstained: 2 };
-  return ws.samples.slice().sort((a, b) => (rank[a.role] ?? 3) - (rank[b.role] ?? 3)).map((s) => ({ value: s.id, label: s.role && s.role !== 'sample' ? `${s.name} (${s.role === 'fmo' ? 'FMO' : s.role})` : s.name }));
-}
+export { columnLabel, controlSampleOptions, LIMIT_STATISTICS, LIMIT_STATUS };
 
 // How a view or tool finds the events of a comparison's control sample.
 export function statisticContext(app) {
   return { viewOf: (sampleId) => app.data.view(sampleId) };
 }
 
-function statisticSpec(column) {
-  return { stat: column.stat, gateId: column.gateId ?? ROOT, channel: column.channel, ancestorId: column.ancestorId, value: column.value, control: column.control, counting: column.counting, dilution: column.dilution };
-}
-
-// Columns that can carry detection limits: counts and frequencies.
-export const LIMIT_STATISTICS = new Set(['count', 'freqParent', 'freqGrandparent', 'freqTotal', 'freqOf']);
-export const LIMIT_STATUS = { 'not-detected': 'not detected', detected: 'below LLOQ', quantifiable: 'quantifiable' };
-
-// The limits of blank, detection and quantification of a count or frequency column from its blank
-// and low-level samples (column.limits: { blankIds, lowIds, lowGroupBy, method, cvTarget }), and
-// each sample's lower limit of quantification: the largest of the limit of detection, the
-// precision profile's limit and the value that (100/cv)² events of the population take in that
-// sample (Poisson counting). Null without limits or when none of the blanks is loaded.
+// A column's detection limits on the loaded samples (lib/tables.js).
 export function columnLimits(app, column) {
-  const spec = column.limits;
-  if (!spec?.blankIds?.length || !LIMIT_STATISTICS.has(column.stat)) return null;
-  const ws = app.store.ws;
-  const valueOf = (sampleId) => {
-    const view = app.data.view(sampleId);
-    if (!view) return Number.NaN;
-    try {
-      return computeStatistic(view, ws, statisticSpec(column), statisticContext(app));
-    } catch {
-      return Number.NaN;
-    }
-  };
-  const blanks = spec.blankIds.map(valueOf).filter(Number.isFinite);
-  if (!blanks.length) return null;
-  const groups = new Map();
-  let lowCount = 0;
-  for (const id of spec.lowIds ?? []) {
-    const value = valueOf(id);
-    if (!Number.isFinite(value)) continue;
-    lowCount += 1;
-    const sample = ws.samples.find((s) => s.id === id);
-    const key = spec.lowGroupBy ? String(sample?.meta?.[spec.lowGroupBy] ?? '') : 'low';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(value);
-  }
-  const limits = detectionLimits(blanks, [...groups.values()], { method: spec.method ?? 'parametric', cvTarget: spec.cvTarget ?? 20 });
-  const counted = eventsNeeded(limits.cvTarget).events;
-  const loqOf = (sampleId) => {
-    const candidates = [limits.loq, limits.lod];
-    const view = app.data.view(sampleId);
-    if (view && column.stat === 'count') candidates.push(counted);
-    else if (view) {
-      const count = computeStatistic(view, ws, { stat: 'count', gateId: column.gateId ?? ROOT });
-      const value = valueOf(sampleId);
-      if (count > 0 && value > 0) candidates.push((value * counted) / count);
-    }
-    const finite = candidates.filter(Number.isFinite);
-    return finite.length ? Math.max(...finite) : Number.NaN;
-  };
-  const missing = spec.blankIds.length + (spec.lowIds?.length ?? 0) - blanks.length - lowCount;
-  return { limits, counted, loqOf, status: (sampleId, value) => classifyValue(value, { lob: limits.lob, loq: loqOf(sampleId) }), missing };
+  return libColumnLimits(app.store.ws, column, (id) => app.data.view(id));
 }
 
 // Computes a table's values for the loaded samples: Map(sampleId → values[]).
 export function computeTable(app, table, sampleIds) {
-  const { store, data } = app;
-  const ws = store.ws;
-  const out = new Map();
-  for (const id of sampleIds) {
-    const view = data.view(id);
-    if (!view) continue;
-    out.set(id, table.columns.map((column) => {
-      try {
-        return computeStatistic(view, ws, statisticSpec(column), statisticContext(app));
-      } catch {
-        return Number.NaN;
-      }
-    }));
-  }
-  return out;
+  return tableValues(app.store.ws, table, sampleIds, (id) => app.data.view(id));
 }
 
 export function tableRows(app, table) {
-  const ws = app.store.ws;
-  const group = table.groupId ? ws.groups.find((g) => g.id === table.groupId) : null;
-  return ws.samples.filter((s) => (group ? group.sampleIds.includes(s.id) : true) && (table.includeControls || s.role === 'sample' || s.role === 'reference'));
+  return tableSamples(app.store.ws, table);
+}
+
+// Loads the samples tables need: their rows, controls, blanks and low-level samples.
+export async function ensureTableSamples(app, tables) {
+  const { store, data } = app;
+  const ids = new Set();
+  for (const table of tables) {
+    for (const s of [...tableSamples(store.ws, table), ...tableControlSamples(store.ws, table)]) ids.add(s.id);
+    for (const c of table.columns) for (const id of [...(c.limits?.blankIds ?? []), ...(c.limits?.lowIds ?? [])]) ids.add(id);
+  }
+  const missing = [...ids].filter((id) => !data.view(id));
+  if (!missing.length) return;
+  const progress = progressToast(`Computing ${missing.length} samples…`);
+  let done = 0;
+  for (const id of missing) {
+    await data.ensure(id).catch(() => {});
+    done += 1;
+    progress.update(done / missing.length);
+  }
+  progress.done();
+}
+
+// Every table in one Excel workbook, with the sheets that say where the numbers come from.
+export async function exportTablesWorkbook(app) {
+  const { store, data } = app;
+  const tables = store.ws.tables;
+  if (!tables.length) {
+    toast('Make a table in Tables first.');
+    return;
+  }
+  await ensureTableSamples(app, tables);
+  const { tablesWorkbook } = await import('../lib/spreadsheets.js');
+  const { writeXLSX } = await import('../lib/xlsx.js');
+  const { sheets } = tablesWorkbook(store.ws, tables, (id) => data.view(id), { version: app.version });
+  const bytes = await writeXLSX(sheets, { title: `${store.ws.name} tables` });
+  downloadBlob(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${(store.ws.name || 'tables').replace(/[^\w.-]+/g, '_')}.xlsx`);
+  toast(`Wrote ${tables.length} table${tables.length === 1 ? '' : 's'} with their columns, samples and gating.`, { kind: 'ok' });
 }
 
 export function mountTablesMode(app, container) {
@@ -297,6 +230,8 @@ export function mountTablesMode(app, container) {
       h('label.check', h('input', { type: 'checkbox', checked: table.heatmap !== false, onchange: (event) => saveTable({ ...table, heatmap: event.target.checked }, 'Table format') }), 'Heat map'),
       h('button.btn.small', { type: 'button', onclick: () => copyTSV(table, rows) }, icon('copy'), 'Copy'),
       h('button.btn.small', { type: 'button', onclick: () => exportCSV(table, rows) }, icon('download'), 'CSV'),
+      h('button.btn.small', { type: 'button', title: 'Every table in one Excel workbook, with sheets describing the columns, the samples and their files, and the gating', onclick: () => exportWorkbook() }, icon('download'), 'Excel'),
+      h('button.btn.small', { type: 'button', title: 'This table for GraphPad Prism, optionally as column tables by group', onclick: () => prismDialog(table) }, icon('download'), 'Prism…'),
       h('button.icon-button.small', { type: 'button', title: 'Delete table', onclick: () => { store.commit(setCollection(store.ws, 'tables', store.ws.tables.filter((t) => t.id !== table.id)), 'Delete table', ['tables']); tableId = store.ws.tables[0]?.id ?? null; } }, icon('trash')));
     const values = computeTable(app, table, rows.map((s) => s.id));
     // Column ranges for heat-map shading.
@@ -465,8 +400,7 @@ export function mountTablesMode(app, container) {
 
   // The control samples the table's comparison columns need, beyond its rows.
   function controlSamples(table) {
-    const ids = new Set(table.columns.map((c) => c.control?.sampleId).filter(Boolean));
-    return store.ws.samples.filter((s) => ids.has(s.id));
+    return tableControlSamples(store.ws, table);
   }
 
   async function computeAll(rows) {
@@ -486,27 +420,45 @@ export function mountTablesMode(app, container) {
   }
 
   function matrix(table, rows) {
-    const ws = store.ws;
-    const values = computeTable(app, table, rows.map((s) => s.id));
-    const metaFields = [...new Set(rows.flatMap((s) => Object.keys(s.meta ?? {})))];
-    // A column with detection limits is followed by each value's status.
-    const limitsOf = table.columns.map((column) => (column.limits ? columnLimits(app, column) : null));
-    const header = ['Sample', 'File', ...metaFields, ...table.columns.flatMap((c, j) => (limitsOf[j] ? [columnLabel(ws, c), `${columnLabel(ws, c)}: status`] : [columnLabel(ws, c)]))];
-    const lines = [header];
-    for (const sample of rows) {
-      const row = values.get(sample.id);
-      lines.push([sample.name, sample.fileName, ...metaFields.map((f) => sample.meta?.[f] ?? ''), ...table.columns.flatMap((_, j) => {
-        const finite = row && Number.isFinite(row[j]);
-        const cell = finite ? String(+row[j].toPrecision(8)) : '';
-        return limitsOf[j] ? [cell, finite ? LIMIT_STATUS[limitsOf[j].status(sample.id, row[j])] ?? '' : ''] : [cell];
-      })]);
-    }
-    return lines;
+    return tableMatrix(store.ws, table, rows, (id) => data.view(id));
   }
 
   function exportCSV(table, rows) {
     const lines = matrix(table, rows).map((row) => row.map((cell) => (/[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(','));
     downloadBlob(new Blob([lines.join('\n')], { type: 'text/csv' }), `${table.name.replace(/[^\w.-]+/g, '_')}.csv`);
+  }
+
+  const ensureFor = (tables) => ensureTableSamples(app, tables);
+  const exportWorkbook = () => exportTablesWorkbook(app);
+
+  function prismDialog(table) {
+    const rows = tableRows(app, table);
+    const fields = [...new Set(rows.flatMap((s) => Object.entries(s.meta ?? {}).filter(([, v]) => v !== '' && v !== null && v !== undefined).map(([k]) => k)))];
+    const groupBy = h('select.input.small', h('option', { value: '' }, 'No grouping'), ...fields.map((f) => h('option', { value: f, selected: /condition|treatment|group/i.test(f) }, f)));
+    showDialog({
+      title: `Prism: ${table.name}`,
+      content: [
+        h('p.muted', { style: { marginTop: 0 } }, 'A Prism project (.pzfx) with the table as one data table: a row per sample, a column per statistic. With a grouping, each statistic also gets a column table with a column per group, its samples down it, ready for Prism\'s t tests and ANOVA.'),
+        h('label.field', h('span', 'Group the samples by'), groupBy),
+      ],
+      buttons: [
+        { label: 'Cancel', ghost: true },
+        {
+          label: 'Export',
+          primary: true,
+          onClick: async () => {
+            await ensureFor([table]);
+            const { prismTables } = await import('../lib/spreadsheets.js');
+            const { writePZFX } = await import('../lib/pzfx.js');
+            const out = prismTables(store.ws, table, (id) => data.view(id), { groupBy: groupBy.value || null });
+            const text = writePZFX(out.tables, { version: app.version, project: store.ws.name, notes: `Exported from CytoWeave ${app.version ?? ''}: ${store.ws.name}, table ${table.name}.` });
+            downloadBlob(new Blob([text], { type: 'application/xml' }), `${table.name.replace(/[^\w.-]+/g, '_')}.pzfx`);
+            toast(`Wrote ${out.tables.length} Prism table${out.tables.length === 1 ? '' : 's'}.${out.notes.length ? ` ${out.notes.join(' ')}` : ''}`, { kind: 'ok' });
+            return true;
+          },
+        },
+      ],
+    });
   }
 
   async function copyTSV(table, rows) {

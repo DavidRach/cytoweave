@@ -10,7 +10,8 @@
 //             geometry, color, linkId, meta, ontology? }],
 //   plots: [{ populationId, x: key, y: key|null, type, options }],
 //   tables: [{ name, heatmap, columns: [{ gateId, stat, channel: key|undefined, ... }] }],
-//   figures: [{ name, width, height, background, items }] (plot items without a sample),
+//   figures: [{ name, width, height, background, batch: { by }, items }] (plot items without a
+//            sample; statistics items with tableIndex and columnIndexes into tables),
 //   scales: { key: { transform, label } },
 //   compensation: { source: 'file' | 'none' | 'computed', method },
 //   formulas: [{ key, name, expression }] (formula channels: expression references channel keys,
@@ -130,20 +131,32 @@ export function buildTemplate(ws, options = {}) {
   };
   const plots = (ws.plots ?? []).filter((p) => gateRef(p.populationId) !== undefined && ![p.x, p.y].some((c) => c && computed(c)))
     .map((p) => ({ populationId: gateRef(p.populationId), x: keyOf(p.x), y: keyOf(p.y), type: p.type, options: { ...(p.options ?? {}) } }));
-  const tables = (ws.tables ?? []).map((t) => ({
+  const keptColumns = (t) => t.columns.filter((c) => gateRef(c.gateId) !== undefined && !(c.channel && computed(c.channel)));
+  const keptTables = (ws.tables ?? []).filter((t) => keptColumns(t).length);
+  const tables = keptTables.map((t) => ({
     name: t.name,
     heatmap: t.heatmap,
-    columns: t.columns.filter((c) => gateRef(c.gateId) !== undefined && !(c.channel && computed(c.channel))).map((c) => {
+    columns: keptColumns(t).map((c) => {
       const { id, ...rest } = c;
       return { ...rest, gateId: gateRef(c.gateId), ...(c.channel ? { channel: keyOf(c.channel) } : {}) };
     }),
-  })).filter((t) => t.columns.length);
+  }));
+  // A statistics item names its table and columns by position in the template's tables.
+  const statsRef = (item) => {
+    const index = keptTables.findIndex((t) => t.id === item.tableId);
+    if (index < 0) return null;
+    const { tableId, columnIds, ...rest } = item;
+    const columns = keptColumns(keptTables[index]);
+    return { ...rest, tableIndex: index, ...(columnIds?.length ? { columnIndexes: columnIds.map((id) => columns.findIndex((c) => c.id === id)).filter((k) => k >= 0) } : {}) };
+  };
   const figures = (ws.figures ?? []).filter((f) => !f.proposal).map((f) => ({
     name: f.name,
     width: f.width,
     height: f.height,
     background: f.background,
-    items: f.items.filter((item) => item.kind !== 'plot' || (gateRef(item.spec.populationId) !== undefined && ![item.spec.x, item.spec.y].some((c) => c && computed(c)))).map((item) => {
+    ...(f.batch?.by ? { batch: { by: f.batch.by, ...(f.batch.format ? { format: f.batch.format } : {}) } } : {}),
+    items: f.items.filter((item) => (item.kind !== 'plot' || (gateRef(item.spec.populationId) !== undefined && ![item.spec.x, item.spec.y].some((c) => c && computed(c)))) && (item.kind !== 'stats' || statsRef(item))).map((item) => {
+      if (item.kind === 'stats') return statsRef(item);
       if (item.kind !== 'plot') return { ...item };
       const { sampleId, ...rest } = item;
       return { ...rest, spec: { ...item.spec, populationId: gateRef(item.spec.populationId), x: keyOf(item.spec.x), y: keyOf(item.spec.y) }, ...(item.highlight ? { highlight: keptIds.has(item.highlight) ? item.highlight : undefined } : {}) };
@@ -404,17 +417,33 @@ export function applyTemplate(ws, template, options = {}) {
     if (added.length) working = setCollection(working, 'plots', [...(working.plots ?? []), ...added], 'apply-template-plots');
   }
   let tableCount = 0;
+  // Template tables by position → { id, columnIds (by the template's column positions) }.
+  const tableRefs = new Map();
+  const appliedTables = new Set();
   if (tables && template.tables?.length) {
-    const added = template.tables.map((t) => ({
-      id: newId('t'),
-      name: t.name,
-      groupId: null,
-      heatmap: t.heatmap,
-      columns: t.columns.filter((c) => gateRef(c.gateId) && (!c.channel || channelOf(c.channel))).map((c) => ({ ...c, id: newId('col'), gateId: gateRef(c.gateId), ...(c.channel ? { channel: channelOf(c.channel) } : {}) })),
-    })).filter((t) => t.columns.length);
+    const added = template.tables.map((t, index) => {
+      const id = newId('t');
+      const columnIds = t.columns.map((c) => (gateRef(c.gateId) && (!c.channel || channelOf(c.channel)) ? newId('col') : null));
+      tableRefs.set(index, { id, columnIds });
+      return {
+        id,
+        name: t.name,
+        groupId: null,
+        heatmap: t.heatmap,
+        columns: t.columns.map((c, k) => (columnIds[k] ? { ...c, id: columnIds[k], gateId: gateRef(c.gateId), ...(c.channel ? { channel: channelOf(c.channel) } : {}) } : null)).filter(Boolean),
+      };
+    }).filter((t) => t.columns.length);
     tableCount = added.length;
     if (added.length) working = setCollection(working, 'tables', [...(working.tables ?? []), ...added], 'apply-template-tables');
+    for (const t of added) appliedTables.add(t.id);
   }
+  // A statistics item on the applied table and columns.
+  const statsItem = (item) => {
+    const ref = tableRefs.get(item.tableIndex);
+    const { tableIndex, columnIndexes, ...rest } = item;
+    const columnIds = (columnIndexes ?? []).map((k) => ref.columnIds[k]).filter(Boolean);
+    return { ...rest, id: newId('i'), tableId: ref.id, ...(columnIds.length ? { columnIds } : {}) };
+  };
   let figureCount = 0;
   const sampleId = options.sampleId ?? working.samples.find((s) => s.role === 'sample')?.id ?? working.samples[0]?.id ?? null;
   if (figures && template.figures?.length && sampleId) {
@@ -424,7 +453,8 @@ export function applyTemplate(ws, template, options = {}) {
       width: f.width,
       height: f.height,
       background: f.background,
-      items: f.items.filter((item) => item.kind !== 'plot' || (gateRef(item.spec.populationId) && channelOf(item.spec.x) && (item.spec.y === null || channelOf(item.spec.y)))).map((item) => (item.kind !== 'plot' ? { ...item, id: newId('i') } : {
+      ...(f.batch?.by ? { batch: { ...f.batch } } : {}),
+      items: f.items.filter((item) => (item.kind !== 'plot' || (gateRef(item.spec.populationId) && channelOf(item.spec.x) && (item.spec.y === null || channelOf(item.spec.y)))) && (item.kind !== 'stats' || appliedTables.has(tableRefs.get(item.tableIndex)?.id))).map((item) => (item.kind === 'stats' ? statsItem(item) : item.kind !== 'plot' ? { ...item, id: newId('i') } : {
         ...item,
         id: newId('i'),
         sampleId,

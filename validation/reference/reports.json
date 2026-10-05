@@ -1,0 +1,1734 @@
+{
+ "about": "CytoWeave's report documents read back by openpyxl, python-pptx and pypdf; written by reference/read_reports.py.",
+ "readers": {
+  "openpyxl": "3.1.5",
+  "python-pptx": "1.0.2",
+  "pypdf": "5.4.0"
+ },
+ "files": {
+  "tables.xlsx": {
+   "fingerprint": "720a05707aeb1665a4f1d0f9e9f97c34535a2a60e57f4ba2d8dc1843ab8a8eac",
+   "sheets": [
+    {
+     "name": "Activation",
+     "rows": [
+      [
+       "Sample",
+       "File",
+       "subject",
+       "condition",
+       "Lymphocytes: % of parent",
+       "CD69+: % of parent",
+       "CD69+: % of parent: status",
+       "CD69+: Count",
+       "CD69+: Median CD69"
+      ],
+      [
+       "S1 unstim",
+       "S1_unstim.fcs",
+       "S1",
+       "unstim",
+       69.98333333333333,
+       3.2388663967611335,
+       "quantifiable",
+       136,
+       8502.142578125
+      ],
+      [
+       "S1 stim",
+       "S1_stim.fcs",
+       "S1",
+       "stim",
+       70.91666666666667,
+       27.09753231492362,
+       "quantifiable",
+       1153,
+       9044.23828125
+      ],
+      [
+       "S2 unstim",
+       "S2_unstim.fcs",
+       "S2",
+       "unstim",
+       71.11666666666666,
+       3.866885399578158,
+       "quantifiable",
+       165,
+       9347.775390625
+      ],
+      [
+       "S2 stim",
+       "S2_stim.fcs",
+       "S2",
+       "stim",
+       69.63333333333334,
+       34.0832934418382,
+       "quantifiable",
+       1424,
+       9109.9013671875
+      ],
+      [
+       "S2 stim repeat",
+       "S2_stim_repeat.fcs",
+       "S2",
+       "stim",
+       70.41666666666667,
+       32.89940828402367,
+       "quantifiable",
+       1390,
+       9030.98828125
+      ],
+      [
+       "S3 unstim",
+       "S3_unstim.fcs",
+       "S3",
+       "unstim",
+       69.38333333333334,
+       2.0417967811674274,
+       "quantifiable",
+       85,
+       10134.5830078125
+      ],
+      [
+       "S3 stim",
+       "S3_stim.fcs",
+       "S3",
+       "stim",
+       68.88333333333334,
+       19.453181708202273,
+       "quantifiable",
+       804,
+       8906.4306640625
+      ],
+      [
+       "S4 unstim",
+       "S4_unstim.fcs",
+       "S4",
+       "unstim",
+       69.55,
+       5.271986580397796,
+       "quantifiable",
+       220,
+       9000.890625
+      ]
+     ]
+    },
+    {
+     "name": "Columns",
+     "rows": [
+      [
+       "Sheet",
+       "Column",
+       "Population",
+       "Statistic",
+       "Channel",
+       "Value",
+       "Relative to",
+       "Control",
+       "Counting beads",
+       "Dilution",
+       "Detection limits",
+       "Limit of blank",
+       "Limit of detection",
+       "Limit of quantification"
+      ],
+      [
+       "Activation",
+       "Lymphocytes: % of parent",
+       "Lymphocytes",
+       "% of parent",
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       "Activation",
+       "CD69+: % of parent",
+       "Lymphocytes / CD69+",
+       "% of parent",
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       "2 blank(s), 0 low-level sample(s), parametric, target CV 20%",
+       0,
+       null,
+       null
+      ],
+      [
+       "Activation",
+       "CD69+: Count",
+       "Lymphocytes / CD69+",
+       "Count",
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       "Activation",
+       "CD69+: Median CD69",
+       "Lymphocytes / CD69+",
+       "Median",
+       "CD69 \u00b7 FITC-A",
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     ]
+    },
+    {
+     "name": "Samples",
+     "rows": [
+      [
+       "Sample",
+       "File",
+       "SHA-256",
+       "Events",
+       "Role",
+       "Compensation",
+       "Cytometer",
+       "Acquired",
+       "subject",
+       "condition"
+      ],
+      [
+       "S1 unstim",
+       "S1_unstim.fcs",
+       "00ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S1",
+       "unstim"
+      ],
+      [
+       "S1 stim",
+       "S1_stim.fcs",
+       "01ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S1",
+       "stim"
+      ],
+      [
+       "S2 unstim",
+       "S2_unstim.fcs",
+       "02ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S2",
+       "unstim"
+      ],
+      [
+       "S2 stim",
+       "S2_stim.fcs",
+       "03ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S2",
+       "stim"
+      ],
+      [
+       "S2 stim repeat",
+       "S2_stim_repeat.fcs",
+       "04ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S2",
+       "stim"
+      ],
+      [
+       "S3 unstim",
+       "S3_unstim.fcs",
+       "05ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S3",
+       "unstim"
+      ],
+      [
+       "S3 stim",
+       "S3_stim.fcs",
+       "06ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S3",
+       "stim"
+      ],
+      [
+       "S4 unstim",
+       "S4_unstim.fcs",
+       "07ababababababababababababababababababababababababababababababab",
+       6000,
+       "sample",
+       "none",
+       "Simulated",
+       "04-OCT-2026",
+       "S4",
+       "unstim"
+      ]
+     ]
+    },
+    {
+     "name": "Populations",
+     "rows": [
+      [
+       "Population",
+       "Gate",
+       "Channels",
+       "Parent",
+       "Applies to"
+      ],
+      [
+       "Lymphocytes",
+       "polygon",
+       "FSC-A \u00d7 SSC-A",
+       "All events",
+       "all samples"
+      ],
+      [
+       "Lymphocytes / CD69+",
+       "range",
+       "CD69 \u00b7 FITC-A",
+       "Lymphocytes",
+       "all samples"
+      ]
+     ]
+    },
+    {
+     "name": "About",
+     "rows": [
+      [
+       "CytoWeave tables",
+       null
+      ],
+      [
+       "Workspace",
+       "Activation"
+      ],
+      [
+       "Exported",
+       "2026-10-04T12:00:00.000Z"
+      ],
+      [
+       "CytoWeave",
+       "validation"
+      ],
+      [
+       "Tables",
+       "Activation"
+      ],
+      [
+       "Values",
+       "Each value is written in full, as CytoWeave computed it; Tables shows it rounded. Empty cells are values that could not be computed (an empty population, a sample not loaded)."
+      ],
+      [
+       "Sheets",
+       "One per table, then Columns (what each column is), Samples (files and their checksums), Populations (the gating hierarchy) and this sheet."
+      ],
+      [
+       null,
+       null
+      ],
+      [
+       "Methods",
+       null
+      ],
+      [
+       null,
+       "Flow cytometry data (8 samples and 2 controls, acquired on Simulated; files [1]) were analyzed with CytoWeave validation [2]."
+      ],
+      [
+       null,
+       "10 file(s) were not compensated."
+      ],
+      [
+       null,
+       "Fluorescence was displayed and gated on logicle (T = 262144, M = 4.5, A = 0, W = 0.5) for 2 channels [3][4]."
+      ],
+      [
+       null,
+       "Populations were identified by sequential gating (2 gates): Lymphocytes \u2192 CD69+. Gates were applied identically to every sample. The gating strategy is available in Gating-ML 2.0 format [5]."
+      ],
+      [
+       null,
+       "Limits for the frequency of CD69+ were set as in CLSI EP17 [6] from 2 blank sample(s): the limit of blank as the blanks' mean plus 1.645 SD, and each sample's lower limit of quantification as the lowest value measured with a CV of 20%, never below the 25 events that give that CV by Poisson counting [7]."
+      ],
+      [
+       null,
+       "This description documents 7 of the 10 MIFlowCyt items [8]; the remaining items should be reported with it."
+      ],
+      [
+       null,
+       null
+      ],
+      [
+       "References",
+       null
+      ],
+      [
+       "1",
+       "Spidlen J, Moore W, Parks D, et al. Data File Standard for Flow Cytometry, version FCS 3.1. Cytometry A. 2010;77(1):97\u2013100. doi:10.1002/cyto.a.20825"
+      ],
+      [
+       "2",
+       "CytoWeave: open-source flow cytometry analysis. https://github.com/robert-mcdermott/cytoweave"
+      ],
+      [
+       "3",
+       "Parks DR, Roederer M, Moore WA. A new \"Logicle\" display method avoids deceptive effects of logarithmic scaling for low signals and compensated data. Cytometry A. 2006;69(6):541\u2013551. doi:10.1002/cyto.a.20258"
+      ],
+      [
+       "4",
+       "Moore WA, Parks DR. Update for the logicle data scale including operational code implementations. Cytometry A. 2012;81(4):273\u2013277. doi:10.1002/cyto.a.22030"
+      ],
+      [
+       "5",
+       "Spidlen J, Moore W, Brinkman RR, et al. ISAC's Gating-ML 2.0 data exchange standard for gating description. Cytometry A. 2015;87(7):683\u2013687. doi:10.1002/cyto.a.22690"
+      ],
+      [
+       "6",
+       "Armbruster DA, Pry T. Limit of blank, limit of detection and limit of quantitation. Clin Biochem Rev. 2008;29(Suppl 1):S49\u2013S52."
+      ],
+      [
+       "7",
+       "Roederer M. How many events is enough? Are you positive? Cytometry A. 2008;73(5):384\u2013385. doi:10.1002/cyto.a.20549"
+      ],
+      [
+       "8",
+       "Lee JA, Spidlen J, Boyce K, et al. MIFlowCyt: the minimum information about a flow cytometry experiment. Cytometry A. 2008;73(10):926\u2013930. doi:10.1002/cyto.a.20623"
+      ]
+     ]
+    }
+   ]
+  },
+  "report-sample.pptx": {
+   "fingerprint": "a347ffec0a7bf80d5cbd28493db62dd6a6637e392750d6b7bb680600ea80ae93",
+   "size": [
+    15240000,
+    8572500
+   ],
+   "slides": [
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S1 unstim",
+        "70.0",
+        "3.24",
+        "136",
+        "8502"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5673,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S1: CD69 on stimulation",
+      "S1 unstim \u00b7 page 1 of 8 \u00b7 2026-10-04"
+     ]
+    },
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5679,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S1: CD69 on stimulation",
+      "S1 stim \u00b7 page 2 of 8 \u00b7 2026-10-04"
+     ]
+    },
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S2 unstim",
+        "71.1",
+        "3.87",
+        "165",
+        "9348"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5619,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S2: CD69 on stimulation",
+      "S2 unstim \u00b7 page 3 of 8 \u00b7 2026-10-04"
+     ]
+    },
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S2 stim",
+        "69.6",
+        "34.1",
+        "1,424",
+        "9110"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5703,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S2: CD69 on stimulation",
+      "S2 stim \u00b7 page 4 of 8 \u00b7 2026-10-04"
+     ]
+    },
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S2 stim repeat",
+        "70.4",
+        "32.9",
+        "1,390",
+        "9031"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5614,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S2: CD69 on stimulation",
+      "S2 stim repeat \u00b7 page 5 of 8 \u00b7 2026-10-04"
+     ]
+    },
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S3 unstim",
+        "69.4",
+        "2.04",
+        "85",
+        "10135"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5627,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S3: CD69 on stimulation",
+      "S3 unstim \u00b7 page 6 of 8 \u00b7 2026-10-04"
+     ]
+    },
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S3 stim",
+        "68.9",
+        "19.5",
+        "804",
+        "8906"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5811,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S3: CD69 on stimulation",
+      "S3 stim \u00b7 page 7 of 8 \u00b7 2026-10-04"
+     ]
+    },
+    {
+     "tables": [
+      [
+       [
+        "Sample",
+        "Lymphocytes: % of parent",
+        "CD69+: % of parent",
+        "CD69+: Count",
+        "CD69+: Median CD69"
+       ],
+       [
+        "S4 unstim",
+        "69.5",
+        "5.27",
+        "220",
+        "9001"
+       ],
+       [
+        "S1 stim",
+        "70.9",
+        "27.1",
+        "1,153",
+        "9044"
+       ],
+       [
+        "FMO CD69",
+        "69.8",
+        "0.0 ND",
+        "0",
+        "\u2014"
+       ]
+      ]
+     ],
+     "pictures": [
+      {
+       "name": "All events",
+       "bytes": 5665,
+       "type": "image/png"
+      },
+      {
+       "name": "Unstimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "Stimulated",
+       "bytes": 70,
+       "type": "image/png"
+      },
+      {
+       "name": "FMO",
+       "bytes": 70,
+       "type": "image/png"
+      }
+     ],
+     "texts": [
+      "Subject S4: CD69 on stimulation",
+      "S4 unstim \u00b7 page 8 of 8 \u00b7 2026-10-04"
+     ]
+    }
+   ],
+   "record": {
+    "pages": 8,
+    "trace": 116
+   }
+  },
+  "report-subject.pdf": {
+   "fingerprint": "2e309381dc172966f31c3b061e64316c1cc8b7816cb2b24f794e83bb3d8527dd",
+   "pages": [
+    {
+     "size": [
+      1200.0,
+      675.0
+     ],
+     "text": "Subject S1: CD69 on stimulation\nS1 unstim, S1 stim, FMO CD69 \u00b7 page 1 of 4 \u00b7 2026-10-04\nLymphocytes\n70.0%\n0 50K 100K 150K 200K 250K\n0\n50K\n100K\n150K\n200K\n250K\nFSC-A\nSSC-A\nAll events\nCD69+\n3.24%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nUnstimulated\nCD69+\n27.1%\n-102 0 102 103 104 105\n0\n50\n100\n150\nCD69 \u00b7 FITC-A\nCount\nStimulated\nCD69+\n0%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nFMO\nSample Lymphocytes: % of parent CD69+: % of parent CD69+: Count CD69+: Median CD69\nS1 unstim 70.0 3.24 136 8502\nS1 stim 70.9 27.1 1,153 9044\nFMO CD69 69.8 0.0 ND 0 \u2014"
+    },
+    {
+     "size": [
+      1200.0,
+      675.0
+     ],
+     "text": "Subject S2: CD69 on stimulation\nS2 unstim, S2 stim, FMO CD69 \u00b7 page 2 of 4 \u00b7 2026-10-04\nLymphocytes\n71.1%\n0 50K 100K 150K 200K 250K\n0\n50K\n100K\n150K\n200K\n250K\nFSC-A\nSSC-A\nAll events\nCD69+\n3.87%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nUnstimulated\nCD69+\n34.1%\n-102 0 102 103 104 105\n0\n50\n100\n150\nCD69 \u00b7 FITC-A\nCount\nStimulated\nCD69+\n0%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nFMO\nSample Lymphocytes: % of parent CD69+: % of parent CD69+: Count CD69+: Median CD69\nS2 unstim 71.1 3.87 165 9348\nS2 stim 69.6 34.1 1,424 9110\nFMO CD69 69.8 0.0 ND 0 \u2014"
+    },
+    {
+     "size": [
+      1200.0,
+      675.0
+     ],
+     "text": "Subject S3: CD69 on stimulation\nS3 unstim, S3 stim, FMO CD69 \u00b7 page 3 of 4 \u00b7 2026-10-04\nLymphocytes\n69.4%\n0 50K 100K 150K 200K 250K\n0\n50K\n100K\n150K\n200K\n250K\nFSC-A\nSSC-A\nAll events\nCD69+\n2.04%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nUnstimulated\nCD69+\n19.5%\n-102 0 102 103 104 105\n0\n50\n100\n150\nCD69 \u00b7 FITC-A\nCount\nStimulated\nCD69+\n0%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nFMO\nSample Lymphocytes: % of parent CD69+: % of parent CD69+: Count CD69+: Median CD69\nS3 unstim 69.4 2.04 85 10135\nS3 stim 68.9 19.5 804 8906\nFMO CD69 69.8 0.0 ND 0 \u2014"
+    },
+    {
+     "size": [
+      1200.0,
+      675.0
+     ],
+     "text": "Subject S4: CD69 on stimulation\nS4 unstim, FMO CD69 \u00b7 page 4 of 4 \u00b7 2026-10-04\nLymphocytes\n69.5%\n0 50K 100K 150K 200K 250K\n0\n50K\n100K\n150K\n200K\n250K\nFSC-A\nSSC-A\nAll events\nCD69+\n5.27%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nUnstimulated\nNo sample of subject S4 with condition = stim\nCD69+\n0%\n-102 0 102 103 104 105\n0\n50\n100\n150\n200\nCD69 \u00b7 FITC-A\nCount\nFMO\nSample Lymphocytes: % of parent CD69+: % of parent CD69+: Count CD69+: Median CD69\nS4 unstim 69.5 5.27 220 9001\nFMO CD69 69.8 0.0 ND 0 \u2014"
+    }
+   ],
+   "attachments": [
+    "cytoweave-report.json"
+   ],
+   "record": {
+    "pages": 4,
+    "trace": [
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 unstim",
+      "sampleId": "r0",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.98333333333333,
+      "text": "70.0"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 unstim",
+      "sampleId": "r0",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 3.2388663967611335,
+      "text": "3.24"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 unstim",
+      "sampleId": "r0",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 136,
+      "text": "136"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 unstim",
+      "sampleId": "r0",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Median CD69",
+      "columnId": "c4",
+      "stat": "median",
+      "value": 8502.142578125,
+      "text": "8502"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 stim",
+      "sampleId": "r1",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 70.91666666666667,
+      "text": "70.9"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 stim",
+      "sampleId": "r1",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 27.09753231492362,
+      "text": "27.1"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 stim",
+      "sampleId": "r1",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 1153,
+      "text": "1,153"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "S1 stim",
+      "sampleId": "r1",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Median CD69",
+      "columnId": "c4",
+      "stat": "median",
+      "value": 9044.23828125,
+      "text": "9044"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.78333333333333,
+      "text": "69.8"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0.0",
+      "status": "ND"
+     },
+     {
+      "page": 1,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 0,
+      "text": "0"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 unstim",
+      "sampleId": "r2",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 71.11666666666666,
+      "text": "71.1"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 unstim",
+      "sampleId": "r2",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 3.866885399578158,
+      "text": "3.87"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 unstim",
+      "sampleId": "r2",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 165,
+      "text": "165"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 unstim",
+      "sampleId": "r2",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Median CD69",
+      "columnId": "c4",
+      "stat": "median",
+      "value": 9347.775390625,
+      "text": "9348"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 stim",
+      "sampleId": "r3",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.63333333333334,
+      "text": "69.6"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 stim",
+      "sampleId": "r3",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 34.0832934418382,
+      "text": "34.1"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 stim",
+      "sampleId": "r3",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 1424,
+      "text": "1,424"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "S2 stim",
+      "sampleId": "r3",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Median CD69",
+      "columnId": "c4",
+      "stat": "median",
+      "value": 9109.9013671875,
+      "text": "9110"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.78333333333333,
+      "text": "69.8"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0.0",
+      "status": "ND"
+     },
+     {
+      "page": 2,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 0,
+      "text": "0"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 unstim",
+      "sampleId": "r5",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.38333333333334,
+      "text": "69.4"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 unstim",
+      "sampleId": "r5",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 2.0417967811674274,
+      "text": "2.04"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 unstim",
+      "sampleId": "r5",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 85,
+      "text": "85"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 unstim",
+      "sampleId": "r5",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Median CD69",
+      "columnId": "c4",
+      "stat": "median",
+      "value": 10134.5830078125,
+      "text": "10135"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 stim",
+      "sampleId": "r6",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 68.88333333333334,
+      "text": "68.9"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 stim",
+      "sampleId": "r6",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 19.453181708202273,
+      "text": "19.5"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 stim",
+      "sampleId": "r6",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 804,
+      "text": "804"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "S3 stim",
+      "sampleId": "r6",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Median CD69",
+      "columnId": "c4",
+      "stat": "median",
+      "value": 8906.4306640625,
+      "text": "8906"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.78333333333333,
+      "text": "69.8"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0.0",
+      "status": "ND"
+     },
+     {
+      "page": 3,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 0,
+      "text": "0"
+     },
+     {
+      "page": 4,
+      "item": "s1",
+      "source": "table",
+      "sample": "S4 unstim",
+      "sampleId": "r7",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.55,
+      "text": "69.5"
+     },
+     {
+      "page": 4,
+      "item": "s1",
+      "source": "table",
+      "sample": "S4 unstim",
+      "sampleId": "r7",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 5.271986580397796,
+      "text": "5.27"
+     },
+     {
+      "page": 4,
+      "item": "s1",
+      "source": "table",
+      "sample": "S4 unstim",
+      "sampleId": "r7",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 220,
+      "text": "220"
+     },
+     {
+      "page": 4,
+      "item": "s1",
+      "source": "table",
+      "sample": "S4 unstim",
+      "sampleId": "r7",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Median CD69",
+      "columnId": "c4",
+      "stat": "median",
+      "value": 9000.890625,
+      "text": "9001"
+     },
+     {
+      "page": 4,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "Lymphocytes: % of parent",
+      "columnId": "c1",
+      "stat": "freqParent",
+      "value": 69.78333333333333,
+      "text": "69.8"
+     },
+     {
+      "page": 4,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: % of parent",
+      "columnId": "c2",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0.0",
+      "status": "ND"
+     },
+     {
+      "page": 4,
+      "item": "s1",
+      "source": "table",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "table": "Activation",
+      "tableId": "tbl",
+      "column": "CD69+: Count",
+      "columnId": "c3",
+      "stat": "count",
+      "value": 0,
+      "text": "0"
+     },
+     {
+      "page": 1,
+      "item": "p1",
+      "source": "plot",
+      "sample": "S1 unstim",
+      "sampleId": "r0",
+      "population": "Lymphocytes",
+      "gateId": "lymph",
+      "parent": "All events",
+      "stat": "freqParent",
+      "value": 69.98333333333333,
+      "text": "70.0%"
+     },
+     {
+      "page": 1,
+      "item": "p2",
+      "source": "plot",
+      "sample": "S1 unstim",
+      "sampleId": "r0",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 3.2388663967611335,
+      "text": "3.24%"
+     },
+     {
+      "page": 1,
+      "item": "p3",
+      "source": "plot",
+      "sample": "S1 stim",
+      "sampleId": "r1",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 27.09753231492362,
+      "text": "27.1%"
+     },
+     {
+      "page": 1,
+      "item": "p4",
+      "source": "plot",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0%"
+     },
+     {
+      "page": 2,
+      "item": "p1",
+      "source": "plot",
+      "sample": "S2 unstim",
+      "sampleId": "r2",
+      "population": "Lymphocytes",
+      "gateId": "lymph",
+      "parent": "All events",
+      "stat": "freqParent",
+      "value": 71.11666666666666,
+      "text": "71.1%"
+     },
+     {
+      "page": 2,
+      "item": "p2",
+      "source": "plot",
+      "sample": "S2 unstim",
+      "sampleId": "r2",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 3.866885399578158,
+      "text": "3.87%"
+     },
+     {
+      "page": 2,
+      "item": "p3",
+      "source": "plot",
+      "sample": "S2 stim",
+      "sampleId": "r3",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 34.0832934418382,
+      "text": "34.1%"
+     },
+     {
+      "page": 2,
+      "item": "p4",
+      "source": "plot",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0%"
+     },
+     {
+      "page": 3,
+      "item": "p1",
+      "source": "plot",
+      "sample": "S3 unstim",
+      "sampleId": "r5",
+      "population": "Lymphocytes",
+      "gateId": "lymph",
+      "parent": "All events",
+      "stat": "freqParent",
+      "value": 69.38333333333334,
+      "text": "69.4%"
+     },
+     {
+      "page": 3,
+      "item": "p2",
+      "source": "plot",
+      "sample": "S3 unstim",
+      "sampleId": "r5",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 2.0417967811674274,
+      "text": "2.04%"
+     },
+     {
+      "page": 3,
+      "item": "p3",
+      "source": "plot",
+      "sample": "S3 stim",
+      "sampleId": "r6",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 19.453181708202273,
+      "text": "19.5%"
+     },
+     {
+      "page": 3,
+      "item": "p4",
+      "source": "plot",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0%"
+     },
+     {
+      "page": 4,
+      "item": "p1",
+      "source": "plot",
+      "sample": "S4 unstim",
+      "sampleId": "r7",
+      "population": "Lymphocytes",
+      "gateId": "lymph",
+      "parent": "All events",
+      "stat": "freqParent",
+      "value": 69.55,
+      "text": "69.5%"
+     },
+     {
+      "page": 4,
+      "item": "p2",
+      "source": "plot",
+      "sample": "S4 unstim",
+      "sampleId": "r7",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 5.271986580397796,
+      "text": "5.27%"
+     },
+     {
+      "page": 4,
+      "item": "p4",
+      "source": "plot",
+      "sample": "FMO CD69",
+      "sampleId": "r8",
+      "population": "Lymphocytes / CD69+",
+      "gateId": "cd69",
+      "parent": "Lymphocytes",
+      "stat": "freqParent",
+      "value": 0,
+      "text": "0%"
+     }
+    ]
+   }
+  }
+ }
+}

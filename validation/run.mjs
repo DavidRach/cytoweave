@@ -37,6 +37,10 @@ import { ksTest, overtonSubtraction, probabilityBinning, sedSubtraction } from '
 import { binomialInterval, detectionLimits, poissonInterval } from '../web/lib/rare-events.js';
 import { poisson } from '../web/lib/simulate.js';
 import { BEAD_TRUTH, COUNTING, countingTubes, simulatedBeads } from './calibration-cases.mjs';
+import { REPORT_DATE, buildReports } from './report-cases.mjs';
+import { fingerprint, readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
+import { columnLabel, columnValue, columnLimits, LIMIT_STATUS } from '../web/lib/tables.js';
+import { formatPercent, formatStatistic } from '../web/lib/stats.js';
 import { calibrateBeads, channelBounds, fitBeadModel, standardCurve } from '../web/lib/calibration.js';
 import { exportGatingML } from '../web/lib/gatingml.js';
 import { TITRATION } from '../web/lib/examples.js';
@@ -724,6 +728,162 @@ const suites = {
       };
     });
     check('flowcal', `FlowCal's example (8-peak beads on a Cytek xP3+, FL1 log-amplified over 4 decades; ${rows.length} bead samples on two days, one at another gain) calibrated end to end: CytoWeave's levels, its choice of levels and its MEFL of the ${rows.reduce((a, r) => a + r.cells, 0)} cell samples (median of FlowCal's gated cells) against FlowCal ${ref.flowcal}'s`, rows.map((r) => `${r.file}: the same levels ${r.sameLevels ? 'used' : 'NOT used'}, medians within ${(100 * r.medianWorst).toFixed(2)}% (one step of the log channel is 0.9%), slope ${r.m[0].toFixed(4)} (FlowCal ${r.m[1].toFixed(4)}), cells within ${(100 * r.cellsWorst).toFixed(2)}%`).join('; '), rows.every((r) => r.sameLevels && r.medianWorst < 0.01 && Math.abs(r.m[0] - r.m[1]) < 0.01 && r.cellsWorst < 0.02), 'the same levels; medians within 1%; slope within 0.01; cells within 2%');
+  },
+  // Batch reports and spreadsheets (report-cases.mjs): a figure repeated by sample and by subject
+  // (the rules of which plot goes where), every number in the documents traced to the table column
+  // or gate it comes from and equal to it, and the files read back, by this validation's own
+  // readers (document-readers.mjs) and by the formats' readers (reference/reports.json from
+  // openpyxl, python-pptx and pypdf; reference/pzfx.json from R pzfx), whose readback applies when
+  // the files written here hold the same content (fingerprints).
+  async reports() {
+    const built = await buildReports();
+    const { ws, viewOf, ids } = built.experiment;
+    const byName = (name) => ws.samples.find((x) => x.name === name);
+    const nameOf = (id) => ws.samples.find((x) => x.id === id)?.name ?? null;
+    const bySample = built.reports['report-sample.pptx'].report;
+    const bySubject = built.reports['report-subject.pdf'].report;
+    // Which plot goes where.
+    const sampleOk = bySample.pages.length === ws.samples.filter((x) => x.role === 'sample').length && bySample.pages.every((p) => {
+      const at = (id) => p.items.find((i) => i.id === id).sampleId;
+      return at('p1') === p.sampleIds[0] && at('p2') === p.sampleIds[0] && at('p3') === ids.s1stim && at('p4') === ids.fmo;
+    });
+    check('reports', 'by sample: a page per sample (the controls left out); the plots of the figure\'s followed sample (S1 unstim) drawn on each page\'s sample, the plots of S1 stim and the FMO on every page', `${bySample.pages.length} pages; ${sampleOk ? 'every plot where it belongs' : 'a plot misplaced'}`, sampleOk && bySample.followed === ids.s1, '8 pages; every plot where it belongs');
+    const expect = { S1: ['S1 unstim', 'S1 stim'], S2: ['S2 unstim', 'S2 stim'], S3: ['S3 unstim', 'S3 stim'], S4: ['S4 unstim', null] };
+    const subjectRows = bySubject.pages.map((p) => {
+      const at = (id) => p.items.find((i) => i.id === id);
+      const want = expect[p.value];
+      return { value: p.value, ok: Boolean(want) && nameOf(at('p2').sampleId) === want[0] && nameOf(at('p1').sampleId) === want[0] && (want[1] ? nameOf(at('p3').sampleId) === want[1] : at('p3').sampleId === null && /S4 with condition = stim/.test(at('p3').missing)) && at('p4').sampleId === ids.fmo };
+    });
+    const notesOk = bySubject.notes.length === 2 && bySubject.notes.some((n) => /S2: 2 samples \(S2 stim, S2 stim repeat\)/.test(n)) && bySubject.notes.some((n) => /S4: no sample with condition = stim/.test(n));
+    check('reports', 'by subject: a page per subject; each subject\'s unstimulated and stimulated tubes in the places of S1\'s (matched on condition, the annotation that tells the figure\'s samples apart), the FMO on every page; S2\'s second stimulated tube reported, S4\'s missing one left empty with the reason', `${subjectRows.filter((r) => r.ok).length} of ${subjectRows.length} pages right; notes: ${bySubject.notes.join(' | ')}`, subjectRows.length === 4 && subjectRows.every((r) => r.ok) && notesOk, '4 of 4; both notes');
+    const texts = bySubject.pages.map((p) => [p.items.find((i) => i.id === 't1').text, p.items.find((i) => i.id === 't2').text]);
+    const filled = texts.every(([a, b], k) => a === `Subject S${k + 1}: CD69 on stimulation` && b.endsWith(`· page ${k + 1} of 4 · 2026-10-04`) && !/[{}]/.test(a + b));
+    check('reports', 'text placeholders ({subject}, {sample}, {page}, {pages}, {date}) filled on every page', `${texts[1].join(' / ')}`, filled, 'all filled');
+    // Every number traced, and equal to its source.
+    const all = Object.entries(built.reports).flatMap(([file, r]) => r.trace.map((t) => ({ ...t, file })));
+    const tables = all.filter((t) => t.source === 'table');
+    const limits = columnLimits(ws, ws.tables[0].columns[1], viewOf);
+    const tableBad = tables.filter((t) => {
+      const column = ws.tables[0].columns.find((c) => c.id === t.columnId);
+      const value = columnValue(ws, column, viewOf(t.sampleId), viewOf);
+      const status = column.limits ? limits.status(t.sampleId, value) : null;
+      return !Object.is(value, t.value) || formatStatistic(column.stat, value) !== t.text || t.column !== columnLabel(ws, column) || (status === 'not-detected' ? t.status !== 'ND' : status === 'detected' ? t.status !== '< LLOQ' : Boolean(t.status));
+    });
+    check('reports', 'every statistics cell in both reports traced to its table column: the value equal to the column\'s for that sample (the same double), printed as Tables prints it, ND where the detection limits say so', `${tables.length - tableBad.length} of ${tables.length} (${tables.filter((t) => t.status).length} ND)`, !tableBad.length && tables.length > 0 && tables.some((t) => t.status === 'ND'), 'all');
+    const plots = all.filter((t) => t.source === 'plot');
+    const plotBad = plots.filter((t) => {
+      const view = viewOf(t.sampleId);
+      const gate = ws.gates.find((g) => g.id === t.gateId);
+      const members = population(view, ws, gate.id);
+      const parent = population(view, ws, gate.parentId ?? 'root');
+      const value = (100 * countOf(members, view)) / (countOf(parent, view) || 1);
+      return Math.abs(value - t.value) > 1e-12 * Math.max(1, value) || formatPercent(value) !== t.text;
+    });
+    check('reports', 'every gate label on the reports\' plots traced to its gate: the % of parent recomputed from the gate and printed the same', `${plots.length - plotBad.length} of ${plots.length}`, !plotBad.length && plots.length > 0, 'all');
+    // The PDF read back.
+    const pdf = readPDF(built.files['report-subject.pdf']);
+    const scenes = built.reports['report-subject.pdf'].scenes;
+    const plain = (text) => String(text).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => String('⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(c))).replace(/⁻/g, '-').replace(/−/g, '-');
+    const shown = (t) => (t.status ? `${t.text} ${t.status}` : t.text);
+    const subjectTrace = built.reports['report-subject.pdf'].trace;
+    let printed = 0;
+    let missing = 0;
+    let untraced = [];
+    pdf.pages.forEach((page, k) => {
+      const mine = subjectTrace.filter((t) => t.page === k + 1);
+      const pool = [...page.strings];
+      for (const t of mine) {
+        const at = pool.indexOf(shown(t));
+        if (at >= 0) {
+          pool.splice(at, 1);
+          printed += 1;
+        } else missing += 1;
+      }
+      const ticks = new Set([...scenes].filter(([key]) => key.startsWith(`${k}:`)).flatMap(([, scene]) => [...scene.axes.x.ticks, ...(scene.axes.y?.ticks ?? [])].map((tick) => plain(tick.label ?? ''))));
+      untraced = untraced.concat(pool.filter((text) => /^-?[\d,]+(\.\d+)?%?( ND| < LLOQ)?$/.test(text) && !ticks.has(text)).map((text) => `page ${k + 1}: ${text}`));
+    });
+    check('reports', `the PDF by subject read back (${pdf.pages.length} pages): every traced number printed on its page, and no number printed that is neither traced nor an axis tick`, `${printed} of ${printed + missing} printed; ${untraced.length} untraced${untraced.length ? ` (${untraced.slice(0, 3).join(', ')})` : ''}`, pdf.pages.length === 4 && !missing && !untraced.length && printed > 0, 'all printed; none untraced');
+    const record = JSON.parse(new TextDecoder().decode(pdf.attachments.get('cytoweave-report.json')));
+    check('reports', 'the PDF carries its record: the pages, their samples and the trace of every number', `${record.pages.length} pages, ${record.trace.length} numbers; S4's page lists ${record.pages[3].samples.join(', ')}`, record.pages.length === 4 && record.trace.length === subjectTrace.length && record.trace.every((t, i) => Object.is(t.value, subjectTrace[i].value)), 'equal to the trace');
+    // The PowerPoint deck read back.
+    const deck = await readPPTX(built.files['report-sample.pptx']);
+    const sampleTrace = built.reports['report-sample.pptx'].trace.filter((t) => t.source === 'table');
+    const slideBad = deck.slides.filter((slide, k) => {
+      const rows = slide.tables[0]?.slice(1) ?? [];
+      const mine = sampleTrace.filter((t) => t.page === k + 1);
+      const cells = rows.flatMap((row) => row.slice(1)).filter((text) => text !== '—');
+      return cells.length !== mine.length || cells.some((text, i) => text !== shown(mine[i])) || slide.pictures.length !== 4 || slide.pictures.some((p) => !p.present);
+    });
+    check('reports', `the PowerPoint deck by sample read back (${deck.slides.length} slides): each slide's native table holds the traced values of its page in order, and its four plots as pictures`, `${deck.slides.length - slideBad.length} of ${deck.slides.length} slides; slide 2: ${deck.slides[1].tables[0].slice(1).map((r) => r.join(' ')).join('; ')}`, deck.slides.length === 8 && !slideBad.length, 'all');
+    // The workbook read back.
+    const book = await readXLSX(built.files['tables.xlsx']);
+    const sheet = book.sheets[0];
+    const header = sheet.rows[0];
+    let cells = 0;
+    const bookBad = [];
+    for (const row of sheet.rows.slice(1)) {
+      const sample = byName(row[0]);
+      ws.tables[0].columns.forEach((column) => {
+        const j = header.indexOf(columnLabel(ws, column));
+        const value = columnValue(ws, column, viewOf(sample.id), viewOf);
+        cells += 1;
+        if (Number.isFinite(value) ? !Object.is(row[j], value) : row[j] !== null) bookBad.push(`${row[0]} ${header[j]}`);
+        if (column.limits) {
+          const status = header.indexOf(`${columnLabel(ws, column)}: status`);
+          if (row[status] !== LIMIT_STATUS[limits.status(sample.id, value)]) bookBad.push(`${row[0]} status`);
+        }
+      });
+    }
+    const sheetsOk = book.sheets.map((x) => x.name).join(',') === 'Activation,Columns,Samples,Populations,About' && book.sheets[2].rows.slice(1).every((r) => r[2] === byName(r[0])?.sha256);
+    check('reports', 'the Excel workbook read back: every value in the table\'s sheet the double CytoWeave computes (not rounded), each status as the detection limits give it; sheets for the columns, the samples with their checksums, the gating and the methods', `${cells - bookBad.length} of ${cells} values; sheets ${book.sheets.map((x) => x.name).join(', ')}${bookBad.length ? `; differ: ${bookBad.slice(0, 3).join(', ')}` : ''}`, !bookBad.length && cells === 32 && sheetsOk, 'all; the five sheets');
+    // The Prism project read back.
+    const prism = readPZFX(new TextDecoder().decode(built.files['activation.pzfx']));
+    const rows = prism[0].rowTitles.map(byName);
+    const prismBad = [];
+    ws.tables[0].columns.forEach((column, j) => {
+      rows.forEach((sample, r) => {
+        const value = columnValue(ws, column, viewOf(sample.id), viewOf);
+        if (!Object.is(prism[0].columns[j].values[r], Number.isFinite(value) ? value : null)) prismBad.push(`${sample.name} ${column.id}`);
+      });
+      const grouped = prism[j + 1];
+      for (const [g, col] of grouped.columns.map((c) => [c.title, c])) {
+        const members = ws.tables[0] && rows.filter((sample) => sample.meta.condition === g);
+        if (col.values.length !== members.length || col.values.some((v, i) => !Object.is(v, columnValue(ws, column, viewOf(members[i].id), viewOf)))) prismBad.push(`${grouped.title} ${g}`);
+      }
+    });
+    check('reports', 'the Prism project read back: a row per sample with each statistic, and a column table per statistic with a column per condition (its samples down it), every value exact', `${prism.length} tables (${prism.slice(1).map((t) => t.columns.map((c) => `${c.title} n=${c.values.length}`).join('/')).at(0)} for each statistic)${prismBad.length ? `; differ: ${prismBad.slice(0, 3).join(', ')}` : ''}`, prism.length === 5 && rows.length === 8 && !prismBad.length && prism[1].columns.map((c) => c.title).join() === 'unstim,stim', 'exact');
+    // The formats' own readers (reference files).
+    const ref = JSON.parse(readFileSync(new URL('./reference/reports.json', import.meta.url), 'utf8'));
+    const refPzfx = JSON.parse(readFileSync(new URL('./reference/pzfx.json', import.meta.url), 'utf8'));
+    const prints = {};
+    for (const name of Object.keys(built.files)) prints[name] = await fingerprint(built.files[name]);
+    const stale = Object.keys(built.files).filter((name) => (name === 'activation.pzfx' ? refPzfx.fingerprint : ref.files[name]?.fingerprint) !== prints[name]);
+    check('reports', 'the documents written here hold what the formats\' readers read (content fingerprints of the four files against reference/reports.json and pzfx.json; when one differs, rerun reference/write_reports.mjs, read_reports.py and read_pzfx.R)', stale.length ? `differ: ${stale.join(', ')}` : 'all four the same', !stale.length, 'the same');
+    const xl = ref.files['tables.xlsx'].sheets[0].rows;
+    const xlBad = xl.slice(1).flatMap((row, i) => row.filter((v, j) => !Object.is(v, sheet.rows[i + 1][j]) && !(v === null && sheet.rows[i + 1][j] === null)).map(() => `row ${i + 2}`));
+    check('reports', `openpyxl ${ref.readers.openpyxl} reads the workbook's table sheet as written: every value the same double, every text the same`, `${xl.length - 1} rows; ${xlBad.length} cells differ`, !xlBad.length && xl.length === sheet.rows.length && ref.files['tables.xlsx'].sheets.length === 5, 'all the same');
+    const pp = ref.files['report-sample.pptx'];
+    const ppBad = pp.slides.filter((slide, k) => {
+      const mine = sampleTrace.filter((t) => t.page === k + 1);
+      const cells = slide.tables[0].slice(1).flatMap((row) => row.slice(1)).filter((text) => text !== '—');
+      return cells.length !== mine.length || cells.some((text, i) => text !== shown(mine[i])) || slide.pictures.length !== 4 || slide.pictures.some((p) => p.type !== 'image/png');
+    });
+    check('reports', `python-pptx ${ref.readers['python-pptx']} reads the deck: ${pp.slides.length} slides of the figure's size, each table's cells the traced values, four PNG pictures a slide, and the report record part`, `${pp.slides.length - ppBad.length} of ${pp.slides.length} slides; record ${pp.record ? `${pp.record.pages} pages, ${pp.record.trace} numbers` : 'not found'}`, pp.slides.length === 8 && !ppBad.length && pp.size[0] === 1600 * 9525 && pp.record?.trace === built.reports['report-sample.pptx'].trace.length, 'all');
+    const pd = ref.files['report-subject.pdf'];
+    const pdBad = pd.pages.flatMap((page, k) => subjectTrace.filter((t) => t.page === k + 1 && !page.text.includes(shown(t))).map((t) => `page ${k + 1}: ${shown(t)}`));
+    check('reports', `pypdf ${ref.readers.pypdf} reads the PDF: ${pd.pages.length} pages of the figure's size (1,200 × 675 pt), every traced number in its page's extracted text, the record attached`, `${subjectTrace.length - pdBad.length} of ${subjectTrace.length} found${pdBad.length ? `; missing ${pdBad.slice(0, 3).join(', ')}` : ''}; attachments ${pd.attachments.join(', ')}`, pd.pages.length === 4 && !pdBad.length && pd.pages.every((p) => p.size[0] === 1200 && p.size[1] === 675) && pd.record?.trace.length === subjectTrace.length, 'all');
+    const rBad = [];
+    refPzfx.tables.forEach((table, i) => {
+      const mine = prism[i];
+      const columns = mine.rowTitles ? ['ROWTITLE', ...mine.columns.map((c) => c.title)] : mine.columns.map((c) => c.title);
+      if (table.title !== mine.title || table.columns.join('|') !== columns.join('|')) rBad.push(`${table.title}: names`);
+      mine.columns.forEach((c) => {
+        const theirs = table.values[c.title];
+        const n = Math.max(...mine.columns.map((x) => x.values.length));
+        for (let r = 0; r < n; r += 1) if (!Object.is(theirs[r] ?? null, c.values[r] ?? null)) rBad.push(`${table.title} ${c.title} row ${r + 1}`);
+      });
+    });
+    check('reports', `R pzfx ${refPzfx.pzfx} reads the Prism project: the same tables, column names and values (exact)`, `${refPzfx.tables.length} tables${rBad.length ? `; differ: ${rBad.slice(0, 3).join(', ')}` : ', all the same'}`, refPzfx.tables.length === prism.length && !rBad.length, 'all the same');
   },
   compensation() {
     const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', {});

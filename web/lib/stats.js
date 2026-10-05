@@ -353,6 +353,16 @@ export function stainIndex(positive, negative) {
   return (quantileSorted(pos, 0.5) - quantileSorted(neg, 0.5)) / (2 * rsdNeg);
 }
 
+// A frequency in percent as plots label gates: 12.3%, 4.56%, 0.789%, 0.0012%.
+export function formatPercent(p) {
+  if (!Number.isFinite(p)) return '—';
+  if (p >= 10) return `${p.toFixed(1)}%`;
+  if (p >= 1) return `${p.toFixed(2)}%`;
+  if (p >= 0.01) return `${p.toFixed(3)}%`;
+  if (p === 0) return '0%';
+  return `${p.toPrecision(2)}%`;
+}
+
 // Formats a statistic for display with sensible precision.
 export function formatStatistic(id, value) {
   if (value === undefined || value === null || Number.isNaN(value)) return '—';

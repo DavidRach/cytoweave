@@ -21,6 +21,7 @@ import { readFigureProvenance } from '../web/lib/figure-provenance.js';
 import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
 import { encodeFCS } from '../web/lib/simulate.js';
 import { BEAD_MEF, BEAD_TRUTH, simulatedBeads } from './calibration-cases.mjs';
+import { readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 8795;
@@ -218,6 +219,50 @@ try {
     }
   }
   check('export_table: the CSV holds statistics_table\'s values', `${table.rows.length} rows; ${tableDiffer} cells differ`, table.rows.length > 5 && tableDiffer === 0, '0 differ');
+
+  // The same statistic as an Excel workbook (full precision) and a Prism project grouped by condition.
+  const xlsxPath = join(figureDir, 'table.xlsx');
+  await tool('export_table', { path: xlsxPath, statistic: 'freqParent' });
+  const book = await readXLSX(new Uint8Array(readFileSync(xlsxPath)));
+  const sheet = book.sheets[0];
+  let bookDiffer = 0;
+  for (const row of table.rows) {
+    const line = sheet.rows.find((r) => r[0] === row.sample);
+    for (const [population, value] of Object.entries(row.values)) {
+      const cell = line?.[sheet.rows[0].indexOf(`${population.split(' / ').at(-1)}: % of parent`)];
+      // statistics_table gives 6 significant digits; the workbook the full value.
+      if (value === null ? (cell ?? null) !== null : +Number(cell).toPrecision(6) !== value) bookDiffer += 1;
+    }
+  }
+  const pzfxPath = join(figureDir, 'table.pzfx');
+  await tool('export_table', { path: pzfxPath, statistic: 'freqParent', groupBy: 'condition' });
+  const prism = readPZFX(readFileSync(pzfxPath, 'utf8'));
+  const conditions = [...new Set(summary.samples.filter((x) => x.role === 'sample').map((x) => x.meta?.condition).filter(Boolean))];
+  check('export_table as .xlsx and .pzfx: the workbook holds statistics_table\'s values in full precision (statistics_table\'s 6 significant digits when rounded), with its provenance sheets; the Prism project has a column table per population with a column per condition', `${bookDiffer} cells differ; sheets ${book.sheets.map((x) => x.name).join(', ')}; Prism: ${prism.length} tables, grouped by ${prism[1]?.columns.map((c) => `${c.title} (${c.values.length})`).join(', ')}`, bookDiffer === 0 && sheet.rows.length === table.rows.length + 1 && book.sheets.some((x) => x.name === 'Samples') && prism.length === 1 + Object.keys(table.rows[0].values).length && prism[1].columns.length === conditions.length, '0 differ; a table per population');
+
+  // The gating-strategy figure repeated for each subject (PDF) and each sample (PowerPoint), every
+  // gate label in the record equal to its population's % of parent.
+  const reportPath = join(figureDir, 'report.pdf');
+  const reported = await tool('export_report', { path: reportPath, by: 'subject' });
+  const pdf = readPDF(new Uint8Array(readFileSync(reportPath)));
+  const reportRecord = JSON.parse(new TextDecoder().decode(pdf.attachments.get('cytoweave-report.json')));
+  const subjects = new Set(summary.samples.filter((x) => x.role === 'sample').map((x) => x.meta?.subject).filter(Boolean));
+  const labelState = await page(`
+    const { population, countOf } = await import('/lib/engine.js');
+    const trace = ${JSON.stringify(reportRecord.trace.filter((t) => t.source === 'plot'))};
+    let differ = 0;
+    for (const t of trace) {
+      const ws = app.store.ws;
+      const view = app.data.view(t.sampleId);
+      const gate = ws.gates.find((g) => g.id === t.gateId);
+      const value = 100 * countOf(population(view, ws, gate.id), view) / countOf(population(view, ws, gate.parentId ?? 'root'), view);
+      if (Math.abs(value - t.value) > 1e-9) differ += 1;
+    }
+    return { differ, n: trace.length };`);
+  const deckPath = join(figureDir, 'report.pptx');
+  const deckResult = await tool('export_report', { path: deckPath, by: 'sample' });
+  const deck = await readPPTX(new Uint8Array(readFileSync(deckPath)));
+  check('export_report: the figure by subject as a PDF (a page per subject, every gate label traced and equal to its population\'s % of parent) and by sample as a PowerPoint deck', `${pdf.pages.length} pages for ${subjects.size} subjects; ${labelState.n} gate labels, ${labelState.differ} differ; deck ${deck.slides.length} slides of ${deck.slides[0]?.pictures.length} pictures (${deckResult.data.pages.length} samples)`, pdf.pages.length === subjects.size && reported.data.pages.length === subjects.size && labelState.n > 0 && labelState.differ === 0 && deck.slides.length === deckResult.data.pages.length && deck.slides.every((x) => x.pictures.length === fig.plots.length && x.pictures.every((p) => p.present)), 'a page per subject; 0 differ; a slide per sample');
 
   // After the QC gate, the FlowJo export says the gates on QC pass (a computed channel) are left out.
   const wspAfter = join(figureDir, 'pbmc-qc.wsp');

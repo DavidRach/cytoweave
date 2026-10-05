@@ -149,3 +149,17 @@ test('formula channels travel with the template, computed from the channels thei
   assert.ok(lacking.report.gates.skipped.some((s) => s.gate === 'High ratio'));
   assert.ok(lacking.report.channels.some((c) => /formula of CD8/.test(c.note ?? '')));
 });
+
+test('a figure\'s statistics item and batch choice travel with the template, on the applied table and columns', () => {
+  const ws = source();
+  const figure = { ...ws.figures[0], batch: { by: 'subject', groupId: 'g1', format: 'pptx' }, items: [...ws.figures[0].items, { id: 'i3', kind: 'stats', x: 0, y: 320, w: 600, h: 80, tableId: 't1', columnIds: ['k2'], rows: 'page', size: 10 }] };
+  const template = buildTemplate({ ...ws, figures: [figure] }, { name: 'T cells' });
+  const kept = template.figures[0].items.find((i) => i.kind === 'stats');
+  assert.deepEqual({ tableIndex: kept.tableIndex, columnIndexes: kept.columnIndexes, tableId: kept.tableId }, { tableIndex: 0, columnIndexes: [1], tableId: undefined });
+  assert.deepEqual(template.figures[0].batch, { by: 'subject', format: 'pptx' }, 'the group is not portable');
+  const { ws: next } = applyTemplate(target([ch('FSC-A', '', 'scatter'), ch('SSC-A', '', 'scatter'), ch('BV605-A', 'CD3'), ch('PE-Cy7-A', 'CD8'), ch('BUV395-A', 'CD4'), ch('APC-A', 'HLA-DR')]), template);
+  const stats = next.figures[0].items.find((i) => i.kind === 'stats');
+  assert.equal(stats.tableId, next.tables[0].id);
+  assert.deepEqual(stats.columnIds, [next.tables[0].columns[1].id]);
+  assert.equal(next.figures[0].batch.by, 'subject');
+});

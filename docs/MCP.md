@@ -47,7 +47,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0, and `compare_distributions`, `rare_events`, `add_formula_channel` and `calibrate_beads` 0.6.0.
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0, and `compare_distributions`, `rare_events`, `add_formula_channel`, `calibrate_beads` and `export_report` 0.6.0 (as do Excel and Prism files from `export_table`).
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the
@@ -123,7 +123,8 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `export_flowjo` | Writes a FlowJo workspace (.wsp, or .zip with the FCS files), optionally de-identified, with the populations not written exactly. |
 | `export_fcs` | Writes de-identified FCS files (.zip) or the workspace with them (.acs). |
 | `export_figure` | Writes a figure as SVG, PNG or PDF, carrying the analysis behind it. |
-| `export_table` | Writes a statistic of populations across samples as CSV or TSV. |
+| `export_report` | Writes a figure repeated page after page as a PDF or a PowerPoint deck: `by` sample (the plots of the figure's main sample redrawn on each; a control's plots on every page) or by an annotation such as `subject` (each plot on that subject's matching sample). Placeholders such as `{subject}` are filled, `table` lists a Tables table's columns for each page's samples, and every number printed is recorded with its source in the file. Returns the pages and notes (a missing tube, replicates). |
+| `export_table` | Writes statistics: a statistic of populations across samples as CSV or TSV; an Excel workbook (a Tables table by `table`, a statistic, or every table) with sheets describing the columns, the samples and their checksums, the gating and the methods; or a Prism project (`.pzfx`), grouped into column tables by an annotation with `groupBy`. |
 | `methods` | A methods paragraph with numbered references. |
 | `export_gating_ml` | The gating strategy as Gating-ML 2.0. |
 

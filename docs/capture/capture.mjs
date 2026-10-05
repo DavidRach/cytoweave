@@ -400,6 +400,28 @@ const scenes = {
     await click('Gating strategy of the selected population');
     await sleep(3000);
   },
+  // A batch report: the T-cell figure with a statistics item, repeated for each subject.
+  async 'batch-report'() {
+    await scenes.figures();
+    await app(`
+      const W = await import('/lib/workspace.js');
+      const ws = app.store.ws;
+      const ids = ['T cells', 'B cells', 'NK cells', 'Monocytes'].map((n) => ws.gates.find((g) => g.name === n)?.id).filter(Boolean);
+      const table = { id: 'docs-table', name: 'Populations', heatmap: true, groupId: null, columns: ids.map((id, k) => ({ id: 'docs-c' + k, gateId: id, stat: 'freqParent' })) };
+      const fig = ws.figures.at(-1);
+      const subtitle = fig.items.filter((i) => i.kind === 'text')[1];
+      const items = fig.items.map((i) => (i === subtitle ? { ...i, text: '{sample} · subject {subject} · {condition}' } : i));
+      items.push({ id: 'docs-stats', kind: 'stats', x: 40, y: fig.height + 10, w: 760, h: 140, tableId: table.id, rows: 'page', size: 13 });
+      const next = { ...fig, height: fig.height + 170, items };
+      let w = W.setCollection(ws, 'tables', [...ws.tables, table], 'edit-table');
+      w = W.setCollection(w, 'figures', ws.figures.map((f) => (f.id === fig.id ? next : f)), 'edit-figure');
+      app.store.commit(w, 'Statistics in the figure', ['tables', 'figures']);
+    `);
+    await sleep(2500);
+    await click('Batch report');
+    await choose('Repeat for', 'subject');
+    await sleep(800);
+  },
   // Spectral panel quality: similarity of the reference spectra and the complexity index.
   async 'spectral-quality'() {
     await scenes.spectral();

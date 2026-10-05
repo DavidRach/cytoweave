@@ -130,7 +130,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R4 | Publication figures (SVG, PNG, PDF) that stay live until export | done |
 | R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | done: SVG, PNG and PDF exports carry the record; opening one reports what changed since and rebuilds it from the same files (validation `figures`) |
 | R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned |
-| R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | planned (wave 6) |
+| R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | done: a figure repeated by sample or by an annotation as PDF or PowerPoint with every number traced to its source; Excel workbooks with provenance sheets and Prism projects; read back by openpyxl, python-pptx, pypdf and R pzfx (validation `reports`) |
 | R8 | Reproducibility certificate that re-runs and confirms every reported number | planned (wave 8) |
 
 ## Interchange
