@@ -564,7 +564,8 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
   small once formula channels exist, is split out of "Curves" to land early.
 - **Collaboration without a cloud:** a self-contained review report covers most sharing (a PI or
   reviewer reading an analysis) before any multi-user work.
-- **Automation for cores:** headless runs of a template on a folder, and the clients published.
+- **Automation for cores:** headless runs of a template on a folder. (Publishing the clients, also
+  planned here, is parked until there is more adoption.)
 
 ### Beside wave 7: core-facility studies and real data
 
@@ -640,8 +641,9 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
    window (a headless browser) and writes its tables, reports and exports, for cores' nightly
    runs, pipelines and CI.
    - Validation: the same files run headless and in the window give identical outputs.
-7. **The clients published (M9):** the R package on r-universe and the Python package on PyPI,
-   released with each version (CRAN later).
+
+Publishing the R and Python clients (M9), first planned as item 7 of this wave, is parked until
+there is more adoption (see the parking lot below).
 
 ### Wave 8: designed, explained, certified
 
@@ -705,6 +707,16 @@ library and signed approvals and drops e-signatures.
    would replace the plugin approach of other tools, which depends on the user's own R or Python
    installation, and brings in the embeddings and batch corrections where OMIQ is ahead (PaCMAP,
    PHATE, cyCombine).
+
+## Parking lot
+
+Decided but deferred, outside the planned waves (and releases) until what they wait for happens.
+
+- **The clients published (M9):** the R package on r-universe (CRAN later) and the Python package
+  on PyPI, released with each version. Parked on 2026-10-06 until CytoWeave has more users: the
+  clients install from the GitHub repository (`remotes::install_github(...,
+  subdir = "clients/r")`, `pip install "git+...#subdirectory=clients/python"`), as `clients/README.md`,
+  the clients' READMEs and the scripting documentation describe, and that is enough for now.
 
 ## Ideas (unscheduled)
 
