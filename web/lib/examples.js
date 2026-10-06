@@ -1020,6 +1020,146 @@ function* generateProliferation(ctx, samples, all) {
   };
 }
 
+// --- 4b. Calcium flux (Indo-1 ratio over time) -------------------------------------------------
+
+// Indo-1 is read on the UV laser in two detectors: violet (379/28, mostly the calcium-bound dye)
+// and blue (515/30, mostly the free dye); their ratio rises with intracellular calcium and does
+// not depend on how much dye a cell took up.
+const CALCIUM_PANEL = [
+  { marker: 'Indo-1 bound', fluor: 'Indo-1 (Ca-bound)', detector: 'BUV395-A', label: 'Indo-1 (Violet)' },
+  { marker: 'Indo-1 free', fluor: 'Indo-1 (free)', detector: 'BUV496-A', label: 'Indo-1 (Blue)' },
+  { marker: 'CD19', fluor: 'FITC', detector: 'FITC-A' },
+  { marker: 'CD3', fluor: 'APC', detector: 'APC-A' },
+  // On the violet laser, where neither CD3 nor Indo-1 reaches (the files are not compensated: the
+  // Indo-1 ratio is taken from raw values).
+  { marker: 'Viability', fluor: 'Aqua', detector: 'BV510-A' },
+];
+
+// Calcium (nM) and the dye: Kd of Indo-1 for calcium, resting calcium (log-normal), dye loading
+// (signal of the fully free or bound dye at its own detector, log-normal).
+const CALCIUM = { kd: 250, rest: [90, 0.2], loading: [24000, 0.35], baseline: 60, pause: 8, after: 172 };
+
+// Each tube: buffer, anti-CD3 at two doses (T cells respond), ionomycin (every cell responds),
+// and the high dose injected without stopping acquisition. A responder's calcium rises after a
+// lag (log-normal) by `amplitude` nM with time constant `rise`, then decays with time constant
+// `decay` to `plateau` of its peak rise.
+export const CALCIUM_STIMULI = {
+  buffer: null,
+  low: { target: 'T', responders: 0.35, amplitude: [320, 0.35], lag: [14, 0.45], rise: 6, decay: 60, plateau: 0.3 },
+  high: { target: 'T', responders: 0.75, amplitude: [700, 0.3], lag: [6, 0.4], rise: 4, decay: 45, plateau: 0.35 },
+  ionomycin: { target: 'all', responders: 0.97, amplitude: [1500, 0.25], lag: [2, 0.4], rise: 3, decay: 400, plateau: 0.85 },
+};
+
+function calciumDesign(scale) {
+  return [
+    { name: 'Buffer.fcs', condition: 'Buffer', stimulus: 'buffer', pause: true },
+    { name: 'aCD3_low.fcs', condition: 'Anti-CD3 0.1 µg/mL', stimulus: 'low', pause: true },
+    { name: 'aCD3_high.fcs', condition: 'Anti-CD3 1 µg/mL', stimulus: 'high', pause: true },
+    { name: 'Ionomycin.fcs', condition: 'Ionomycin 1 µM', stimulus: 'ionomycin', pause: true },
+    { name: 'aCD3_high_injected.fcs', condition: 'Anti-CD3 1 µg/mL, injected', stimulus: 'high', pause: false },
+  ].map((s) => ({ ...s, events: eventsFor(100000, scale, 5000), role: 'sample', subject: 'D01', batch: 'B1' }));
+}
+
+const T_CELL = /( T$|TEMRA|Regulatory T)/;
+
+function* generateCalcium(ctx, samples, all) {
+  ctx.schedule(500, all);
+  const instrument = INSTRUMENTS.fortessa;
+  const panel = buildPanel(instrument, CALCIUM_PANEL);
+  const nDet = panel.detectors.length;
+  const violet = panel.detectors.findIndex((d) => d.name === 'BUV395-A');
+  const blue = panel.detectors.findIndex((d) => d.name === 'BUV496-A');
+  const bound = 2 + panel.markers.indexOf('Indo-1 bound');
+  const free = 2 + panel.markers.indexOf('Indo-1 free');
+  const files = [];
+  for (const [index, sample] of samples.entries()) {
+    ctx.check();
+    ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
+    const { specs, weights } = pbmcComposition(ctx, sample.subject);
+    const populations = compilePopulations(specs, panel.markers);
+    const isT = specs.map((spec) => T_CELL.test(spec.name));
+    const stimulus = CALCIUM_STIMULI[sample.stimulus];
+    const duration = CALCIUM.baseline + CALCIUM.after;
+    const ratio = new Float32Array(sample.events);
+    const responding = new Uint8Array(sample.events);
+    const responder = new Uint8Array(sample.events);
+    const modulate = (e, t, kind, p, amt, normal, random) => {
+      let calcium = CALCIUM.rest[0] * Math.exp(CALCIUM.rest[1] * normal());
+      let loading = CALCIUM.loading[0] * Math.exp(CALCIUM.loading[1] * normal());
+      if (kind === 'dead') {
+        // Dead cells leak dye and flood with calcium.
+        loading *= 0.15;
+        calcium = 1500;
+      } else if (kind === 'live' && stimulus && (stimulus.target === 'all' || isT[p]) && random() < stimulus.responders) {
+        responder[e] = 1;
+        const since = t - CALCIUM.baseline - stimulus.lag[0] * Math.exp(stimulus.lag[1] * normal());
+        if (since > 0) {
+          responding[e] = 1;
+          const rise = stimulus.amplitude[0] * Math.exp(stimulus.amplitude[1] * normal());
+          calcium += rise * (1 - Math.exp(-since / stimulus.rise)) * (stimulus.plateau + (1 - stimulus.plateau) * Math.exp(-since / stimulus.decay));
+        }
+      }
+      if (kind === 'live' || kind === 'dead') {
+        const f = calcium / (calcium + CALCIUM.kd);
+        amt[bound] = loading * f;
+        amt[free] = loading * (1 - f);
+      }
+      // The noise-free ratio, autofluorescence included.
+      let v = 0;
+      let b = 0;
+      for (let k = 0; k < amt.length; k += 1) {
+        v += amt[k] * panel.emitters[k * nDet + violet];
+        b += amt[k] * panel.emitters[k * nDet + blue];
+      }
+      ratio[e] = b > 0 ? v / b : 0;
+    };
+    const rate = sample.events / duration;
+    const sim = simulateEvents({
+      count: sample.events,
+      instrument,
+      panel,
+      populations,
+      weights,
+      mix: { dead: 0.05, debris: 0.05, doublets: 0.03 },
+      viability: 'Viability',
+      rate,
+      pauses: sample.pause ? [{ at: CALCIUM.baseline, duration: CALCIUM.pause }] : [],
+      modulate,
+    }, ctx.random(sample.name), { signal: ctx.signal });
+    files.push(flowFile(ctx, sample, sim, {
+      instrument,
+      panel,
+      date: '2026-03-04',
+      assignments: CALCIUM_PANEL,
+      truth: {
+        calcium: { stimulus: sample.stimulus, stimulusTime: CALCIUM.baseline, resumeTime: sample.pause ? CALCIUM.baseline + CALCIUM.pause : CALCIUM.baseline, parameters: stimulus, kd: CALCIUM.kd },
+        ratio,
+        responder,
+        responding,
+      },
+    }));
+    yield;
+  }
+  const channels = bdChannels(CALCIUM_PANEL);
+  const transforms = channelTransforms(channels, () => LOGICLE_BD, 262144, 65536);
+  const fsc = ['FSC-A', LINEAR_BD];
+  const ssc = ['SSC-A', LINEAR_BD];
+  return {
+    files,
+    workspaceHints: {
+      groups: [{ name: 'Calcium flux', color: '#0ea5e9', files: samples.map((s) => s.name) }],
+      sampleMeta: Object.fromEntries(samples.map((s) => [s.name, sampleMeta(s)])),
+      channelSettings: Object.fromEntries(Object.entries(transforms).map(([k, v]) => [k, { transform: v }])),
+      suggestedGates: [
+        polygonGate('gsim-ca-lymph', 'Lymphocytes', null, fsc, ssc, [[33000, 1000], [92000, 1000], [95000, 34000], [40000, 36000]], '#3b82f6', 'FSC/SSC lymphocyte region.'),
+        rangeGate('gsim-ca-live', 'Live', 'gsim-ca-lymph', ['BV510-A', LOGICLE_BD], null, 2000, '#10b981', 'Viability dye negative.'),
+        rangeGate('gsim-ca-t', 'T cells', 'gsim-ca-live', ['APC-A', LOGICLE_BD], 6000, null, '#ef4444', 'CD3 positive: the cells anti-CD3 stimulates.'),
+        rangeGate('gsim-ca-b', 'B cells', 'gsim-ca-live', ['FITC-A', LOGICLE_BD], 900, null, '#8b5cf6', 'CD19 positive: they respond to ionomycin, not to anti-CD3.'),
+      ],
+    },
+  };
+}
+
 // --- 5. Mass cytometry cohort (Helios-like) -----------------------------------------------------
 
 const CYTOF_CHANNELS = [
@@ -1769,6 +1909,24 @@ const DEFINITIONS = [
       undividedPeak: 'CTV (BV421-A) ≈ 90 000 on day 0 and ≈ 70 000 in undivided cells on day 4; each division halves it.',
     }),
     generate: generateProliferation,
+  },
+  {
+    id: 'calcium-flux',
+    title: 'Calcium flux: Indo-1 ratio over time',
+    description: 'PBMC loaded with the calcium dye Indo-1 and acquired for four minutes on a BD LSRFortessa-like instrument: 60 s of baseline, the tube taken out for 8 s to add the stimulus, then the response. Tubes with buffer, anti-CD3 at a low and a high dose (T cells respond), ionomycin (every cell responds) and the high dose injected without stopping acquisition. Gate live T cells, plot the Indo-1 violet/blue ratio against time and measure the baseline, the peak, the time to peak, the area under the curve and the fraction of responding cells, overlaying the tubes; the simulator knows each cell\'s calcium.',
+    technology: 'conventional',
+    instrument: 'BD LSRFortessa X-20-like with a UV laser, range 2^18',
+    tags: ['calcium flux', 'kinetics', 'Indo-1', 'ratio', 'T cells', 'intermediate'],
+    design: calciumDesign,
+    channels: () => bdChannels(CALCIUM_PANEL),
+    transforms: () => channelTransforms(bdChannels(CALCIUM_PANEL), () => LOGICLE_BD, 262144, 65536),
+    answerKey: () => ({
+      ratio: 'Indo-1 (Violet) / Indo-1 (Blue): BUV395-A / BUV496-A, uncompensated.',
+      stimulus: `Added at ${CALCIUM.baseline} s; acquisition resumes at ${CALCIUM.baseline + CALCIUM.pause} s (the injected tube runs on without a pause).`,
+      truth: 'files[i].meta.truth.ratio (the noise-free ratio of every event), responder (a cell that responds) and responding (responding when measured); calcium.parameters: the stimulus (responders among its target cells, amplitude, lag, rise, decay, plateau).',
+      stimuli: CALCIUM_STIMULI,
+    }),
+    generate: generateCalcium,
   },
   {
     id: 'cytof-cohort',

@@ -7,7 +7,7 @@ import { createTransform } from '../lib/transforms.js';
 import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
 import { densityGateAt, suggestSinglets, valleyThreshold } from '../lib/autogate.js';
-import { ROOT, SAMPLE_ROLES, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
+import { ROOT, SAMPLE_ROLES, channelLabel, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
 import { describeProposal, openProposals, proposalHistory, proposeAnnotations, proposeCompensation, proposeDerived, proposeFigure, proposeGateAdjustments, proposeGateEdit, proposeGateRemoval, proposeGates, proposeRootGate } from '../lib/proposals.js';
 import { spilloverFromControls } from './controls.js';
 import { describe } from '../lib/stats.js';
@@ -790,6 +790,71 @@ export function installRemote(app) {
       return {
         message: `${unmixed ? `Unmixed ${unmixed.result.perSample.size} sample${unmixed.result.perSample.size === 1 ? '' : 's'} (${unmixed.methodLabel}${unmixed.result.params.afMode !== 'none' ? `, autofluorescence ${unmixed.result.params.afMode}` : ''}) into ${unmixed.outputs.length} channels, proposed: they can be gated at once (e.g. ${unmixed.outputs.slice(0, 3).join(', ')}).` : 'No sample needed unmixing.'} Used ${steps.join('; ')}. Panel complexity index ${round(complexity, 3)}.${already.length ? ` Already unmixed by the user (their channels stand): ${already.map((x) => x.name).join(', ')}.` : ''}${unmixed?.skipped.length ? ` Skipped: ${unmixed.skipped.join('; ')}.` : ''}`,
         data: { channels: unmixed?.outputs ?? existing?.outputs ?? [], references: refs, complexityIndex: round(complexity, 4), samples: unmixed?.result.summary.samples.map((x) => ({ sample: x.sample, events: x.events, medianResidual: x.medianResidual })) ?? [], alreadyUnmixed: already.map((x) => x.name), proposal: proposalSummary() },
+      };
+    },
+
+    async kinetics(args) {
+      const { guessMeasure, kineticsOfView } = await import('./kinetics.js');
+      const gateId = resolvePopulation(args.population);
+      const samples = args.samples?.length ? args.samples.map((x) => resolveSample(x)) : ws().samples.filter((x) => x.role === 'sample' || x.role === 'reference');
+      if (!samples.length) throw new ActionError('There are no samples to measure.');
+      if (args.statistic && !['median', 'mean'].includes(args.statistic)) throw new ActionError('statistic is median or mean.');
+      const options = {
+        statistic: args.statistic ?? 'median',
+        binWidth: args.binWidth > 0 ? args.binWidth : undefined,
+        smoothing: args.smoothing ?? 3,
+        stimulus: Number.isFinite(args.stimulus) ? args.stimulus : undefined,
+        responseEnd: Number.isFinite(args.responseEnd) ? args.responseEnd : undefined,
+        threshold: Number.isFinite(args.threshold) ? args.threshold : undefined,
+      };
+      const rows = [];
+      let label = null;
+      for (const sample of samples) {
+        const view = await loadedView(sample);
+        const indices = population(view, ws(), gateId);
+        if (indices === undefined) {
+          rows.push({ sample: sample.name, error: 'the population does not apply' });
+          continue;
+        }
+        let measure;
+        if (args.numerator || args.denominator) measure = { numerator: resolveChannel(view, args.numerator), denominator: resolveChannel(view, args.denominator) };
+        else if (args.channel) measure = { channel: resolveChannel(view, args.channel) };
+        else {
+          const guess = guessMeasure(view);
+          measure = guess.mode === 'ratio' ? { numerator: guess.numerator, denominator: guess.denominator } : { channel: guess.channel };
+        }
+        const name = (channel) => channelLabel(ws(), channel, { short: true });
+        if (measure.numerator) Object.assign(measure, { numeratorLabel: name(measure.numerator), denominatorLabel: name(measure.denominator) });
+        else measure.label = name(measure.channel);
+        try {
+          const { result: r, measure: m } = kineticsOfView(view, indices, measure, options);
+          label ??= m.label;
+          rows.push({
+            sample: sample.name,
+            events: r.events,
+            stimulus: r.stimulus ? { time: round(r.stimulus.time, 5), source: r.stimulus.source, resume: round(r.stimulus.resume, 5) } : null,
+            baseline: round(r.baseline, 4),
+            peak: round(r.peak, 4),
+            timeToPeak: round(r.timeToPeak, 4),
+            halfMaxTime: round(r.halfMaxTime, 4),
+            amplitude: round(r.amplitude, 4),
+            fold: round(r.fold, 3),
+            area: round(r.area, 4),
+            endLevel: round(r.endLevel, 4),
+            respondingPercent: round(r.respondingNet, 3),
+            responded: r.responded ?? false,
+            threshold: round(r.threshold, 4),
+            binWidth: r.binWidth,
+            warnings: r.warnings.length ? r.warnings : undefined,
+          });
+        } catch (error) {
+          rows.push({ sample: sample.name, error: error.message });
+        }
+      }
+      const ok = rows.filter((r) => !r.error);
+      return {
+        message: `Kinetics of ${label ?? 'the signal'} in ${gatePath(ws(), gateId) || 'all events'} for ${ok.length} sample${ok.length === 1 ? '' : 's'}: ${ok.map((r) => (r.stimulus ? `${r.sample} ${r.responded ? `peak ${r.peak} at +${r.timeToPeak} s, ${r.respondingPercent}% responding` : 'no response'}` : `${r.sample} no stimulus found`)).join('; ')}.${rows.length > ok.length ? ` Not measured: ${rows.filter((r) => r.error).map((r) => `${r.sample} (${r.error})`).join(', ')}.` : ''}`,
+        data: { measure: label, population: gatePath(ws(), gateId) || 'All events', statistic: options.statistic, rows },
       };
     },
 

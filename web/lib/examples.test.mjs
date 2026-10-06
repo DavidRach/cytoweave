@@ -64,8 +64,8 @@ function eventRate(times, start, end) {
 
 const ROLES = new Set(['sample', 'unstained', 'single-stain', 'fmo', 'bead', 'reference']);
 
-test('the catalog describes eleven examples as plain data', () => {
-  assert.deepEqual(EXAMPLES.map((e) => e.id), ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']);
+test('the catalog describes twelve examples as plain data', () => {
+  assert.deepEqual(EXAMPLES.map((e) => e.id), ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']);
   for (const entry of EXAMPLES) {
     const sentences = entry.description.match(/[.!?](?=\s+[A-Z]|$)/g) ?? [];
     assert.ok(sentences.length >= 2 && sentences.length <= 4, `${entry.id}: ${sentences.length} sentences`);
@@ -78,7 +78,7 @@ test('the catalog describes eleven examples as plain data', () => {
     assert.ok(entry.answerKey && typeof entry.answerKey === 'object');
   }
   assert.deepEqual(JSON.parse(JSON.stringify(EXAMPLES)), EXAMPLES);
-  assert.equal(listExamples().length, 11);
+  assert.equal(listExamples().length, 12);
   assert.equal(getExample('cell-cycle').samples.length, 2);
   assert.throws(() => getExample('nope'), /no example/);
   assert.throws(() => generateExample('nope'), /no example/);

@@ -6,7 +6,7 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, kinetics, clustering,
 // normalization, debarcode, transforms, flowjo, migration, acquisition, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor, autospectral
@@ -69,6 +69,7 @@ import { divaCase } from './diva-cases.mjs';
 import { chorusGates, importChorus } from '../web/lib/chorus.js';
 import { cytekDetectors, importSpectroFlo, planSpectroFloControls } from '../web/lib/spectroflo.js';
 import { diagnoseControls, diagnoseUnmixing } from '../web/lib/spectral-doctor.js';
+import { analyzeKinetics, eventSeconds, kineticsMeasure } from '../web/lib/kinetics.js';
 import { compareSpectra } from '../web/lib/spectral-library.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
@@ -394,7 +395,7 @@ function deidentifyChecks(suite, label, files) {
 const suites = {
   fcs() {
     const all = [];
-    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
+    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
       const { files } = generateExample(id, { scale: 0.05 });
       all.push(...files);
       let problems = 0;
@@ -1562,6 +1563,60 @@ const suites = {
     }
   },
 
+  // Kinetics (A4) on the calcium-flux example: each tube's live T cells (or B cells), the Indo-1
+  // violet/blue ratio against time. Two truths: the same analysis of every event's noise-free
+  // ratio (so differences are the measurement's), and the simulator's own (when the stimulus was
+  // added, which cells were responding when measured).
+  kinetics() {
+    const { files } = generateExample('calcium-flux', {});
+    const rows = [];
+    const bCells = [];
+    for (const file of files) {
+      const d = load(file);
+      const cols = columnsOf(d);
+      const times = eventSeconds(cols.Time, 0.01);
+      const truth = file.meta.truth;
+      const of = (pattern) => {
+        const wanted = new Set(truth.names.map((n, i) => (pattern.test(n) ? i : -1)).filter((i) => i >= 0));
+        return Uint32Array.from([...truth.labels.keys()].filter((i) => wanted.has(truth.labels[i])));
+      };
+      const tCells = of(/( T$|TEMRA|Regulatory T)/);
+      const { values } = kineticsMeasure(cols, { numerator: 'BUV395-A', denominator: 'BUV496-A' });
+      const started = performance.now();
+      const r = analyzeKinetics(times, values, { indices: tCells, allTimes: times });
+      const ms = performance.now() - started;
+      // The noise-free ratio, the same bins and (with a pause) the same stimulus.
+      const t = analyzeKinetics(times, Float64Array.from(truth.ratio), { indices: tCells, allTimes: times, binWidth: r.binWidth, threshold: r.threshold, ...(r.stimulus?.source === 'pause' ? { stimulus: r.stimulus.time } : {}) });
+      // Cells responding when measured, in the bins around the measured responding maximum.
+      let near = 0;
+      let responding = 0;
+      for (const i of tCells) {
+        if (Math.abs(times[i] - r.respondingTime) <= 1.5 * r.binWidth) {
+          near += 1;
+          if (truth.responding[i]) responding += 1;
+        }
+      }
+      rows.push({ name: file.name, stimulus: truth.calcium, r, t, ms, trueResponding: near ? (100 * responding) / near : 0 });
+      const b = analyzeKinetics(times, values, { indices: of(/ B$/), allTimes: times });
+      bCells.push({ name: file.name, responded: b.responded, net: b.respondingNet });
+    }
+    const paused = rows.filter((x) => x.stimulus.resumeTime > x.stimulus.stimulusTime);
+    const injected = rows.filter((x) => x.stimulus.resumeTime === x.stimulus.stimulusTime);
+    check('kinetics', 'the stimulus where acquisition paused (added at 60 s, resumed at 68 s), in every paused tube', paused.map((x) => `${x.name} ${fmt(x.r.stimulus.time, 3)}→${fmt(x.r.stimulus.resume, 3)}`).join(', '), paused.every((x) => x.r.stimulus.source === 'pause' && Math.abs(x.r.stimulus.time - 60) < 0.1 && Math.abs(x.r.stimulus.resume - 68) < 0.1), 'within 0.1 s');
+    check('kinetics', 'without a pause (injected), the response\'s onset against the noise-free curve\'s onset', injected.map((x) => `${x.name} ${fmt(x.r.stimulus.time, 3)} s (noise-free ${fmt(x.t.stimulus?.time, 3)} s; added at 60 s)`).join(', '), injected.every((x) => x.r.stimulus?.source === 'onset' && Math.abs(x.r.stimulus.time - x.t.stimulus.time) <= x.r.binWidth), 'within one bin');
+    const rel = (a, b) => Math.abs(a - b) / Math.abs(b);
+    check('kinetics', 'baseline (median ratio before the stimulus) against the noise-free ratio', rows.map((x) => `${x.name} ${fmt(x.r.baseline, 4)} (${fmt(x.t.baseline, 4)})`).join(', '), rows.every((x) => rel(x.r.baseline, x.t.baseline) < 0.01), 'within 1%');
+    const responders = rows.filter((x) => x.t.responded);
+    check('kinetics', 'peak, time to peak and half-max time of each response against the noise-free curve', responders.map((x) => `${x.name} peak ${fmt(x.r.peak, 4)} (${fmt(x.t.peak, 4)}), +${fmt(x.r.timeToPeak, 3)} s (${fmt(x.t.timeToPeak, 3)}), half-max +${fmt(x.r.halfMaxTime, 3)} s (${fmt(x.t.halfMaxTime, 3)})`).join('; '), responders.length === 4 && responders.every((x) => rel(x.r.peak, x.t.peak) < 0.03 && Math.abs(x.r.timeToPeak - x.t.timeToPeak) <= x.r.binWidth + 1e-9 && Math.abs(x.r.halfMaxTime - x.t.halfMaxTime) <= x.r.binWidth), 'peak within 3%; times within one bin');
+    check('kinetics', 'area above the baseline (ratio × s) against the noise-free curve', responders.map((x) => `${x.name} ${fmt(x.r.area, 4)} (${fmt(x.t.area, 4)})`).join(', '), responders.every((x) => Math.abs(x.r.area - x.t.area) <= Math.max(0.05 * Math.abs(x.t.area), 1)), 'within 5% (or 1 for a small area)');
+    check('kinetics', 'responding T cells (net % above the baseline\'s 99th percentile) against the share responding when measured; the buffer tube flagged as no response', rows.map((x) => `${x.name} ${fmt(x.r.respondingNet, 3)}% (${fmt(x.trueResponding, 3)}%)${x.r.responded ? '' : ', no response'}`).join(', '), rows.every((x) => (x.stimulus.stimulus === 'buffer' ? !x.r.responded && x.r.respondingNet < 2 : Math.abs(x.r.respondingNet - x.trueResponding) <= 3)), 'within 3 points; buffer: no response');
+    const order = ['Buffer.fcs', 'aCD3_low.fcs', 'aCD3_high.fcs', 'Ionomycin.fcs'].map((n) => rows.find((x) => x.name === n).r.respondingNet);
+    check('kinetics', 'dose: responding T cells rise from buffer to the low and high anti-CD3 doses to ionomycin', order.map((v) => fmt(v, 3)).join(' < '), order.every((v, k) => k === 0 || v > order[k - 1]), 'increasing');
+    const bAntiCD3 = bCells.find((x) => x.name === 'aCD3_high.fcs');
+    const bIono = bCells.find((x) => x.name === 'Ionomycin.fcs');
+    check('kinetics', 'B cells: no response to anti-CD3 (it stimulates T cells), a response to ionomycin', `anti-CD3 ${bAntiCD3.responded ? 'responded' : 'no response'} (${fmt(bAntiCD3.net, 3)}%), ionomycin ${bIono.responded ? 'responded' : 'no response'} (${fmt(bIono.net, 3)}%)`, !bAntiCD3.responded && bIono.responded && bIono.net > 90, 'none; > 90%');
+    check('kinetics', 'time per tube (about 25 000 T cells of 100 000 events)', `${fmt(Math.max(...rows.map((x) => x.ms)), 3)} ms at most`, true, 'reported');
+  },
   proliferation() {
     const { files } = generateExample('proliferation', {});
     const stim = files.find((f) => f.name === 'Day4_aCD3CD28.fcs');

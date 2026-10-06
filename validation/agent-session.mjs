@@ -524,6 +524,13 @@ try {
   }
   await tool('watch_folder', { action: 'stop' });
   check('watch_folder: each file the instrument writes is added and checked', status.files.map((f) => `${f.file} ${f.state} ${f.score ?? ''}`).join('; '), status.files.length === plate.length && status.files.every((f) => f.state === 'checked' && Number.isFinite(f.score)), 'both checked with a score');
+
+  // 4. Kinetics: the calcium-flux example, its Indo-1 ratio found by name, every tube measured.
+  await tool('open_example', { id: 'calcium-flux' }, 'Kinetics agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length === 5 && !document.querySelector('.progress-toast')`);
+  const flux = (await tool('kinetics', {}, 'Kinetics agent')).data;
+  const percent = (name) => flux.rows.find((r) => r.sample === name)?.respondingPercent;
+  check('kinetics: the Indo-1 ratio found by name and every tube measured, the pause found, responding events rising with the stimulus', `${flux.measure}; ${flux.rows.map((r) => `${r.sample} ${r.stimulus?.source ?? 'no stimulus'} ${r.respondingPercent}%`).join(', ')}`, /Indo-1/.test(flux.measure) && flux.rows.length === 5 && flux.rows.filter((r) => r.stimulus?.source === 'pause').length === 4 && percent('Buffer') < percent('aCD3_low') && percent('aCD3_low') < percent('aCD3_high') && percent('aCD3_high') < percent('Ionomycin'), 'Indo-1; 5 tubes, 4 pauses; increasing');
 } catch (error) {
   check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

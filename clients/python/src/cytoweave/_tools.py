@@ -43,14 +43,15 @@ class Tools:
 
         Generate and open a simulated example experiment as a new workspace: pbmc-immunophenotyping,
         flowjo-workspace (four samples and a FlowJo workspace, which opens in the FlowJo import
-        dialog for the user), spectral-25color, cell-cycle, proliferation, cytof-cohort,
-        cytof-barcoded (a pooled, palladium-barcoded plate), index-sort, qc-showcase or bead-qc (30
-        daily runs of multi-level beads for Q, B and Levey–Jennings).
+        dialog for the user), spectral-25color, cell-cycle, proliferation, calcium-flux (Indo-1
+        ratio over time, for kinetics), cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded
+        plate), index-sort, qc-showcase or bead-qc (30 daily runs of multi-level beads for Q, B and
+        Levey–Jennings).
 
         Args:
             id: Required; one of "pbmc-immunophenotyping", "flowjo-workspace", "spectral-25color",
-                "cell-cycle", "proliferation", "cytof-cohort", "cytof-barcoded", "index-sort",
-                "qc-showcase", "bead-qc".
+                "cell-cycle", "proliferation", "calcium-flux", "cytof-cohort", "cytof-barcoded",
+                "index-sort", "qc-showcase", "bead-qc".
 
         Returns:
             A Result: the message and the data CytoWeave answered with.
@@ -566,6 +567,40 @@ class Tools:
             A Result: the message and the data CytoWeave answered with.
         """
         return self.call("unmix", **{"autofluorescence": autofluorescence, "autofluorescenceMode": autofluorescence_mode, "method": method, "recompute": recompute, "samples": samples, "unstainedPopulation": unstained_population})
+
+    def kinetics(self, *, bin_width=None, channel=None, denominator=None, numerator=None, population=None, response_end=None, samples=None, smoothing=None, statistic=None, stimulus=None, threshold=None):
+        """Kinetics: a signal over time.
+
+        A population's signal against acquisition time, as in a calcium flux: the ratio of two
+        channels (Indo-1 violet/blue: numerator and denominator) or one channel (Fluo-4), its median
+        (or mean) per time bin, smoothed, and the response measured against the baseline before the
+        stimulus: baseline, peak, time to peak, half-max time, amplitude, fold, area under the
+        curve, end level and the percentage of responding events (above the baseline's 99th
+        percentile, net of the baseline's share). The stimulus is where acquisition paused (the tube
+        taken out to add it) unless given; without a pause the response's onset is used. Without
+        channels, an Indo-1 pair is looked for by name. Returns one row per sample.
+
+        Args:
+            bin_width: Time bin width in seconds (default automatic). Optional; a number.
+            channel: A single channel instead of a ratio. Optional; a string.
+            denominator: Ratio denominator channel (e.g. Indo-1 blue). Optional; a string.
+            numerator: Ratio numerator channel (e.g. Indo-1 violet). Optional; a string.
+            population: Population (e.g. Lymphocytes/Live/T cells; default all events). Optional; a
+                string.
+            response_end: End of the response window in seconds. Optional; a number.
+            samples: Samples (default: every sample that is not a control). Optional; a list of
+                strings.
+            smoothing: Moving-average window in bins (default 3). Optional; any value.
+            statistic: median (default) or mean. Optional; a string.
+            stimulus: Stimulus time in seconds (default: the pause in acquisition). Optional; a
+                number.
+            threshold: Threshold for responding events (default the baseline's 99th percentile).
+                Optional; a number.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("kinetics", **{"binWidth": bin_width, "channel": channel, "denominator": denominator, "numerator": numerator, "population": population, "responseEnd": response_end, "samples": samples, "smoothing": smoothing, "statistic": statistic, "stimulus": stimulus, "threshold": threshold})
 
     def diagnose_unmixing(self, *, population=None, sample=None):
         """Diagnose a spectral unmixing.

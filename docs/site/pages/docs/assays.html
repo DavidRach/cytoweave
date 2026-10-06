@@ -1,7 +1,7 @@
 ---
-title: Cell cycle, proliferation and index sorting
-description: Fit the cell cycle (Dean–Jett–Fox or Watson) and dye-dilution proliferation models in CytoWeave, with division, proliferation, expansion and replication indices, and read an index-sorted plate well by well.
-lede: Models for DNA content and dye dilution, and the plate view for index sorts. All three work on a population you have gated.
+title: Cell cycle, proliferation, kinetics and index sorting
+description: Fit the cell cycle (Dean–Jett–Fox or Watson) and dye-dilution proliferation models in CytoWeave, with division, proliferation, expansion and replication indices, measure a calcium flux or any signal over time, and read an index-sorted plate well by well.
+lede: Models for DNA content and dye dilution, kinetics for a signal over time, and the plate view for index sorts. All of them work on a population you have gated.
 ---
       <h2 id="cell-cycle">Cell cycle</h2>
       <shot name="cellcycle" alt="The cell-cycle model of a nocodazole-arrested culture: the fitted DNA histogram with G0/G1 25.0%, S 28.5% and G2/M 46.6%, the residuals below, and the G1 and G2 means, CVs, G2/G1 ratio and reduced chi-square">A nocodazole-arrested culture fitted with Dean–Jett–Fox: 46.6% of cycling cells in G2/M.</shot>
@@ -41,6 +41,30 @@ lede: Models for DNA content and dye dilution, and the plate view for index sort
         </table>
       </div>
       <p>On the simulated cultures, the division index is within 3% of the truth. <strong>Run on all samples</strong> fits every sample with the same settings, sharing a fixed undivided peak.</p>
+
+      <h2 id="kinetics">Kinetics and calcium flux</h2>
+      <p>A calcium flux follows a population's calcium over a few minutes of acquisition: a baseline, the stimulus, then the response. The <strong>Calcium flux</strong> example has Indo-1-loaded PBMC with buffer, two doses of anti-CD3 (which stimulates T cells) and ionomycin (which reaches every cell).</p>
+      <ol>
+        <li>Gate the population (for example live T cells), right-click it and choose <strong>Kinetics (signal over time, calcium flux)…</strong>.</li>
+        <li>Choose what to follow: the <strong>ratio of two channels</strong> (for Indo-1, violet over blue: calcium-bound over free, which does not depend on how much dye a cell took up) or <strong>one channel</strong> (Fluo-4, or any parameter). An Indo-1 pair is chosen when the channels' names say so.</li>
+        <li>Events are binned by acquisition time (about 150 bins of at least 50 events, or the width you set), each bin gives the population's <strong>median</strong> (or mean), and a moving average smooths the curve. The events' density is drawn behind it.</li>
+        <li>The <strong>stimulus</strong> is where acquisition paused (the tube taken out to add it). With an injection that does not stop acquisition there is no pause: the response's onset is found instead and times are counted from it, so enter the stimulus time when you know it.</li>
+      </ol>
+      <p>The response is measured against the baseline before the stimulus:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Measure</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Baseline</strong></td><td>The median (or mean) of every event before the stimulus</td></tr>
+            <tr><td><strong>Peak</strong> and <strong>time to peak</strong></td><td>The smoothed curve's maximum after the stimulus, and when it first comes within 3% of it (the start of a plateau, which a sustained response has)</td></tr>
+            <tr><td><strong>Half-max time</strong></td><td>When the curve first reaches the baseline plus half the amplitude</td></tr>
+            <tr><td><strong>Amplitude</strong>, <strong>fold</strong></td><td>The peak above, and over, the baseline</td></tr>
+            <tr><td><strong>Area</strong></td><td>Under the curve above the baseline, from when acquisition resumed to the end of the response window (value × seconds)</td></tr>
+            <tr><td><strong>Responding</strong></td><td>The share of events above a threshold (by default the 99th percentile of the baseline events) at its maximum after the stimulus, net of the baseline's own share above it. Each cell is measured once, so this is the share responding at that moment</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The median moves only when most cells respond: in the example, the low dose makes 38% of T cells respond, yet their median ratio barely rises; the responding share shows it. <strong>Overlay</strong> draws other samples' curves aligned at their own stimulus, and <strong>Run on all samples</strong> measures every tube with the same settings. On the simulated tubes, every response is measured within one time bin and 3% of the noise-free curve, and the responding share within 0.2 points of the cells that were responding when measured.</p>
 
       <h2 id="index-sorting">Index sorting</h2>
       <shot name="indexsort" alt="An index-sorted 96-well plate below two plots: wells colored by the deepest population (CD27+ IgD−, CD27− IgD+, CD19−), well C3 marked, its cell circled on the FSC/SSC and CD27/IgD plots, and its values listed">A 96-well index sort colored by population, with well C3's cell marked on every plot.</shot>

@@ -612,6 +612,12 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
    with baseline, peak, time to peak, area under the curve and the responding fraction, and
    samples overlaid; moved here from wave 5 and split from the curves below.
    - Validation: simulated calcium flux with known parameters.
+   - Done (slice 4): the Kinetics platform (population menu) and agents' `kinetics`, with a
+     calcium-flux example (Indo-1, buffer, two anti-CD3 doses, ionomycin, an injection without a
+     pause). The stimulus is found where acquisition paused; against the noise-free ratios every
+     time is within one bin, and the responding share within 0.2 points of the cells responding
+     when measured. The median barely moves at the low dose (38% respond), which is why the
+     responding share is reported beside it.
 4. **Plates (A5):** wells as samples, plate layouts from CSV or keywords, and heat maps of any
    statistic across the plate.
 5. **Curves (A6):** dose-response (4PL/5PL, EC50/IC50) and Z′ for screens; standard curves and

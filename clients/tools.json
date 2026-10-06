@@ -42,7 +42,7 @@
   {
     "name": "open_example",
     "title": "Open an example experiment",
-    "description": "Generate and open a simulated example experiment as a new workspace: pbmc-immunophenotyping, flowjo-workspace (four samples and a FlowJo workspace, which opens in the FlowJo import dialog for the user), spectral-25color, cell-cycle, proliferation, cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded plate), index-sort, qc-showcase or bead-qc (30 daily runs of multi-level beads for Q, B and Levey–Jennings).",
+    "description": "Generate and open a simulated example experiment as a new workspace: pbmc-immunophenotyping, flowjo-workspace (four samples and a FlowJo workspace, which opens in the FlowJo import dialog for the user), spectral-25color, cell-cycle, proliferation, calcium-flux (Indo-1 ratio over time, for kinetics), cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded plate), index-sort, qc-showcase or bead-qc (30 daily runs of multi-level beads for Q, B and Levey–Jennings).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -53,6 +53,7 @@
             "spectral-25color",
             "cell-cycle",
             "proliferation",
+            "calcium-flux",
             "cytof-cohort",
             "cytof-barcoded",
             "index-sort",
@@ -990,6 +991,68 @@
       "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": false
+    }
+  },
+  {
+    "name": "kinetics",
+    "title": "Kinetics: a signal over time",
+    "description": "A population's signal against acquisition time, as in a calcium flux: the ratio of two channels (Indo-1 violet/blue: numerator and denominator) or one channel (Fluo-4), its median (or mean) per time bin, smoothed, and the response measured against the baseline before the stimulus: baseline, peak, time to peak, half-max time, amplitude, fold, area under the curve, end level and the percentage of responding events (above the baseline's 99th percentile, net of the baseline's share). The stimulus is where acquisition paused (the tube taken out to add it) unless given; without a pause the response's onset is used. Without channels, an Indo-1 pair is looked for by name. Returns one row per sample.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "binWidth": {
+          "description": "Time bin width in seconds (default automatic)",
+          "type": "number"
+        },
+        "channel": {
+          "description": "A single channel instead of a ratio",
+          "type": "string"
+        },
+        "denominator": {
+          "description": "Ratio denominator channel (e.g. Indo-1 blue)",
+          "type": "string"
+        },
+        "numerator": {
+          "description": "Ratio numerator channel (e.g. Indo-1 violet)",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population (e.g. Lymphocytes/Live/T cells; default all events)",
+          "type": "string"
+        },
+        "responseEnd": {
+          "description": "End of the response window in seconds",
+          "type": "number"
+        },
+        "samples": {
+          "description": "Samples (default: every sample that is not a control)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "smoothing": {
+          "description": "Moving-average window in bins (default 3)",
+          "type": "integer"
+        },
+        "statistic": {
+          "description": "median (default) or mean",
+          "type": "string"
+        },
+        "stimulus": {
+          "description": "Stimulus time in seconds (default: the pause in acquisition)",
+          "type": "number"
+        },
+        "threshold": {
+          "description": "Threshold for responding events (default the baseline's 99th percentile)",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
     }
   },
   {

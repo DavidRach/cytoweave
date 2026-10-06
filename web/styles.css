@@ -811,6 +811,7 @@ table.spectral-bars td { min-width: 120px; }
 .spectral-bar { height: 7px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
 .spectral-bar > span { display: block; height: 100%; border-radius: 4px; }
 .spectral-bar-label { font-size: 11px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; }
+.kinetics-overlay { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow: auto; }
 .doctor-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .doctor-finding .spectral-caveats { margin-bottom: 8px; }
 .doctor-fixes { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }

@@ -107,7 +107,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | A1 | Cell cycle: Dean–Jett–Fox and Watson | done |
 | A2 | Proliferation: generation fitting and Roederer's indices | done |
 | A3 | Index sorting: well-to-event links | done: a plate view (96- and 384-well and others) from BD's INDEX SORTING LOCATIONS or well parameters, colored by population or channel, wells marked on the plots, CSV export |
-| A4 | Kinetics and ratiometric (calcium) analysis | planned (wave 7) |
+| A4 | Kinetics and ratiometric (calcium) analysis | done (wave 7): a signal or ratio against time, binned and smoothed, the stimulus found from the pause in acquisition, baseline, peak, time to peak, half-max time, area, end level and responding share, samples overlaid; validated on a simulated calcium flux |
 | A5 | Plates: wells as samples, layouts, heat maps of any statistic | planned (wave 7) |
 | A6 | Dose-response (EC50/IC50) and Z′; bead-based immunoassay standard curves | planned (wave 7) |
 | A7 | Imaging flow cytometry: image galleries (CellView, Amnis), then image features to gate on | planned (wave 10) |

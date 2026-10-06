@@ -30,25 +30,25 @@ function rankChannels(ws, view, pattern) {
   return channels.map((p) => ({ name: p.name, marker: p.marker, score: score(p) })).sort((a, b) => b.score - a.score);
 }
 
-function sampleOptions(ws, gateId) {
+export function sampleOptions(ws, gateId) {
   const gate = gateId && gateId !== ROOT ? gateById(ws, gateId) : null;
   return ws.samples.filter((s) => !gate || gateApplies(ws, gate, s.id));
 }
 
-function populationName(ws, gateId) {
+export function populationName(ws, gateId) {
   return gateId && gateId !== ROOT ? gatePath(ws, gateId) : 'All events';
 }
 
-function fieldRow(label, control, hint) {
+export function fieldRow(label, control, hint) {
   return h('label.field', h('span', label), control, hint ? h('span.muted.fine-print', { style: { fontWeight: 400 } }, hint) : null);
 }
 
-function selectEl(options, value, onChange, label) {
+export function selectEl(options, value, onChange, label) {
   return h('select.input.small', { 'aria-label': label, onchange: (event) => onChange(event.target.value) },
     ...options.map((o) => h('option', { value: o.value, selected: String(o.value) === String(value) }, o.label)));
 }
 
-function tile(k, v, sub, kind = '') {
+export function tile(k, v, sub, kind = '') {
   return h('div.stat-tile', h('div.k', k), h(`div.v${kind ? `.${kind}` : ''}`, v), sub ? h('div.muted', { style: { fontSize: '10.5px' } }, sub) : null);
 }
 
@@ -110,7 +110,7 @@ function legend(items, entries, rect, colors) {
 }
 
 // Runs a computation over every sample the population applies to, with progress and cancel.
-async function runAllSamples(app, gateId, compute, label) {
+export async function runAllSamples(app, gateId, compute, label) {
   const { store, data } = app;
   const samples = sampleOptions(store.ws, gateId).filter((s) => s.role === 'sample' || s.role === 'reference');
   let canceled = false;
@@ -134,7 +134,7 @@ async function runAllSamples(app, gateId, compute, label) {
   return rows;
 }
 
-function saveRecord(app, record, label) {
+export function saveRecord(app, record, label) {
   const { store } = app;
   const existing = store.ws.derived.find((d) => d.id === record.id);
   // Merge per-sample rows with an earlier record of the same model, newest first.

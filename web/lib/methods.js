@@ -232,6 +232,11 @@ export function writeMethods(ws, options = {}) {
   }
   for (const d of ws.derived.filter((r) => r.kind === 'cellcycle')) paragraphs.push(`DNA content histograms were modeled with the ${/watson/i.test(d.method ?? '') ? `Watson pragmatic model ${cite('watson')}` : `Dean–Jett–Fox model ${cite('deanJettFox')}`}.`);
   for (const d of ws.derived.filter((r) => r.kind === 'proliferation')) paragraphs.push(`Proliferation was modeled by fitting generation peaks of dye dilution; division, proliferation and expansion indices follow Roederer ${cite('proliferation')}.`);
+  for (const d of ws.derived.filter((r) => r.kind === 'kinetics')) {
+    const p = d.params ?? {};
+    const measure = p.mode === 'ratio' ? `the ratio of ${p.numerator} to ${p.denominator} (events where either was not positive excluded)` : p.channel ?? 'the signal';
+    paragraphs.push(`Kinetics of ${measure} were measured against acquisition time: the ${p.statistic === 'mean' ? 'mean' : 'median'} per ${p.binWidth ? `${p.binWidth}-s` : 'time'} bin, smoothed by a centered moving average of ${p.smoothing ?? 3} bins, with the baseline taken before the stimulus ${Number.isFinite(p.stimulus) ? `(at ${p.stimulus} s)` : '(where acquisition paused to add it)'}; responding cells were those above ${Number.isFinite(p.threshold) ? `a ratio of ${p.threshold}` : 'the 99th percentile of the baseline events'}, net of the baseline's share above it.`);
+  }
 
   // Computed channels: formulas and bead calibrations.
   const formulas = ws.derived.filter((d) => d.kind === 'formula');

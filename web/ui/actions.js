@@ -201,6 +201,7 @@ export function installActions(app) {
       { section: 'Model this population' },
       { label: 'Cell cycle (DNA content)…', icon: 'dna', disabled: !sampleId, onSelect: () => import('./platforms.js').then((m) => m.openCellCycle(app, gateId, sampleId)) },
       { label: 'Proliferation (dye dilution)…', icon: 'cell', disabled: !sampleId, onSelect: () => import('./platforms.js').then((m) => m.openProliferation(app, gateId, sampleId)) },
+      { label: 'Kinetics (signal over time, calcium flux)…', icon: 'wave', disabled: !sampleId, onSelect: () => import('./kinetics.js').then((m) => m.openKinetics(app, gateId, sampleId)) },
     );
     if (gate) {
       items.push('-', { label: 'Delete gate', icon: 'trash', danger: true, hint: '⌫', onSelect: () => app.deleteGate(gate.id) });

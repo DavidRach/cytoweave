@@ -256,6 +256,10 @@ export const FLUOROCHROMES = {
   'APC-Cy7': { ex: { UV: 0.04, V: 0.02, YG: 0.1, R: 1 }, em: [band(780, 15, 32, 1), band(660, 10, 20, 0.08)], brightness: 0.2 },
   'Zombie NIR': { ex: { YG: 0.05, R: 1 }, em: [band(746, 15, 32, 1, 0.15, 60)], brightness: 0.25 },
   CTV: { ex: { UV: 0.6, V: 1 }, em: [band(450, 15, 30, 1, 0.25, 80)], brightness: 1 },
+  // Indo-1, a ratiometric calcium dye excited by UV: emission peaks near 400 nm bound to calcium
+  // and near 480 nm free; the violet/blue ratio rises with intracellular calcium.
+  'Indo-1 (Ca-bound)': { ex: { UV: 1 }, em: [band(400, 14, 28, 1, 0.12, 60)], brightness: 1 },
+  'Indo-1 (free)': { ex: { UV: 1 }, em: [band(482, 20, 34, 1, 0.12, 70)], brightness: 1 },
   PI: { ex: { UV: 0.2, V: 0.1, B: 0.6, YG: 1 }, em: [band(617, 20, 36, 1, 0.15, 70)], brightness: 1 },
   AF: { ex: { UV: 1, V: 0.7, B: 0.35, YG: 0.08, R: 0.02 }, em: [band(460, 30, 60, 1, 0.3, 120), band(530, 25, 50, 0.6)], brightness: 1 },
   AFM: { ex: { UV: 1, V: 0.9, B: 0.6, YG: 0.15, R: 0.04 }, em: [band(505, 40, 80, 1, 0.35, 140)], brightness: 1 },
@@ -701,7 +705,12 @@ const SPECIAL = ['Dead cells', 'Debris', 'Doublets', 'Junk'];
 //   detectorOffsets: Float64Array, scatterWidth (record -W), keepAbundances, recordState,
 //   laserCV: a coefficient of variation of every laser's intensity from event to event (a
 //   number, or { [laser]: cv }), lognormal and independent between lasers (default none),
-//   detectorGains: { detector: PMT gain relative to its own voltage } (default 1).
+//   detectorGains: { detector: PMT gain relative to its own voltage } (default 1),
+//   pauses: [{ at, duration } in seconds] (no events while the tube is out, e.g. to add a
+//   stimulus), modulate(event, time, kind ('live' | 'dead' | 'doublet' | 'debris' | 'junk'),
+//   population (index, or −1), amounts (emitter amounts: AF, AFM, then the markers; changed in
+//   place), normal, random) (a cell state that changes during acquisition, as calcium in a flux
+//   assay).
 export function simulateEvents(config, random, options = {}) {
   const { count, instrument, panel, populations } = config;
   const nPop = populations.length;
@@ -785,6 +794,10 @@ export function simulateEvents(config, random, options = {}) {
   const nominal = count / rate;
   const windows = resolveWindows(config.anomalies, nominal);
   const times = acquisitionTimes(count, rate, windows, random);
+  // Pauses in acquisition (the tube taken out to add a stimulus): no events for their duration.
+  for (const pause of [...(config.pauses ?? [])].sort((a, b) => a.at - b.at)) {
+    for (let e = 0; e < count; e += 1) if (times[e] >= pause.at) times[e] += pause.duration;
+  }
   const duration = count ? times[count - 1] : 0;
   const drift = config.drift ?? null;
 
@@ -933,6 +946,10 @@ export function simulateEvents(config, random, options = {}) {
       for (let m = 0; m < nMarkers; m += 1) amt[2 + m] = (bgMedian[m] + 50) * Math.exp(1.2 * g());
       labels[e] = specialBase + 3;
     }
+
+    // A cell's state that changes while the tube is acquired (calcium in a flux assay): the
+    // emitter amounts of the event, set from its time.
+    if (config.modulate) config.modulate(e, t, kind < nPop ? 'live' : kind === DEAD ? 'dead' : kind === DOUBLET ? 'doublet' : kind === DEBRIS ? 'debris' : 'junk', kind < nPop ? kind : -1, amt, g, random);
 
     if (abundances) for (let k = 0; k < nEmit; k += 1) abundances[k][e] = amt[k] * abundanceScale[k];
 
