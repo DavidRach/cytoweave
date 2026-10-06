@@ -47,6 +47,7 @@ const MODES = [
   'sep',
   { id: 'explore', label: 'Explore', icon: 'explore', load: () => import('./ui/mode-explore.js').then((m) => m.mountExploreMode) },
   { id: 'tables', label: 'Tables', icon: 'table', load: () => import('./ui/mode-tables.js').then((m) => m.mountTablesMode) },
+  { id: 'plates', label: 'Plates', icon: 'plate', load: () => import('./ui/mode-plates.js').then((m) => m.mountPlatesMode) },
   { id: 'compare', label: 'Compare', icon: 'compare', load: () => import('./ui/mode-compare.js').then((m) => m.mountCompareMode) },
   'sep',
   { id: 'figures', label: 'Figures', icon: 'figure', load: () => import('./ui/mode-figures.js').then((m) => m.mountFiguresMode) },
@@ -185,7 +186,7 @@ async function start() {
 
   app.selectGate = (id, options = {}) => {
     store.setUI({ gateId: id ?? null }, ['gate', 'lineage']);
-    if (!options.keepMode && store.ui.mode !== 'gate' && store.ui.mode !== 'tables' && store.ui.mode !== 'compare' && store.ui.mode !== 'explore') app.setMode('gate');
+    if (!options.keepMode && store.ui.mode !== 'gate' && store.ui.mode !== 'tables' && store.ui.mode !== 'plates' && store.ui.mode !== 'compare' && store.ui.mode !== 'explore') app.setMode('gate');
   };
 
   app.openPopulation = (id) => app.selectGate(id);
@@ -460,6 +461,26 @@ async function start() {
   // A CSV whose first column names samples and whose other columns are metadata fields.
   async function importMetadataTable(item) {
     const text = new TextDecoder().decode(await readBytes(item));
+    // A plate layout (a "well" column, or plate maps) annotates the samples by their wells.
+    const { parseLayout } = await import('./lib/plates.js');
+    let layout = null;
+    try {
+      layout = parseLayout(text);
+    } catch {
+      layout = null;
+    }
+    // Tables keyed by sample name (in the first column) stay sample annotations even with a well column.
+    const firstColumn = text.split(/\r?\n/).slice(1).map((line) => line.split(/[,;\t]/)[0]?.trim().replace(/^"|"$/g, '')).filter(Boolean);
+    const byName = firstColumn.some((key) => store.ws.samples.some((s) => s.name === key || s.fileName === key || s.fileName === `${key}.fcs`));
+    if (layout?.entries.length && (layout.format === 'map' || !byName)) {
+      const { applyLayoutText } = await import('./ui/mode-plates.js');
+      try {
+        applyLayoutText(app, text, item.name);
+      } catch (error) {
+        toast(error.message, { kind: 'error' });
+      }
+      return;
+    }
     const delimiter = item.name.toLowerCase().endsWith('.tsv') || text.split('\n')[0].includes('\t') ? '\t' : ',';
     const rows = text.split(/\r?\n/).filter((line) => line.trim()).map((line) => line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, '')));
     if (rows.length < 2) return;
@@ -757,6 +778,8 @@ async function start() {
     { label: 'New formula channel', icon: 'plus', run: () => app.formulaDialog(), keywords: 'formula ratio derived parameter channel calculate' },
     { label: 'Computed channels', icon: 'layers', run: () => app.computedChannelsDialog(), keywords: 'formula calibration mef derived parameters' },
     { label: 'Calibrate fluorescence with beads', icon: 'gauge', run: () => app.openCalibration(), keywords: 'mef mefl erf calibration beads rainbow units' },
+    { label: 'Dose-response curves of a plate', icon: 'wave', run: () => import('./ui/dose-response.js').then((m) => m.openDoseResponse(app, {})), keywords: 'ec50 ic50 4pl 5pl hill curve plate screen inhibition' },
+    { label: 'Bead immunoassay (LEGENDplex, CBA)', icon: 'flask', run: () => import('./ui/bead-assay.js').then((m) => m.openBeadAssay(app, {})), keywords: 'legendplex cba cytokine standard curve concentration plate beads multiplex' },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
     { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },

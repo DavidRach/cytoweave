@@ -11,7 +11,7 @@ lede: CytoWeave reimplements published methods. This page shows how its results 
         <table>
           <thead><tr><th>Area</th><th>Checked against</th><th>Result</th></tr></thead>
           <tbody>
-            <tr><td><strong>FCS</strong></td><td>All 138 example files</td><td>Parsed without warnings; written and read back bit-exact</td></tr>
+            <tr><td><strong>FCS</strong></td><td>All 290 example files</td><td>Parsed without warnings; written and read back bit-exact</td></tr>
             <tr><td><strong>FCS fuzzing</strong></td><td>20,000 mutations of files in every layout (offsets, keywords, delimiters, flipped bytes, truncation)</td><td>Every file read consistently or refused with a message; no crash, hang or outsized allocation</td></tr>
             <tr><td><strong>Compensation</strong></td><td>The true spillover of the PBMC example</td><td>Matrices within 0.02 of the truth; the planted error found first, corrected to 0.158 (true 0.157)</td></tr>
             <tr><td><strong>Gating</strong></td><td>True cell types</td><td>Precision 91–100%, recall 96–100%</td></tr>
@@ -21,6 +21,8 @@ lede: CytoWeave reimplements published methods. This page shows how its results 
             <tr><td><strong>Cell cycle</strong></td><td>True phase fractions</td><td>Dean–Jett–Fox within 1.6 points, Watson within 2</td></tr>
             <tr><td><strong>Proliferation</strong></td><td>True precursor frequencies</td><td>Division index within 3%</td></tr>
             <tr><td><strong>Kinetics</strong></td><td>Every cell's calcium in a simulated flux (five tubes)</td><td>Peak and times within one bin and 3% of the noise-free curve; responding share within 0.2 points</td></tr>
+            <tr><td><strong>Plates and dose-response</strong></td><td>A simulated 96-well screen with known IC50s; R's drc 4.0 on 8 synthetic curves and the screen</td><td>Every well placed from keywords and from names; Z′ equal to the true shares'; each simulated IC50 inside its 95% CI; residual sums never above drc's, drc from CytoWeave's estimate within 1e-8, standard errors within 1e-5 of the exact Hessian</td></tr>
+            <tr><td><strong>Bead immunoassays</strong></td><td>A simulated LEGENDplex-like 8-plex with known concentrations; beadplexr 0.5 and drc on its curves; beadplexr's own LEGENDplex data (13-plex, 18 files)</td><td>99.6% of beads assigned to their analyte; sera in range within 20% for 97% (median 1.8%); concentrations equal to drc's within 1e-8; bead identification identical to beadplexr's on 17 files, the 18th where its clustering merged two analytes</td></tr>
             <tr><td><strong>Debarcoding</strong></td><td>True wells of a 20-sample barcoded plate</td><td>100% of assigned cells in their true well; 98.7% of cells assigned</td></tr>
             <tr><td><strong>Clustering</strong></td><td>23 true populations</td><td>FlowSOM adjusted Rand index 0.91</td></tr>
             <tr><td><strong>Normalization</strong></td><td>Same-donor anchors in two batches</td><td>Batch distance reduced 25×</td></tr>

@@ -6,13 +6,13 @@
 cw_open_example(id, cw = cw_default())
 }
 \arguments{
-\item{id}{Required; one of "pbmc-immunophenotyping", "flowjo-workspace", "spectral-25color", "cell-cycle", "proliferation", "calcium-flux", "cytof-cohort", "cytof-barcoded", "index-sort", "qc-showcase", "bead-qc".}
+\item{id}{Required; one of "pbmc-immunophenotyping", "flowjo-workspace", "spectral-25color", "cell-cycle", "proliferation", "calcium-flux", "plate-screen", "bead-immunoassay", "cytof-cohort", "cytof-barcoded", "index-sort", "qc-showcase", "bead-qc".}
 \item{cw}{A connection from \code{\link{cw_connect}} (default: the last one made).}
 }
 \value{
 A \code{cytoweave_result}: the \code{message} and the \code{data} CytoWeave answered with.
 }
 \description{
-Generate and open a simulated example experiment as a new workspace: pbmc-immunophenotyping, flowjo-workspace (four samples and a FlowJo workspace, which opens in the FlowJo import dialog for the user), spectral-25color, cell-cycle, proliferation, calcium-flux (Indo-1 ratio over time, for kinetics), cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded plate), index-sort, qc-showcase or bead-qc (30 daily runs of multi-level beads for Q, B and Levey–Jennings).
+Generate and open a simulated example experiment as a new workspace: pbmc-immunophenotyping, flowjo-workspace (four samples and a FlowJo workspace, which opens in the FlowJo import dialog for the user), spectral-25color, cell-cycle, proliferation, calcium-flux (Indo-1 ratio over time, for kinetics), plate-screen (a 96-well drug screen, one file per well, for plates and dose-response), bead-immunoassay (a LEGENDplex-like cytokine bead assay with standards, for bead_assay), cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded plate), index-sort, qc-showcase or bead-qc (30 daily runs of multi-level beads for Q, B and Levey–Jennings).
 }
 \seealso{\code{\link{cw_call}}, which sends any action by its name (here \code{"open_example"}).}

@@ -40,6 +40,10 @@ export const REFERENCES = {
   stainIndex: { text: 'Maecker HT, Frey T, Nomura LE, Trotter J. Selecting fluorochrome conjugates for maximum sensitivity. Cytometry A. 2004;62(2):169–173.', doi: '10.1002/cyto.a.20092' },
   separationIndex: { text: 'Bigos M. Separation index: an easy-to-use metric for evaluation of different configurations on the same flow cytometer. Curr Protoc Cytom. 2007;Chapter 1:Unit 1.21.', doi: '10.1002/0471142956.cy0121s40' },
   titration: { text: 'Bonilla DL, Paul A, Gil-Pulido J, Park LM, Jaimes MC. The power of reagent titration in flow cytometry. Cells. 2024;13(20):1677.', doi: '10.3390/cells13201677' },
+  drc: { text: 'Ritz C, Baty F, Streibig JC, Gerhard D. Dose-response analysis using R. PLoS One. 2015;10(12):e0146021.', doi: '10.1371/journal.pone.0146021' },
+  zPrime: { text: 'Zhang JH, Chung TDY, Oldenburg KR. A simple statistical parameter for use in evaluation and validation of high throughput screening assays. J Biomol Screen. 1999;4(2):67–73.', doi: '10.1177/108705719900400206' },
+  fivePL: { text: 'Gottschalk PG, Dunn JR. The five-parameter logistic: a characterization and comparison with the four-parameter logistic. Anal Biochem. 2005;343(1):54–65.', doi: '10.1016/j.ab.2005.04.035' },
+  bmv: { text: 'U.S. Food and Drug Administration. Bioanalytical Method Validation: Guidance for Industry. 2018.', doi: null },
   voltageSetup: { text: 'Meinelt E, Reunanen M, Edinger M, et al. Standardizing application setup across multiple flow cytometers using BD FACSDiva version 6 software. BD Biosciences technical bulletin; 2012.', doi: null },
   overton: { text: 'Overton WR. Modified histogram subtraction technique for analysis of flow cytometry data. Cytometry. 1988;9(6):619–626.', doi: '10.1002/cyto.990090617' },
   bagwell: { text: 'Bagwell CB. A journey through flow cytometric immunofluorescence analyses: finding accurate and robust algorithms that estimate positive fraction distributions. Clin Immunol Newsl. 1996;16(3).', doi: null },
@@ -232,6 +236,19 @@ export function writeMethods(ws, options = {}) {
   }
   for (const d of ws.derived.filter((r) => r.kind === 'cellcycle')) paragraphs.push(`DNA content histograms were modeled with the ${/watson/i.test(d.method ?? '') ? `Watson pragmatic model ${cite('watson')}` : `Dean–Jett–Fox model ${cite('deanJettFox')}`}.`);
   for (const d of ws.derived.filter((r) => r.kind === 'proliferation')) paragraphs.push(`Proliferation was modeled by fitting generation peaks of dye dilution; division, proliferation and expansion indices follow Roederer ${cite('proliferation')}.`);
+  for (const d of ws.derived.filter((r) => r.kind === 'dose-response')) {
+    const p = d.params ?? {};
+    const weights = p.weighting && p.weighting !== 'none' ? `, weighted ${p.weighting === '1/y2' ? '1/Y²' : '1/Y'}` : '';
+    const response = p.normalize === 'inhibition' ? ' expressed as % inhibition relative to the plate\'s positive and negative control wells' : p.normalize === 'controls' ? ' expressed as % of the plate\'s controls (negative 0%, positive 100%)' : '';
+    const fixed = p.fixed && Object.keys(p.fixed).length ? ', with the asymptotes fixed at 0% and 100%' : '';
+    const z = Number.isFinite(d.summary?.zPrime) ? ` The plate's Z′ ${cite('zPrime')} from its control wells was ${d.summary.zPrime.toFixed(2)}.` : '';
+    paragraphs.push(`Dose-response curves (${d.name.replace(/^Dose-response · /, '')}) were fitted per ${p.groupField ?? 'group'} by least squares to a ${p.model === 'LL.5' ? 'five' : 'four'}-parameter log-logistic model in the parameterization of the R package drc ${cite('drc')}${weights}${fixed}, the response${response}; EC50 values are reported with 95% confidence intervals from the delta method on the log scale, and curves no better than a flat line (F test, p ≥ 0.05) as showing no dose-response.${z}`);
+  }
+  for (const d of ws.derived.filter((r) => r.kind === 'bead-assay')) {
+    const p = d.params ?? {};
+    const n = d.summary?.analytes?.length ?? 0;
+    paragraphs.push(`A bead-based immunoassay of ${n} analyte${n === 1 ? '' : 's'} was analyzed per well: capture beads were identified by bead group and level of their classification dye (${p.classification}), found once from all wells, and each analyte's reporter (${p.reporter}) ${p.statistic === 'geometric' ? 'geometric mean' : p.statistic ?? 'median'} fluorescence intensity was read off ${p.model === 'LL.4' ? 'a four' : `a five ${cite('fivePL')}`}-parameter log-logistic standard curve${p.weighting && p.weighting !== 'none' ? ` (weighted ${p.weighting === '1/y2' ? '1/Y²' : '1/Y'})` : ''} fitted to the standards (top standard ${p.top} ${p.unit ?? ''}, ${p.factor}-fold steps) and multiplied by each sample's dilution. The quantifiable range was set by the standards that back-calculated within 20% of their concentration with a CV of at most 20% (25% at its ends) ${cite('bmv')}, and the limit of detection at the blanks' mean + 3 SD.`);
+  }
   for (const d of ws.derived.filter((r) => r.kind === 'kinetics')) {
     const p = d.params ?? {};
     const measure = p.mode === 'ratio' ? `the ratio of ${p.numerator} to ${p.denominator} (events where either was not positive excluded)` : p.channel ?? 'the signal';

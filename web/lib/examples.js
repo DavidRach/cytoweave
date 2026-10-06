@@ -19,6 +19,7 @@ import {
   buildPanel,
   getDetector,
   compilePopulations,
+  createNormal,
   createRandom,
   deriveSeed,
   encodeFCS,
@@ -289,6 +290,8 @@ function sampleMeta(sample) {
   for (const key of ['condition', 'subject', 'batch', 'role', 'stain', 'marker', 'carrier', 'timepoint', 'well', 'anomaly']) {
     if (sample[key] !== undefined && sample[key] !== null) meta[key] = sample[key];
   }
+  // Plate layouts: what each well holds (compound, dose, control, standard, …).
+  if (sample.annotations) Object.assign(meta, sample.annotations);
   return meta;
 }
 
@@ -1160,6 +1163,294 @@ function* generateCalcium(ctx, samples, all) {
   };
 }
 
+// --- Plates: a T-cell activation screen and a cytokine bead assay --------------------------------
+
+// The screen: PBMC stimulated with anti-CD3/CD28 in the presence of six compounds, ten 3-fold
+// doses each, one file per well of a 96-well plate. Activated T cells express CD69.
+const SCREEN_PANEL = [
+  { marker: 'CD69', fluor: 'PE', detector: 'PE-A' },
+  { marker: 'CD3', fluor: 'APC', detector: 'APC-A' },
+  { marker: 'Viability', fluor: 'Aqua', detector: 'BV510-A' },
+];
+
+// Activated share of live T cells in stimulated (vehicle) and unstimulated wells; each well's share
+// varies by a log-normal factor (wellCV); CD69 of resting and activated T cells (log-normal).
+const SCREEN = { stimulated: 0.62, unstimulated: 0.04, wellCV: 0.05, resting: [250, 0.5], activated: [9000, 0.4], plate: 'Screen plate 1', plateId: 'SCR-0001' };
+
+// Each compound inhibits activation: share = stimulated − inhibition × (stimulated − unstimulated)
+// × dose^h / (ic50^h + dose^h), with inhibition 1 for a full inhibitor.
+export const SCREEN_COMPOUNDS = [
+  { name: 'CW-101', ic50: 30, hill: 1.0, inhibition: 1 },
+  { name: 'CW-102', ic50: 350, hill: 1.6, inhibition: 1 },
+  { name: 'CW-103', ic50: 4, hill: 0.8, inhibition: 1 },
+  { name: 'CW-104', ic50: 120, hill: 1.2, inhibition: 0.55 },
+  { name: 'CW-105', ic50: null, hill: null, inhibition: 0 },
+  { name: 'CW-106', ic50: 25000, hill: 1.1, inhibition: 1 },
+];
+
+// Doses (nM) of columns 1–10: 10 µM down in 3-fold steps.
+export const SCREEN_DOSES = Array.from({ length: 10 }, (_, k) => +(10000 / 3 ** k).toPrecision(4));
+
+// The expected activated share of a compound at a dose (before the well's own variation).
+export function screenShare(compound, dose) {
+  const span = SCREEN.stimulated - SCREEN.unstimulated;
+  if (!compound || !compound.inhibition || !(dose > 0)) return SCREEN.stimulated;
+  const occupied = dose ** compound.hill / (compound.ic50 ** compound.hill + dose ** compound.hill);
+  return SCREEN.stimulated - compound.inhibition * span * occupied;
+}
+
+// The compound's curve in drc's LL.4 terms, on the % CD69+ of T cells.
+export function screenTruth(compound) {
+  if (!compound.inhibition) return null;
+  return { b: compound.hill, c: 100 * (SCREEN.stimulated - compound.inhibition * (SCREEN.stimulated - SCREEN.unstimulated)), d: 100 * SCREEN.stimulated, e: compound.ic50, f: 1 };
+}
+
+const ROWS = 'ABCDEFGH';
+
+function screenDesign(scale) {
+  const wells = [];
+  for (let r = 0; r < 8; r += 1) {
+    for (let c = 0; c < 12; c += 1) {
+      const well = `${ROWS[r]}${String(c + 1).padStart(2, '0')}`;
+      const annotations = {};
+      let state;
+      if (r < 6 && c < 10) {
+        state = { compound: SCREEN_COMPOUNDS[r].name, dose: SCREEN_DOSES[c] };
+        annotations.compound = SCREEN_COMPOUNDS[r].name;
+        annotations.dose = `${SCREEN_DOSES[c]} nM`;
+      } else if ((r < 6 && c === 10) || r === 6) {
+        state = { control: 'positive' };
+        annotations.control = 'positive';
+        annotations.compound = 'DMSO';
+      } else {
+        state = { control: 'negative' };
+        annotations.control = 'negative';
+        annotations.compound = 'Unstimulated';
+      }
+      wells.push({ name: `Plate1_${well}.fcs`, well, row: r, column: c, ...state, annotations, events: eventsFor(6000, scale, 1000), role: 'sample', subject: 'D01', batch: 'B1' });
+    }
+  }
+  return wells;
+}
+
+function* generateScreen(ctx, samples, all) {
+  ctx.schedule(1500, all);
+  const instrument = INSTRUMENTS.fortessa;
+  const panel = buildPanel(instrument, SCREEN_PANEL);
+  const cd69 = 2 + panel.markers.indexOf('CD69');
+  const files = [];
+  for (const [index, sample] of samples.entries()) {
+    ctx.check();
+    ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
+    const random = ctx.random(sample.name);
+    const { specs, weights } = pbmcComposition(ctx, sample.subject);
+    const populations = compilePopulations(specs, panel.markers);
+    const isT = specs.map((spec) => T_CELL.test(spec.name));
+    const compound = SCREEN_COMPOUNDS.find((c) => c.name === sample.compound);
+    const expected = sample.control === 'negative' ? SCREEN.unstimulated : sample.control === 'positive' ? SCREEN.stimulated : screenShare(compound, sample.dose);
+    // The well's own share: a log-normal factor on the activated share.
+    const g = createNormal(ctx.random(sample.name, 'well'));
+    const share = Math.min(1, expected * Math.exp(SCREEN.wellCV * g() - SCREEN.wellCV ** 2 / 2));
+    const activated = new Uint8Array(sample.events);
+    let tCells = 0;
+    let tActivated = 0;
+    const modulate = (e, t, kind, p, amt, normal, rand) => {
+      if (kind !== 'live' || !isT[p]) return;
+      tCells += 1;
+      if (rand() < share) {
+        activated[e] = 1;
+        tActivated += 1;
+        amt[cd69] = SCREEN.activated[0] * Math.exp(SCREEN.activated[1] * normal());
+      } else {
+        amt[cd69] = SCREEN.resting[0] * Math.exp(SCREEN.resting[1] * normal());
+      }
+    };
+    const sim = simulateEvents({
+      count: sample.events,
+      instrument,
+      panel,
+      populations,
+      weights,
+      mix: { dead: 0.06, debris: 0.05, doublets: 0.03 },
+      viability: 'Viability',
+      rate: 1500,
+      modulate,
+    }, random, { signal: ctx.signal });
+    files.push(flowFile(ctx, sample, sim, {
+      instrument,
+      panel,
+      date: '2026-05-12',
+      assignments: SCREEN_PANEL,
+      keywords: { $PLATEID: SCREEN.plateId, $PLATENAME: SCREEN.plate, $WELLID: sample.well },
+      truth: {
+        activated,
+        screen: { compound: sample.compound ?? null, dose: sample.dose ?? null, control: sample.control ?? null, expectedShare: expected, wellShare: share, tCells, tActivated, percent: tCells ? (100 * tActivated) / tCells : null },
+      },
+    }));
+    yield;
+  }
+  const channels = bdChannels(SCREEN_PANEL);
+  const transforms = channelTransforms(channels, () => LOGICLE_BD, 262144, 65536);
+  const fsc = ['FSC-A', LINEAR_BD];
+  const ssc = ['SSC-A', LINEAR_BD];
+  return {
+    files,
+    workspaceHints: {
+      groups: [{ name: 'Screen plate 1', color: '#0ea5e9', files: samples.map((s) => s.name) }],
+      sampleMeta: Object.fromEntries(samples.map((s) => [s.name, sampleMeta(s)])),
+      channelSettings: Object.fromEntries(Object.entries(transforms).map(([k, v]) => [k, { transform: v }])),
+      suggestedGates: [
+        polygonGate('gsim-scr-lymph', 'Lymphocytes', null, fsc, ssc, [[33000, 1000], [92000, 1000], [95000, 34000], [40000, 36000]], '#3b82f6', 'FSC/SSC lymphocyte region.'),
+        rangeGate('gsim-scr-live', 'Live', 'gsim-scr-lymph', ['BV510-A', LOGICLE_BD], null, 2000, '#10b981', 'Viability dye negative.'),
+        rangeGate('gsim-scr-t', 'T cells', 'gsim-scr-live', ['APC-A', LOGICLE_BD], 6000, null, '#ef4444', 'CD3 positive.'),
+        rangeGate('gsim-scr-cd69', 'CD69+', 'gsim-scr-t', ['PE-A', LOGICLE_BD], 1500, null, '#f59e0b', 'Activated: CD69 positive.'),
+      ],
+    },
+  };
+}
+
+// The bead assay: a LEGENDplex-like 8-plex of cytokines. Capture beads of two sizes (A smaller, B
+// larger), four analytes each at their own APC level, and a PE reporter whose intensity follows
+// each analyte's concentration on a five-parameter logistic curve. Standards C7 (10 000 pg/mL) to
+// C1 in 4-fold steps and C0 (assay buffer) in duplicate in columns 1–2, and 20 sera, diluted 2-fold,
+// in duplicate in columns 3–7.
+const BEAD_ASSAY_PANEL = [
+  { marker: 'Reporter', fluor: 'PE', detector: 'PE-A', label: 'PE (reporter)' },
+  { marker: 'Classifier', fluor: 'APC', detector: 'APC-A', label: 'APC (bead ID)' },
+];
+
+// Per analyte: bead group and APC signal of its bead; reporter MFI (PE-A signal) against pg/mL as
+// bottom + (top − bottom) / (1 + (ec/x)^hill)^asym (drc LL.5 with b = −hill, c = bottom, d = top,
+// e = ec, f = asym); a population's serum level (log-normal, pg/mL), and the share of sera with the
+// analyte raised tenfold.
+export const BEAD_ANALYTES = [
+  { name: 'IL-2', group: 'A', apc: 900, bottom: 45, top: 52000, ec: 6000, hill: 1.05, asym: 0.8, serum: [15, 1.2], raised: 0.2 },
+  { name: 'IL-4', group: 'A', apc: 3200, bottom: 38, top: 47000, ec: 4500, hill: 0.95, asym: 1.0, serum: [8, 1.0], raised: 0.1 },
+  { name: 'IL-6', group: 'A', apc: 11000, bottom: 52, top: 60000, ec: 8000, hill: 1.1, asym: 0.7, serum: [40, 1.3], raised: 0.3 },
+  { name: 'IL-10', group: 'A', apc: 38000, bottom: 41, top: 44000, ec: 5200, hill: 1.0, asym: 1.2, serum: [12, 1.1], raised: 0.2 },
+  { name: 'IL-17A', group: 'B', apc: 1100, bottom: 35, top: 50000, ec: 7000, hill: 0.9, asym: 0.9, serum: [6, 1.0], raised: 0.15 },
+  { name: 'IFN-γ', group: 'B', apc: 3800, bottom: 48, top: 56000, ec: 5500, hill: 1.15, asym: 0.75, serum: [25, 1.3], raised: 0.25 },
+  { name: 'TNF-α', group: 'B', apc: 13000, bottom: 44, top: 48000, ec: 6500, hill: 1.0, asym: 1.1, serum: [20, 1.1], raised: 0.25 },
+  { name: 'IL-1β', group: 'B', apc: 42000, bottom: 39, top: 46000, ec: 4800, hill: 1.05, asym: 0.85, serum: [5, 1.2], raised: 0.1 },
+];
+
+export const BEAD_STANDARDS = { top: 10000, factor: 4, levels: 7, unit: 'pg/mL', dilution: 2 };
+
+const BEAD_SIZES = { A: { fsc: [38000, 0.035], ssc: [6500, 0.05] }, B: { fsc: [62000, 0.035], ssc: [16000, 0.05] } };
+
+// The reporter signal of a bead of `analyte` at concentration x (pg/mL), before photon noise.
+export function beadSignal(analyte, x) {
+  if (!(x > 0)) return analyte.bottom;
+  return analyte.bottom + (analyte.top - analyte.bottom) / (1 + (analyte.ec / x) ** analyte.hill) ** analyte.asym;
+}
+
+// The serum concentrations of specimen k (deterministic from the seed).
+function beadSerum(ctx, k) {
+  const random = ctx.random('serum', k);
+  const g = createNormal(random);
+  return Object.fromEntries(BEAD_ANALYTES.map((a) => {
+    const raised = random() < a.raised ? 10 : 1;
+    return [a.name, +(a.serum[0] * raised * Math.exp(a.serum[1] * g())).toPrecision(5)];
+  }));
+}
+
+function beadAssayDesign(scale) {
+  const wells = [];
+  for (let level = 0; level <= BEAD_STANDARDS.levels; level += 1) {
+    for (let c = 0; c < 2; c += 1) {
+      const well = `${ROWS[level]}${String(c + 1).padStart(2, '0')}`;
+      wells.push({ name: `Plate1_${well}.fcs`, well, standard: `C${level}`, annotations: { standard: `C${level}` } });
+    }
+  }
+  for (let k = 0; k < 20; k += 1) {
+    for (let rep = 0; rep < 2; rep += 1) {
+      // Specimens fill columns 3–7 down the rows, each in two adjacent wells.
+      const slot = 2 * k + rep;
+      const row = slot % 8;
+      const column = 2 + Math.floor(slot / 8);
+      const well = `${ROWS[row]}${String(column + 1).padStart(2, '0')}`;
+      const specimen = `S${String(k + 1).padStart(2, '0')}`;
+      wells.push({ name: `Plate1_${well}.fcs`, well, specimen: k, annotations: { specimen, dilution: String(BEAD_STANDARDS.dilution) } });
+    }
+  }
+  return wells.map((w) => ({ ...w, events: eventsFor(4000, scale, 800), role: 'sample', subject: 'Sera', batch: 'B1' }));
+}
+
+function* generateBeadAssay(ctx, samples, all) {
+  ctx.schedule(1200, all);
+  const instrument = INSTRUMENTS.fortessa;
+  const panel = buildPanel(instrument, BEAD_ASSAY_PANEL);
+  const nDet = panel.detectors.length;
+  const reporter = 2 + panel.markers.indexOf('Reporter');
+  const classifier = 2 + panel.markers.indexOf('Classifier');
+  // Emitter amounts that give the wanted signals at each dye's own detector.
+  const peak = (row) => Math.max(...Array.from({ length: nDet }, (_, j) => panel.emitters[row * nDet + j]));
+  const pePeak = peak(reporter);
+  const apcPeak = peak(classifier);
+  const specs = BEAD_ANALYTES.map((a) => ({ name: `${a.group}: ${a.name}`, ...BEAD_SIZES[a.group], af: 0.05, afSD: 0.15, markers: { Classifier: [a.apc / apcPeak, 0.07], Reporter: [1, 0] }, loading: { Classifier: 0, Reporter: 0 } }));
+  const populations = compilePopulations(specs, panel.markers, { stained: new Set(['Classifier', 'Reporter']) });
+  const files = [];
+  for (const [index, sample] of samples.entries()) {
+    ctx.check();
+    ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
+    const level = sample.standard !== undefined ? Number(sample.standard.slice(1)) : null;
+    const standardConcentration = level === null ? null : level === 0 ? 0 : BEAD_STANDARDS.top / BEAD_STANDARDS.factor ** (BEAD_STANDARDS.levels - level);
+    const serum = sample.specimen !== undefined ? beadSerum(ctx, sample.specimen) : null;
+    // Concentrations in the well (sera diluted), per analyte.
+    const inWell = BEAD_ANALYTES.map((a) => (serum ? serum[a.name] / BEAD_STANDARDS.dilution : standardConcentration));
+    const signals = BEAD_ANALYTES.map((a, k) => beadSignal(a, inWell[k]));
+    const modulate = (e, t, kind, p, amt, normal) => {
+      if (kind !== 'live') return;
+      // Bead-to-bead variation of the captured reporter (log-normal, CV ≈ 12%).
+      amt[reporter] = (signals[p] / pePeak) * Math.exp(0.12 * normal());
+    };
+    const sim = simulateEvents({
+      count: sample.events,
+      instrument,
+      panel,
+      populations,
+      weights: Float64Array.from(BEAD_ANALYTES, () => 1),
+      mix: { dead: 0, debris: 0.04, doublets: 0.04 },
+      debris: BEAD_DEBRIS,
+      viability: null,
+      rate: 1200,
+      modulate,
+    }, ctx.random(sample.name), { signal: ctx.signal });
+    files.push(flowFile(ctx, sample, sim, {
+      instrument,
+      panel,
+      date: '2026-06-02',
+      assignments: BEAD_ASSAY_PANEL,
+      keywords: { $PLATEID: 'LP-0001', $PLATENAME: 'Cytokine plate 1', $WELLID: sample.well },
+      truth: {
+        beads: {
+          standard: sample.standard ?? null,
+          concentrations: Object.fromEntries(BEAD_ANALYTES.map((a, k) => [a.name, inWell[k]])),
+          serum,
+          signals: Object.fromEntries(BEAD_ANALYTES.map((a, k) => [a.name, signals[k]])),
+        },
+      },
+    }));
+    yield;
+  }
+  const channels = bdChannels(BEAD_ASSAY_PANEL);
+  const transforms = channelTransforms(channels, () => LOGICLE_BD, 262144, 65536);
+  const fsc = ['FSC-A', LINEAR_BD];
+  const ssc = ['SSC-A', LINEAR_BD];
+  return {
+    files,
+    workspaceHints: {
+      groups: [{ name: 'Cytokine plate 1', color: '#a855f7', files: samples.map((s) => s.name) }],
+      sampleMeta: Object.fromEntries(samples.map((s) => [s.name, sampleMeta(s)])),
+      channelSettings: Object.fromEntries(Object.entries(transforms).map(([k, v]) => [k, { transform: v }])),
+      suggestedGates: [
+        polygonGate('gsim-bead-a', 'Beads A', null, fsc, ssc, [[30000, 4500], [46000, 4500], [46000, 9000], [30000, 9000]], '#3b82f6', 'The smaller beads (analytes A).'),
+        polygonGate('gsim-bead-b', 'Beads B', null, fsc, ssc, [[52000, 12000], [74000, 12000], [74000, 21000], [52000, 21000]], '#ef4444', 'The larger beads (analytes B).'),
+      ],
+    },
+  };
+}
+
 // --- 5. Mass cytometry cohort (Helios-like) -----------------------------------------------------
 
 const CYTOF_CHANNELS = [
@@ -1927,6 +2218,43 @@ const DEFINITIONS = [
       stimuli: CALCIUM_STIMULI,
     }),
     generate: generateCalcium,
+  },
+  {
+    id: 'plate-screen',
+    title: 'Drug screen on a 96-well plate',
+    description: 'PBMC stimulated with anti-CD3/CD28 in a 96-well plate, one file per well from a plate loader: six compounds at ten 3-fold doses from 10 µM (rows A–F, columns 1–10), stimulated vehicle wells as positive controls (column 11 and row G) and unstimulated wells as negative controls (column 12 and row H). Activated T cells express CD69. Gate live CD3+ T cells and CD69+, show % CD69+ across the plate as a heat map, check the screen\'s Z′ from its controls, and fit each compound\'s dose-response curve: four full inhibitors, one partial and one inactive, with one IC50 beyond the highest dose.',
+    technology: 'conventional',
+    instrument: 'BD LSRFortessa X-20-like with a plate loader, range 2^18',
+    tags: ['plate', 'screen', 'dose-response', 'IC50', 'Z′', 'T cells', 'intermediate'],
+    design: screenDesign,
+    channels: () => bdChannels(SCREEN_PANEL),
+    transforms: () => channelTransforms(bdChannels(SCREEN_PANEL), () => LOGICLE_BD, 262144, 65536),
+    answerKey: () => ({
+      layout: 'Wells come from the files\' $WELLID and $PLATENAME keywords (and their names); the layout is in each sample\'s annotations: compound, dose (nM), control (positive, negative).',
+      response: `% CD69+ of live T cells: ${100 * SCREEN.stimulated}% in stimulated wells, ${100 * SCREEN.unstimulated}% in unstimulated ones, each well varying by a log-normal factor (CV ${100 * SCREEN.wellCV}%).`,
+      compounds: SCREEN_COMPOUNDS.map((c) => ({ ...c, curve: screenTruth(c) })),
+      doses: SCREEN_DOSES,
+      truth: 'files[i].meta.truth.activated (each event activated or not) and truth.screen: the well\'s expected and actual activated share and its live T cells.',
+    }),
+    generate: generateScreen,
+  },
+  {
+    id: 'bead-immunoassay',
+    title: 'Cytokine bead assay (LEGENDplex-like)',
+    description: 'An 8-plex cytokine bead immunoassay read on a plate: capture beads of two sizes, four analytes each told apart by their APC level, and a PE reporter that grows with each cytokine\'s concentration. Standards C7 (10 000 pg/mL) to C1 in 4-fold steps and C0 (buffer) in duplicate, and 20 sera, diluted 2-fold, in duplicate. Gate the two bead sizes, let CytoWeave find the beads of each analyte, fit the standard curves and read the sera\'s concentrations, with their quantifiable range; every serum\'s true concentrations are known.',
+    technology: 'conventional',
+    instrument: 'BD LSRFortessa X-20-like with a plate loader, range 2^18',
+    tags: ['plate', 'bead assay', 'LEGENDplex', 'CBA', 'standard curve', 'cytokines', 'intermediate'],
+    design: beadAssayDesign,
+    channels: () => bdChannels(BEAD_ASSAY_PANEL),
+    transforms: () => channelTransforms(bdChannels(BEAD_ASSAY_PANEL), () => LOGICLE_BD, 262144, 65536),
+    answerKey: () => ({
+      beads: 'Beads A (smaller): IL-2, IL-4, IL-6, IL-10; Beads B (larger): IL-17A, IFN-γ, TNF-α, IL-1β; within each, from the dimmest APC level to the brightest.',
+      standards: `C7 = ${BEAD_STANDARDS.top} ${BEAD_STANDARDS.unit}, ${BEAD_STANDARDS.factor}-fold steps down to C1; C0 is buffer. Annotations: standard (C0 … C7); sera: specimen (S01 … S20) and dilution (${BEAD_STANDARDS.dilution}).`,
+      analytes: BEAD_ANALYTES.map((a) => ({ name: a.name, group: a.group, apc: a.apc, curve: { b: -a.hill, c: a.bottom, d: a.top, e: a.ec, f: a.asym } })),
+      truth: 'files[i].meta.truth.labels / names (each event\'s bead, or debris and doublets); truth.beads: the concentrations in the well, the serum\'s (before dilution) and each bead\'s expected reporter signal.',
+    }),
+    generate: generateBeadAssay,
   },
   {
     id: 'cytof-cohort',

@@ -619,10 +619,23 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
      when measured. The median barely moves at the low dose (38% respond), which is why the
      responding share is reported beside it.
 4. **Plates (A5):** wells as samples, plate layouts from CSV or keywords, and heat maps of any
-   statistic across the plate.
+   statistic across the plate. Done with the curves below (slice 5).
 5. **Curves (A6):** dose-response (4PL/5PL, EC50/IC50) and Z′ for screens; standard curves and
    concentrations for bead-based immunoassays (LEGENDplex, CBA).
    - Validation: simulated plates with known parameters; R `drc` and beadplexr as oracles.
+   - Done (slice 5, with plates): the Plates view (wells from keywords, names or annotations;
+     layouts set on selected wells, as dilution series or from CSV and plater maps; heat maps of any
+     statistic with Z′), dose-response curves (LL.4/LL.5 in drc's parameterization, EC50 with its
+     CI, flags for no dose-response and undetermined EC50s) and bead immunoassays (classification
+     levels found once across wells, 5PL standard curves weighted 1/Y², quantifiable range from the
+     FDA 2018 recovery and CV limits), with agents' `plate`, `plate_layout`, `dose_response` and
+     `bead_assay`, and two examples (a 96-well drug screen, a LEGENDplex-like 8-plex). Against drc
+     4.0 CytoWeave's fits are never worse and often better (drc's default starts stop at local
+     optima, especially weighted five-parameter fits); started from CytoWeave's estimate drc stays
+     there, and the standard errors match the exact Hessian (drc's own come from a coarse one, and
+     its ED(type = "absolute") errors are not the delta method's). On beadplexr's own LEGENDplex
+     data the bead identification is identical on 17 of 18 files; on the 18th beadplexr's clustering
+     merged two analytes.
 6. **Headless runs (M8):** `cytoweave run` applies a template to a folder of files without a
    window (a headless browser) and writes its tables, reports and exports, for cores' nightly
    runs, pipelines and CI.

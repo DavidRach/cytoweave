@@ -6,7 +6,7 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, kinetics, clustering,
+// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, kinetics, plates, beadplexr, clustering,
 // normalization, debarcode, transforms, flowjo, migration, acquisition, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor, autospectral
@@ -15,7 +15,7 @@
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
 // validation/cache/; without them the suite is skipped (and fails with --require-data, as in CI).
 
-import { generateExample } from '../web/lib/examples.js';
+import { BEAD_STANDARDS, SCREEN_COMPOUNDS, SCREEN_DOSES, generateExample, screenTruth } from '../web/lib/examples.js';
 import { FCSError, parseFCS, parseTextSegment, readHeader, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
 import { SampleView, computeStatistic, countOf, population } from '../web/lib/engine.js';
@@ -70,6 +70,10 @@ import { chorusGates, importChorus } from '../web/lib/chorus.js';
 import { cytekDetectors, importSpectroFlo, planSpectroFloControls } from '../web/lib/spectroflo.js';
 import { diagnoseControls, diagnoseUnmixing } from '../web/lib/spectral-doctor.js';
 import { analyzeKinetics, eventSeconds, kineticsMeasure } from '../web/lib/kinetics.js';
+import { fitLogLogistic, inverseLogLogistic, inverseWithError } from '../web/lib/curves.js';
+import { layoutCSV, layoutChanges, paddedWellName, parseLayout, platesOf, sampleWells, zPrime } from '../web/lib/plates.js';
+import { beadAssay, classifyBeads, findBeadLevels, mfiOf } from '../web/lib/beadassay.js';
+import { BEAD_SPEC, beadInput, beadWells, curveCases, exampleWorkspace, lplexFiles, scatterGroups, screenInput, screenWells } from './curve-cases.mjs';
 import { compareSpectra } from '../web/lib/spectral-library.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
@@ -395,7 +399,7 @@ function deidentifyChecks(suite, label, files) {
 const suites = {
   fcs() {
     const all = [];
-    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
+    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'plate-screen', 'bead-immunoassay', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
       const { files } = generateExample(id, { scale: 0.05 });
       all.push(...files);
       let problems = 0;
@@ -1616,6 +1620,215 @@ const suites = {
     const bIono = bCells.find((x) => x.name === 'Ionomycin.fcs');
     check('kinetics', 'B cells: no response to anti-CD3 (it stimulates T cells), a response to ionomycin', `anti-CD3 ${bAntiCD3.responded ? 'responded' : 'no response'} (${fmt(bAntiCD3.net, 3)}%), ionomycin ${bIono.responded ? 'responded' : 'no response'} (${fmt(bIono.net, 3)}%)`, !bAntiCD3.responded && bIono.responded && bIono.net > 90, 'none; > 90%');
     check('kinetics', 'time per tube (about 25 000 T cells of 100 000 events)', `${fmt(Math.max(...rows.map((x) => x.ms)), 3)} ms at most`, true, 'reported');
+  },
+  plates() {
+    // Plates and curves: the drug-screen and bead-immunoassay examples (plate-cases in
+    // curve-cases.mjs), against the simulator's truth and against R's drc 4.0 and beadplexr 0.5
+    // (reference/curves.json, from generate_curves.R).
+    const ref = JSON.parse(readFileSync(new URL('./reference/curves.json', import.meta.url), 'utf8'));
+    const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
+    const started = performance.now();
+    const screen = exampleWorkspace('plate-screen');
+    const samples = screen.ws.samples;
+    const truthWell = (s) => screen.files.get(s.id).meta.truth && s.fileName.replace(/^Plate1_|\.fcs$/g, '');
+    // Wells: from the keywords ($WELLID, $PLATENAME), and from the file names alone.
+    const keyed = sampleWells(samples.map((s) => ({ ...s, meta: {} })));
+    const named = sampleWells(samples.map((s) => ({ ...s, meta: {}, keywords: {}, acquisition: {} })));
+    const placedRight = (placed, source) => samples.filter((s) => placed.get(s.id)?.source === source && paddedWellName(placed.get(s.id).row, placed.get(s.id).column) === truthWell(s)).length;
+    const [plate] = platesOf(samples.map((s) => ({ ...s, meta: {} })));
+    check('plates', 'wells from the files\' $WELLID keywords, and from their names alone, on one 96-well plate', `${placedRight(keyed, 'keyword')} and ${placedRight(named, 'name')} of 96 in their wells; plate "${plate.name}", ${plate.format} wells`, placedRight(keyed, 'keyword') === 96 && placedRight(named, 'name') === 96 && plate.format === 96 && plate.name === 'Screen plate 1', '96 of 96');
+    // Layouts: the example's annotations written as CSV and as plate maps (plater's format), read
+    // back and applied to the unannotated plate.
+    const fields = ['compound', 'dose', 'control'];
+    const byId = new Map(samples.map((s) => [s.id, s]));
+    const annotated = platesOf(samples)[0];
+    const csv = layoutCSV(annotated, byId, fields);
+    const fromCSV = layoutChanges(parseLayout(csv), plate).changes;
+    const map = fields.map((field) => [`${field},${Array.from({ length: 12 }, (_, c) => c + 1).join(',')}`, ...'ABCDEFGH'.split('').map((letter, r) => [letter, ...Array.from({ length: 12 }, (_, c) => byId.get(annotated.wells[r * 12 + c][0])?.meta?.[field] ?? '')].join(','))].join('\n')).join('\n\n');
+    const fromMap = layoutChanges(parseLayout(map), plate).changes;
+    const same = (changes) => samples.every((s) => fields.every((f) => (changes[s.id]?.[f] ?? null) === (s.meta[f] ?? null)));
+    check('plates', 'the layout as one row per well and as plate maps, read back onto the plate', `${samples.filter((s) => fields.every((f) => (fromCSV[s.id]?.[f] ?? null) === (s.meta[f] ?? null))).length} and ${samples.filter((s) => fields.every((f) => (fromMap[s.id]?.[f] ?? null) === (s.meta[f] ?? null))).length} of 96 wells as annotated`, same(fromCSV) && same(fromMap), '96 of 96');
+    // The response: % CD69+ of live T cells by the suggested gates, against the share of live T
+    // cells the simulator activated.
+    const wells = screenWells(screen);
+    const worstWell = wells.reduce((w, x) => (Math.abs(x.percent - x.truth.percent) > Math.abs(w.percent - w.truth.percent) ? x : w));
+    check('plates', '% CD69+ of live T cells per well against the share the simulator activated (T-cell doublets, gated as T cells, carry no CD69)', `worst ${worstWell.well}: ${fmt(worstWell.percent, 2)}% (${fmt(worstWell.truth.percent, 2)}%)`, wells.every((x) => Math.abs(x.percent - x.truth.percent) <= 1), 'within 1 point');
+    const controls = (role, key) => wells.filter((x) => x.control === role).map(key);
+    const z = zPrime(controls('positive', (x) => x.percent), controls('negative', (x) => x.percent));
+    const zTrue = zPrime(controls('positive', (x) => x.truth.percent), controls('negative', (x) => x.truth.percent));
+    const zRobust = zPrime(controls('positive', (x) => x.percent), controls('negative', (x) => x.percent), { robust: true });
+    check('plates', 'Z′ of the 18 stimulated and 18 unstimulated control wells against the Z′ of the activated shares (Zhang et al. 1999)', `${fmt(z.z, 3)} (${fmt(zTrue.z, 3)}), ${z.rating}; robust ${fmt(zRobust.z, 3)}`, Math.abs(z.z - zTrue.z) <= 0.03 && z.rating === 'excellent', 'within 0.03; excellent');
+    // Dose-response: each compound's 4PL fit against the parameters it was simulated with.
+    const input = screenInput();
+    const fits = input.compounds.map((c) => ({ name: c.name, fit: fitLogLogistic(c.x, c.y, { model: 'LL.4' }), compound: SCREEN_COMPOUNDS.find((k) => k.name === c.name) }));
+    const active = fits.filter((f) => f.compound.inhibition && f.compound.ic50 < Math.max(...SCREEN_DOSES));
+    const within = (f, key) => Math.abs(f.fit.parameters[key] - screenTruth(f.compound)[key]) <= 3 * f.fit.standardErrors[key];
+    check('plates', 'IC50 of the four compounds active within the tested doses: the 95% CI covers the simulated IC50', active.map((f) => `${f.name} ${fmt(f.fit.ec50, 3)} nM (${fmt(f.fit.ec50CI[0], 3)}–${fmt(f.fit.ec50CI[1], 3)}; ${f.compound.ic50})`).join(', '), active.length === 4 && active.every((f) => f.fit.ec50CI[0] <= f.compound.ic50 && f.compound.ic50 <= f.fit.ec50CI[1]), 'covered');
+    check('plates', 'Hill slope, bottom and top of the four (CW-104 a partial inhibitor) within 3 standard errors of the simulated', active.map((f) => `${f.name} ${fmt(f.fit.hill, 3)} (${fmt(-f.compound.hill, 3)}), ${fmt(f.fit.bottom, 3)} (${fmt(screenTruth(f.compound).c, 3)}), ${fmt(f.fit.top, 3)} (${fmt(screenTruth(f.compound).d, 3)})`).join('; '), active.every((f) => within(f, 'b') && within(f, 'c') && within(f, 'd')), '3 SE');
+    const inactive = fits.find((f) => f.name === 'CW-105');
+    const beyond = fits.find((f) => f.name === 'CW-106');
+    check('plates', 'CW-105 (inactive) flagged as no dose-response; CW-106 (IC50 25 µM, above the 10 µM top dose) flagged as poorly determined', `CW-105: ${inactive.fit.flags.join(', ')} (F test p ${fmt(inactive.fit.noEffect.p, 3)}); CW-106: ${beyond.fit.flags.join(', ')}`, inactive.fit.flags.includes('no-effect') && beyond.fit.flags.includes('wide-ci') && !active.some((f) => f.fit.flags.length), 'flagged; the four unflagged');
+    // drc: the same data, the same optimum.
+    const drcCompare = (label, ours, r, options = {}) => {
+      const o = r?.ours;
+      const keys = o ? Object.keys(o.coefficients) : [];
+      const pDiff = o ? Math.max(...keys.map((k) => rel(ours.parameters[k], o.coefficients[k]))) : Number.NaN;
+      const seDiff = o?.exactSE ? Math.max(...keys.map((k) => rel(ours.standardErrors[k], o.exactSE[k]))) : Number.NaN;
+      const ecDiff = o ? Math.max(rel(ours.ec50, o.ec50), rel(ours.ec50SE, o.exactEC50SE)) : Number.NaN;
+      const ill = ours.flags.some((f) => ['no-effect', 'wide-ci', 'at-bound'].includes(f));
+      return { label, lower: ours.rss <= r.rss * (1 + 1e-7), drcRss: r.rss, rss: ours.rss, pDiff, seDiff: ill || options.skipSE ? Number.NaN : seDiff, ecDiff: ill ? Number.NaN : ecDiff, ill };
+    };
+    const cases = curveCases();
+    const caseRows = cases.map((k, i) => drcCompare(k.name, fitLogLogistic(k.x, k.y, { model: k.model, weighting: k.weighting, fixed: k.fixed ?? undefined }), ref.cases[i]));
+    const screenRows = [...input.compounds.map((c, i) => drcCompare(c.name, fitLogLogistic(c.x, c.y, { model: 'LL.4' }), ref.screen.compounds[i])), drcCompare(input.normalized.name, fitLogLogistic(input.normalized.x, input.normalized.y, { model: 'LL.4', fixed: { c: 0, d: 100 } }), ref.screen.normalized)];
+    const allRows = [...caseRows, ...screenRows];
+    const maxOf = (rows, key) => Math.max(...rows.map((r) => r[key]).filter(Number.isFinite));
+    check('plates', `drc ${ref.drc}, 8 synthetic curves (4PL and 5PL, rising and falling, weights, fixed asymptotes) and the screen's 7 fits: CytoWeave's residual sum of squares never above drc's best from its own starts`, `${allRows.filter((r) => r.lower).length} of ${allRows.length}; lower in ${allRows.filter((r) => r.rss < r.drcRss * (1 - 1e-6)).length} (drc stopping at a local optimum)`, allRows.every((r) => r.lower), 'all');
+    check('plates', 'drc started from CytoWeave\'s estimate stays on it: parameters', `max relative difference ${maxOf(allRows, 'pDiff').toExponential(1)}`, maxOf(allRows, 'pDiff') < 1e-6, '< 1e-6');
+    check('plates', 'standard errors and the EC50 with its standard error against the exact Hessian (numDeriv at drc\'s optimum; drc\'s own come from optim\'s coarse numerical Hessian); fits flagged as ill-determined left out', `max relative difference ${maxOf(allRows, 'seDiff').toExponential(1)} and ${maxOf(allRows, 'ecDiff').toExponential(1)}; ${allRows.filter((r) => r.ill).length} left out`, maxOf(allRows, 'seDiff') < 1e-3 && maxOf(allRows, 'ecDiff') < 1e-3, '< 1e-3');
+    // The bead assay against its truth.
+    const beads = beadWells(exampleWorkspace('bead-immunoassay'));
+    const assay = beadAssay(beads, { ...BEAD_SPEC, weighting: '1/y2' });
+    let rightBeads = 0;
+    let gatedBeads = 0;
+    let worstWellShare = 1;
+    for (const w of beads) {
+      let right = 0;
+      let all = 0;
+      w.groups.forEach((g, gi) => {
+        const group = assay.groups[gi];
+        const labels = classifyBeads(g.classification, group.levels, group.scale);
+        g.indices.forEach((event, j) => {
+          const name = w.truth.names[w.truth.labels[event]] ?? '';
+          const m = /^([AB]): (.+)$/.exec(name);
+          if (!m) return;
+          all += 1;
+          if (labels[j] >= 0 && group.analytes[labels[j]] === m[2]) right += 1;
+        });
+      });
+      rightBeads += right;
+      gatedBeads += all;
+      worstWellShare = Math.min(worstWellShare, right / all);
+    }
+    check('plates', 'bead identification: gated beads assigned to their own analyte (levels found once from all 56 wells)', `${pct(rightBeads / gatedBeads)} of ${gatedBeads}; worst well ${pct(worstWellShare)}`, rightBeads / gatedBeads >= 0.99 && worstWellShare >= 0.98, '≥ 99%, every well ≥ 98%');
+    const recoveries = assay.analytes.flatMap((a) => a.curve.levels.filter((l) => l.concentration >= a.curve.lloq && l.concentration <= a.curve.uloq).map((l) => l.recovery));
+    check('plates', 'standards back-calculated within the quantifiable range (FDA 2018: within 20%, 25% at its ends)', `${recoveries.length} standard levels, recovery ${fmt(Math.min(...recoveries), 3)}–${fmt(Math.max(...recoveries), 3)}%; ranges ${assay.analytes.map((a) => `${a.name} ${fmt(a.curve.lloq, 3)}–${fmt(a.curve.uloq, 3)}`).join(', ')}`, recoveries.every((r) => r >= 75 && r <= 125), '75–125%');
+    const errors = [];
+    const flagged = [];
+    for (const w of assay.wells.filter((x) => x.kind === 'sample')) {
+      const truth = beads.find((b) => b.id === w.id).truth.beads.serum;
+      for (const a of assay.analytes) {
+        const c = w.results[a.name].concentration;
+        if (c.flag === 'ok') errors.push(Math.abs(c.value / truth[a.name] - 1));
+        else flagged.push({ flag: c.flag, truth: truth[a.name] / BEAD_STANDARDS.dilution, lloq: a.curve.lloq, uloq: a.curve.uloq });
+      }
+    }
+    errors.sort((a, b) => a - b);
+    const within20 = errors.filter((e) => e <= 0.2).length / errors.length;
+    check('plates', 'sera inside the quantifiable range against their true concentrations (× the 2-fold dilution)', `${errors.length} of ${errors.length + flagged.length}: median error ${pct(errors[errors.length >> 1])}, ${pct(within20)} within 20%, worst ${pct(errors.at(-1))}`, errors[errors.length >> 1] < 0.05 && within20 >= 0.95, 'median < 5%; ≥ 95% within 20%');
+    const consistent = flagged.filter((f) => (f.flag === '< LLOQ' || f.flag === '< LOD' || f.flag === 'below curve' ? f.truth < f.lloq * 1.5 : f.flag === '> ULOQ' || f.flag === 'above curve' ? f.truth > f.uloq / 1.5 : false));
+    check('plates', 'sera outside it flagged on the side their true concentration lies', `${consistent.length} of ${flagged.length} (${[...new Set(flagged.map((f) => f.flag))].join(', ')})`, consistent.length === flagged.length, 'all');
+    // The bead assay's standard curves against drc and beadplexr.
+    const beadInputs = beadInput();
+    const beadRows = [];
+    let concWorst = 0;
+    let concSEWorst = 0;
+    let beadplexrHigher = 0;
+    for (const statistic of ['median', 'geometric']) {
+      beadInputs[statistic].forEach((a, i) => {
+        const x = a.standards.map((s) => s.concentration);
+        const y = a.standards.map((s) => s.mfi);
+        const r = ref.beads[statistic][i];
+        if (r.beadplexr.rss >= r.best.rss * (1 - 1e-7)) beadplexrHigher += 1;
+        for (const [weighting, key] of [['none', 'best'], ['1/y2', 'weighted']]) {
+          const fit = fitLogLogistic(x, y, { model: 'LL.5', weighting });
+          beadRows.push(drcCompare(`${statistic} ${weighting} ${a.name}`, fit, r[key], { skipSE: true }));
+          const lowest = Math.min(...x.filter((v) => v > 0));
+          const highest = Math.max(...x);
+          a.samples.forEach((s, j) => {
+            const c = inverseWithError(fit, s.mfi);
+            if (!Number.isFinite(c.dose) || r[key].concentration?.[j] === null || r[key].concentration?.[j] === undefined) return;
+            concWorst = Math.max(concWorst, rel(c.dose, r[key].concentration[j]));
+            const exact = r[key].exactError?.[j];
+            if (c.dose >= lowest && c.dose <= highest && Number.isFinite(exact) && exact > 0) concSEWorst = Math.max(concSEWorst, rel(c.se, exact));
+          });
+        }
+      });
+    }
+    check('plates', 'the bead assay\'s 32 five-parameter standard curves (median and geometric MFIs, unweighted as beadplexr fits them and weighted 1/Y²): residual sum of squares never above drc\'s best', `${beadRows.filter((r) => r.lower).length} of ${beadRows.length}; lower in ${beadRows.filter((r) => r.rss < r.drcRss * (1 - 1e-6)).length}; beadplexr's fit_standard_curve (drc from its default start) at or above drc's best in ${beadplexrHigher} of 16`, beadRows.every((r) => r.lower), 'all');
+    check('plates', 'from CytoWeave\'s estimate, drc\'s parameters, and the sera\'s concentrations (beadplexr\'s calculate_concentration, drc\'s ED) and their standard errors (exact delta method; within the standards\' range)', `max relative differences ${maxOf(beadRows, 'pDiff').toExponential(1)}, ${concWorst.toExponential(1)} and ${concSEWorst.toExponential(1)}`, maxOf(beadRows, 'pDiff') < 1e-6 && concWorst < 1e-6 && concSEWorst < 1e-3, '< 1e-6, 1e-6, 1e-3');
+    check('plates', 'time: two plates (152 wells) gated, the screen\'s curves and the bead assay fitted', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+  beadplexr() {
+    // beadplexr's own LEGENDplex data (a Human Growth Factor 13-plex: standards C0–C7 and a sample,
+    // each in duplicate; events arcsinh-transformed as its read_fcs gives them), analyzed as its
+    // vignette does (reference/generate_curves.R), and by CytoWeave: bead sizes by a two-cluster
+    // split of FSC and SSC, classification levels pooled across the 18 files.
+    const files = lplexFiles(fileURLToPath(new URL('./cache/curves/lplex/', import.meta.url)));
+    if (!files) throw new MissingData('beadplexr\'s LEGENDplex events are exported by Rscript validation/reference/generate_curves.R into validation/cache/curves/lplex/');
+    const ref = JSON.parse(readFileSync(new URL('./reference/curves.json', import.meta.url), 'utf8')).lplex;
+    const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
+    const groups = scatterGroups(files);
+    let groupSame = 0;
+    let groupBoth = 0;
+    files.forEach((f, k) => f.group.forEach((g, i) => { if (g) { groupBoth += 1; if (g === groups[k][i]) groupSame += 1; } }));
+    check('beadplexr', 'bead sizes: CytoWeave\'s two-cluster split of FSC-A and SSC-A against beadplexr\'s (mclust)', `${groupSame} of ${groupBoth} events beadplexr placed (${pct(groupSame / groupBoth)})`, groupSame / groupBoth >= 0.999, '≥ 99.9%');
+    const ids = Object.fromEntries(ref.analytes.map((g) => [g.group, g.ids]));
+    const levels = Object.fromEntries(['A', 'B'].map((g) => [g, findBeadLevels(files.flatMap((f, k) => [...f.classification].filter((_, i) => groups[k][i] === g)), ids[g].length, { scale: 'linear' })]));
+    const labels = files.map((f, k) => Array.from(f.classification, (v, i) => {
+      const g = groups[k][i];
+      const l = classifyBeads([v], levels[g].levels, 'linear')[0];
+      return l >= 0 ? ids[g][l] : null;
+    }));
+    // Files where beadplexr's clusters sit at the pooled levels (each analyte's median FL6-H within
+    // 0.15 of CytoWeave's level for it).
+    const median = (v) => { const s = [...v].sort((a, b) => a - b); return s[s.length >> 1]; };
+    const perFile = files.map((f, k) => {
+      let same = 0;
+      let both = 0;
+      // Events both put in the same bead size (the sizes are compared above).
+      f.analyte.forEach((a, i) => { if (a && labels[k][i] && f.group[i] === groups[k][i]) { both += 1; if (a === labels[k][i]) same += 1; } });
+      const off = ['A', 'B'].flatMap((g) => ids[g].map((id, j) => {
+        const v = [...f.classification].filter((_, i) => f.analyte[i] === id);
+        return v.length < 20 || Math.abs(median(v) - levels[g].levels[j].median) > 0.15 ? id : null;
+      })).filter(Boolean);
+      return { file: f.file, same, both, off };
+    });
+    const consistent = perFile.filter((p) => !p.off.length);
+    const inconsistent = perFile.filter((p) => p.off.length);
+    check('beadplexr', 'analytes (13 levels of FL6-H), on events both put in the same bead size: identical on every file where beadplexr\'s clusters sit at the levels shared by all files', `${consistent.filter((p) => p.same === p.both).length} of ${consistent.length} files identical (${consistent.reduce((s, p) => s + p.both, 0)} events); ${inconsistent.map((p) => `${p.file}: beadplexr's ${p.off.join(', ')} off their level`).join('; ') || 'no other file'}`, consistent.every((p) => p.same === p.both) && consistent.length >= 17, 'identical on ≥ 17 files');
+    const odd = inconsistent.map((p) => {
+      const f = files.find((x) => x.file === p.file);
+      const k = files.indexOf(f);
+      return { file: p.file, ours: ['A', 'B'].flatMap((g) => ids[g].map((id) => labels[k].filter((l) => l === id).length)) };
+    });
+    check('beadplexr', 'the file beadplexr\'s clustering got wrong: CytoWeave finds all 13 analytes there, at the shared levels', odd.map((o) => `${o.file}: ${o.ours.join(', ')} beads`).join('; ') || 'none', odd.every((o) => o.ours.every((n) => n >= 200)), '≥ 200 beads each');
+    // MFIs: the geometric mean of FL2-H over beadplexr's own beads (calc_analyte_mfi).
+    let mfiWorst = 0;
+    for (const f of files) {
+      for (const [id, value] of Object.entries(ref.mfi[f.file] ?? {})) {
+        const v = [...f.reporter].filter((_, i) => f.analyte[i] === id);
+        mfiWorst = Math.max(mfiWorst, rel(mfiOf(v, 'geometric'), value));
+      }
+    }
+    check('beadplexr', 'geometric-mean MFIs of FL2-H over beadplexr\'s beads against its calc_analyte_mfi', `max relative difference ${mfiWorst.toExponential(1)} (234 analyte × file)`, mfiWorst < 1e-9, '< 1e-9');
+    // The vignette's standard curves (LL.5 of log10 MFI on log10 concentration) and the sample.
+    const rows = ref.curves.map((c) => {
+      const x = [];
+      const y = [];
+      c.standards.concentration.forEach((conc, i) => { if (conc > 0) { x.push(Math.log10(conc)); y.push(Math.log10(c.standards.mfi[i])); } });
+      const fit = fitLogLogistic(x, y, { model: 'LL.5' });
+      const same = Math.abs(fit.rss - c.rss) <= 1e-5 * c.rss;
+      const conc = c.samples.mfi.map((m) => inverseLogLogistic(Math.log10(m), fit.parameters));
+      const diff = same ? Math.max(0, ...conc.map((v, i) => (Number.isFinite(v) && c.samples.log10Concentration[i] !== null ? Math.abs(v - c.samples.log10Concentration[i]) : 0))) : Number.NaN;
+      return { name: c.name, lower: fit.rss <= c.rss * (1 + 1e-6), same, better: fit.rss < c.rss * (1 - 1e-5), diff };
+    });
+    const sameRows = rows.filter((r) => r.same);
+    const worst = Math.max(...sameRows.map((r) => r.diff));
+    // At the same optimum (residual sums of squares equal to 5 digits) the parameters can still
+    // differ along the curve's flat ridge: drc stops when the sum changes by less than 1e-7 of itself
+    // (drmc's relTol).
+    check('beadplexr', 'the vignette\'s 13 standard curves: residual sum of squares never above beadplexr\'s; the sample\'s concentrations where both reach the same optimum', `${rows.filter((r) => r.lower).length} of 13 (lower for ${rows.filter((r) => r.better).map((r) => r.name).join(', ') || 'none'}); ${sameRows.length} at the same optimum: log10 concentrations within ${fmt(worst, 4)} (${fmt(100 * (10 ** worst - 1), 2)}%)`, rows.every((r) => r.lower) && worst <= Math.log10(1.01), 'all; within 1%');
   },
   proliferation() {
     const { files } = generateExample('proliferation', {});

@@ -280,6 +280,39 @@ const scenes = {
     await sleep(1200);
     await scrollTo('.plot-grid', 'start');
   },
+  // Plates: the drug screen's % CD69+ of T cells across the plate, with Z′ from its controls.
+  async plates() {
+    await example('plate-screen');
+    await mode('plates');
+    await click('Heat map');
+    await sleep(800);
+    await js(`[...document.querySelectorAll('button')].find((e) => /^Compute all/.test(e.textContent.trim()))?.click()`);
+    await waitFor(`!document.querySelector('.progress-toast') && document.querySelectorAll('.plates-well:not(.empty)').length === 96 && /Z′/.test(${mainText})`, 120000);
+    await sleep(1200);
+  },
+  // Dose-response curves of the screen's six compounds.
+  async doseresponse() {
+    await example('plate-screen');
+    await mode('plates');
+    await app(`const m = await import('/ui/dose-response.js'); m.openDoseResponse(app, { plateName: 'Screen plate 1', spec: { gateId: app.store.ws.gates.at(-1).id, stat: 'freqParent' } });`);
+    await waitFor(`!document.querySelector('.progress-toast') && !!document.querySelector('.curve-results')`, 120000);
+    await sleep(1500);
+    await js(`[...document.querySelectorAll('.dialog h3')].find((e) => /^Dose-response/.test(e.textContent.trim()))?.scrollIntoView({ block: 'start' })`);
+    await sleep(800);
+  },
+  // A bead immunoassay: the bead levels and the standard curves of an 8-plex.
+  async beadassay() {
+    await example('bead-immunoassay');
+    await mode('plates');
+    await app(`const m = await import('/ui/bead-assay.js'); m.openBeadAssay(app, { plateName: 'Cytokine plate 1' });`);
+    await sleep(2000);
+    await js(`(() => { const areas = document.querySelectorAll('.bead-group textarea'); areas[0].value = 'IL-2\\nIL-4\\nIL-6\\nIL-10'; areas[0].dispatchEvent(new Event('change')); areas[1].value = 'IL-17A\\nIFN-γ\\nTNF-α\\nIL-1β'; areas[1].dispatchEvent(new Event('change')); return true; })()`);
+    await click('Analyze');
+    await waitFor(`!document.querySelector('.progress-toast') && document.querySelectorAll('.bead-curves canvas').length === 8`, 120000);
+    await sleep(1500);
+    await js(`[...document.querySelectorAll('.dialog h3')].find((e) => /^Bead levels/.test(e.textContent.trim()))?.scrollIntoView({ block: 'start' })`);
+    await sleep(800);
+  },
   // CytoNorm: two batches of a mass cytometry cohort, before and after.
   async normalize() {
     await example('cytof-cohort', { gates: false });

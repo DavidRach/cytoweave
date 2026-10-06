@@ -159,6 +159,23 @@ export function setSampleMeta(ws, ids, key, value) {
   }, 'annotate', `${key} = ${value}`);
 }
 
+// Several annotations at once: changes { sampleId: { field: value } }, a null or empty value
+// removing the field (a plate layout, say).
+export function annotateSamples(ws, changes, detail = '') {
+  return touch(ws, {
+    samples: ws.samples.map((s) => {
+      const c = changes[s.id];
+      if (!c) return s;
+      const meta = { ...s.meta };
+      for (const [field, value] of Object.entries(c)) {
+        if (value === null || value === undefined || value === '') delete meta[field];
+        else meta[field] = String(value);
+      }
+      return { ...s, meta };
+    }),
+  }, 'annotate', detail || `${Object.keys(changes).length} sample(s)`);
+}
+
 export function reorderSamples(ws, orderedIds) {
   const byId = new Map(ws.samples.map((s) => [s.id, s]));
   const samples = orderedIds.map((id) => byId.get(id)).filter(Boolean);

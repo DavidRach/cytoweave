@@ -44,14 +44,16 @@ class Tools:
         Generate and open a simulated example experiment as a new workspace: pbmc-immunophenotyping,
         flowjo-workspace (four samples and a FlowJo workspace, which opens in the FlowJo import
         dialog for the user), spectral-25color, cell-cycle, proliferation, calcium-flux (Indo-1
-        ratio over time, for kinetics), cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded
+        ratio over time, for kinetics), plate-screen (a 96-well drug screen, one file per well, for
+        plates and dose-response), bead-immunoassay (a LEGENDplex-like cytokine bead assay with
+        standards, for bead_assay), cytof-cohort, cytof-barcoded (a pooled, palladium-barcoded
         plate), index-sort, qc-showcase or bead-qc (30 daily runs of multi-level beads for Q, B and
         Levey–Jennings).
 
         Args:
             id: Required; one of "pbmc-immunophenotyping", "flowjo-workspace", "spectral-25color",
-                "cell-cycle", "proliferation", "calcium-flux", "cytof-cohort", "cytof-barcoded",
-                "index-sort", "qc-showcase", "bead-qc".
+                "cell-cycle", "proliferation", "calcium-flux", "plate-screen", "bead-immunoassay",
+                "cytof-cohort", "cytof-barcoded", "index-sort", "qc-showcase", "bead-qc".
 
         Returns:
             A Result: the message and the data CytoWeave answered with.
@@ -62,7 +64,7 @@ class Tools:
         """Show a sample, population or view.
 
         Change what the window shows: a sample, a population, and/or a view (gate, qc, compensate,
-        spectral, explore, tables, compare, figures, report).
+        spectral, explore, tables, plates, compare, figures, report).
 
         Args:
             population: Population name, path ("Lymphocytes/Single cells/CD3+") or id; "All events"
@@ -601,6 +603,136 @@ class Tools:
             A Result: the message and the data CytoWeave answered with.
         """
         return self.call("kinetics", **{"binWidth": bin_width, "channel": channel, "denominator": denominator, "numerator": numerator, "population": population, "responseEnd": response_end, "samples": samples, "smoothing": smoothing, "statistic": statistic, "stimulus": stimulus, "threshold": threshold})
+
+    def plate(self, *, channel=None, control_field=None, min_events=None, plate=None, population=None, robust=None, statistic=None, value=None):
+        """Plates and heat maps.
+
+        The plates of the workspace (samples acquired from wells, placed by their $WELLID or WELL ID
+        keywords, names such as Plate1_A01.fcs, or "well" annotations): each plate's format and
+        wells, and the layout's annotation fields with their values. With statistic (and population,
+        channel), a heat map: the statistic of every well as a grid (rows A…, columns 1…), and Z′
+        (Zhang et al. 1999) from the positive and negative control wells named by controlField
+        (default the "control" annotation; values positive/pos/+ and negative/neg/−). Wells with
+        fewer than minEvents events in the population (for a percentage, in the population it is a
+        percentage of) are listed.
+
+        Args:
+            channel: Channel or marker, for channel statistics. Optional; a string.
+            control_field: Annotation naming the control wells. Optional; a string.
+            min_events: Flag wells with fewer events (default 100). Optional; a number.
+            plate: Plate name (default the first). Optional; a string.
+            population: Population name, path ("Lymphocytes/Single cells/CD3+") or id; "All events"
+                or omitted for all events. Optional; a string.
+            robust: Robust Z′ (median and MAD). Optional; TRUE or FALSE (Python: True or False).
+            statistic: Statistic id: freqParent (default), count, median, mean, geomean, cv, ….
+                Optional; a string.
+            value: Percentile or threshold, for percentile and positive. Optional; a number.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("plate", **{"channel": channel, "controlField": control_field, "minEvents": min_events, "plate": plate, "population": population, "robust": robust, "statistic": statistic, "value": value})
+
+    def plate_layout(self, layout, *, plate=None):
+        """Propose a plate layout.
+
+        Annotate a plate's wells from a layout, proposed for the user's review (as
+        annotate_samples): CSV text with a "well" column (A01 or A1), an optional "plate" column and
+        one column per field (compound, dose such as "10 nM", control, standard, specimen, dilution,
+        …), or plate maps as R's plater writes them (a block per field: the field's name and 1, 2,
+        …, then a row per plate row A, B, …). Wells without a sample are reported.
+
+        Args:
+            layout: The layout as CSV text. Required; a string.
+            plate: Plate to annotate when the layout has no plate column (default the first).
+                Optional; a string.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("plate_layout", **{"layout": layout, "plate": plate})
+
+    def dose_response(self, *, channel=None, control_field=None, dose_field=None, fix_bottom=None, fix_top=None, group_field=None, model=None, normalize=None, plate=None, population=None, statistic=None, value=None, weighting=None):
+        """Dose-response curves.
+
+        Dose-response curves of a plate: a statistic of every well against its dose (doseField, an
+        annotation such as "10 nM"; units converted to the most common), one curve per groupField
+        value (default the compound annotation), fitted by least squares to a four- (LL.4) or
+        five-parameter (LL.5) log-logistic model in R drc's parameterization. Returns for each group
+        the EC50 (IC50 for a falling curve) with its 95% CI (delta method, log scale), Hill slope
+        (negative for a falling curve), bottom, top, R², and flags: no-effect (no better than a flat
+        line, F test p ≥ 0.05), extrapolated (EC50 outside the doses), wide-ci (CI wider than
+        100-fold), at-bound. normalize: none, controls (% of controls: negative 0%, positive 100%)
+        or inhibition (100 − that), with the asymptotes fixed at 0 and 100 unless fixBottom/fixTop
+        is false. Control wells (controlField) are left out of the curves; the plate's Z′ is
+        returned.
+
+        Args:
+            channel: Channel or marker, for channel statistics. Optional; a string.
+            control_field: Annotation naming positive and negative control wells. Optional; a
+                string.
+            dose_field: Annotation holding each well's dose. Optional; a string.
+            fix_bottom: With normalize: fix the bottom at 0 (default true). Optional; TRUE or FALSE
+                (Python: True or False).
+            fix_top: With normalize: fix the top at 100 (default true). Optional; TRUE or FALSE
+                (Python: True or False).
+            group_field: Annotation giving one curve per value (e.g. compound). Optional; a string.
+            model: LL.4 (default) or LL.5. Optional; a string.
+            normalize: none (default), controls or inhibition. Optional; a string.
+            plate: Plate name (default the first). Optional; a string.
+            population: Population name, path ("Lymphocytes/Single cells/CD3+") or id; "All events"
+                or omitted for all events. Optional; a string.
+            statistic: Statistic id (default freqParent). Optional; a string.
+            value: Percentile or threshold, for percentile and positive. Optional; a number.
+            weighting: none (default), 1/y or 1/y2. Optional; a string.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("dose_response", **{"channel": channel, "controlField": control_field, "doseField": dose_field, "fixBottom": fix_bottom, "fixTop": fix_top, "groupField": group_field, "model": model, "normalize": normalize, "plate": plate, "population": population, "statistic": statistic, "value": value, "weighting": weighting})
+
+    def bead_assay(self, groups, *, classification_channel=None, dilution_field=None, factor=None, min_beads=None, model=None, plate=None, reporter_channel=None, sample_field=None, standard_field=None, standard_mode=None, statistic=None, top=None, tops=None, unit=None, weighting=None):
+        """Bead immunoassay (LEGENDplex, CBA).
+
+        A bead-based immunoassay on a plate: in each bead group's population (the bead sizes, gated
+        on scatter) the beads of each analyte are found by their level of the classification dye
+        (found once from all wells), each analyte's reporter MFI (median by default) on the standard
+        wells (standardField: C0 … C7, or concentrations) gives a standard curve (five-parameter
+        log-logistic by default, weighted 1/Y²), and every other well's concentration is read from
+        it and multiplied by its dilution (dilutionField). Standard concentrations: top (the top
+        standard, or tops per analyte) divided by factor (default 4) per step; C0 or 0 is a blank.
+        Returns per analyte its quantifiable range (standards back-calculating within 20% with CV ≤
+        20%, 25% at the ends; FDA 2018), limit of detection (blanks' mean + 3 SD), curve and
+        standards' recovery, and per sample (replicates by sampleField averaged) the concentrations
+        with flags (< LLOQ, > ULOQ, < LOD, below curve).
+
+        Args:
+            groups: Bead groups: [{population, analytes: [names from the dimmest bead to the
+                brightest]}]. Required; a list of strings.
+            classification_channel: Classification (bead ID) channel (default an APC-like channel).
+                Optional; a string.
+            dilution_field: Annotation holding each sample's dilution. Optional; a string.
+            factor: Dilution between standards (default 4). Optional; a number.
+            min_beads: Fewer beads of an analyte than this: no value (default 50). Optional; a
+                number.
+            model: LL.5 (default) or LL.4. Optional; a string.
+            plate: Plate name (default the first). Optional; a string.
+            reporter_channel: Reporter channel (default PE). Optional; a string.
+            sample_field: Annotation whose wells are replicates. Optional; a string.
+            standard_field: Annotation naming the standards (default standard). Optional; a string.
+            standard_mode: auto, concentration, levels-top-high (C7 top) or levels-top-low (S1 top).
+                Optional; a string.
+            statistic: median (default), geometric or mean. Optional; a string.
+            top: Top standard's concentration. Optional; a number.
+            tops: Top standard per analyte: {name: concentration}. Optional; a named list (Python: a
+                dict).
+            unit: Concentration unit (default pg/mL). Optional; a string.
+            weighting: 1/y2 (default), 1/y or none. Optional; a string.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("bead_assay", **{"groups": groups, "classificationChannel": classification_channel, "dilutionField": dilution_field, "factor": factor, "minBeads": min_beads, "model": model, "plate": plate, "reporterChannel": reporter_channel, "sampleField": sample_field, "standardField": standard_field, "standardMode": standard_mode, "statistic": statistic, "top": top, "tops": tops, "unit": unit, "weighting": weighting})
 
     def diagnose_unmixing(self, *, population=None, sample=None):
         """Diagnose a spectral unmixing.

@@ -15,6 +15,6 @@ cw_select(population = NULL, sample = NULL, view = NULL, cw = cw_default())
 A \code{cytoweave_result}: the \code{message} and the \code{data} CytoWeave answered with.
 }
 \description{
-Change what the window shows: a sample, a population, and/or a view (gate, qc, compensate, spectral, explore, tables, compare, figures, report).
+Change what the window shows: a sample, a population, and/or a view (gate, qc, compensate, spectral, explore, tables, plates, compare, figures, report).
 }
 \seealso{\code{\link{cw_call}}, which sends any action by its name (here \code{"select"}).}

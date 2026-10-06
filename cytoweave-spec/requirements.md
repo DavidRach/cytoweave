@@ -108,8 +108,8 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | A2 | Proliferation: generation fitting and Roederer's indices | done |
 | A3 | Index sorting: well-to-event links | done: a plate view (96- and 384-well and others) from BD's INDEX SORTING LOCATIONS or well parameters, colored by population or channel, wells marked on the plots, CSV export |
 | A4 | Kinetics and ratiometric (calcium) analysis | done (wave 7): a signal or ratio against time, binned and smoothed, the stimulus found from the pause in acquisition, baseline, peak, time to peak, half-max time, area, end level and responding share, samples overlaid; validated on a simulated calcium flux |
-| A5 | Plates: wells as samples, layouts, heat maps of any statistic | planned (wave 7) |
-| A6 | Dose-response (EC50/IC50) and Z′; bead-based immunoassay standard curves | planned (wave 7) |
+| A5 | Plates: wells as samples, layouts, heat maps of any statistic | done (wave 7): wells from FCS keywords, file names or annotations; layouts as annotations (selected wells, dilution series, CSV and plater maps); heat maps of any population statistic with Z′ and robust Z′; validated on a simulated 96-well screen |
+| A6 | Dose-response (EC50/IC50) and Z′; bead-based immunoassay standard curves | done (wave 7): LL.4/LL.5 fits in drc's parameterization with EC50 CIs and flags (validated against drc 4.0 and the exact Hessian); bead immunoassays with classification levels across wells, 5PL standard curves, FDA 2018 quantifiable ranges and LODs (validated on a simulated 8-plex and against beadplexr, including its real LEGENDplex data) |
 | A7 | Imaging flow cytometry: image galleries (CellView, Amnis), then image features to gate on | planned (wave 10) |
 
 ## Comparison and statistics

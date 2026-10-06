@@ -202,6 +202,7 @@ export function installActions(app) {
       { label: 'Cell cycle (DNA content)…', icon: 'dna', disabled: !sampleId, onSelect: () => import('./platforms.js').then((m) => m.openCellCycle(app, gateId, sampleId)) },
       { label: 'Proliferation (dye dilution)…', icon: 'cell', disabled: !sampleId, onSelect: () => import('./platforms.js').then((m) => m.openProliferation(app, gateId, sampleId)) },
       { label: 'Kinetics (signal over time, calcium flux)…', icon: 'wave', disabled: !sampleId, onSelect: () => import('./kinetics.js').then((m) => m.openKinetics(app, gateId, sampleId)) },
+      { label: 'Bead immunoassay (LEGENDplex, CBA)…', icon: 'flask', onSelect: () => import('./bead-assay.js').then((m) => m.openBeadAssay(app, { gateId: gateId && gateId !== 'root' ? gateId : undefined })) },
     );
     if (gate) {
       items.push('-', { label: 'Delete gate', icon: 'trash', danger: true, hint: '⌫', onSelect: () => app.deleteGate(gate.id) });

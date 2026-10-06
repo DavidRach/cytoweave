@@ -1,0 +1,94 @@
+---
+title: Plates, dose-response and bead assays
+description: Analyze plate-based flow cytometry in CytoWeave - wells as samples from FCS keywords or file names, plate layouts from CSV or plate maps, heat maps of any statistic with Z′, four- and five-parameter dose-response curves with EC50/IC50, and bead-based immunoassays (LEGENDplex, CBA) with standard curves and concentrations.
+lede: Samples acquired from the wells of a plate, one file per well, laid out by what each well holds; any statistic shown across the plate with the screen's Z′; dose-response curves per compound; and bead immunoassays read against their standard curves.
+---
+      <h2 id="plates">Wells and plates</h2>
+      <shot name="plates" alt="The Plates view of a 96-well drug screen: % CD69+ of T cells as a heat map, six compounds falling with dose in rows A to F, stimulated and unstimulated control wells, and Z′ 0.795 from the controls">The drug-screen example: % CD69+ of live T cells across the plate, and the screen's Z′ from its control wells.</shot>
+      <p>The <strong>Plates</strong> view places each sample in its well. The well comes from, in this order:</p>
+      <ul>
+        <li>a <code>well</code> annotation (with an optional <code>plate</code>);</li>
+        <li>the FCS file's keywords: FCS 3.1's <code>$WELLID</code>, <code>$PLATENAME</code> and <code>$PLATEID</code>, or BD's <code>WELL ID</code>, <code>PLATE NAME</code> and <code>PLATE ID</code>, as plate loaders write them;</li>
+        <li>the file name, such as <code>Plate1_A01.fcs</code> or <code>…-B7.fcs</code>. A name counts only when one part of every unplaced name reads as a well and no two samples land in the same well, so donor IDs such as D01 are not mistaken for wells.</li>
+      </ul>
+      <p>The plate is the smallest of 96, 384 and 1536 wells that holds them. Samples with different plate names make separate plates.</p>
+
+      <h2 id="layout">The plate layout</h2>
+      <p>What each well holds (a compound and its dose, a control, a standard, a specimen and its dilution) is kept as sample annotations, so it is also available to Tables, Compare, reports and templates. In <strong>Layout</strong>:</p>
+      <ul>
+        <li><strong>Select wells</strong>: click a well; shift-click for a block, ⌘ or Ctrl-click to add one; click a row letter or column number for the whole row or column, or the corner for the plate.</li>
+        <li><strong>Set</strong> a field to a value on the selected wells, or <strong>Clear</strong> it.</li>
+        <li><strong>Fill the series</strong>: a dilution series along each row (or down each column) of the selection, from a top dose divided by a factor at each step: 10000, 3333, 1111 … nM.</li>
+        <li><strong>Color wells by</strong> a field: categories in distinct colors, doses on a log scale.</li>
+      </ul>
+      <p><strong>Import layout…</strong> reads a CSV in either of two forms, and dropping such a file on the window does the same. <strong>Export layout</strong> writes the first form.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Form</th><th>Example</th></tr></thead>
+          <tbody>
+            <tr><td>One row per well: a <code>well</code> column, an optional <code>plate</code> column and one column per field</td><td><code>well,compound,dose,control</code><br><code>A01,CW-101,10000 nM,</code><br><code>A11,DMSO,,positive</code></td></tr>
+            <tr><td>Plate maps, as R's plater writes them (Hughes 2016): a block per field with the field's name and the column numbers, then a row per plate row</td><td><code>compound,1,2,3,…</code><br><code>A,CW-101,CW-101,CW-101,…</code><br><code>B,CW-102,CW-102,CW-102,…</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A CSV whose first column names samples is still read as sample annotations (see <a href="opening-data.html">Opening data</a>).</p>
+
+      <h2 id="heat-maps">Heat maps and Z′</h2>
+      <p><strong>Heat map</strong> shows a statistic of a population for every well: a percentage, a count, or a median, mean, CV or percentile of a channel. <strong>Compute all wells</strong> reads the wells not yet loaded. Wells with fewer events than you set are hatched; for a percentage, the count is taken in the population it is a percentage of. Pointing at a well shows its sample, annotations and value, and double-clicking opens it in Gate. <strong>Values (CSV)</strong> writes one row per well, and <strong>Copy as plate map</strong> copies the grid for a spreadsheet.</p>
+      <p>With a control field (wells reading <em>positive</em>, <em>pos</em> or <em>+</em>, and <em>negative</em>, <em>neg</em> or <em>−</em>), the view gives the screen's <strong>Z′</strong> (Zhang et al. 1999): 1 − 3 (σ₊ + σ₋) / |μ₊ − μ₋|. A Z′ of 0.5 or more is an excellent assay; below 0 the controls overlap. The robust form uses medians and 1.4826 × MAD, so a few failed wells do not drag it down.</p>
+
+      <h2 id="dose-response">Dose-response curves</h2>
+      <shot name="doseresponse" alt="Dose-response curves of six compounds: % CD69+ of T cells against dose on a log axis, four inhibitors with fitted four-parameter curves and EC50 marks, a partial inhibitor leveling at 30%, an inactive compound as a dashed flat line, and one whose IC50 lies beyond the highest dose as a dashed curve; the results table lists EC50 with 95% CI, Hill slope, bottom, top and R²">The six compounds of the screen: four inhibitors, a partial one, an inactive one (dashed, flat) and one whose IC50 lies beyond the doses (dashed).</shot>
+      <p><strong>Dose-response…</strong> fits one curve per compound (or per value of any annotation) to the statistic of each well against its dose. Doses come from an annotation such as <code>10 nM</code> or <code>1e-6 M</code>; units of the same kind are converted to the most common one. Control wells are left out of the curves.</p>
+      <ul>
+        <li>The <strong>four-parameter</strong> log-logistic curve (bottom, top, Hill slope, EC50), or the <strong>five-parameter</strong> one, which adds an asymmetry. Both use the parameterization of R's drc package (Ritz et al. 2015).</li>
+        <li>The <strong>response</strong>: the statistic itself, % of controls (the negative controls at 0%, the positive at 100%), or % inhibition (100 minus that). Normalized curves can have their bottom and top fixed at 0% and 100%. Untick that for a partial inhibitor, which does not reach 100%.</li>
+        <li><strong>Weighting</strong>: none, 1/Y or 1/Y² (relative errors).</li>
+      </ul>
+      <p>Each curve gives:</p>
+      <ul>
+        <li>the <strong>EC50</strong> (an IC50 for a falling curve): the dose halfway between the zero-dose response and the other asymptote. Its 95% confidence interval, from the delta method, is symmetric on the log scale.</li>
+        <li>the <strong>Hill slope</strong>, negative for a falling curve;</li>
+        <li>the <strong>bottom</strong> and <strong>top</strong>, and <strong>R²</strong>.</li>
+      </ul>
+      <p>Flagged curves are drawn dashed:</p>
+      <ul>
+        <li><strong>no dose-response</strong>: the curve fits no better than a flat line (F test, p ≥ 0.05);</li>
+        <li><strong>EC50 beyond the doses</strong>;</li>
+        <li><strong>EC50 not determined</strong>: its interval spans more than 100-fold.</li>
+      </ul>
+      <p>The EC50 parameter is kept within 100-fold of the tested doses and the asymmetry between 1/20 and 20. Beyond these limits a five-parameter curve runs off to a limiting shape whose parameters mean nothing. <strong>Save</strong> keeps the table with the workspace and adds the curves to the methods paragraph.</p>
+
+      <h2 id="bead-assays">Bead immunoassays</h2>
+      <shot name="beadassay" alt="A bead immunoassay of eight cytokines: the APC histograms of the two bead sizes with each analyte's level, and the eight five-parameter standard curves on log-log axes with the standards, the sera on their curves and the quantifiable range shaded">The bead-immunoassay example: each bead size's analytes by their APC level, and a five-parameter standard curve per cytokine.</shot>
+      <p>BioLegend LEGENDplex, BD CBA and similar kits capture each analyte on its own bead. The beads come in one or two sizes (told apart by scatter), each analyte's bead carries its own amount of a classification dye, and a reporter (usually PE) grows with the analyte's concentration. Open <strong>Bead assay…</strong> from the Plates view, or right-click the bead population.</p>
+      <ol>
+        <li><strong>Bead groups</strong>: one population per bead size (for example Beads A and Beads B), each with its analytes named from the dimmest bead to the brightest. Left empty, the group gets as many analytes as its classification channel has peaks.</li>
+        <li><strong>Channels</strong>: the classification (bead ID) channel, for example APC, and the reporter, for example PE. Also choose the MFI: the median, or the geometric mean as beadplexr takes it.</li>
+        <li><strong>Standards</strong>: the annotation naming the standard wells, and how its labels read:
+          <ul>
+            <li>levels with the highest number on top: C7 … C1, with C0 the blank, as LEGENDplex numbers them;</li>
+            <li>levels with 1 on top: S1, S2, …;</li>
+            <li>concentrations written out.</li>
+          </ul>
+          Then give the top standard's concentration (one value, or one per analyte), the dilution between standards (4 for LEGENDplex) and the unit.</li>
+        <li><strong>Samples</strong>: the annotation whose wells are replicates (averaged, with their CV), and the one holding each sample's dilution (concentrations are multiplied by it).</li>
+      </ol>
+      <p>The classification levels are found once, from all wells together: the highest well-separated peaks of each bead group's histogram, with the boundaries at the valleys between them. Events more than 3 robust SDs from their level's median are left out. Each analyte gets a five-parameter (or four-parameter) standard curve, weighted 1/Y² by default because the MFIs span several decades, and every other well's concentration is read off it.</p>
+      <ul>
+        <li>The <strong>quantifiable range</strong> runs between the lowest and highest standards whose replicates back-calculate within 20% of their concentration with a CV of at most 20% (25% for both at the two ends). These are the acceptance limits of the FDA's 2018 bioanalytical method validation guidance for ligand-binding assays.</li>
+        <li>The <strong>limit of detection</strong> is the concentration at the blanks' mean MFI + 3 SD.</li>
+        <li>Values outside the range are shown in amber and flagged: <code>&lt; LLOQ</code>, <code>&gt; ULOQ</code>, <code>&lt; LOD</code>, or below the curve's bottom.</li>
+      </ul>
+
+      <h2 id="checked">How it was checked</h2>
+      <p>The <strong>plates</strong> validation suite runs both examples against their simulated truth and against R:</p>
+      <ul>
+        <li><strong>Wells and layout:</strong> wells were placed from keywords and from names alone (96 of 96), and the layout was read back from both CSV forms.</li>
+        <li><strong>Screen:</strong> % CD69+ in every well came within 0.5 points of the share the simulator activated. Z′ was 0.795, equal to the Z′ of the true shares.</li>
+        <li><strong>Dose-response:</strong> each active compound's simulated IC50 lies inside its 95% CI.</li>
+        <li><strong>Bead identification:</strong> 99.6% of beads were assigned to their analyte.</li>
+        <li><strong>Bead concentrations:</strong> sera inside the quantifiable range had a median error of 1.8%, and 97% were within 20% of their true concentration.</li>
+        <li><strong>drc 4.0:</strong> on 8 synthetic curves, the screen's fits and the 32 bead standard curves, CytoWeave's residual sum of squares was never above drc's own best fit, and drc's default starting values often left it at a local optimum. Started from CytoWeave's estimate, drc stays there (parameters within 1e-8), and beadplexr's concentrations agree to 1e-8. The standard errors match the exact Hessian of the residual sum of squares to 1e-5. drc's own standard errors differ by up to a few percent because they come from a coarse numerical Hessian.</li>
+        <li><strong>beadplexr on real data:</strong> on its own LEGENDplex data (a 13-plex, 18 files), CytoWeave's bead identification matches beadplexr's event for event on 17 files. On the 18th, beadplexr's clustering merged two analytes, and CytoWeave found all 13 there.</li>
+      </ul>
