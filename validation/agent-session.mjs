@@ -21,6 +21,10 @@ import { readFigureProvenance } from '../web/lib/figure-provenance.js';
 import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
 import { encodeFCS } from '../web/lib/simulate.js';
 import { BEAD_MEF, BEAD_TRUTH, simulatedBeads } from './calibration-cases.mjs';
+import { BEAD_SPEC, beadWells, exampleWorkspace, screenInput, screenWells } from './curve-cases.mjs';
+import { fitLogLogistic } from '../web/lib/curves.js';
+import { zPrime } from '../web/lib/plates.js';
+import { beadAssay } from '../web/lib/beadassay.js';
 import { readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -506,6 +510,9 @@ try {
     const setup = ws.derived.find((d) => d.kind === 'spectral-setup');
     return { worst, channels, setupProposed: Boolean(setup?.proposal), afSignatures: setup?.autofluorescence?.signatures?.length ?? 0 };`);
   check('unmix: the reference library proposed (spectra and autofluorescence), and every unmixed channel equal to the same unmixing run directly', `${unmixed.references.length} references, ${spectral.afSignatures} autofluorescence signatures, complexity ${unmixed.complexityIndex}; ${spectral.channels} channels within ${spectral.worst}`, unmixed.references.length === 25 && spectral.setupProposed && spectral.afSignatures >= 1 && spectral.channels === unmixed.channels.length && spectral.worst === 0, '25 references, identical');
+  // The unmixing doctor on the same sample: the example has no fault to name.
+  const diagnosis = (await tool('diagnose_unmixing', { sample }, 'Spectral agent')).data;
+  check('diagnose_unmixing: the example\'s sample diagnosed with the proposed library, no fault named', `${diagnosis.events} events; healthy ${diagnosis.healthy}; ${diagnosis.findings.filter((f) => f.severity !== 'low').map((f) => f.title).join('; ') || 'no finding'}; ${diagnosis.checks.length} checks`, diagnosis.healthy && diagnosis.events === 20000 && diagnosis.checks.length >= 4, 'healthy');
 
   // 3. QC as files are acquired: a watched folder's files are added and checked.
   const watched = join(temp, 'exports');
@@ -521,6 +528,56 @@ try {
   }
   await tool('watch_folder', { action: 'stop' });
   check('watch_folder: each file the instrument writes is added and checked', status.files.map((f) => `${f.file} ${f.state} ${f.score ?? ''}`).join('; '), status.files.length === plate.length && status.files.every((f) => f.state === 'checked' && Number.isFinite(f.score)), 'both checked with a score');
+
+  // 4. Kinetics: the calcium-flux example, its Indo-1 ratio found by name, every tube measured.
+  await tool('open_example', { id: 'calcium-flux' }, 'Kinetics agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length === 5 && !document.querySelector('.progress-toast')`);
+  const flux = (await tool('kinetics', {}, 'Kinetics agent')).data;
+  const percent = (name) => flux.rows.find((r) => r.sample === name)?.respondingPercent;
+  check('kinetics: the Indo-1 ratio found by name and every tube measured, the pause found, responding events rising with the stimulus', `${flux.measure}; ${flux.rows.map((r) => `${r.sample} ${r.stimulus?.source ?? 'no stimulus'} ${r.respondingPercent}%`).join(', ')}`, /Indo-1/.test(flux.measure) && flux.rows.length === 5 && flux.rows.filter((r) => r.stimulus?.source === 'pause').length === 4 && percent('Buffer') < percent('aCD3_low') && percent('aCD3_low') < percent('aCD3_high') && percent('aCD3_high') < percent('Ionomycin'), 'Indo-1; 5 tubes, 4 pauses; increasing');
+
+  // 5. Plates: the drug screen (heat map, Z′, a proposed layout, dose-response) and the bead assay,
+  // each against the same analysis run in Node (validation/curve-cases.mjs).
+  const addSuggested = async (id) => {
+    const gates = generateExample(id, { samples: ['Plate1_A01.fcs'] }).workspaceHints.suggestedGates;
+    await page(`const { addGates } = await import('/lib/workspace.js'); app.store.commit(addGates(app.store.ws, ${JSON.stringify(gates)}.map((g) => ({ ...g, overrides: {} })), 'add-suggested-gates').ws, 'Add the suggested gates'); return true;`);
+  };
+  await tool('open_example', { id: 'plate-screen' }, 'Plates agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length === 96 && !document.querySelector('.progress-toast')`);
+  await addSuggested('plate-screen');
+  const screenNode = screenWells(exampleWorkspace('plate-screen'));
+  const zNode = zPrime(screenNode.filter((w) => w.control === 'positive').map((w) => w.percent), screenNode.filter((w) => w.control === 'negative').map((w) => w.percent));
+  const heat = (await tool('plate', { population: 'Lymphocytes/Live/T cells/CD69+', statistic: 'freqParent' }, 'Plates agent')).data;
+  const a01 = screenNode.find((w) => w.well === 'A01').percent;
+  check('plate: the screen\'s wells from their keywords, % CD69+ across the plate, and Z′ from the control wells as in Node', `${heat.plate}, ${heat.format} wells; A01 ${heat.grid[0][0]} (${rounded(a01, 5)}); Z′ ${heat.zPrime?.value} (${rounded(zNode.z, 4)})`, heat.plate === 'Screen plate 1' && heat.format === 96 && heat.grid.flat().filter((v) => v !== null).length === 96 && heat.grid[0][0] === rounded(a01, 5) && heat.zPrime?.value === rounded(zNode.z, 4), 'equal');
+  const layoutResult = await tool('plate_layout', { layout: 'well,operator\nA01,RM\nA02,RM\n' }, 'Plates agent');
+  const heldLayout = await page(`return app.store.ws.samples.find((s) => s.name === 'Plate1_A01').meta.operator ?? null;`);
+  await decide('Plates agent', true);
+  const acceptedLayout = await page(`return app.store.ws.samples.filter((s) => s.meta.operator === 'RM').map((s) => s.meta.well).sort();`);
+  check('plate_layout: a layout\'s fields proposed for the wells, held until accepted, then applied', `${layoutResult.data.wells} wells; before ${heldLayout}; after ${acceptedLayout.join(', ')}`, layoutResult.data.wells === 2 && heldLayout === null && acceptedLayout.join() === 'A01,A02', '2 wells; null, then A01, A02');
+  const dr = (await tool('dose_response', { population: 'Lymphocytes/Live/T cells/CD69+', statistic: 'freqParent' }, 'Plates agent')).data;
+  const nodeFits = screenInput().compounds.map((c) => ({ name: c.name, fit: fitLogLogistic(c.x, c.y, { model: 'LL.4' }) }));
+  const drSame = nodeFits.every((f) => {
+    const row = dr.rows.find((r) => r.group === f.name);
+    return f.fit.flags.includes('no-effect') ? row.ec50 === null && row.flags.includes('no-effect') : row.ec50 === rounded(f.fit.ec50, 5);
+  });
+  check('dose_response: one curve per compound from the layout (doses in nM, controls left out), EC50s as in Node, the inactive compound flagged', dr.rows.map((r) => `${r.group} ${r.ec50 ?? r.flags.join(' ')}`).join(', '), dr.unit === 'nM' && dr.rows.length === 6 && dr.rows.every((r) => r.wells === 10) && drSame, 'equal');
+  await tool('open_example', { id: 'bead-immunoassay' }, 'Plates agent');
+  await waitFor(`window.cytoweave.store.ws.samples.length === 56 && !document.querySelector('.progress-toast')`);
+  await addSuggested('bead-immunoassay');
+  const assay = (await tool('bead_assay', { groups: [{ population: 'Beads A', analytes: BEAD_SPEC.groups[0].analytes }, { population: 'Beads B', analytes: BEAD_SPEC.groups[1].analytes }], top: 10000 }, 'Plates agent')).data;
+  const nodeAssay = beadAssay(beadWells(exampleWorkspace('bead-immunoassay')), { ...BEAD_SPEC, weighting: '1/y2' });
+  const s01 = nodeAssay.samples.find((x) => x.name === 'S01');
+  const s01Agent = assay.samples.find((x) => x.name === 'S01');
+  const beadSame = nodeAssay.samples.every((x) => {
+    const got = assay.samples.find((y) => y.name === x.name);
+    return got && Object.entries(x.results).every(([k, r]) => got.concentrations[k].mean === rounded(r.mean, 5));
+  });
+  check('bead_assay: the bead groups\' analytes, standards and dilutions found from the layout; every serum\'s concentrations as in Node', `${assay.analytes.length} analytes, ${assay.samples.length} sera; S01 IL-6 ${s01Agent?.concentrations['IL-6']?.mean} (${rounded(s01.results['IL-6'].mean, 5)}) ${assay.unit}`, assay.analytes.length === 8 && assay.samples.length === 20 && beadSame, 'equal');
+  const cwzPath = join(temp, 'beads.cwz');
+  const wrote = await tool('export_workspace', { path: cwzPath }, 'Plates agent');
+  const cwz = JSON.parse(readFileSync(cwzPath, 'utf8'));
+  check('export_workspace: the workspace written as a .cwz file, its samples, annotations and gates as the app holds them', `${wrote.message.split('.')[0]}; ${cwz.samples.length} samples, ${cwz.gates.length} gates, ${cwz.samples.filter((x) => x.meta?.standard).length} standards annotated`, cwz.format === 'cytoweave-workspace' && cwz.samples.length === 56 && cwz.gates.length === 2 && cwz.samples.filter((x) => x.meta?.standard).length === 16, '56 samples, 2 gates, 16 standards');
 } catch (error) {
   check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

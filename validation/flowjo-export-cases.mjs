@@ -14,7 +14,7 @@ import { generateExample } from '../web/lib/examples.js';
 import { parseFCS, readSpillover } from '../web/lib/fcs.js';
 import { SampleView, countOf, population } from '../web/lib/engine.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
-import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
+import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows, migrationGates } from '../web/lib/flowjo-match.js';
 import { createWorkspace, addGates, addGroup, addSamples, sampleFromDataset, updateGate } from '../web/lib/workspace.js';
 import { exportFlowJo } from '../web/lib/flowjo-export.js';
 
@@ -71,7 +71,7 @@ export function importWithFiles(xml, files) {
   for (const target of plan.migration.samples) {
     if (!target.sampleId) continue;
     const view = views.get(target.sampleId);
-    counts[target.sampleId] = Object.fromEntries(Object.entries(plan.migration.gates).map(([path, gateId]) => {
+    counts[target.sampleId] = Object.fromEntries(Object.entries(migrationGates(plan.migration, target.flowJoSampleId)).map(([path, gateId]) => {
       const members = population(view, ws, gateId);
       return [path, members === undefined ? null : countOf(members, view)];
     }));

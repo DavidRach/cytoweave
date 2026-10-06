@@ -27,6 +27,8 @@
 //                           unstained?, detectors, spectra, options } → spectralSpreading()
 //   'spreadNoise'           { names, detectors, spectra, observations } → { noise (noiseRecord),
 //                           check (crossValidate summary and rows) } (spread.js)
+//   'diagnoseUnmixing'      { columns, model, context, options } → diagnoseUnmixing() (the unmixing
+//                           doctor, spectral-doctor.js)
 //   'cancel'                                { id }                     → cancels a waiting job
 // A running job can be stopped through payload.abort, an Int32Array on a SharedArrayBuffer whose
 // first element the page sets to 1 (needs cross-origin isolation), or by terminating the worker.
@@ -49,6 +51,7 @@ import {
   unmixWLS,
 } from '../lib/spectral.js';
 import { crossValidate, fitNoise, noiseRecord, spreadModel } from '../lib/spread.js';
+import { diagnoseUnmixing } from '../lib/spectral-doctor.js';
 
 const canceledIds = new Set();
 
@@ -108,6 +111,7 @@ const handlers = {
     return { report, names: result.names, medianResidual: result.residuals ? median(result.residuals) : Number.NaN };
   },
   spreadingFromControls: spreadingFromControls,
+  diagnoseUnmixing: ({ columns, model, context = {}, options = {} }, common) => diagnoseUnmixing(columns, model, context, { ...options, ...common }),
   spreadNoise: ({ names, detectors, spectra, observations }) => {
     const model = spreadModel({ names, detectors, spectra });
     const noise = fitNoise(model, observations);

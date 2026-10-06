@@ -1,0 +1,41 @@
+{
+  "about": "CytoML's counts on the FACSDiva experiment PE_2 (flowWorkspaceData), tube _001 (124500.fcs), with Diva's own counts from the XML. Written by validation/reference/generate_cytoml_diva.R.",
+  "versions": {
+    "CytoML": "2.24.0",
+    "flowWorkspace": "4.24.0"
+  },
+  "tube": "_001",
+  "file": "124500.fcs",
+  "populations": [
+    {
+      "path": "root",
+      "diva": 19090,
+      "cytoml": 19090
+    },
+    {
+      "path": "P1",
+      "diva": 17902,
+      "cytoml": 17870
+    },
+    {
+      "path": "P1/P2",
+      "diva": 17543,
+      "cytoml": 17511
+    },
+    {
+      "path": "P1/P2/P3",
+      "diva": 12334,
+      "cytoml": 12315
+    },
+    {
+      "path": "P1/P2/P3/P4",
+      "diva": 1160,
+      "cytoml": 1155
+    },
+    {
+      "path": "P1/P2/P3/P4/P5",
+      "diva": 1100,
+      "cytoml": 1099
+    }
+  ]
+}

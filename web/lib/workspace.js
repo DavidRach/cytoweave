@@ -5,6 +5,7 @@
 
 import { describeAcquisition, detectTechnology, readSpillover } from './fcs.js';
 import { newId } from './gates.js';
+import { chorusGates } from './chorus.js';
 import { categoricalColor } from './colormaps.js';
 
 export const FORMAT = 'cytoweave-workspace';
@@ -115,8 +116,15 @@ export function sampleFromDataset(dataset, file) {
     compensationId: spill && !spill.identity ? 'file' : 'none',
     hasFileSpillover: Boolean(spill && !spill.identity),
     diagnostics: dataset.diagnostics.filter((d) => d.level !== 'info').map((d) => d.message),
+    // Gates the acquisition software recorded in the file (FACSChorus), for import on request.
+    ...(acquisitionGatesOf(dataset.keywords) ?? {}),
     added: now(),
   };
+}
+
+function acquisitionGatesOf(keywords) {
+  const gates = chorusGates(keywords);
+  return gates?.gates.length ? { acquisitionGates: gates } : null;
 }
 
 export function addSamples(ws, records) {
@@ -149,6 +157,23 @@ export function setSampleMeta(ws, ids, key, value) {
   return touch(ws, {
     samples: ws.samples.map((s) => (set.has(s.id) ? { ...s, meta: { ...s.meta, [key]: value } } : s)),
   }, 'annotate', `${key} = ${value}`);
+}
+
+// Several annotations at once: changes { sampleId: { field: value } }, a null or empty value
+// removing the field (a plate layout, say).
+export function annotateSamples(ws, changes, detail = '') {
+  return touch(ws, {
+    samples: ws.samples.map((s) => {
+      const c = changes[s.id];
+      if (!c) return s;
+      const meta = { ...s.meta };
+      for (const [field, value] of Object.entries(c)) {
+        if (value === null || value === undefined || value === '') delete meta[field];
+        else meta[field] = String(value);
+      }
+      return { ...s, meta };
+    }),
+  }, 'annotate', detail || `${Object.keys(changes).length} sample(s)`);
 }
 
 export function reorderSamples(ws, orderedIds) {

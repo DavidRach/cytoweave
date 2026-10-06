@@ -7,7 +7,7 @@ import { createTransform } from '../lib/transforms.js';
 import { drawScene } from '../lib/plot.js';
 import { newId, quadrantGates, quadrantNames, splitGates } from '../lib/gates.js';
 import { densityGateAt, suggestSinglets, valleyThreshold } from '../lib/autogate.js';
-import { ROOT, SAMPLE_ROLES, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
+import { ROOT, SAMPLE_ROLES, channelLabel, gateById, gatePath, uniqueGateName } from '../lib/workspace.js';
 import { describeProposal, openProposals, proposalHistory, proposeAnnotations, proposeCompensation, proposeDerived, proposeFigure, proposeGateAdjustments, proposeGateEdit, proposeGateRemoval, proposeGates, proposeRootGate } from '../lib/proposals.js';
 import { spilloverFromControls } from './controls.js';
 import { describe } from '../lib/stats.js';
@@ -86,6 +86,15 @@ export function installRemote(app) {
     const computed = [...view.computed.keys()].filter((name) => view.hasChannel(name));
     for (const name of [...view.derived.keys(), ...computed]) if (name.toLowerCase() === lower) return name;
     throw new ActionError(`No channel "${ref}" in ${view.record.name}. Channels: ${[...params.map((p) => (p.marker ? `${p.name} (${p.marker})` : p.name)), ...computed].join(', ')}`);
+  }
+
+  // A plate by name (default the first), from platesOf().
+  function resolvePlate(plates, ref) {
+    if (!ref) return plates[0];
+    const lower = String(ref).toLowerCase();
+    const found = plates.find((p) => p.name === ref) ?? plates.find((p) => p.name.toLowerCase() === lower);
+    if (!found) throw new ActionError(`No plate "${ref}". Plates: ${plates.map((p) => p.name).join(', ')}`);
+    return found;
   }
 
   async function loadedView(sample) {
@@ -793,6 +802,312 @@ export function installRemote(app) {
       };
     },
 
+    async kinetics(args) {
+      const { guessMeasure, kineticsOfView } = await import('./kinetics.js');
+      const gateId = resolvePopulation(args.population);
+      const samples = args.samples?.length ? args.samples.map((x) => resolveSample(x)) : ws().samples.filter((x) => x.role === 'sample' || x.role === 'reference');
+      if (!samples.length) throw new ActionError('There are no samples to measure.');
+      if (args.statistic && !['median', 'mean'].includes(args.statistic)) throw new ActionError('statistic is median or mean.');
+      const options = {
+        statistic: args.statistic ?? 'median',
+        binWidth: args.binWidth > 0 ? args.binWidth : undefined,
+        smoothing: args.smoothing ?? 3,
+        stimulus: Number.isFinite(args.stimulus) ? args.stimulus : undefined,
+        responseEnd: Number.isFinite(args.responseEnd) ? args.responseEnd : undefined,
+        threshold: Number.isFinite(args.threshold) ? args.threshold : undefined,
+      };
+      const rows = [];
+      let label = null;
+      for (const sample of samples) {
+        const view = await loadedView(sample);
+        const indices = population(view, ws(), gateId);
+        if (indices === undefined) {
+          rows.push({ sample: sample.name, error: 'the population does not apply' });
+          continue;
+        }
+        let measure;
+        if (args.numerator || args.denominator) measure = { numerator: resolveChannel(view, args.numerator), denominator: resolveChannel(view, args.denominator) };
+        else if (args.channel) measure = { channel: resolveChannel(view, args.channel) };
+        else {
+          const guess = guessMeasure(view);
+          measure = guess.mode === 'ratio' ? { numerator: guess.numerator, denominator: guess.denominator } : { channel: guess.channel };
+        }
+        const name = (channel) => channelLabel(ws(), channel, { short: true });
+        if (measure.numerator) Object.assign(measure, { numeratorLabel: name(measure.numerator), denominatorLabel: name(measure.denominator) });
+        else measure.label = name(measure.channel);
+        try {
+          const { result: r, measure: m } = kineticsOfView(view, indices, measure, options);
+          label ??= m.label;
+          rows.push({
+            sample: sample.name,
+            events: r.events,
+            stimulus: r.stimulus ? { time: round(r.stimulus.time, 5), source: r.stimulus.source, resume: round(r.stimulus.resume, 5) } : null,
+            baseline: round(r.baseline, 4),
+            peak: round(r.peak, 4),
+            timeToPeak: round(r.timeToPeak, 4),
+            halfMaxTime: round(r.halfMaxTime, 4),
+            amplitude: round(r.amplitude, 4),
+            fold: round(r.fold, 3),
+            area: round(r.area, 4),
+            endLevel: round(r.endLevel, 4),
+            respondingPercent: round(r.respondingNet, 3),
+            responded: r.responded ?? false,
+            threshold: round(r.threshold, 4),
+            binWidth: r.binWidth,
+            warnings: r.warnings.length ? r.warnings : undefined,
+          });
+        } catch (error) {
+          rows.push({ sample: sample.name, error: error.message });
+        }
+      }
+      const ok = rows.filter((r) => !r.error);
+      return {
+        message: `Kinetics of ${label ?? 'the signal'} in ${gatePath(ws(), gateId) || 'all events'} for ${ok.length} sample${ok.length === 1 ? '' : 's'}: ${ok.map((r) => (r.stimulus ? `${r.sample} ${r.responded ? `peak ${r.peak} at +${r.timeToPeak} s, ${r.respondingPercent}% responding` : 'no response'}` : `${r.sample} no stimulus found`)).join('; ')}.${rows.length > ok.length ? ` Not measured: ${rows.filter((r) => r.error).map((r) => `${r.sample} (${r.error})`).join(', ')}.` : ''}`,
+        data: { measure: label, population: gatePath(ws(), gateId) || 'All events', statistic: options.statistic, rows },
+      };
+    },
+
+    async plate(args) {
+      const { platesOf, paddedWellName, wellName } = await import('../lib/plates.js');
+      const { PLATE_STATISTICS, annotationFields, controlWells, plateValues, plateZPrime } = await import('./plate-analysis.js');
+      const all = platesOf(ws().samples);
+      if (!all.length) throw new ActionError('No sample has a well. Wells come from the files\' $WELLID or WELL ID keywords, names such as Plate1_A01.fcs, or a "well" annotation (annotate_samples or plate_layout).');
+      const plate = resolvePlate(all, args.plate);
+      const byId = new Map(ws().samples.map((s) => [s.id, s]));
+      const samples = plate.placed.map((p) => byId.get(p.sampleId)).filter(Boolean);
+      const fields = annotationFields(samples);
+      const summary = {
+        plates: all.map((p) => ({ name: p.name, format: p.format, wells: p.placed.length })),
+        plate: plate.name,
+        format: plate.format,
+        wellSources: [...new Set(plate.placed.map((p) => p.source))],
+        duplicates: plate.duplicates.length ? plate.duplicates : undefined,
+        fields: Object.fromEntries(fields.map((f) => [f, [...new Set(samples.map((s) => s.meta?.[f]).filter((v) => v !== undefined && v !== ''))].slice(0, 24)])),
+      };
+      if (!args.statistic && !args.population) {
+        return { message: `${all.length} plate${all.length === 1 ? '' : 's'}; ${plate.name}: ${plate.format}-well, ${plate.placed.length} wells with a sample (wells from ${summary.wellSources.join(' and ')}); layout fields: ${fields.join(', ') || 'none'}.`, data: summary };
+      }
+      const stat = args.statistic ?? 'freqParent';
+      const def = PLATE_STATISTICS.find((s) => s.id === stat);
+      if (!def) throw new ActionError(`statistic is one of ${PLATE_STATISTICS.map((s) => s.id).join(', ')}.`);
+      const gateId = resolvePopulation(args.population);
+      const first = await loadedView(samples[0]);
+      const spec = { stat, gateId, ...(def.needsChannel ? { channel: resolveChannel(first, args.channel) } : {}), ...(def.needsValue ? { value: Number(args.value ?? (stat === 'percentile' ? 50 : 0)) } : {}) };
+      const values = await plateValues(ws(), plate, spec, (id) => loadedView(byId.get(id)));
+      const grid = [];
+      for (let r = 0; r < plate.rows; r += 1) {
+        const row = [];
+        for (let c = 0; c < plate.columns; c += 1) {
+          const id = plate.wells[r * plate.columns + c][0];
+          row.push(id ? round(values.get(id)?.value, 5) : null);
+        }
+        grid.push(row);
+      }
+      const controlField = args.controlField ?? fields.find((f) => /^(control|type|well ?type)$/i.test(f)) ?? null;
+      const z = controlField ? plateZPrime(values, controlWells(samples, controlField), Boolean(args.robust)) : null;
+      const few = plate.placed.filter((p) => (values.get(p.sampleId)?.events ?? 0) < (args.minEvents ?? 100)).map((p) => paddedWellName(p.row, p.column));
+      return {
+        message: `${gatePath(ws(), gateId) || 'All events'}: ${stat}${spec.channel ? ` of ${spec.channel}` : ''} across ${plate.name} (${values.size} wells)${z ? `; Z′ ${round(z.z, 3)} (${z.rating}) from ${z.positive.n} positive and ${z.negative.n} negative control wells ("${controlField}")` : ''}${few.length ? `; ${few.length} wells with fewer than ${args.minEvents ?? 100} events` : ''}.`,
+        data: {
+          ...summary,
+          statistic: stat,
+          population: gatePath(ws(), gateId) || 'All events',
+          channel: spec.channel,
+          rows: Array.from({ length: plate.rows }, (_, r) => wellName(r, 0).replace(/\d+$/, '')),
+          grid,
+          zPrime: z ? { value: round(z.z, 4), rating: z.rating, robust: z.robust, field: controlField, positive: { n: z.positive.n, mean: round(z.positive.mean, 5), sd: round(z.positive.sd, 4) }, negative: { n: z.negative.n, mean: round(z.negative.mean, 5), sd: round(z.negative.sd, 4) } } : null,
+          fewEvents: few.length ? few : undefined,
+        },
+      };
+    },
+
+    async plate_layout(args) {
+      const { platesOf, parseLayout, layoutChanges } = await import('../lib/plates.js');
+      const all = platesOf(ws().samples);
+      if (!all.length) throw new ActionError('No sample has a well yet: give wells first with annotate_samples (meta.well), or open files whose keywords or names carry them.');
+      if (!args.layout) throw new ActionError('layout is the CSV text: a "well" column (A01 …), an optional "plate" column and one column per field; or plate maps (a block per field: its name, then 1, 2, …; rows A, B, …).');
+      let layout;
+      try {
+        layout = parseLayout(String(args.layout));
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const targets = layout.entries.some((e) => e.plate) ? all : [resolvePlate(all, args.plate)];
+      const byId = new Map(ws().samples.map((s) => [s.id, s]));
+      const changes = {};
+      let matched = 0;
+      const unmatched = [];
+      for (const plate of targets) {
+        const result = layoutChanges(layout, plate, byId);
+        for (const [id, meta] of Object.entries(result.changes)) changes[id] = { meta: Object.fromEntries(Object.entries(meta).map(([k, v]) => [k, String(v)])) };
+        matched += result.matched;
+        unmatched.push(...result.unmatched);
+      }
+      if (!matched) throw new ActionError(`None of the layout's ${layout.entries.length} wells has a sample on ${targets.map((p) => p.name).join(', ')}.`);
+      const result = proposeAnnotations(ws(), author, changes);
+      store.commit(result.ws, `${author} proposed a plate layout`);
+      toast(`${author} proposes a plate layout for ${matched} wells (${layout.fields.join(', ')}). Review the proposal to accept or reject it.`);
+      return { message: `Proposed ${layout.fields.join(', ')} for ${matched} wells${unmatched.length ? `; ${unmatched.length} of the layout's wells have no sample` : ''}. They apply when the user accepts your proposal.`, data: { format: layout.format, fields: layout.fields, wells: matched, unmatched: unmatched.length ? unmatched : undefined, warnings: layout.warnings.length ? layout.warnings : undefined, proposal: proposalSummary() } };
+    },
+
+    async dose_response(args) {
+      const { platesOf } = await import('../lib/plates.js');
+      const { PLATE_STATISTICS, doseResponseData, fitGroups, guessFields, plateValues, plateZPrime, controlWells } = await import('./plate-analysis.js');
+      const all = platesOf(ws().samples);
+      if (!all.length) throw new ActionError('No sample has a well: plates come from the files\' $WELLID keywords, their names or "well" annotations.');
+      const plate = resolvePlate(all, args.plate);
+      const byId = new Map(ws().samples.map((s) => [s.id, s]));
+      const samples = plate.placed.map((p) => byId.get(p.sampleId)).filter(Boolean);
+      const guessed = guessFields(samples);
+      const stat = args.statistic ?? 'freqParent';
+      const def = PLATE_STATISTICS.find((s) => s.id === stat);
+      if (!def) throw new ActionError(`statistic is one of ${PLATE_STATISTICS.map((s) => s.id).join(', ')}.`);
+      const gateId = resolvePopulation(args.population);
+      const first = await loadedView(samples[0]);
+      const spec = { stat, gateId, ...(def.needsChannel ? { channel: resolveChannel(first, args.channel) } : {}), ...(def.needsValue ? { value: Number(args.value ?? 0) } : {}) };
+      const doseField = args.doseField ?? guessed.dose;
+      if (!doseField) throw new ActionError('Name the annotation that holds each well\'s dose (doseField); plate_layout or annotate_samples sets it.');
+      const normalize = args.normalize ?? 'none';
+      if (!['none', 'controls', 'inhibition'].includes(normalize)) throw new ActionError('normalize is none, controls or inhibition.');
+      const model = args.model ?? 'LL.4';
+      if (!['LL.4', 'LL.5'].includes(model)) throw new ActionError('model is LL.4 or LL.5.');
+      const controlField = args.controlField ?? guessed.control;
+      const values = await plateValues(ws(), plate, spec, (id) => loadedView(byId.get(id)));
+      let set;
+      try {
+        set = doseResponseData(samples, values, { doseField, groupField: args.groupField ?? guessed.group, controlField, normalize });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const fixed = {};
+      if (normalize !== 'none') {
+        const falling = set.groups.every((g) => {
+          const doses = [...new Set(g.x)].sort((a, b) => a - b);
+          const at = (d) => g.y.filter((_, i) => g.x[i] === d).reduce((s, v, _, a) => s + v / a.length, 0);
+          return at(doses[0]) >= at(doses.at(-1));
+        });
+        if (args.fixBottom !== false) fixed[falling ? 'c' : 'd'] = 0;
+        if (args.fixTop !== false) fixed[falling ? 'd' : 'c'] = 100;
+      }
+      const fits = fitGroups(set, { model, weighting: args.weighting ?? 'none', fixed });
+      const z = controlField ? plateZPrime(values, controlWells(samples, controlField)) : null;
+      const rows = fits.map((f) => ({
+        group: f.name,
+        wells: f.x.length,
+        ec50: f.fit && !f.fit.flags.includes('no-effect') ? round(f.fit.ec50, 5) : null,
+        ec50CI: f.fit && !f.fit.flags.includes('no-effect') ? f.fit.ec50CI.map((v) => round(v, 4)) : null,
+        hill: f.fit ? round(f.fit.hill, 4) : null,
+        bottom: f.fit ? round(f.fit.bottom, 5) : null,
+        top: f.fit ? round(f.fit.top, 5) : null,
+        asymmetry: model === 'LL.5' && f.fit ? round(f.fit.parameters.f, 4) : undefined,
+        r2: f.fit ? round(f.fit.r2, 4) : null,
+        noEffectP: f.fit ? round(f.fit.noEffect.p, 3) : null,
+        flags: f.fit ? f.fit.flags : ['no fit'],
+        error: f.error ?? undefined,
+      }));
+      return {
+        message: `Dose-response of ${gatePath(ws(), gateId) || 'all events'} ${stat}${normalize !== 'none' ? ` (as ${normalize === 'inhibition' ? '% inhibition' : '% of controls'})` : ''} on ${plate.name}, ${model}: ${rows.map((r) => (r.flags.includes('no-effect') ? `${r.group} no dose-response` : r.ec50 !== null ? `${r.group} EC50 ${r.ec50} ${set.unit}${r.flags.length ? ` (${r.flags.join(', ')})` : ''}` : `${r.group} not fitted`)).join('; ')}${z ? `. Z′ ${round(z.z, 3)} (${z.rating})` : ''}.`,
+        data: { plate: plate.name, population: gatePath(ws(), gateId) || 'All events', statistic: stat, channel: spec.channel, normalize, model, weighting: args.weighting ?? 'none', fixed, doseField, unit: set.unit, rows, zPrime: z ? round(z.z, 4) : null },
+      };
+    },
+
+    async bead_assay(args) {
+      const { platesOf } = await import('../lib/plates.js');
+      const { beadAssay } = await import('../lib/beadassay.js');
+      const { beadAssayInput, guessBeadChannels, guessFields } = await import('./plate-analysis.js');
+      const groupsArg = Array.isArray(args.groups) ? args.groups : [];
+      if (!groupsArg.length) throw new ActionError('groups: [{ "population": "Beads A", "analytes": ["IL-2", "IL-4", …] }, …], the analytes of each bead group from its dimmest bead to its brightest.');
+      const all = platesOf(ws().samples);
+      const plate = all.length ? resolvePlate(all, args.plate) : null;
+      const byId = new Map(ws().samples.map((s) => [s.id, s]));
+      const samples = plate ? plate.placed.map((p) => byId.get(p.sampleId)).filter(Boolean) : ws().samples.filter((s) => s.role === 'sample');
+      const guessed = guessFields(samples);
+      const first = await loadedView(samples[0]);
+      const channels = guessBeadChannels(first.parameters);
+      const classification = args.classificationChannel ? resolveChannel(first, args.classificationChannel) : channels.classification;
+      const reporter = args.reporterChannel ? resolveChannel(first, args.reporterChannel) : channels.reporter;
+      const standardField = args.standardField ?? guessed.standard;
+      if (!standardField) throw new ActionError('Name the annotation that marks the standard wells (standardField), e.g. standard = C0 … C7.');
+      if (!(Number(args.top) > 0) && !args.tops) throw new ActionError('top is the top standard\'s concentration (e.g. 10000 for 10 000 pg/mL); tops gives it per analyte.');
+      const gateIds = groupsArg.map((g) => resolvePopulation(g.population));
+      const wells = await beadAssayInput(ws(), samples, gateIds, { classification, reporter }, (id) => loadedView(byId.get(id)));
+      const tops = args.tops && typeof args.tops === 'object' ? new Proxy({ ...args.tops }, { get: (t, k) => (k in t ? Number(t[k]) : Number(args.top)) }) : Number(args.top);
+      let result;
+      try {
+        result = beadAssay(wells, {
+          groups: groupsArg.map((g, k) => ({ name: gatePath(ws(), gateIds[k]) || 'All events', analytes: (g.analytes ?? []).map(String) })),
+          statistic: args.statistic ?? 'median',
+          standardField,
+          standardMode: args.standardMode ?? 'auto',
+          top: tops,
+          factor: Number(args.factor ?? 4),
+          unit: args.unit ?? 'pg/mL',
+          dilutionField: args.dilutionField ?? guessed.dilution,
+          sampleField: args.sampleField ?? guessed.specimen,
+          model: args.model ?? 'LL.5',
+          weighting: args.weighting ?? '1/y2',
+          minBeads: Number(args.minBeads ?? 50),
+        });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const unit = args.unit ?? 'pg/mL';
+      return {
+        message: `Bead assay of ${result.analytes.length} analytes on ${plate?.name ?? 'the samples'}: ${result.analytes.filter((a) => a.curve.fit).length} standard curves; ${result.samples.length} samples. Quantifiable ranges (${unit}): ${result.analytes.map((a) => `${a.name} ${round(a.curve.lloq, 4)}–${round(a.curve.uloq, 4)}`).join(', ')}.${result.notes.length ? ` Notes: ${result.notes.join(' ')}` : ''}`,
+        data: {
+          unit,
+          channels: { classification, reporter },
+          analytes: result.analytes.map((a) => ({
+            name: a.name,
+            group: a.group,
+            classificationLevel: round(a.center, 5),
+            lloq: round(a.curve.lloq, 5),
+            uloq: round(a.curve.uloq, 5),
+            lod: round(a.curve.lod, 4),
+            curve: a.curve.fit ? Object.fromEntries(Object.entries(a.curve.fit.parameters).map(([k, v]) => [k, round(v, 6)])) : null,
+            standards: (a.curve.levels ?? []).map((l) => ({ concentration: round(l.concentration, 5), recovery: round(l.recovery, 4), cv: round(l.cv, 3) })),
+            error: a.curve.error,
+          })),
+          samples: result.samples.map((s) => ({ name: s.name, wells: s.wells, concentrations: Object.fromEntries(Object.entries(s.results).map(([k, r]) => [k, { mean: round(r.mean, 5), cv: round(r.cv, 3), flags: r.flags.length ? r.flags : undefined }])) })),
+          notes: result.notes.length ? result.notes : undefined,
+        },
+      };
+    },
+
+    async diagnose_unmixing(args) {
+      const run = await import('./spectral-run.js');
+      const { SPECTRA_RECORDS } = await import('../lib/spectral-library.js');
+      const { instrumentOf } = await import('../lib/instrument-record.js');
+      const state = run.spectralState(ws());
+      if (!state.activeRefs().length) throw new ActionError('The reference library has no spectra yet: unmix first (or the user computes them in the Spectral view).');
+      const sample = args.sample ? resolveSample(args.sample) : ws().samples.find((x) => x.id === store.ui.sampleId && x.role !== 'single-stain' && x.role !== 'unstained') ?? ws().samples.find((x) => x.role === 'sample');
+      if (!sample) throw new ActionError('Name the sample to diagnose (a stained sample, not a control).');
+      const gateId = args.population ? resolvePopulation(args.population) : null;
+      const control = state.controls[0] ?? sample;
+      const inst = instrumentOf(control.keywords);
+      const library = inst && app.library?.getRecord ? ((await app.library.getRecord(SPECTRA_RECORDS, inst.id).catch(() => null)) ?? null) : null;
+      const diagnosis = await run.diagnose(app, sample.id, { gateId, library });
+      if (!diagnosis) throw new ActionError('The diagnosis was canceled.');
+      const { result } = diagnosis;
+      const findings = result.findings.map((f) => ({
+        kind: f.kind,
+        subject: f.subject ?? undefined,
+        title: f.title,
+        severity: f.severity,
+        confidence: f.confidence,
+        fromControlsAlone: f.fromControls ? true : undefined,
+        evidence: f.evidence,
+        fix: f.fix ? { action: f.fix.action, label: f.fix.label, text: f.fix.text } : undefined,
+        alternatives: f.alternatives?.length ? f.alternatives.map((x) => ({ action: x.action, label: x.label, text: x.text })) : undefined,
+        effect: f.effect ?? undefined,
+      }));
+      const notable = findings.filter((f) => f.severity !== 'low');
+      return {
+        message: `${result.healthy && !notable.length ? `No fault found in ${diagnosis.sample} (${diagnosis.population}, ${result.events} events): the references and autofluorescence explain it.` : `${notable.length || findings.length} likely cause${(notable.length || findings.length) === 1 ? '' : 's'} in ${diagnosis.sample} (${diagnosis.population}, ${result.events} events), the most likely first: ${findings.slice(0, 3).map((f, k) => `${k + 1}. ${f.title} (${f.severity} impact, ${f.confidence} confidence; fix: ${f.fix?.label ?? 'none'})`).join(' ')}`} The user applies a fix in the Spectral view's Diagnose tab; then unmix again.`,
+        data: { sample: diagnosis.sample, population: diagnosis.population, events: result.events, healthy: result.healthy, baseline: result.baseline, findings, checks: result.checks },
+      };
+    },
+
     async explore(args) {
       const run = await import('./explore-run.js');
       const { markerCandidates } = await import('../lib/explore.js');
@@ -927,6 +1242,17 @@ export function installRemote(app) {
     async export_table(args) {
       const extension = requireExtension(args.path, ['.csv', '.tsv', '.xlsx', '.pzfx'], 'a table');
       if (extension === '.xlsx' || extension === '.pzfx') return exportSpreadsheet(args, extension);
+      if (args.table) {
+        // A Tables table, as the Tables view's CSV export writes it.
+        const w = ws();
+        const table = w.tables.find((t) => t.name.toLowerCase() === String(args.table).toLowerCase());
+        if (!table) throw new ActionError(`No table "${args.table}". Tables: ${w.tables.map((t) => t.name).join(', ') || 'none'}.`);
+        const { delimitedText, tableControlSamples, tableMatrix, tableSamples } = await import('../lib/tables.js');
+        const rows = tableSamples(w, table);
+        for (const x of [...rows, ...tableControlSamples(w, table)]) await loadedView(x);
+        const matrix = tableMatrix(w, table, rows, (id) => app.data.view(id));
+        return { file: delimitedText(matrix, extension === '.tsv' ? '\t' : ','), message: `The table ${table.name}: ${rows.length} rows, ${table.columns.length} column${table.columns.length === 1 ? '' : 's'}.` };
+      }
       const table = await actions.statistics_table(args);
       const separator = extension === '.tsv' ? '\t' : ',';
       const quote = (v) => {
@@ -938,6 +1264,14 @@ export function installRemote(app) {
       const columns = rows.length ? Object.keys(rows[0].values) : [];
       const lines = [['Sample', ...fields, ...columns].map(quote).join(separator), ...rows.map((r) => [r.sample, ...fields.map((f) => r.meta?.[f] ?? ''), ...columns.map((c) => r.values[c])].map(quote).join(separator))];
       return { file: `${lines.join('\n')}\n`, message: `${table.message} ${rows.length} rows, ${columns.length} population column${columns.length === 1 ? '' : 's'}.` };
+    },
+
+    async export_workspace(args) {
+      requireExtension(args.path, ['.cwz'], 'a workspace');
+      const { serializeWorkspace } = await import('../lib/workspace.js');
+      const w = ws();
+      const open = openProposals(w);
+      return { file: serializeWorkspace(w), message: `The workspace ${w.name}: ${w.samples.length} samples, ${w.gates.length} populations, ${w.tables.length} tables, ${w.figures.length} figures${open.length ? `; ${open.length} proposal${open.length === 1 ? '' : 's'} still open (saved as proposals)` : ''}.` };
     },
 
     async export_events(args) {
@@ -1036,8 +1370,19 @@ export function installRemote(app) {
       const { applyTemplate } = await import('../lib/templates.js');
       const { STRATEGIES } = await import('../lib/strategies.js');
       const wanted = String(args.template ?? '').toLowerCase();
-      // A published strategy by id (omip-101) or name, else a template in the library.
-      let template = STRATEGIES.find((t) => t.id === wanted || t.name.toLowerCase() === wanted || t.name.toLowerCase().startsWith(`${wanted}:`)) ?? null;
+      // A template file's contents (a .cwt), else a published strategy by id (omip-101) or name,
+      // else a template in the library.
+      let template = null;
+      if (args.templateJSON) {
+        const { parseTemplate } = await import('../lib/templates.js');
+        try {
+          template = parseTemplate(typeof args.templateJSON === 'string' ? args.templateJSON : JSON.stringify(args.templateJSON));
+        } catch (error) {
+          throw new ActionError(error.message);
+        }
+      }
+      if (!template && !wanted) throw new ActionError('Name the template (a template in the library, or a strategy id such as omip-101), or give templateJSON, a template file\'s contents.');
+      template ??= STRATEGIES.find((t) => t.id === wanted || t.name.toLowerCase() === wanted || t.name.toLowerCase().startsWith(`${wanted}:`)) ?? null;
       if (!template) {
         const list = await app.listTemplates();
         const entry = list.find((t) => (t.name ?? '').toLowerCase() === wanted) ?? list.find((t) => t.id === args.template) ?? list.find((t) => (t.name ?? '').toLowerCase().includes(wanted));
@@ -1519,10 +1864,25 @@ export function installRemote(app) {
 
   // --- Connection ---------------------------------------------------------------------------------
 
+  // Actions only "cytoweave run" sends (the program marks its own events trusted; agents' and
+  // scripts' actions never are): the run stands for the user who started it.
+  const trusted = {
+    async accept_proposals() {
+      const { acceptProposal } = await import('../lib/proposals.js');
+      const open = openProposals(ws());
+      const changes = open.flatMap((p) => describeProposal(ws(), p).map((i) => i.text));
+      let next = ws();
+      // The run's own proposals are the user's own changes; any other author's stay attributed.
+      for (const p of open) next = acceptProposal(next, p.id, 'cytoweave run', { own: p.author === author });
+      if (open.length) store.commit(next, `Accept ${open.length} proposal${open.length === 1 ? '' : 's'} (cytoweave run)`);
+      return { message: open.length ? `Accepted ${open.length} proposal${open.length === 1 ? '' : 's'}: ${changes.join('; ')}.` : 'No open proposals.', data: { accepted: open.length, changes } };
+    },
+  };
+
   async function perform(event) {
     let outcome;
     try {
-      const handler = actions[event.action];
+      const handler = event.trusted && trusted[event.action] ? trusted[event.action] : actions[event.action];
       if (!handler) throw new ActionError(`Unknown action "${event.action}". Actions: ${Object.keys(actions).join(', ')}.`);
       const args = typeof event.args === 'object' && event.args ? event.args : {};
       author = event.client || 'a program on this computer';

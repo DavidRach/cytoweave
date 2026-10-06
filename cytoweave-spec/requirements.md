@@ -1,6 +1,6 @@
 # CytoWeave requirements
 
-What CytoWeave must do, and the status of each requirement in 0.6.1.
+What CytoWeave must do, and the status of each requirement in 0.7.0.
 - `research.md` explains why each requirement is here: the methods and
   standards of §3–4 and the design implications of §8.
 - `design.md` explains how the requirements are met.
@@ -75,7 +75,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | S5 | Comparison of unmixing models on the user's own sample | done |
 | S6 | Predicted spread for panel design from the user's own references | done: photon and laser noise fitted to the controls, kept per instrument or from bead runs; validated on simulated and real (LSRFortessa) controls |
 | S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
-| S8 | Unmixing doctor: the likely cause of a poor unmixing, named with its fix | planned (wave 7) |
+| S8 | Unmixing doctor: the likely cause of a poor unmixing, named with its fix | done (wave 7): a dye without a reference, a wrong reference, a bead control whose dye differs on cells, a tandem degraded in samples or controls, a cell control carrying autofluorescence, and autofluorescence the unstained control lacks; each planted fault named first on two simulated experiments, fixes checked against the truth; AutoSpectral's autofluorescent cell controls and PFA-fixed spleen named |
 | S9 | Panel optimizer from the user's instrument model and library | planned (wave 8) |
 
 ## Quality control and normalization
@@ -107,9 +107,10 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | A1 | Cell cycle: Dean–Jett–Fox and Watson | done |
 | A2 | Proliferation: generation fitting and Roederer's indices | done |
 | A3 | Index sorting: well-to-event links | done: a plate view (96- and 384-well and others) from BD's INDEX SORTING LOCATIONS or well parameters, colored by population or channel, wells marked on the plots, CSV export |
-| A4 | Kinetics and ratiometric (calcium) analysis | planned (wave 7) |
-| A5 | Plates: wells as samples, layouts, heat maps of any statistic | planned (wave 7) |
-| A6 | Dose-response (EC50/IC50) and Z′; bead-based immunoassay standard curves | planned (wave 7) |
+| A4 | Kinetics and ratiometric (calcium) analysis | done (wave 7): a signal or ratio against time, binned and smoothed, the stimulus found from the pause in acquisition, baseline, peak, time to peak, half-max time, area, end level and responding share, samples overlaid; validated on a simulated calcium flux |
+| A5 | Plates: wells as samples, layouts, heat maps of any statistic | done (wave 7): wells from FCS keywords, file names or annotations; layouts as annotations (selected wells, dilution series, CSV and plater maps); heat maps of any population statistic with Z′ and robust Z′; validated on a simulated 96-well screen |
+| A6 | Dose-response (EC50/IC50) and Z′; bead-based immunoassay standard curves | done (wave 7): LL.4/LL.5 fits in drc's parameterization with EC50 CIs and flags (validated against drc 4.0 and the exact Hessian); bead immunoassays with classification levels across wells, 5PL standard curves, FDA 2018 quantifiable ranges and LODs (validated on a simulated 8-plex and against beadplexr, including its real LEGENDplex data) |
+| A7 | Imaging flow cytometry: image galleries (CellView, Amnis), then image features to gate on | planned (wave 10) |
 
 ## Comparison and statistics
 
@@ -129,9 +130,10 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R3 | Methods paragraph with references, from what the workspace did; MIFlowCyt checklist | done |
 | R4 | Publication figures (SVG, PNG, PDF) that stay live until export | done |
 | R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | done: SVG, PNG and PDF exports carry the record; opening one reports what changed since and rebuilds it from the same files (validation `figures`) |
-| R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned |
+| R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned: a tamper-evident change log in wave 8; users, audit trail and signatures in wave 9, subject to a decision on GxP |
 | R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | done: a figure repeated by sample or by an annotation as PDF or PowerPoint with every number traced to its source; Excel workbooks with provenance sheets and Prism projects; read back by openpyxl, python-pptx, pypdf and R pzfx (validation `reports`) |
 | R8 | Reproducibility certificate that re-runs and confirms every reported number | planned (wave 8) |
+| R9 | A self-contained review report of an analysis, every number traced, opened without CytoWeave | planned (wave 8) |
 
 ## Interchange
 
@@ -143,7 +145,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | I4 | FlowJo workspace export | done: per-sample trees with overrides and scopes, compensation, scales, groups and counts, with a fidelity report; every validation case imports back with its counts unchanged, and FlowKit reads every export and counts what CytoWeave counts. Compatibility tested with FlowJo 11.2.0 (build 11.2.0.210156, 2026-10-03): three exports within 0.6 percentage points, most within 0.1; CytoML 2.24 reads every export. Logicle and arcsinh scales are written as FlowJo biex for FlowJo 11. FlowJo 10 not tried |
 | I5 | Analysis templates applied by marker, with a match report; OMIP gating strategies; populations mapped to Cell Ontology IDs, carried into exports and methods | done: templates matched by marker with a preview and report; OMIP-101 and OMIP-090 placed on the data; Cell Ontology suggestions confirmed by the user, written to FlowJo and Gating-ML exports, tables and methods (not CLR, which has no field for them) |
 | I6 | CSV event import; AnnData export (`.h5ad`); concatenated and downsampled FCS export | done: CSV events checked and imported with kinds and scales guessed; concatenated, per-sample and seeded downsampled FCS files; AnnData through our own HDF5 writer, read exactly by anndata 0.10 and 0.13, h5py and pyfive (validation `events`) |
-| I7 | Acquisition-software experiments (FACSDiva, FACSChorus, SpectroFlo) and FlowJo 11 `.flowjo` workspaces | planned (wave 7) |
+| I7 | Acquisition-software experiments (FACSDiva, FACSChorus, SpectroFlo) and FlowJo 11 `.flowjo` workspaces | done (wave 7): FlowJo 11 workbenches (FlowJo 11.2's own counts reproduced for all 350 counts of twelve workbenches when evaluated as FlowJo 11 does, native quadrants within 3 events); FACSDiva experiments (counts equal to CytoML's, linear-axis gates equal to Diva's own); FACSChorus gates from S8/A8 FCS files (exact on linear and log axes; no counts in the files to compare); SpectroFlo experiments' reference controls (stored spectra not used: they do not match the controls' events). FACSChorus `.cef` files not read (no public file) |
 
 ## Automation
 
@@ -154,7 +156,11 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
 | M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | done: 11 new tools (29 in all); results and figures proposed, annotations and root gates held; exports write only to the path given and never replace a file unless told to; validation `agent-session.mjs` (15 checks, in CI) |
 | M5 | R and Python clients for remote control | done: `clients/r` and `clients/python`, functions generated from the tools, connection found through `remote.json`, tested in CI against a running CytoWeave (not published to CRAN or PyPI) |
-| M6 | Optional on-device assistant, without network | planned (wave 8) |
+| M6 | Optional on-device assistant, without network | idea (replaced by WebMCP, M7) |
+| M7 | Tools exposed to browser agents through WebMCP | planned (wave 8) |
+| M8 | Headless runs: a template applied to a folder without a window, writing tables, reports and exports | done (wave 7): `cytoweave run` in a headless Chrome, default steps or a steps file of agent actions, tables, report, workspace, methods and a run record with checksums and counts; the same outputs as the window's own exports, every count equal to Node's |
+| M9 | The R and Python clients published (r-universe, PyPI) with each release | parked (outside the waves): installed from the GitHub repository for now, as documented; to publish once CytoWeave has more users |
+| M10 | A tool contract for external algorithms (pinned WASM or container runtimes, results as derived channels) | planned (wave 10) |
 
 ## Quality
 
@@ -165,3 +171,5 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | done: ISAC's Gating-ML suite, FlowKit, FlowIO, FlowJo's saved counts, FACSDiva's spillover, and flowCore, PeacoQC, FlowSOM and CytoNorm in R |
 | V4 | Accessible: keyboard operation, labeled controls, color maps safe for color-vision deficiency | done: color-vision-friendly colors (a setting); WCAG AA contrast in both themes; keyboard tree, list, dialogs and scroll regions; plots described in text; axe-core audit of every documentation scene (`capture.mjs --audit`) and validation `accessibility`. Not done: drawing gates without a pointer; testing by screen-reader users |
 | V5 | Teaching mode on the examples | planned (wave 8) |
+| V6 | A public agent benchmark: graded tasks on the examples, scored against the truth, published per agent and model | planned (wave 8) |
+| V7 | Validation on real expert-gated data (FlowCAP, FlowRepository studies) beside the simulated truth | planned (beside wave 7) |

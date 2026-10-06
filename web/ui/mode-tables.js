@@ -6,7 +6,7 @@ import { showMenu, showDialog, toast, progressToast, promptDialog } from './over
 import { STATISTICS, formatStatistic } from '../lib/stats.js';
 import { ROOT, channelCatalog, gateById, gatePath, setCollection } from '../lib/workspace.js';
 import { newId } from '../lib/gates.js';
-import { LIMIT_STATISTICS, LIMIT_STATUS, columnLabel, columnLimits as libColumnLimits, controlSampleOptions, tableControlSamples, tableMatrix, tableSamples, tableValues } from '../lib/tables.js';
+import { LIMIT_STATISTICS, LIMIT_STATUS, columnLabel, columnLimits as libColumnLimits, controlSampleOptions, delimitedText, tableControlSamples, tableMatrix, tableSamples, tableValues } from '../lib/tables.js';
 import { colormapColor, hexToRgb, luminance, rgbToHex } from '../lib/colormaps.js';
 
 export { columnLabel, controlSampleOptions, LIMIT_STATISTICS, LIMIT_STATUS };
@@ -424,8 +424,7 @@ export function mountTablesMode(app, container) {
   }
 
   function exportCSV(table, rows) {
-    const lines = matrix(table, rows).map((row) => row.map((cell) => (/[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(','));
-    downloadBlob(new Blob([lines.join('\n')], { type: 'text/csv' }), `${table.name.replace(/[^\w.-]+/g, '_')}.csv`);
+    downloadBlob(new Blob([delimitedText(matrix(table, rows))], { type: 'text/csv' }), `${table.name.replace(/[^\w.-]+/g, '_')}.csv`);
   }
 
   const ensureFor = (tables) => ensureTableSamples(app, tables);

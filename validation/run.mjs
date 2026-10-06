@@ -6,17 +6,17 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
+// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, kinetics, plates, beadplexr, clustering,
+// normalization, debarcode, transforms, flowjo, migration, acquisition, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
-// fortessa, bioconductor
+// fortessa, bioconductor, autospectral
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
 // validation/cache/; without them the suite is skipped (and fails with --require-data, as in CI).
 
-import { generateExample } from '../web/lib/examples.js';
-import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
+import { BEAD_STANDARDS, SCREEN_COMPOUNDS, SCREEN_DOSES, generateExample, screenTruth } from '../web/lib/examples.js';
+import { FCSError, parseFCS, parseTextSegment, readHeader, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
 import { SampleView, computeStatistic, countOf, population } from '../web/lib/engine.js';
 import { resolveFormula } from '../web/lib/formula.js';
@@ -63,7 +63,18 @@ import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositiv
 import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
 import { EXPERT_GATES, ORDER, TRUTH, adaptTopDown, againstExperts, buildCohort, expertCorrection, expertWorkspace, f1 as truthF1, randomGains } from './autogating-cases.mjs';
 import { adaptAcrossSamples } from '../web/lib/autogating.js';
-import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
+import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows, migrationGates } from '../web/lib/flowjo-match.js';
+import { FLOWJO11_WORKBENCHES, flowJo11Case } from './flowjo11-cases.mjs';
+import { divaCase } from './diva-cases.mjs';
+import { chorusGates, importChorus } from '../web/lib/chorus.js';
+import { cytekDetectors, importSpectroFlo, planSpectroFloControls } from '../web/lib/spectroflo.js';
+import { diagnoseControls, diagnoseUnmixing } from '../web/lib/spectral-doctor.js';
+import { analyzeKinetics, eventSeconds, kineticsMeasure } from '../web/lib/kinetics.js';
+import { fitLogLogistic, inverseLogLogistic, inverseWithError } from '../web/lib/curves.js';
+import { layoutCSV, layoutChanges, paddedWellName, parseLayout, platesOf, sampleWells, zPrime } from '../web/lib/plates.js';
+import { beadAssay, classifyBeads, findBeadLevels, mfiOf } from '../web/lib/beadassay.js';
+import { BEAD_SPEC, beadInput, beadWells, curveCases, exampleWorkspace, lplexFiles, scatterGroups, screenInput, screenWells } from './curve-cases.mjs';
+import { compareSpectra } from '../web/lib/spectral-library.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
@@ -131,6 +142,9 @@ function median(values) {
 // External data (validation/sources.json, fetched into validation/cache/ by fetch.mjs).
 const sources = JSON.parse(readFileSync(new URL('./sources.json', import.meta.url), 'utf8'));
 class MissingData extends Error {}
+// Data that only an R script exports (fetch.mjs cannot make it), so a suite needing it is skipped
+// even with --require-data: its reference results are committed and checked by other suites.
+class NeedsR extends Error {}
 // PeacoQC as the app runs a large sample: each channel's work done apart (in parallel workers, here
 // one after another, each with fresh scratch space and through a structured clone, as postMessage
 // passes it), then combined. Must equal the serial run event for event.
@@ -206,7 +220,7 @@ function flowJoMigration(xml, files) {
       view.setCompensation({ id: comp.id, channels: comp.channels, matrix: comp.matrix });
     }
     const out = {};
-    for (const [path, gateId] of Object.entries(plan.migration.gates)) {
+    for (const [path, gateId] of Object.entries(migrationGates(plan.migration, target.flowJoSampleId))) {
       const members = population(view, ws, gateId);
       out[path] = members === undefined ? null : countOf(members, view);
     }
@@ -270,6 +284,30 @@ function flowKitExportChecks(c, ref, originals) {
     else worse.push(`${k}: ${before} → ${n} (FlowJo ${saved})`);
   }
   check('flowkit', `${c.name}: FlowKit's counts on the export vs on the original workspace`, `${unchanged} unchanged${closer ? `, ${closer} closer to FlowJo's saved counts (time gates, which the export writes in $TIMESTEP units)` : ''}${worse.length ? `; ${worse.slice(0, 2).join('; ')}` : ''}`, !worse.length && unchanged + closer === original.size, 'each unchanged or closer to FlowJo');
+}
+
+// FlowJo 11 workbenches (.flowjo) saved by FlowJo 11.2 during a trial, with FlowJo's own count of
+// every population (flowjo11-cases.mjs): the reading of the format, checked by evaluating the
+// imported gates the way FlowJo 11 does, and the app's import recomputed by CytoWeave's engine.
+async function flowJo11WorkbenchChecks(suite) {
+  const cases = [];
+  for (const entry of FLOWJO11_WORKBENCHES) cases.push(await flowJo11Case(entry));
+  const missing = [...new Set(cases.filter((c) => c.missing).map((c) => c.missing))];
+  const done = cases.filter((c) => !c.missing);
+  const rows = done.flatMap((c) => c.rows.map((r) => ({ ...r, native: c.native, case: c.name })));
+  const exact = rows.filter((r) => r.grid === r.flowjo);
+  const off = rows.filter((r) => r.grid !== r.flowjo);
+  const nativeQuadrants = off.filter((r) => r.native && /^Q\d:/.test(r.path) && Math.abs(r.grid - r.flowjo) <= 3);
+  const unexplained = off.filter((r) => !nativeQuadrants.includes(r));
+  check(suite, `FlowJo 11 workbenches (${done.length} saved by FlowJo 11.2${missing.length ? `; ${cases.length - done.length} need the ${missing.join(', ')} data` : ''}): FlowJo's own counts reproduced by CytoWeave's reading of every gate, evaluated as FlowJo 11 evaluates gates (on its display grid)`, `${exact.length} of ${rows.length} equal${nativeQuadrants.length ? `; ${nativeQuadrants.length} quadrant counts drawn in FlowJo 11 within 3 events` : ''}${unexplained.length ? `; ${unexplained.slice(0, 2).map((r) => `${r.case} ${r.sample} ${r.path}: FlowJo ${r.flowjo}, ${r.grid}`).join('; ')}` : ''}`, !unexplained.length && rows.length > 300, 'all equal (quadrants drawn in FlowJo 11 within 3 events)');
+  const fidelity = done.flatMap((c) => c.fidelity.filter((f) => f.status !== 'imported').map((f) => `${c.name} ${f.path}: ${f.detail}`));
+  check(suite, 'FlowJo 11 workbenches: every population imported exactly (polygons, rectangles, ellipses, quadrants with an offset arm, per-sample gates, compensation, linear and biex scales)', fidelity.length ? fidelity.slice(0, 2).join('; ') : `all ${rows.length}`, !fidelity.length && rows.length > 0, 'all');
+  const gaps = rows.map((r) => ({ ...r, gap: r.parent && r.appParent ? Math.abs((100 * r.cytoweave) / r.appParent - (100 * r.flowjo) / r.parent) : (r.cytoweave === r.flowjo ? 0 : Infinity) }));
+  // One event apart counts as agreeing (a population of 100 events moves 1 point per event).
+  const beyondOne = gaps.filter((g) => Math.abs(g.cytoweave - g.flowjo) > 1);
+  const worst = beyondOne.reduce((a, b) => (b.gap > a.gap ? b : a), beyondOne[0] ?? { gap: 0, path: '', case: '', sample: '' });
+  const same = rows.filter((r) => r.cytoweave === r.flowjo).length;
+  check(suite, 'FlowJo 11 workbenches imported as the app imports them (samples matched, one gate tree with per-sample adjustments, FlowJo\'s scales and compensation) and recomputed by CytoWeave, which evaluates the exact gate geometry: each population\'s percentage of its parent against FlowJo\'s', `${same} of ${rows.length} counts equal, ${rows.length - same - beyondOne.length} one event apart; the rest within ${worst.gap.toFixed(2)} percentage points (largest: ${worst.case} ${worst.sample} ${worst.path.split('/').pop()}, FlowJo ${worst.flowjo}, CytoWeave ${worst.cytoweave})`, beyondOne.every((g) => g.gap <= 0.6) && rows.length > 0, 'within 0.6 percentage points or one event');
 }
 
 // FlowJo 11 itself on the exports (reference/flowjo11.json, read from FlowJo 11.2 during a trial):
@@ -364,7 +402,7 @@ function deidentifyChecks(suite, label, files) {
 const suites = {
   fcs() {
     const all = [];
-    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
+    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'plate-screen', 'bead-immunoassay', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
       const { files } = generateExample(id, { scale: 0.05 });
       all.push(...files);
       let problems = 0;
@@ -1353,6 +1391,102 @@ const suites = {
     const staleResult = unmixWithAutofluorescence(dCols, stale, dAF.signatures, { detectors });
     check('spectral', 'degraded PE-Cy7 unmixed with its stale library spectrum vs its own control: Pearson r of PE (whose detectors the donor emission reaches) and PE-Cy7', `PE ${fmt(rOf(staleResult, 'PE'), 3)} vs ${fmt(rOf(fresh, 'PE'), 3)}; PE-Cy7 ${fmt(rOf(staleResult, 'PE-Cy7'), 3)} vs ${fmt(rOf(fresh, 'PE-Cy7'), 3)}`, rOf(staleResult, 'PE') < rOf(fresh, 'PE'), 'the stale spectrum is worse for PE');
   },
+  // The unmixing doctor (S8) on the spectral example with faults planted by the simulator: a dye
+  // without a reference, a control stained with another dye, a tandem degraded in the samples or
+  // in the controls, a dye that emits differently on beads, and an unstained control without the
+  // samples' myeloid cells. Each must be named first, clean samples must show nothing, and each
+  // fix the doctor proposes must bring the unmixed values closer to the truth. The library is
+  // another experiment's controls, with the same physics (a dye shifted on beads is shifted there
+  // too) but none of this experiment's mistakes.
+  doctor() {
+    const experiments = new Map();
+    const experiment = (options) => {
+      const key = JSON.stringify(options);
+      if (experiments.has(key)) return experiments.get(key);
+      const { files, workspaceHints } = generateExample('spectral-25color', options);
+      const detectors = workspaceHints.spectral.detectors;
+      const read = (file) => {
+        const d = load(file);
+        const cols = columnsOf(d);
+        return { cols: detectors.map((n) => cols[n]), fsc: cols['FSC-A'], ssc: cols['SSC-A'] };
+      };
+      const refs = files.filter((f) => f.meta.role === 'single-stain').map((f) => {
+        const { cols } = read(f);
+        const gate = autoGateControl(cols, detectors, {});
+        const ref = referenceSpectrum(cols, detectors, gate.positive, gate.negative, {});
+        return { name: f.meta.stain, spectrum: ref.spectrum, carrier: /bead/.test(f.meta.carrier) ? 'beads' : 'cells', mixture: ref.quality.mixture };
+      });
+      const unstained = read(files.find((f) => f.meta.role === 'unstained'));
+      const af = extractAutofluorescence(unstained.cols, detectors, {}).signatures;
+      const out = { files, detectors, refs, af, unstained, read };
+      experiments.set(key, out);
+      return out;
+    };
+    const libraryFor = (options) => {
+      const lib = experiment({ seed: 2, ...(options.beadShift ? { beadShift: options.beadShift } : {}) });
+      return lib.refs.map((r) => libraryEntry({ fluorochrome: r.name, spectrum: r.spectrum, detectors: lib.detectors, date: '2026-05-01', file: `Ref_${r.name}.fcs`, sha256: `lib-${r.name}`, carrier: r.carrier }));
+    };
+    const cases = [
+      { name: 'clean', options: {}, expect: null },
+      { name: 'BV605 without a reference', options: {}, drop: 'BV605', expect: 'missing-reference:BV605' },
+      { name: 'the APC control stained with Alexa Fluor 647', options: { controlSubstitutes: { APC: 'Alexa Fluor 647' } }, expect: 'wrong-reference:APC' },
+      { name: 'PE-Cy7 degraded by 5% in the samples', options: { tandemDegradation: { 'PE-Cy7': 0.05 }, degradationIn: 'samples' }, expect: 'degraded-tandem:PE-Cy7', truthOf: 'PE' },
+      { name: 'PE-Cy7 degraded by 10% in the controls', options: { tandemDegradation: { 'PE-Cy7': 0.1 }, degradationIn: 'controls' }, expect: 'degraded-tandem:PE-Cy7', truthOf: 'PE' },
+      { name: 'PE-CF594 emitting 6 nm redder on beads', options: { beadShift: { 'PE-CF594': 6 } }, expect: 'bead-control:PE-CF594' },
+      { name: 'an unstained control of lymphocytes only', options: { unstainedCells: 'lymphocytes' }, expect: 'autofluorescence:null' },
+    ];
+    // The example's seed and a held-out one (the thresholds were set on the first).
+    const runs = [{ seed: undefined, donor: 'Donor_S1.fcs' }, { seed: 7, donor: 'Donor_S3.fcs' }];
+    const named = [];
+    const improvements = [];
+    let worst = null;
+    for (const run of runs) {
+      for (const c of cases) {
+        const options = run.seed === undefined ? c.options : { ...c.options, seed: run.seed };
+        const e = experiment(options);
+        const donor = e.files.find((f) => f.name === run.donor);
+        const sample = e.read(donor);
+        const spectra = e.refs.filter((r) => r.name !== c.drop);
+        const library = libraryFor(c.options);
+        const started = performance.now();
+        const result = diagnoseUnmixing(sample.cols, { detectors: e.detectors, spectra, afSignatures: e.af }, { references: spectra, library, unstainedAF: e.af, unstained: { columns: e.unstained.cols }, scatter: { sample: { fsc: sample.fsc, ssc: sample.ssc }, unstained: { fsc: e.unstained.fsc, ssc: e.unstained.ssc } } });
+        const ms = performance.now() - started;
+        if (!worst || ms > worst.ms) worst = { ms, events: result.events };
+        const top = result.findings.find((f) => !f.fromControls && f.severity !== 'low') ?? null;
+        const got = top ? `${top.kind}:${top.subject}` : null;
+        named.push({ seed: run.seed ?? 'example', name: c.name, expect: c.expect, got, ok: got === c.expect });
+        // The fix against the truth: Pearson r of the dye it concerns (or of the donor a degraded
+        // tandem leaks into), before and after.
+        const fix = top?.fix;
+        if (!fix || !['add-library', 'use-library', 'replace-spectrum', 'add-spectrum'].includes(fix.action)) continue;
+        const entry = fix.entryId ? library.find((x) => x.id === fix.entryId) : null;
+        const replacement = entry ? entry.spectrum : fix.spectrum;
+        const subject = fix.fluorochrome ?? entry?.fluorochrome ?? top.subject;
+        const fixed = fix.action.startsWith('add') ? [...spectra, { name: subject, spectrum: replacement }] : spectra.map((s) => (s.name === subject ? { name: s.name, spectrum: replacement } : s));
+        const truth = donor.meta.truth;
+        const rOf = (result, name) => {
+          const f = result.names.indexOf(name);
+          return f < 0 ? Number.NaN : pearson(result.abundances[f], truth.abundances[truth.abundanceNames.indexOf(name)]);
+        };
+        const before = unmixWithAutofluorescence(sample.cols, spectra, e.af, { detectors: e.detectors });
+        const after = unmixWithAutofluorescence(sample.cols, fixed, e.af, { detectors: e.detectors });
+        const dye = c.truthOf ?? subject;
+        // A wrong reference harms the dyes that share its light more than its own: the largest
+        // gain anywhere in the panel.
+        const gains = spectra.map((x) => ({ name: x.name, before: rOf(before, x.name), after: rOf(after, x.name) })).filter((g) => Number.isFinite(g.before) && Number.isFinite(g.after));
+        const most = gains.reduce((a, b) => (b.after - b.before > a.after - a.before ? b : a));
+        const worse = gains.reduce((a, b) => (b.after - b.before < a.after - a.before ? b : a));
+        improvements.push({ seed: run.seed ?? 'example', name: c.name, dye, before: rOf(before, dye), after: rOf(after, dye), most, worse });
+      }
+    }
+    const faults = named.filter((n) => n.expect);
+    const missed = faults.filter((n) => !n.ok);
+    check('doctor', `planted faults named first (${cases.length - 1} faults, the example's seed and a held-out one)`, missed.length ? missed.map((n) => `${n.name} (seed ${n.seed}): ${n.got ?? 'nothing'}`).join('; ') : `${faults.length} of ${faults.length}`, !missed.length, 'all');
+    const clean = named.filter((n) => !n.expect);
+    check('doctor', 'clean samples: no fault reported', clean.map((n) => `seed ${n.seed}: ${n.got ?? 'none'}`).join(', '), clean.every((n) => n.ok), 'none');
+    check('doctor', 'each proposed fix against the truth: Pearson r of the dye it concerns (of PE for a degraded PE-Cy7), before → after, and the largest gain and loss of any dye in the panel', improvements.map((x) => `${x.name} (seed ${x.seed}): ${x.dye} ${Number.isFinite(x.before) ? fmt(x.before, 4) : 'no channel'} → ${fmt(x.after, 4)}; most gained ${x.most.name} ${fmt(x.most.before, 4)} → ${fmt(x.most.after, 4)}; most lost ${x.worse.name} ${fmt(x.worse.after - x.worse.before, 4)}`).join(' | '), improvements.length >= 8 && improvements.every((x) => !(x.after < (Number.isFinite(x.before) ? x.before : 0.9)) && x.worse.after - x.worse.before > -0.005), 'the dye no worse; no dye loses more than 0.005 (a dye added back spreads into its neighbors; a library spectrum carries its own control\'s noise); a missing dye > 0.9');
+    check('doctor', 'diagnosis time for 20 000 events × 64 detectors × 25 dyes (Node, longest case)', `${fmt(worst.ms / 1000, 2)} s`, true, 'reported');
+  },
   // Predicted spread (S6) on the spectral example with known noise: every detector's photon noise
   // (c1 = k) and each laser's intensity CV. The noise is fitted to the controls, each control's
   // spread is predicted from the others, and a panel that was never fitted (15 of the 25 dyes) is
@@ -1436,6 +1570,276 @@ const suites = {
     }
   },
 
+  // Kinetics (A4) on the calcium-flux example: each tube's live T cells (or B cells), the Indo-1
+  // violet/blue ratio against time. Two truths: the same analysis of every event's noise-free
+  // ratio (so differences are the measurement's), and the simulator's own (when the stimulus was
+  // added, which cells were responding when measured).
+  kinetics() {
+    const { files } = generateExample('calcium-flux', {});
+    const rows = [];
+    const bCells = [];
+    for (const file of files) {
+      const d = load(file);
+      const cols = columnsOf(d);
+      const times = eventSeconds(cols.Time, 0.01);
+      const truth = file.meta.truth;
+      const of = (pattern) => {
+        const wanted = new Set(truth.names.map((n, i) => (pattern.test(n) ? i : -1)).filter((i) => i >= 0));
+        return Uint32Array.from([...truth.labels.keys()].filter((i) => wanted.has(truth.labels[i])));
+      };
+      const tCells = of(/( T$|TEMRA|Regulatory T)/);
+      const { values } = kineticsMeasure(cols, { numerator: 'BUV395-A', denominator: 'BUV496-A' });
+      const started = performance.now();
+      const r = analyzeKinetics(times, values, { indices: tCells, allTimes: times });
+      const ms = performance.now() - started;
+      // The noise-free ratio, the same bins and (with a pause) the same stimulus.
+      const t = analyzeKinetics(times, Float64Array.from(truth.ratio), { indices: tCells, allTimes: times, binWidth: r.binWidth, threshold: r.threshold, ...(r.stimulus?.source === 'pause' ? { stimulus: r.stimulus.time } : {}) });
+      // Cells responding when measured, in the bins around the measured responding maximum.
+      let near = 0;
+      let responding = 0;
+      for (const i of tCells) {
+        if (Math.abs(times[i] - r.respondingTime) <= 1.5 * r.binWidth) {
+          near += 1;
+          if (truth.responding[i]) responding += 1;
+        }
+      }
+      rows.push({ name: file.name, stimulus: truth.calcium, r, t, ms, trueResponding: near ? (100 * responding) / near : 0 });
+      const b = analyzeKinetics(times, values, { indices: of(/ B$/), allTimes: times });
+      bCells.push({ name: file.name, responded: b.responded, net: b.respondingNet });
+    }
+    const paused = rows.filter((x) => x.stimulus.resumeTime > x.stimulus.stimulusTime);
+    const injected = rows.filter((x) => x.stimulus.resumeTime === x.stimulus.stimulusTime);
+    check('kinetics', 'the stimulus where acquisition paused (added at 60 s, resumed at 68 s), in every paused tube', paused.map((x) => `${x.name} ${fmt(x.r.stimulus.time, 3)}→${fmt(x.r.stimulus.resume, 3)}`).join(', '), paused.every((x) => x.r.stimulus.source === 'pause' && Math.abs(x.r.stimulus.time - 60) < 0.1 && Math.abs(x.r.stimulus.resume - 68) < 0.1), 'within 0.1 s');
+    check('kinetics', 'without a pause (injected), the response\'s onset against the noise-free curve\'s onset', injected.map((x) => `${x.name} ${fmt(x.r.stimulus.time, 3)} s (noise-free ${fmt(x.t.stimulus?.time, 3)} s; added at 60 s)`).join(', '), injected.every((x) => x.r.stimulus?.source === 'onset' && Math.abs(x.r.stimulus.time - x.t.stimulus.time) <= x.r.binWidth), 'within one bin');
+    const rel = (a, b) => Math.abs(a - b) / Math.abs(b);
+    check('kinetics', 'baseline (median ratio before the stimulus) against the noise-free ratio', rows.map((x) => `${x.name} ${fmt(x.r.baseline, 4)} (${fmt(x.t.baseline, 4)})`).join(', '), rows.every((x) => rel(x.r.baseline, x.t.baseline) < 0.01), 'within 1%');
+    const responders = rows.filter((x) => x.t.responded);
+    check('kinetics', 'peak, time to peak and half-max time of each response against the noise-free curve', responders.map((x) => `${x.name} peak ${fmt(x.r.peak, 4)} (${fmt(x.t.peak, 4)}), +${fmt(x.r.timeToPeak, 3)} s (${fmt(x.t.timeToPeak, 3)}), half-max +${fmt(x.r.halfMaxTime, 3)} s (${fmt(x.t.halfMaxTime, 3)})`).join('; '), responders.length === 4 && responders.every((x) => rel(x.r.peak, x.t.peak) < 0.03 && Math.abs(x.r.timeToPeak - x.t.timeToPeak) <= x.r.binWidth + 1e-9 && Math.abs(x.r.halfMaxTime - x.t.halfMaxTime) <= x.r.binWidth), 'peak within 3%; times within one bin');
+    check('kinetics', 'area above the baseline (ratio × s) against the noise-free curve', responders.map((x) => `${x.name} ${fmt(x.r.area, 4)} (${fmt(x.t.area, 4)})`).join(', '), responders.every((x) => Math.abs(x.r.area - x.t.area) <= Math.max(0.05 * Math.abs(x.t.area), 1)), 'within 5% (or 1 for a small area)');
+    check('kinetics', 'responding T cells (net % above the baseline\'s 99th percentile) against the share responding when measured; the buffer tube flagged as no response', rows.map((x) => `${x.name} ${fmt(x.r.respondingNet, 3)}% (${fmt(x.trueResponding, 3)}%)${x.r.responded ? '' : ', no response'}`).join(', '), rows.every((x) => (x.stimulus.stimulus === 'buffer' ? !x.r.responded && x.r.respondingNet < 2 : Math.abs(x.r.respondingNet - x.trueResponding) <= 3)), 'within 3 points; buffer: no response');
+    const order = ['Buffer.fcs', 'aCD3_low.fcs', 'aCD3_high.fcs', 'Ionomycin.fcs'].map((n) => rows.find((x) => x.name === n).r.respondingNet);
+    check('kinetics', 'dose: responding T cells rise from buffer to the low and high anti-CD3 doses to ionomycin', order.map((v) => fmt(v, 3)).join(' < '), order.every((v, k) => k === 0 || v > order[k - 1]), 'increasing');
+    const bAntiCD3 = bCells.find((x) => x.name === 'aCD3_high.fcs');
+    const bIono = bCells.find((x) => x.name === 'Ionomycin.fcs');
+    check('kinetics', 'B cells: no response to anti-CD3 (it stimulates T cells), a response to ionomycin', `anti-CD3 ${bAntiCD3.responded ? 'responded' : 'no response'} (${fmt(bAntiCD3.net, 3)}%), ionomycin ${bIono.responded ? 'responded' : 'no response'} (${fmt(bIono.net, 3)}%)`, !bAntiCD3.responded && bIono.responded && bIono.net > 90, 'none; > 90%');
+    check('kinetics', 'time per tube (about 25 000 T cells of 100 000 events)', `${fmt(Math.max(...rows.map((x) => x.ms)), 3)} ms at most`, true, 'reported');
+  },
+  plates() {
+    // Plates and curves: the drug-screen and bead-immunoassay examples (plate-cases in
+    // curve-cases.mjs), against the simulator's truth and against R's drc 4.0 and beadplexr 0.5
+    // (reference/curves.json, from generate_curves.R).
+    const ref = JSON.parse(readFileSync(new URL('./reference/curves.json', import.meta.url), 'utf8'));
+    const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
+    const started = performance.now();
+    const screen = exampleWorkspace('plate-screen');
+    const samples = screen.ws.samples;
+    const truthWell = (s) => screen.files.get(s.id).meta.truth && s.fileName.replace(/^Plate1_|\.fcs$/g, '');
+    // Wells: from the keywords ($WELLID, $PLATENAME), and from the file names alone.
+    const keyed = sampleWells(samples.map((s) => ({ ...s, meta: {} })));
+    const named = sampleWells(samples.map((s) => ({ ...s, meta: {}, keywords: {}, acquisition: {} })));
+    const placedRight = (placed, source) => samples.filter((s) => placed.get(s.id)?.source === source && paddedWellName(placed.get(s.id).row, placed.get(s.id).column) === truthWell(s)).length;
+    const [plate] = platesOf(samples.map((s) => ({ ...s, meta: {} })));
+    check('plates', 'wells from the files\' $WELLID keywords, and from their names alone, on one 96-well plate', `${placedRight(keyed, 'keyword')} and ${placedRight(named, 'name')} of 96 in their wells; plate "${plate.name}", ${plate.format} wells`, placedRight(keyed, 'keyword') === 96 && placedRight(named, 'name') === 96 && plate.format === 96 && plate.name === 'Screen plate 1', '96 of 96');
+    // Layouts: the example's annotations written as CSV and as plate maps (plater's format), read
+    // back and applied to the unannotated plate.
+    const fields = ['compound', 'dose', 'control'];
+    const byId = new Map(samples.map((s) => [s.id, s]));
+    const annotated = platesOf(samples)[0];
+    const csv = layoutCSV(annotated, byId, fields);
+    const fromCSV = layoutChanges(parseLayout(csv), plate).changes;
+    const map = fields.map((field) => [`${field},${Array.from({ length: 12 }, (_, c) => c + 1).join(',')}`, ...'ABCDEFGH'.split('').map((letter, r) => [letter, ...Array.from({ length: 12 }, (_, c) => byId.get(annotated.wells[r * 12 + c][0])?.meta?.[field] ?? '')].join(','))].join('\n')).join('\n\n');
+    const fromMap = layoutChanges(parseLayout(map), plate).changes;
+    const same = (changes) => samples.every((s) => fields.every((f) => (changes[s.id]?.[f] ?? null) === (s.meta[f] ?? null)));
+    check('plates', 'the layout as one row per well and as plate maps, read back onto the plate', `${samples.filter((s) => fields.every((f) => (fromCSV[s.id]?.[f] ?? null) === (s.meta[f] ?? null))).length} and ${samples.filter((s) => fields.every((f) => (fromMap[s.id]?.[f] ?? null) === (s.meta[f] ?? null))).length} of 96 wells as annotated`, same(fromCSV) && same(fromMap), '96 of 96');
+    // The response: % CD69+ of live T cells by the suggested gates, against the share of live T
+    // cells the simulator activated.
+    const wells = screenWells(screen);
+    const worstWell = wells.reduce((w, x) => (Math.abs(x.percent - x.truth.percent) > Math.abs(w.percent - w.truth.percent) ? x : w));
+    check('plates', '% CD69+ of live T cells per well against the share the simulator activated (T-cell doublets, gated as T cells, carry no CD69)', `worst ${worstWell.well}: ${fmt(worstWell.percent, 2)}% (${fmt(worstWell.truth.percent, 2)}%)`, wells.every((x) => Math.abs(x.percent - x.truth.percent) <= 1), 'within 1 point');
+    const controls = (role, key) => wells.filter((x) => x.control === role).map(key);
+    const z = zPrime(controls('positive', (x) => x.percent), controls('negative', (x) => x.percent));
+    const zTrue = zPrime(controls('positive', (x) => x.truth.percent), controls('negative', (x) => x.truth.percent));
+    const zRobust = zPrime(controls('positive', (x) => x.percent), controls('negative', (x) => x.percent), { robust: true });
+    check('plates', 'Z′ of the 18 stimulated and 18 unstimulated control wells against the Z′ of the activated shares (Zhang et al. 1999)', `${fmt(z.z, 3)} (${fmt(zTrue.z, 3)}), ${z.rating}; robust ${fmt(zRobust.z, 3)}`, Math.abs(z.z - zTrue.z) <= 0.03 && z.rating === 'excellent', 'within 0.03; excellent');
+    // Dose-response: each compound's 4PL fit against the parameters it was simulated with.
+    const input = screenInput();
+    const fits = input.compounds.map((c) => ({ name: c.name, fit: fitLogLogistic(c.x, c.y, { model: 'LL.4' }), compound: SCREEN_COMPOUNDS.find((k) => k.name === c.name) }));
+    const active = fits.filter((f) => f.compound.inhibition && f.compound.ic50 < Math.max(...SCREEN_DOSES));
+    const within = (f, key) => Math.abs(f.fit.parameters[key] - screenTruth(f.compound)[key]) <= 3 * f.fit.standardErrors[key];
+    check('plates', 'IC50 of the four compounds active within the tested doses: the 95% CI covers the simulated IC50', active.map((f) => `${f.name} ${fmt(f.fit.ec50, 3)} nM (${fmt(f.fit.ec50CI[0], 3)}–${fmt(f.fit.ec50CI[1], 3)}; ${f.compound.ic50})`).join(', '), active.length === 4 && active.every((f) => f.fit.ec50CI[0] <= f.compound.ic50 && f.compound.ic50 <= f.fit.ec50CI[1]), 'covered');
+    check('plates', 'Hill slope, bottom and top of the four (CW-104 a partial inhibitor) within 3 standard errors of the simulated', active.map((f) => `${f.name} ${fmt(f.fit.hill, 3)} (${fmt(-f.compound.hill, 3)}), ${fmt(f.fit.bottom, 3)} (${fmt(screenTruth(f.compound).c, 3)}), ${fmt(f.fit.top, 3)} (${fmt(screenTruth(f.compound).d, 3)})`).join('; '), active.every((f) => within(f, 'b') && within(f, 'c') && within(f, 'd')), '3 SE');
+    const inactive = fits.find((f) => f.name === 'CW-105');
+    const beyond = fits.find((f) => f.name === 'CW-106');
+    check('plates', 'CW-105 (inactive) flagged as no dose-response; CW-106 (IC50 25 µM, above the 10 µM top dose) flagged as poorly determined', `CW-105: ${inactive.fit.flags.join(', ')} (F test p ${fmt(inactive.fit.noEffect.p, 3)}); CW-106: ${beyond.fit.flags.join(', ')}`, inactive.fit.flags.includes('no-effect') && beyond.fit.flags.includes('wide-ci') && !active.some((f) => f.fit.flags.length), 'flagged; the four unflagged');
+    // drc: the same data, the same optimum.
+    const drcCompare = (label, ours, r, options = {}) => {
+      const o = r?.ours;
+      const keys = o ? Object.keys(o.coefficients) : [];
+      const pDiff = o ? Math.max(...keys.map((k) => rel(ours.parameters[k], o.coefficients[k]))) : Number.NaN;
+      // In standard errors: an ill-determined fit lies in a nearly flat valley, where the last bits
+      // of floating point (x64 or arm64, Node versions) move where either optimizer stops.
+      const pDiffSE = o ? Math.max(...keys.map((k) => Math.abs(ours.parameters[k] - o.coefficients[k]) / ours.standardErrors[k])) : Number.NaN;
+      const seDiff = o?.exactSE ? Math.max(...keys.map((k) => rel(ours.standardErrors[k], o.exactSE[k]))) : Number.NaN;
+      const ecDiff = o ? Math.max(rel(ours.ec50, o.ec50), rel(ours.ec50SE, o.exactEC50SE)) : Number.NaN;
+      const ill = ours.flags.some((f) => ['no-effect', 'wide-ci', 'at-bound'].includes(f));
+      return { label, lower: ours.rss <= r.rss * (1 + 1e-7), drcRss: r.rss, rss: ours.rss, pDiff, pDiffSE, seDiff: ill || options.skipSE ? Number.NaN : seDiff, ecDiff: ill ? Number.NaN : ecDiff, ill };
+    };
+    const cases = curveCases();
+    const caseRows = cases.map((k, i) => drcCompare(k.name, fitLogLogistic(k.x, k.y, { model: k.model, weighting: k.weighting, fixed: k.fixed ?? undefined }), ref.cases[i]));
+    const screenRows = [...input.compounds.map((c, i) => drcCompare(c.name, fitLogLogistic(c.x, c.y, { model: 'LL.4' }), ref.screen.compounds[i])), drcCompare(input.normalized.name, fitLogLogistic(input.normalized.x, input.normalized.y, { model: 'LL.4', fixed: { c: 0, d: 100 } }), ref.screen.normalized)];
+    const allRows = [...caseRows, ...screenRows];
+    const maxOf = (rows, key) => Math.max(...rows.map((r) => r[key]).filter(Number.isFinite));
+    // Parameters: relative for well-determined fits, in standard errors for ill-determined ones.
+    const paramDiff = (rows) => ({ rel: maxOf(rows.filter((r) => !r.ill), 'pDiff'), se: Math.max(0, maxOf(rows.filter((r) => r.ill), 'pDiffSE')), ill: rows.filter((r) => r.ill).length });
+    const paramText = (d) => `${d.rel.toExponential(1)}${d.ill ? ` (${d.ill} ill-determined within ${d.se.toExponential(1)} SE)` : ''}`;
+    const paramOk = (d) => d.rel < 1e-6 && d.se < 1e-3;
+    check('plates', `drc ${ref.drc}, 8 synthetic curves (4PL and 5PL, rising and falling, weights, fixed asymptotes) and the screen's 7 fits: CytoWeave's residual sum of squares never above drc's best from its own starts`, `${allRows.filter((r) => r.lower).length} of ${allRows.length}; lower in ${allRows.filter((r) => r.rss < r.drcRss * (1 - 1e-6)).length} (drc stopping at a local optimum)`, allRows.every((r) => r.lower), 'all');
+    check('plates', 'drc started from CytoWeave\'s estimate stays on it: parameters (fits flagged as ill-determined in their standard errors)', `max relative difference ${paramText(paramDiff(allRows))}`, paramOk(paramDiff(allRows)), '< 1e-6; < 1e-3 SE');
+    check('plates', 'standard errors and the EC50 with its standard error against the exact Hessian (numDeriv at drc\'s optimum; drc\'s own come from optim\'s coarse numerical Hessian); fits flagged as ill-determined left out', `max relative difference ${maxOf(allRows, 'seDiff').toExponential(1)} and ${maxOf(allRows, 'ecDiff').toExponential(1)}; ${allRows.filter((r) => r.ill).length} left out`, maxOf(allRows, 'seDiff') < 1e-3 && maxOf(allRows, 'ecDiff') < 1e-3, '< 1e-3');
+    // The bead assay against its truth.
+    const beads = beadWells(exampleWorkspace('bead-immunoassay'));
+    const assay = beadAssay(beads, { ...BEAD_SPEC, weighting: '1/y2' });
+    let rightBeads = 0;
+    let gatedBeads = 0;
+    let worstWellShare = 1;
+    for (const w of beads) {
+      let right = 0;
+      let all = 0;
+      w.groups.forEach((g, gi) => {
+        const group = assay.groups[gi];
+        const labels = classifyBeads(g.classification, group.levels, group.scale);
+        g.indices.forEach((event, j) => {
+          const name = w.truth.names[w.truth.labels[event]] ?? '';
+          const m = /^([AB]): (.+)$/.exec(name);
+          if (!m) return;
+          all += 1;
+          if (labels[j] >= 0 && group.analytes[labels[j]] === m[2]) right += 1;
+        });
+      });
+      rightBeads += right;
+      gatedBeads += all;
+      worstWellShare = Math.min(worstWellShare, right / all);
+    }
+    check('plates', 'bead identification: gated beads assigned to their own analyte (levels found once from all 56 wells)', `${pct(rightBeads / gatedBeads)} of ${gatedBeads}; worst well ${pct(worstWellShare)}`, rightBeads / gatedBeads >= 0.99 && worstWellShare >= 0.98, '≥ 99%, every well ≥ 98%');
+    const recoveries = assay.analytes.flatMap((a) => a.curve.levels.filter((l) => l.concentration >= a.curve.lloq && l.concentration <= a.curve.uloq).map((l) => l.recovery));
+    check('plates', 'standards back-calculated within the quantifiable range (FDA 2018: within 20%, 25% at its ends)', `${recoveries.length} standard levels, recovery ${fmt(Math.min(...recoveries), 3)}–${fmt(Math.max(...recoveries), 3)}%; ranges ${assay.analytes.map((a) => `${a.name} ${fmt(a.curve.lloq, 3)}–${fmt(a.curve.uloq, 3)}`).join(', ')}`, recoveries.every((r) => r >= 75 && r <= 125), '75–125%');
+    const errors = [];
+    const flagged = [];
+    for (const w of assay.wells.filter((x) => x.kind === 'sample')) {
+      const truth = beads.find((b) => b.id === w.id).truth.beads.serum;
+      for (const a of assay.analytes) {
+        const c = w.results[a.name].concentration;
+        if (c.flag === 'ok') errors.push(Math.abs(c.value / truth[a.name] - 1));
+        else flagged.push({ flag: c.flag, truth: truth[a.name] / BEAD_STANDARDS.dilution, lloq: a.curve.lloq, uloq: a.curve.uloq });
+      }
+    }
+    errors.sort((a, b) => a - b);
+    const within20 = errors.filter((e) => e <= 0.2).length / errors.length;
+    check('plates', 'sera inside the quantifiable range against their true concentrations (× the 2-fold dilution)', `${errors.length} of ${errors.length + flagged.length}: median error ${pct(errors[errors.length >> 1])}, ${pct(within20)} within 20%, worst ${pct(errors.at(-1))}`, errors[errors.length >> 1] < 0.05 && within20 >= 0.95, 'median < 5%; ≥ 95% within 20%');
+    const consistent = flagged.filter((f) => (f.flag === '< LLOQ' || f.flag === '< LOD' || f.flag === 'below curve' ? f.truth < f.lloq * 1.5 : f.flag === '> ULOQ' || f.flag === 'above curve' ? f.truth > f.uloq / 1.5 : false));
+    check('plates', 'sera outside it flagged on the side their true concentration lies', `${consistent.length} of ${flagged.length} (${[...new Set(flagged.map((f) => f.flag))].join(', ')})`, consistent.length === flagged.length, 'all');
+    // The bead assay's standard curves against drc and beadplexr.
+    const beadInputs = beadInput();
+    const beadRows = [];
+    let concWorst = 0;
+    let concSEWorst = 0;
+    let beadplexrHigher = 0;
+    for (const statistic of ['median', 'geometric']) {
+      beadInputs[statistic].forEach((a, i) => {
+        const x = a.standards.map((s) => s.concentration);
+        const y = a.standards.map((s) => s.mfi);
+        const r = ref.beads[statistic][i];
+        if (r.beadplexr.rss >= r.best.rss * (1 - 1e-7)) beadplexrHigher += 1;
+        for (const [weighting, key] of [['none', 'best'], ['1/y2', 'weighted']]) {
+          const fit = fitLogLogistic(x, y, { model: 'LL.5', weighting });
+          beadRows.push(drcCompare(`${statistic} ${weighting} ${a.name}`, fit, r[key], { skipSE: true }));
+          const lowest = Math.min(...x.filter((v) => v > 0));
+          const highest = Math.max(...x);
+          a.samples.forEach((s, j) => {
+            const c = inverseWithError(fit, s.mfi);
+            if (!Number.isFinite(c.dose) || r[key].concentration?.[j] === null || r[key].concentration?.[j] === undefined) return;
+            concWorst = Math.max(concWorst, rel(c.dose, r[key].concentration[j]));
+            const exact = r[key].exactError?.[j];
+            if (c.dose >= lowest && c.dose <= highest && Number.isFinite(exact) && exact > 0) concSEWorst = Math.max(concSEWorst, rel(c.se, exact));
+          });
+        }
+      });
+    }
+    check('plates', 'the bead assay\'s 32 five-parameter standard curves (median and geometric MFIs, unweighted as beadplexr fits them and weighted 1/Y²): residual sum of squares never above drc\'s best', `${beadRows.filter((r) => r.lower).length} of ${beadRows.length}; lower in ${beadRows.filter((r) => r.rss < r.drcRss * (1 - 1e-6)).length}; beadplexr's fit_standard_curve (drc from its default start) at or above drc's best in ${beadplexrHigher} of 16`, beadRows.every((r) => r.lower), 'all');
+    check('plates', 'from CytoWeave\'s estimate, drc\'s parameters, and the sera\'s concentrations (beadplexr\'s calculate_concentration, drc\'s ED) and their standard errors (exact delta method; within the standards\' range); parameters of fits flagged as ill-determined in their standard errors', `max relative differences ${paramText(paramDiff(beadRows))}, ${concWorst.toExponential(1)} and ${concSEWorst.toExponential(1)}`, paramOk(paramDiff(beadRows)) && concWorst < 1e-6 && concSEWorst < 1e-3, '< 1e-6 (1e-3 SE), 1e-6, 1e-3');
+    check('plates', 'time: two plates (152 wells) gated, the screen\'s curves and the bead assay fitted', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+  beadplexr() {
+    // beadplexr's own LEGENDplex data (a Human Growth Factor 13-plex: standards C0–C7 and a sample,
+    // each in duplicate; events arcsinh-transformed as its read_fcs gives them), analyzed as its
+    // vignette does (reference/generate_curves.R), and by CytoWeave: bead sizes by a two-cluster
+    // split of FSC and SSC, classification levels pooled across the 18 files.
+    const files = lplexFiles(fileURLToPath(new URL('./cache/curves/lplex/', import.meta.url)));
+    if (!files) throw new NeedsR('beadplexr\'s LEGENDplex events are exported by Rscript validation/reference/generate_curves.R into validation/cache/curves/lplex/');
+    const ref = JSON.parse(readFileSync(new URL('./reference/curves.json', import.meta.url), 'utf8')).lplex;
+    const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
+    const groups = scatterGroups(files);
+    let groupSame = 0;
+    let groupBoth = 0;
+    files.forEach((f, k) => f.group.forEach((g, i) => { if (g) { groupBoth += 1; if (g === groups[k][i]) groupSame += 1; } }));
+    check('beadplexr', 'bead sizes: CytoWeave\'s two-cluster split of FSC-A and SSC-A against beadplexr\'s (mclust)', `${groupSame} of ${groupBoth} events beadplexr placed (${pct(groupSame / groupBoth)})`, groupSame / groupBoth >= 0.999, '≥ 99.9%');
+    const ids = Object.fromEntries(ref.analytes.map((g) => [g.group, g.ids]));
+    const levels = Object.fromEntries(['A', 'B'].map((g) => [g, findBeadLevels(files.flatMap((f, k) => [...f.classification].filter((_, i) => groups[k][i] === g)), ids[g].length, { scale: 'linear' })]));
+    const labels = files.map((f, k) => Array.from(f.classification, (v, i) => {
+      const g = groups[k][i];
+      const l = classifyBeads([v], levels[g].levels, 'linear')[0];
+      return l >= 0 ? ids[g][l] : null;
+    }));
+    // Files where beadplexr's clusters sit at the pooled levels (each analyte's median FL6-H within
+    // 0.15 of CytoWeave's level for it).
+    const median = (v) => { const s = [...v].sort((a, b) => a - b); return s[s.length >> 1]; };
+    const perFile = files.map((f, k) => {
+      let same = 0;
+      let both = 0;
+      // Events both put in the same bead size (the sizes are compared above).
+      f.analyte.forEach((a, i) => { if (a && labels[k][i] && f.group[i] === groups[k][i]) { both += 1; if (a === labels[k][i]) same += 1; } });
+      const off = ['A', 'B'].flatMap((g) => ids[g].map((id, j) => {
+        const v = [...f.classification].filter((_, i) => f.analyte[i] === id);
+        return v.length < 20 || Math.abs(median(v) - levels[g].levels[j].median) > 0.15 ? id : null;
+      })).filter(Boolean);
+      return { file: f.file, same, both, off };
+    });
+    const consistent = perFile.filter((p) => !p.off.length);
+    const inconsistent = perFile.filter((p) => p.off.length);
+    check('beadplexr', 'analytes (13 levels of FL6-H), on events both put in the same bead size: identical on every file where beadplexr\'s clusters sit at the levels shared by all files', `${consistent.filter((p) => p.same === p.both).length} of ${consistent.length} files identical (${consistent.reduce((s, p) => s + p.both, 0)} events); ${inconsistent.map((p) => `${p.file}: beadplexr's ${p.off.join(', ')} off their level`).join('; ') || 'no other file'}`, consistent.every((p) => p.same === p.both) && consistent.length >= 17, 'identical on ≥ 17 files');
+    const odd = inconsistent.map((p) => {
+      const f = files.find((x) => x.file === p.file);
+      const k = files.indexOf(f);
+      return { file: p.file, ours: ['A', 'B'].flatMap((g) => ids[g].map((id) => labels[k].filter((l) => l === id).length)) };
+    });
+    check('beadplexr', 'the file beadplexr\'s clustering got wrong: CytoWeave finds all 13 analytes there, at the shared levels', odd.map((o) => `${o.file}: ${o.ours.join(', ')} beads`).join('; ') || 'none', odd.every((o) => o.ours.every((n) => n >= 200)), '≥ 200 beads each');
+    // MFIs: the geometric mean of FL2-H over beadplexr's own beads (calc_analyte_mfi).
+    let mfiWorst = 0;
+    for (const f of files) {
+      for (const [id, value] of Object.entries(ref.mfi[f.file] ?? {})) {
+        const v = [...f.reporter].filter((_, i) => f.analyte[i] === id);
+        mfiWorst = Math.max(mfiWorst, rel(mfiOf(v, 'geometric'), value));
+      }
+    }
+    check('beadplexr', 'geometric-mean MFIs of FL2-H over beadplexr\'s beads against its calc_analyte_mfi', `max relative difference ${mfiWorst.toExponential(1)} (234 analyte × file)`, mfiWorst < 1e-9, '< 1e-9');
+    // The vignette's standard curves (LL.5 of log10 MFI on log10 concentration) and the sample.
+    const rows = ref.curves.map((c) => {
+      const x = [];
+      const y = [];
+      c.standards.concentration.forEach((conc, i) => { if (conc > 0) { x.push(Math.log10(conc)); y.push(Math.log10(c.standards.mfi[i])); } });
+      const fit = fitLogLogistic(x, y, { model: 'LL.5' });
+      const same = Math.abs(fit.rss - c.rss) <= 1e-5 * c.rss;
+      const conc = c.samples.mfi.map((m) => inverseLogLogistic(Math.log10(m), fit.parameters));
+      const diff = same ? Math.max(0, ...conc.map((v, i) => (Number.isFinite(v) && c.samples.log10Concentration[i] !== null ? Math.abs(v - c.samples.log10Concentration[i]) : 0))) : Number.NaN;
+      return { name: c.name, lower: fit.rss <= c.rss * (1 + 1e-6), same, better: fit.rss < c.rss * (1 - 1e-5), diff };
+    });
+    const sameRows = rows.filter((r) => r.same);
+    const worst = Math.max(...sameRows.map((r) => r.diff));
+    // At the same optimum (residual sums of squares equal to 5 digits) the parameters can still
+    // differ along the curve's flat ridge: drc stops when the sum changes by less than 1e-7 of itself
+    // (drmc's relTol).
+    check('beadplexr', 'the vignette\'s 13 standard curves: residual sum of squares never above beadplexr\'s; the sample\'s concentrations where both reach the same optimum', `${rows.filter((r) => r.lower).length} of 13 (lower for ${rows.filter((r) => r.better).map((r) => r.name).join(', ') || 'none'}); ${sameRows.length} at the same optimum: log10 concentrations within ${fmt(worst, 4)} (${fmt(100 * (10 ** worst - 1), 2)}%)`, rows.every((r) => r.lower) && worst <= Math.log10(1.01), 'all; within 1%');
+  },
   proliferation() {
     const { files } = generateExample('proliferation', {});
     const stim = files.find((f) => f.name === 'Day4_aCD3CD28.fcs');
@@ -1560,7 +1964,7 @@ const suites = {
     check('transforms', `FlowJo biex reproduces BD's lookup tables (${tables.length} tables, width basis −1 to −1000; worst: ${worstTable})`, `max relative difference ${worstRelative.toExponential(1)}`, worstRelative < 2e-5, '< 2e-5 (tables print 6 digits)');
     check('transforms', 'FlowJo biex: event positions', `max ${fmt(worstChannel, 3)} of 4096 channels`, worstChannel < 0.05, '< 0.05 channel');
   },
-  flowjo() {
+  async flowjo() {
     // The bundled FlowJo example: its workspace's counts are computed independently of the import
     // (examples.js), the way FlowJo evaluates each gate.
     const { files, attachments } = generateExample('flowjo-workspace', { scale: 0.25 });
@@ -1577,6 +1981,119 @@ const suites = {
     for (const c of [bundled, built]) exportChecks('flowjo', c);
 
     flowJo11Checks('flowjo', [bundled, built]);
+  },
+  // External data: gates FACSChorus recorded in a FACSDiscover A8 file (its HEADER and TEXT,
+  // Zenodo 15726118), and a SpectroFlo experiment with raw reference controls (Mendeley
+  // ch5dnspd79, the AutoSpectral example).
+  acquisition() {
+    const a8 = dataset('chorus-a8');
+    const bytes = new Uint8Array(a8.read('HD PBMC.fcs.head'));
+    const header = readHeader(bytes);
+    let text = '';
+    for (let i = header.textStart; i <= header.textEnd; i += 1) text += String.fromCharCode(bytes[i]);
+    const keywords = Object.fromEntries(parseTextSegment(text));
+    const channels = Object.entries(keywords).filter(([k]) => /^\$P\d+N$/.test(k)).map(([k, v]) => ({ name: v, range: Number(keywords[k.replace(/N$/, 'R')]) }));
+    const record = chorusGates(keywords);
+    const result = importChorus([{ id: 'a8', name: 'HD PBMC', fileName: 'HD PBMC.fcs', eventCount: Number(keywords.$TOT), channels, acquisitionGates: record }]);
+    const drawn = record.gates.filter((g) => !['Saturated', 'Unsaturated'].includes(g.kind));
+    const exact = result.fidelity.filter((f) => f.status === 'imported');
+    check('acquisition', `FACSChorus ${record.version} gates recorded in a ${record.cytometer} file (BDCHORUSDATARECORD, ${record.gates.length} gates): every drawn gate imported exactly (polygons and rectangles on scatter, time and image-feature axes, all linear), the automatic saturation gates reported`, `${exact.length} of ${drawn.length} exact; ${result.warnings.length ? 'saturation gates reported' : 'saturation gates not reported'}`, exact.length === drawn.length && drawn.length === 6 && /Saturated and Unsaturated/.test(result.warnings[0] ?? ''), 'all; reported');
+    // The vertices back in data values, from the imported geometry.
+    let worst = 0;
+    let named = 0;
+    for (const gate of result.samples[0].gates) {
+      const g = drawn.find((d) => d.name === gate.name);
+      const ranges = gate.dims.map((d) => d.transform.max - d.transform.min);
+      if (gate.dims.every((d) => channels.some((c) => c.name === d.channel))) named += 1;
+      const back = gate.type === 'rectangle'
+        ? [[gate.geometry.min[0] * ranges[0], gate.geometry.min[1] * ranges[1]], [gate.geometry.max[0] * ranges[0], gate.geometry.max[1] * ranges[1]]]
+        : gate.geometry.vertices.map(([x, y]) => [x * ranges[0], y * ranges[1]]);
+      const want = gate.type === 'rectangle'
+        ? [[Math.min(...g.vertices.map((v) => v[0])), Math.min(...g.vertices.map((v) => v[1]))], [Math.max(...g.vertices.map((v) => v[0])), Math.max(...g.vertices.map((v) => v[1]))]]
+        : g.vertices;
+      back.forEach(([x, y], i) => { worst = Math.max(worst, Math.abs(x - want[i][0]) / Math.max(1, Math.abs(want[i][0])), Math.abs(y - want[i][1]) / Math.max(1, Math.abs(want[i][1]))); });
+    }
+    check('acquisition', 'FACSChorus gates: each on parameters the file has, with its vertices unchanged (data values)', `${named} of ${result.samples[0].gates.length} on the file's parameters; largest relative difference ${worst.toExponential(1)}`, named === result.samples[0].gates.length && worst < 1e-12, 'all; < 1e-12');
+
+    const sf = dataset('spectroflo');
+    const experiment = importSpectroFlo(sf.text('20250218 AF data for collab.Expt'));
+    const files = sf.files.filter((f) => f.endsWith('.fcs'));
+    const datasets = new Map(files.map((f) => [f, parseFCS(sf.read(f)).datasets[0]]));
+    const first = datasets.get(files[0]);
+    const rawDetectors = readSpillover(first.keywords, first.parameters).channels;
+    check('acquisition', `SpectroFlo experiment (.Expt, version ${experiment.version}): ${experiment.references.length} reference controls read (fluorochrome, marker, control file, carrier, paired unstained) and the ${experiment.detectors.length} detectors named as the experiment's raw files name them (5-laser Aurora)`, `${experiment.references.map((r) => r.fluorochrome).join(', ')}; detector names ${JSON.stringify(experiment.detectors) === JSON.stringify(rawDetectors) ? 'equal to' : 'differ from'} the raw files' $SPILLOVER`, experiment.references.length === 7 && experiment.references.every((r) => r.controlFile && r.carrier === 'cells' && r.unstained === 'Unstained') && experiment.unstained?.controlFile && JSON.stringify(cytekDetectors(64)) === JSON.stringify(rawDetectors), 'all');
+    const samples = files.map((f) => ({ ...sampleFromDataset(datasets.get(f), { name: f }) }));
+    const plan = planSpectroFloControls(experiment, samples);
+    const marked = plan.filter((r) => r.sample);
+    const unstainedRow = plan.find((r) => r.kind === 'unstained' && r.sample);
+    const unstainedColumns = columnsOf(datasets.get(unstainedRow.sample.fileName));
+    const rows = marked.filter((r) => r.kind === 'reference').map((r) => {
+      const cols = columnsOf(datasets.get(r.sample.fileName));
+      const gate = autoGateControl(cols, experiment.detectors, { range: 4194304 });
+      const ref = referenceSpectrum(cols, experiment.detectors, gate.positive, gate.negative, {});
+      return { name: r.reference.fluorochrome, peak: ref.peakDetector, gated: r.reference.gatedDetector, stored: compareSpectra(ref.spectrum, r.reference.storedVector) };
+    });
+    check('acquisition', `SpectroFlo controls marked on the experiment's raw files (${marked.length - 1} reference controls and the unstained of the ${files.length} fetched) and their spectra computed as the Spectral view computes them: each peaks in the detector SpectroFlo gated the control on`, rows.map((r) => `${r.name} ${r.peak}${r.peak === r.gated ? '' : ` (SpectroFlo ${r.gated})`}`).join(', '), rows.length === 4 && rows.every((r) => r.peak === r.gated) && Boolean(unstainedColumns), 'all');
+    check('acquisition', 'SpectroFlo\'s stored vectors are not the controls\' spectra, so CytoWeave computes spectra from the control files (the largest peak-normalized difference from each control\'s own spectrum)', rows.map((r) => `${r.name} ${fmt(r.stored.maxDiff, 2)}`).join(', '), rows.every((r) => r.stored.maxDiff > 0.3), '> 0.3 for each (not usable as references)');
+  },
+  // External data: the AutoSpectral example (Mendeley ch5dnspd79), whose six dyes have both bead
+  // and cell controls, and whose unstained spleen was also fixed. The unmixing doctor's control
+  // checks against biology: the cell controls of markers on autofluorescent cells (CD11b on
+  // myeloid cells, Siglec F on eosinophils, F4/80 on macrophages) carry their positives'
+  // autofluorescence, those of lymphoid markers (CD45, CD4, CD3) and the viability dye do not, and
+  // bead controls never do. Then a sample whose autofluorescence the unstained control does not
+  // describe: spleen fixed in 4% PFA, against the same spleen unfixed.
+  autospectral() {
+    const base = dataset('spectroflo');
+    const more = dataset('autospectral');
+    const detectors = cytekDetectors(64);
+    const read = (set, file) => {
+      const cols = columnsOf(parseFCS(set.read(file)).datasets[0]);
+      return { cols: detectors.map((n) => cols[n]), fsc: cols['FSC-A'], ssc: cols['SSC-A'] };
+    };
+    const control = (set, name, file) => {
+      const { cols } = read(set, file);
+      const gate = autoGateControl(cols, detectors, { range: 4194304 });
+      const ref = referenceSpectrum(cols, detectors, gate.positive, gate.negative, { range: 4194304 });
+      return { name, spectrum: ref.spectrum, carrier: /Beads/.test(file) ? 'beads' : 'cells', mixture: ref.quality.mixture, file };
+    };
+    const unstained = read(base, 'A1 Unstained (Cells)_Set1.fcs');
+    const af = extractAutofluorescence(unstained.cols, detectors, { seed: 1, maxSignatures: 6 }).signatures;
+    const cells = [
+      [base, 'BUV395', 'A3 CD45 BUV395 (Cells)_Set1.fcs'], [more, 'BUV805', 'A4 CD11b BUV805 (Cells)_Set1.fcs'], [base, 'BV421', 'A5 CD4 BV421 (Cells)_Set1.fcs'],
+      [more, 'PE', 'A6 Siglec F PE (Cells)_Set1.fcs'], [more, 'PE-Cy7', 'A7 F480 PE-Cy7 (Cells)_Set1.fcs'], [base, 'APC', 'A8 CD3 APC (Cells)_Set1.fcs'], [base, 'eFluor 780', 'B1 viability e780 (Cells)_Set1.fcs'],
+    ].map(([set, name, file]) => control(set, name, file));
+    const beads = [['BUV395', 'B2 CD45 BUV395 (Beads)_Set1.fcs'], ['BUV805', 'B3 CD11b BUV805 (Beads)_Set1.fcs'], ['BV421', 'B4 CD4 BV421 (Beads)_Set1.fcs'], ['PE', 'B5 Siglec F PE (Beads)_Set1.fcs'], ['PE-Cy7', 'B6 F480 PE-Cy7 (Beads)_Set1.fcs'], ['APC', 'B7 CD3 APC (Beads)_Set1.fcs']]
+      .map(([name, file]) => control(more, name, file));
+    const flagged = diagnoseControls(cells, { detectors, afSignatures: af }).filter((f) => f.kind === 'control-autofluorescence');
+    const names = flagged.map((f) => f.subject).sort();
+    check('autospectral', 'cell controls whose positives carry autofluorescence (the dim positives\' spectrum departs from the bright ones\' in the unstained control\'s autofluorescence shape): those of markers on autofluorescent cells', flagged.map((f) => `${f.subject} ${fmt(f.measures.departure, 3)} (${f.severity})`).join(', ') || 'none', JSON.stringify(names) === JSON.stringify(['BUV805', 'PE', 'PE-Cy7']), 'CD11b BUV805, Siglec F PE, F4/80 PE-Cy7; not CD45, CD4, CD3 or the viability dye');
+    const beadFlags = diagnoseControls(beads, { detectors, afSignatures: af });
+    check('autospectral', 'bead controls of the same six dyes: nothing flagged', beadFlags.map((f) => `${f.kind} ${f.subject}`).join(', ') || 'none', !beadFlags.length, 'none');
+    // The same controls against a library of the bead spectra: the cell–bead differences.
+    const differences = cells.filter((c) => beads.some((b) => b.name === c.name)).map((c) => ({ name: c.name, diff: compareSpectra(c.spectrum, beads.find((b) => b.name === c.name).spectrum).maxDiff }));
+    const library = beads.map((b) => libraryEntry({ fluorochrome: b.name, spectrum: b.spectrum, detectors, date: '2025-02-18', file: b.file, sha256: `bead-${b.name}`, carrier: 'beads' }));
+    const vsBeads = diagnoseControls(cells, { detectors, afSignatures: af, library }).filter((f) => f.kind === 'control-autofluorescence').map((f) => f.subject);
+    check('autospectral', 'cell controls against the bead controls (largest difference, peak = 1): the two that differ most are named as autofluorescent cells, with the bead spectrum as the fix', differences.map((d) => `${d.name} ${fmt(d.diff, 3)}${vsBeads.includes(d.name) ? ' (autofluorescence)' : ''}`).join(', '), vsBeads.includes('BUV805') && vsBeads.includes('PE') && !vsBeads.includes('BV421') && !vsBeads.includes('APC'), 'BUV805 and PE named; BV421 and APC not');
+    // Unfixed and PFA-fixed spleen, unmixed with the bead references, the viability dye's cell
+    // control and the unstained control's autofluorescence.
+    const model = { detectors, spectra: [...beads, cells.find((c) => c.name === 'eFluor 780')], afSignatures: af };
+    const diagnose = (set, file) => {
+      const sample = read(set, file);
+      return diagnoseUnmixing(sample.cols, model, { unstainedAF: af, unstained: { columns: unstained.cols }, scatter: { sample: { fsc: sample.fsc, ssc: sample.ssc }, unstained: { fsc: unstained.fsc, ssc: unstained.ssc } } });
+    };
+    const own = diagnose(base, 'A1 Unstained (Cells)_Set1.fcs');
+    const unfixed = diagnose(more, 'C1 Spleen_unfixed_Set1.fcs');
+    const fixedSpleen = diagnose(more, 'C3 Spleen_4%PFA_Set1.fcs');
+    const afFinding = (r) => r.findings.find((f) => f.kind === 'autofluorescence');
+    const describe = (r) => (r.findings.length ? r.findings.map((f) => `${f.kind} (${f.severity})`).join(', ') : 'nothing');
+    check('autospectral', 'unstained spleen fixed in 4% PFA, against the fresh unstained control\'s autofluorescence: named as autofluorescence the unstained control does not describe; the same spleen unfixed and the unstained control itself: no autofluorescence finding beyond a low-severity note', `fixed: ${describe(fixedSpleen)}; unfixed: ${describe(unfixed)}; unstained control: ${describe(own)}`, fixedSpleen.findings[0]?.kind === 'autofluorescence' && fixedSpleen.findings[0].severity === 'high' && !(afFinding(unfixed) && afFinding(unfixed).severity !== 'low') && own.healthy, 'fixed: autofluorescence, high; unfixed and control: none above low');
+    const fix = afFinding(fixedSpleen);
+    check('autospectral', 'its fix tried on the fixed spleen: the bright events\' median relative residual (the unfixed spleen\'s for comparison)', fix?.effect ? `${fmt(fix.effect.before.brightResidual, 3)} → ${fmt(fix.effect.after.brightResidual, 3)} (unfixed ${fmt(unfixed.baseline.brightResidual, 3)})` : 'no fix', fix?.effect && fix.effect.after.brightResidual < fix.effect.before.brightResidual, 'lower');
+  },
+  // FlowJo 11 workbenches (.flowjo) saved by FlowJo 11.2, with FlowJo's own counts.
+  async migration() {
+    await flowJo11WorkbenchChecks('migration');
   },
   // Figure provenance: a gating-strategy figure of every PBMC sample, exported, read back from
   // SVG, PNG and PDF, and rebuilt in a new workspace from the same files.
@@ -2475,6 +2992,22 @@ const suites = {
     check('fuzz-corpus', `10,000 mutations of ${corpus.length} instrument files (every FCS data set above, files up to 4 MB) and the seeds`, `${summary.read} read, ${summary.refused} refused, ${summary.failures.length} failed${summary.failures.length ? `: ${summary.failures.slice(0, 2).map((f) => `${f.file} #${f.seed} ${f.problem}`).join('; ')}` : ''}; slowest ${summary.slowest.toFixed(0)} ms`, summary.failures.length === 0, 'no crash, hang, outsized allocation, disagreement or case over 1 s');
   },
   diva() {
+    // A FACSDiva experiment exported as XML (CytoML's test file), against Diva's own counts and
+    // CytoML's (diva-cases.mjs).
+    const experiment = dataset('diva');
+    const c = divaCase(experiment.text('PE_2.xml'), experiment.read('124500.fcs'));
+    const populations = c.result.fidelity.length;
+    const notExact = c.result.fidelity.filter((f) => f.status !== 'imported');
+    check('diva', `FACSDiva experiment (PE_2, Diva 6.1.3, ${c.result.samples.length} tubes in ${c.result.groups.length} specimens): every population imported (${populations}: rectangles, polygons, intervals, quadrants, "rest of" populations)`, notExact.length ? notExact.slice(0, 2).map((f) => `${f.sample} ${f.path}: ${f.detail}`).join('; ') : `all ${populations}`, !notExact.length && populations > 40, 'all');
+    check('diva', 'FACSDiva compensation read from the experiment equals the FCS file\'s $SPILLOVER (tube _001, 8 × 8)', `largest difference ${c.worstSpill.toExponential(1)}`, c.worstSpill < 5e-5, '< 5e-5 (the XML stores 8 digits)');
+    const cytoml = JSON.parse(readFileSync(new URL('./reference/cytoml-diva.json', import.meta.url), 'utf8'));
+    const theirs = new Map(cytoml.populations.map((p) => [p.path, p.cytoml]));
+    const same = c.rows.filter((r) => r.cytoweave === theirs.get(r.path));
+    check('diva', `FACSDiva tube _001 imported as the app imports it (the whole experiment matched against its FCS file) and recomputed by CytoWeave: counts equal CytoML ${cytoml.versions.CytoML}'s (Bioconductor's Diva reader)`, `${same.length} of ${c.rows.length}${same.length < c.rows.length ? `; ${c.rows.filter((r) => !same.includes(r)).map((r) => `${r.path}: CytoML ${theirs.get(r.path)}, CytoWeave ${r.cytoweave}`).slice(0, 2).join('; ')}` : ''}`, same.length === c.rows.length && c.matched === 1, 'all');
+    const linear = c.rows.filter((r) => r.linear);
+    const worst = c.rows.reduce((a, r) => Math.max(a, Math.abs(r.grid - r.diva) / r.diva), 0);
+    check('diva', 'FACSDiva\'s own counts (tube _001), evaluated on Diva\'s 256-step display grid: exact on linear axes; on biexponential and log axes, which CytoWeave and CytoML read as logicle and log10, within 0.3%', `${linear.filter((r) => r.grid === r.diva).length} of ${linear.length} linear-axis populations exact; all within ${(100 * worst).toFixed(2)}% (${c.rows.map((r) => `${r.path.split('/').pop()} ${r.grid}/${r.diva}`).join(', ')})`, linear.length > 0 && linear.every((r) => r.grid === r.diva) && worst <= 0.003, 'linear exact; all ≤ 0.3%');
+
     const data = dataset('zenodo-skull');
     const sample = parseFCS(data.read('Skull BM Broad_Tube_017.fcs')).datasets[0];
     const diva = readSpillover(sample.keywords, sample.parameters);
@@ -2770,6 +3303,7 @@ const suites = {
 
 const names = requested.length ? requested : Object.keys(suites);
 const skipped = [];
+const skippedForR = [];
 const started = performance.now();
 for (const name of names) {
   if (!suites[name]) {
@@ -2780,6 +3314,11 @@ for (const name of names) {
   try {
     await suites[name]();
   } catch (error) {
+    if (error instanceof NeedsR) {
+      skippedForR.push(name);
+      console.log(`- ${name}: skipped (${error.message})`);
+      continue;
+    }
     if (error instanceof MissingData) {
       skipped.push(name);
       console.log(`- ${name}: skipped (external data: ${error.message})`);
@@ -2794,4 +3333,5 @@ for (const name of names) {
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
 if (skipped.length) console.log(`Skipped for want of external data: ${skipped.join(', ')} (node validation/fetch.mjs downloads it).`);
+if (skippedForR.length) console.log(`Skipped for want of data R exports: ${skippedForR.join(', ')} (Rscript validation/reference/generate_curves.R writes it).`);
 if (failed.length) process.exit(1);

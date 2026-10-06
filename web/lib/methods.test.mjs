@@ -176,3 +176,18 @@ test('formula channels, bead calibrations and absolute counts are described and 
   assert.match(text, /Absolute counts were obtained with counting beads \[\d\]: cells per µL = \(cell events \/ bead events, gated as Counting beads\) × \(50,000 beads \/ 50 µL of sample\), times each sample's dilution/);
   assert.ok(references.some((r) => r.key === 'flowcal') && references.some((r) => r.key === 'absoluteCounts'));
 });
+
+test('methods describe dose-response curves and a bead immunoassay, with their references', async () => {
+  const { addDerived } = await import('./workspace.js');
+  let ws = createWorkspace('Plates');
+  ws = addDerived(ws, { kind: 'dose-response', name: 'Dose-response · Screen plate 1 · CD69+: % of parent', params: { groupField: 'compound', model: 'LL.4', weighting: 'none', normalize: 'inhibition', fixed: { c: 0, d: 100 } }, summary: { zPrime: 0.7951, rows: [] } }).ws;
+  ws = addDerived(ws, { kind: 'bead-assay', name: 'Bead assay', params: { classification: 'APC-A', reporter: 'PE-A', statistic: 'median', model: 'LL.5', weighting: '1/y2', top: 10000, unit: 'pg/mL', factor: 4 }, summary: { analytes: [{}, {}, {}] } }).ws;
+  const { paragraphs, references } = writeMethods(ws, { version: '0.7.0' });
+  const text = paragraphs.join(' ');
+  assert.match(text, /fitted per compound by least squares to a four-parameter log-logistic model/);
+  assert.match(text, /% inhibition relative to the plate's positive and negative control wells/);
+  assert.match(text, /Z′ \[\d+\] from its control wells was 0\.80/);
+  assert.match(text, /immunoassay of 3 analytes/);
+  assert.match(text, /weighted 1\/Y²/);
+  for (const key of ['drc', 'zPrime', 'fivePL', 'bmv']) assert.ok(references.some((r) => r.key === key), key);
+});

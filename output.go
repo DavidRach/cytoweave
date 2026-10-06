@@ -17,7 +17,7 @@ import (
 // renamed into place when complete. Each token takes one upload and lasts as long as its action.
 // An existing file is replaced only when the call says overwrite.
 
-var outputActions = map[string]bool{"export_flowjo": true, "export_fcs": true, "export_figure": true, "export_report": true, "export_table": true, "export_events": true}
+var outputActions = map[string]bool{"export_flowjo": true, "export_fcs": true, "export_figure": true, "export_report": true, "export_table": true, "export_events": true, "export_workspace": true}
 
 type remoteOutput struct {
 	path      string
@@ -96,7 +96,7 @@ func (h *remoteHub) serveOutput(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeOutput(path string, overwrite bool, body io.Reader) (int64, error) {
-	temp, err := os.CreateTemp(filepath.Dir(path), ".cytoweave-export-*")
+	temp, err := createOutputTemp(filepath.Dir(path))
 	if err != nil {
 		return 0, fmt.Errorf("cannot write in %s: %v", filepath.Dir(path), err)
 	}
@@ -121,4 +121,18 @@ func writeOutput(path string, overwrite bool, body io.Reader) (int64, error) {
 		return 0, err
 	}
 	return written, nil
+}
+
+// createOutputTemp opens a new temporary file in dir with the permissions any other new file
+// gets (0666 less the umask), so the output is not left readable by its owner only, as
+// os.CreateTemp's files are.
+func createOutputTemp(dir string) (*os.File, error) {
+	for attempt := 0; attempt < 100; attempt++ {
+		name := filepath.Join(dir, ".cytoweave-export-"+randomToken())
+		file, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+		if err == nil || !os.IsExist(err) {
+			return file, err
+		}
+	}
+	return nil, errors.New("could not create a temporary file")
 }

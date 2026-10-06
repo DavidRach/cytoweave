@@ -42,6 +42,14 @@ that are known in advance:
     flowQB's results on them.
   - FlowCal's MEF example: 8-level beads on two days and two gains and 12 cell
     samples on a Cytek xP3+, with FlowCal's results on them.
+  - Twelve FlowJo 11 workbenches (`.flowjo`) saved by FlowJo 11.2 during a
+    trial, with FlowJo's count of every population (`reference/`).
+  - A FACSDiva experiment exported as XML with one tube's FCS file
+    (flowWorkspaceData, CytoML's test data), with Diva's and CytoML's counts.
+  - The HEADER and TEXT of a FACSDiscover A8 file holding FACSChorus's gates
+    (Zenodo, CC BY 4.0), and a SpectroFlo experiment with five of its raw
+    reference control files (the AutoSpectral example, Mendeley, CC BY 4.0),
+    each fetched by byte range from a large file or archive.
   - Four FlowJo workspaces of an intracellular cytokine study (ALS C9orf72,
     Zenodo, CC BY 4.0) whose expert adjusted the gates per donor: 48 wells,
     four donors per workspace in a negative, a peptide and a PMA well.
@@ -55,7 +63,7 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-`fetch.mjs` downloads the public test data (about 550 MB) into
+`fetch.mjs` downloads the public test data (about 590 MB) into
 `validation/cache/` and checks every file against the SHA-256 recorded in
 `sources.json`, which also records each data set's source and license. Files
 already present are not downloaded again. The data are not part of the
@@ -65,7 +73,7 @@ a minute without them, and about four minutes with them.
 
 | Option | Effect |
 | --- | --- |
-| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `comparisons`, `calibration`, `flowcal`, `reports`, `events`, `differential`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
+| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `comparisons`, `calibration`, `flowcal`, `reports`, `events`, `differential`, `compensation`, `gating`, `qc`, `spectral`, `doctor`, `spread`, `cellcycle`, `proliferation`, `kinetics`, `plates`, `beadplexr`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `migration`, `acquisition`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `autospectral`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
 | `--verbose` | Print every check, not only failures |
 | `--require-data` | Fail, rather than skip, when the public test data are missing |
 
@@ -107,6 +115,30 @@ examples, or against the files the exports write, read back:
 | `add_formula_channel` | A formula channel proposed and used at once: its medians in `statistics_table` equal to the formula computed directly |
 | `calibrate_beads` | Simulated 8-level beads of known response calibrated and applied to a cell sample: the slope within 0.01 of the truth, the cells' median MEFL within 2%, the calibrated channels proposed |
 | `apply_template` with a strategy | OMIP-101 placed on one sample of the PBMC example: its 25 gates proposed, each the same as placing the strategy directly, 19 with a suggested Cell Ontology term |
+| `diagnose_unmixing` | The spectral example's sample diagnosed with the proposed library: healthy, every check run |
+| `kinetics` | The calcium-flux example: the Indo-1 ratio found by name, every tube measured, the pause found in the four paused tubes, responding events rising with the stimulus |
+| `plate`, `plate_layout`, `dose_response`, `bead_assay` | The drug screen's wells from their keywords and its Z′ as in Node; a layout held until accepted, then applied; each compound's EC50 as in Node; every serum's concentrations as in Node |
+| `export_workspace` | The bead assay's workspace written as a .cwz file with its 56 samples, annotations and gates |
+
+Continuous integration runs it on each pull request and push to `main`.
+
+### Headless runs
+
+```bash
+node validation/headless-run.mjs
+```
+
+checks `cytoweave run` (built from source with Go, in headless Chrome) on the PBMC example's
+twelve samples, an annotations table and the templates suite's analysis saved as a template file
+(`run-cases.mjs`). It takes about 20 seconds:
+
+| Check | Required | Result |
+| --- | --- | --- |
+| The run exits 0 and writes the tables (Excel and CSV), the report, the workspace, the methods and `run.json` | All written | Exit 0 in 1.9 s |
+| `run.json` lists every input with its SHA-256, each step's outcome and every output with its size and SHA-256 | 13 inputs, all steps ok, 5 outputs | 13, 9 of 9, 5 |
+| A second run of the same files | The same CSV and methods bytes, workbook values, report text and workspace | The same |
+| The same analysis in the window, with the files on CytoWeave's command line, the template applied in its Apply dialog and every output exported with the window's own buttons and menus (Tables CSV, Excel workbook, batch report dialog, workspace file, Report → Markdown) | The same CSV bytes, workbook values (the About sheet's date aside), report pages and text, workspace (samples, annotations, gates, tables, figures, scales; no open proposal) and methods | The same; 12 pages |
+| Every population's count in `run.json` against Node's, from the same files and template | All equal | 228 of 228 |
 
 Continuous integration runs it on each pull request and push to `main`.
 
@@ -134,6 +166,25 @@ sample), read from FlowJo during a trial license, with notes on what FlowJo 11
 does with exports and with FlowJo 10's own workspaces. It cannot be
 regenerated without FlowJo; the `flowjo` and `flowkit` suites compare
 CytoWeave's counts with it.
+
+`reference/flowjo11-workbenches/` holds twelve workbenches (`.flowjo`) that
+FlowJo 11.2.0 (build 11.2.0.210156) saved on 2026-10-05 during a trial: the
+exports of the FlowJo export cases opened with File → Import FlowJo v10
+Workspace and saved with File → Save Workbench As, and one with gates drawn in
+FlowJo 11 itself (an ellipse, a polygon, a rectangle and a quadrant gate with
+one arm moved for one sample). Each holds FlowJo's count of every population.
+Their file paths were rewritten to `/data/<case>/`; nothing else was changed.
+They cannot be regenerated without FlowJo; the `migration` suite reads them
+(`flowjo11-cases.mjs`), with the FCS files of the bundled and built examples
+(generated) and of FlowKit's test data.
+
+`reference/cytoml-diva.json` holds CytoML's counts on the FACSDiva experiment
+of the `diva` data set (tube _001), with Diva's own:
+
+```bash
+node validation/fetch.mjs diva
+Rscript validation/reference/generate_cytoml_diva.R
+```
 
 `reference/cytoml.json` holds CytoML's counts (Bioconductor's FlowJo reader)
 on the same exports and on the original FlowKit workspaces; regenerate it
@@ -200,6 +251,23 @@ Rscript -e 'BiocManager::install("diffcyt")'
 Rscript validation/reference/generate_diffcyt.R
 ```
 
+`reference/curves.json` holds drc 4.0.0's and beadplexr 0.5.0's results (R 4.6.1; the versions
+are recorded in the file): the fits of the synthetic curves, the drug-screen example's
+dose-responses and the bead-immunoassay example's standard curves, each from drc's own starting
+values (the best of several) and from CytoWeave's estimate, with the exact standard errors from
+numDeriv's Hessian at that optimum; and beadplexr's analysis of its own LEGENDplex data as its
+vignette runs it. `write_curves.mjs` first writes the inputs; `generate_curves.R` also exports the
+LEGENDplex events, with beadplexr's bead groups and analytes, to `validation/cache/curves/lplex/`
+for the `beadplexr` suite, which is skipped without them, even with `--require-data` (fetch.mjs
+cannot make them, so continuous integration, which has no R, skips it; the `plates` suite checks
+drc and beadplexr from the committed results):
+
+```bash
+node validation/reference/write_curves.mjs
+Rscript -e 'install.packages(c("drc", "beadplexr", "numDeriv"))'
+Rscript validation/reference/generate_curves.R
+```
+
 `reference/r.json` holds the results of flowCore 2.24, PeacoQC 1.22,
 FlowSOM 2.20 and CytoNorm 2.0.12 (R 4.6.1, Bioconductor 3.23; the versions are
 recorded in the file). `reference/generate_r.R` writes it; `write_simulated.mjs`
@@ -253,17 +321,21 @@ line):
 
 | Suite | CytoWeave | Against | Required | Current |
 | --- | --- | --- | --- | --- |
-| `fcs` | `parseFCS`, `writeFCS` (`fcs.js`); `deidentifyFCS` (`deidentify.js`) | All 133 files of the eleven examples | Parse without warnings; write and read back bit-exact; de-identified copies hold the same events | 133 of 133; all bit-exact; 133 of 133 |
+| `fcs` | `parseFCS`, `writeFCS` (`fcs.js`); `deidentifyFCS` (`deidentify.js`) | All 290 files of the fourteen examples | Parse without warnings; write and read back bit-exact; de-identified copies hold the same events | 290 of 290; all bit-exact; 290 of 290 |
 | `fuzz` | `parseFCS`, `parseFCSAsync` (`fcs.js`) as the app reads a file, then `sampleFromDataset` (`workspace.js`) and `deidentifyFCS` | 21 generated files in every layout (float and double; 8-, 16-, 24-, 32- and 64-bit integers in little, big and mixed byte order; packed 10-bit; fixed and free ASCII; mixed `$PnDATATYPE`; log amplification and gain; supplemental TEXT; offsets in keywords only; no events; a `$NEXTDATA` chain), and 20,000 seeded mutations of them: HEADER offsets, keyword values (boundary numbers, nonsense, long and empty text), deleted and duplicated keywords, delimiters, flipped bytes, the version line, truncation and junk appended (`fuzz-cases.mjs`) | The generated files hold exactly the values written. Each mutated file is read with every column as long as its event count, or refused with an `FCSError` whose own words are a sentence (no "undefined" or "NaN"); never another exception, a hang (5 s), a column larger than the file could hold, or a disagreement between the two readers; none over 1 s | 21 of 21 exact; 0 of 20,000 failed (about 62% read, 38% refused); slowest 3 ms. Longer runs (`fuzz.mjs`): 0 of 200,000 |
 | `compensation` | `computeSpillover`, `controlResiduals` (`compensation.js`) | The true spillover of the 14-color PBMC example. The file's `$SPILLOVER` has one planted error: APC → Alexa Fluor 700 written as 0.110, truly 0.157 | Matrix from the 14 single-stain controls within 0.02 of the truth (median and regression methods). The control check ranks the planted error first, suggests a value within 0.01, and leaves every correct entry below 0.02. Autofluorescent positives (heat-killed cells in the viability control) are flagged as such, not as a spillover error | Largest error 0.018 (median) and 0.013 (regression); planted error found first, suggested 0.158 vs 0.157; correct entries ≤ 0.014; only the viability control flagged |
 | `gating` | The example's suggested gates through `SampleView` (`engine.js`) | True cell types of two PBMC samples (one unstimulated, one stimulated) | Precision > 90%, recall > 85% for lymphocytes, monocytes and T cells | Precision 91–100%, recall 96.5–100% |
 | `qc` | `peacoQC` (refined) and `flowRateCheck` (`qc.js`), run as the QC view runs them: compensated values, every scatter and fluorescence channel, the workspace's scales | Events inside the simulated clog, bubble and drift windows of four QC wells and two PBMC samples | Clean files lose < 1% of events; > 95% of anomalous events removed; < 6% of clean events removed from a file with an anomaly | Clean and drifting files 0%; anomalies 99.8–100% removed; clean events removed 0–1.4% |
 | `spectral` | `autoGateControl` and `referenceSpectrum` with each control's own negatives (as the Spectral view does), `extractAutofluorescence`, `unmixWithAutofluorescence` (`spectral.js`); the spectral library (`spectral-library.js`) | The 25-color, 64-detector spectral example: generating spectra, two autofluorescence types, and the true abundances of every event; for the library, its spectra against a second experiment's independent controls and a third whose PE-Cy7 lost 5% of its emission to PE | Reference spectra cosine > 0.99 to the generating spectra; both autofluorescence signatures found; median Pearson r > 0.97 to the true abundances; every fluorochrome within 0.02 of unmixing with the true spectra. Library: no independent control flagged; the degraded PE-Cy7 flagged at a YG detector and nothing else; PE-Cy7 unmixed with its library spectrum within 0.005 of its own control; the stale spectrum worse for PE in the degraded experiment | Worst cosine 0.998; 2 of 2 found; median r 0.988; largest shortfall 0.001 (PE). BV750's r of 0.58 is the same with the true spectra: it is limited by spreading, not by the software. Library: 0 flagged (largest difference 0.010); PE-Cy7 alone, 0.052 at YG1; r 0.9988 both ways; PE r 0.48 with the stale spectrum vs 0.68 |
+| `doctor` | The unmixing doctor (`spectral-doctor.js`): `diagnoseUnmixing` with the library and the unstained control, as the Diagnose tab runs it | The spectral example (its seed and a held-out one, a donor each) with six faults planted by the simulator: BV605 without a reference, the APC control stained with Alexa Fluor 647, PE-Cy7 degraded 5% in the samples or 10% in the controls, PE-CF594 emitting 6 nm redder on beads, an unstained control of lymphocytes only; a library from another experiment with the same physics; the true abundances | Each fault named first (kind and dye); nothing on clean samples; each tried fix applied and unmixed: the dye it concerns (PE for PE-Cy7) no worse against the truth, no dye losing more than 0.005, a missing dye > 0.9 | 12 of 12; none; BV605 r 0.988 and 0.992, BV570 0.39 → 0.93; PE 0.54 → 0.74 (sample degraded), 0.04 → 0.84 (control degraded); largest loss 0.0031 (BV750, beside the BV605 added back) |
 | `spread` | `fitNoise`, `predictedSpreading`, `crossValidate` (`spread.js`) | The 25-color spectral example, whose photon noise and laser fluctuations are known; a 15-dye panel unmixed with its own controls | Spread predicted from the true noise within ×1.15 (median) and > 95% of entries within 2× of the unmixed controls (entries measured to 4 standard errors); fitted photon noise within 15% of the truth; each control predicted from the other 24 > 90% within 2× and r > 0.9; a 15-dye panel predicted from the 25-dye fit > 90% within 2× | ×1.036, 98%; 1.005 (IQR 0.98–1.02); 98%, r 0.986; 100%, r 0.998 (photon noise alone: 100%, r 0.995) |
 | `multiverse` | `runMultiverse`, `summarize` (`multiverse.js`), as Compare → Robustness runs it | Comparisons in the PBMC example whose answer is known: a real effect; no effect; a detector gain in one batch with a gate close to the negatives; clogs in one group; one batch compensated with an under-compensating matrix; group labels swapped within donors (`multiverse-cases.mjs`) | Real effect holds (≥ 90%); no effect mostly holds (≥ 70%); the gain's spurious difference flagged and removed by adapted gates; the clogs' difference traced to QC, with stricter and looser QC agreeing; the matrix named, the difference shrinking more than 10×; ≤ 10% significant by chance, of which no more hold | 64/64; 53/64; fragile (41/64), −1.04 points with adapted gates; 30/40, QC named, settings agree; 38.7 → 0.5 points; 6.25%, 2 hold |
 | `accessibility` | Theme tokens (`styles.css`), palettes and color maps (`colorvision.js`, `colormaps.js`) | Every text color on every surface it is used on, in the light and dark themes, with color-vision-friendly colors off and on; protanopia, deuteranopia and tritanopia simulated as Machado et al. (2009) | Contrast ≥ 4.5:1 everywhere (WCAG AA); the friendly palette's first 8 colors ≥ 10 apart (CIEDE2000) and all 20 ≥ 7 in every vision; its status colors ≥ 9; viridis's lightness never falls | Lowest 4.58 (light) and 4.62 (dark); 11.1 and 7.2; 9.8; 0 reversals (the classic rainbow 10–12) |
 | `cellcycle` | `fitDeanJettFox`, `fitWatsonPragmatic` (`cellcycle.js`) | True G1, S and G2/M fractions of an asynchronous and a nocodazole-arrested culture | Dean–Jett–Fox within 2 points, Watson within 3 points | Dean–Jett–Fox 0.4 and 1.5 points; Watson 2.0 and 0.6 points |
 | `proliferation` | `fitProliferation` (`proliferation.js`) | True precursor frequencies of CD4 and CD8 T cells (dye dilution, day 4) | Division index within 8%; % divided within 4 points | CD4 2.355 vs 2.37 and 68.8% vs 70%; CD8 3.433 vs 3.35 and 80.9% vs 80% |
+| `kinetics` | `analyzeKinetics` (`kinetics.js`): time bins, smoothing, the stimulus, the response | The calcium-flux example: five tubes of Indo-1-loaded PBMC (buffer, anti-CD3 low and high, ionomycin, the high dose injected without a pause), every event's noise-free ratio and whether its cell was responding when measured | The pause found where the stimulus was added; without one, the onset within one bin of the noise-free curve's; against the same analysis of the noise-free ratios: baseline within 1%, peak within 3%, time to peak and half-max time within one bin, area within 5% (or 1); responding T cells within 3 points of those responding when measured, the buffer tube flagged as no response, rising with the dose; B cells responding to ionomycin and not anti-CD3 | 59.99 → 68.00 s; 64 s (64); 0.3% at most; 2.6% at most (low dose); all within one 2-s bin; 9.4 vs 8.8 for the low dose, within 0.7% otherwise; within 0.2 points; 0.76 < 37.7 < 78.4 < 97.9%; none and 99.5% |
+| `plates` | `platesOf`, `parseLayout`, `zPrime` (`plates.js`); `fitLogLogistic` (`curves.js`); `beadAssay` (`beadassay.js`) | The drug-screen example (96 wells: six compounds at ten doses, 18 stimulated and 18 unstimulated control wells, each well's activated T cells known) and the bead-immunoassay example (56 wells: 8 analytes on two bead sizes, standards C0–C7 in duplicate, 20 sera of known concentrations); 8 synthetic curves (`curve-cases.mjs`); drc 4.0.0, beadplexr 0.5.0 and numDeriv in R (`reference/curves.json`) | Wells from the keywords and from the names alone; the layout read back from CSV and plate maps; % CD69+ within 1 point of the activated share; Z′ within 0.03 of the true shares'; each active compound's simulated IC50 inside its 95% CI, Hill slope and asymptotes within 3 SE; the inactive compound flagged, the one beyond the doses poorly determined; residual sum of squares never above drc's best, drc started from CytoWeave's estimate staying there (1e-6), standard errors and EC50 within 1e-3 of the exact Hessian's; beads assigned to their analyte (≥ 99%, every well ≥ 98%); standards within 75–125% in the quantifiable range; sera in range: median error < 5%, ≥ 95% within 20%; sera out of range flagged on their side; the 32 standard curves never above drc's, concentrations equal to drc's ED (1e-6) and their standard errors to the exact delta method's (1e-3) | 96 and 96 of 96; 96 and 96 of 96; 0.51 at most; 0.795 (0.795); covered; within 3 SE; flagged; 15 of 15 (lower in 5); 4.7e-9; 2.0e-6 and 1.9e-6; 99.61%, 99.40%; 97.4–105.0%; 1.75%, 97.3%; 63 of 63; 32 of 32 (lower in 32), 1.5e-9, 1.7e-8 and 3.0e-4 |
+| `beadplexr` | `findBeadLevels`, `classifyBeads`, `mfiOf` (`beadassay.js`); `fitLogLogistic` (`curves.js`) | beadplexr's own LEGENDplex data (`lplex`: a Human Growth Factor 13-plex, standards C0–C7 and a sample in duplicate, 18 files of arcsinh-transformed events) as its vignette analyzes it (`reference/curves.json`; events exported to `validation/cache/curves/lplex/` by `generate_curves.R`) | Bead sizes by a two-cluster split of FSC and SSC against beadplexr's mclust (≥ 99.9%); analytes identical wherever beadplexr's clusters sit at the levels shared by all files (≥ 17 files), and all 13 found on the other; geometric-mean MFIs over beadplexr's beads equal to its calc_analyte_mfi (1e-9); the vignette's 13 curves never above beadplexr's residual sum of squares, the sample's concentrations within 1% where both reach the same optimum | 99.99%; 17 of 17 identical, on K3-C5-1 beadplexr merged A8 with A10 and gave two stray events a cluster, CytoWeave 258–424 beads of each; 4.4e-12; 13 of 13 (lower for 5), within 0.65% |
 | `clustering` | `flowsom` (`flowsom.js`) | 23 true populations of a 25-marker mass cytometry sample | Adjusted Rand index > 0.7 | 0.909 |
 | `normalization` | `trainCytoNorm`, `applyCytoNorm`, `batchDiagnostics` (`normalize.js`) | Two batches' anchor samples from the same donor, so every difference is batch effect | Mean earth mover's distance between batches at least halved | 1.1e-3 → 4.2e-5 of the arcsinh axis (25× smaller) |
 | `debarcode` | `debarcode` (`debarcode.js`) | A pooled plate of 20 palladium-barcoded wells (6-choose-3) whose truth knows every event's well | > 99% of assigned cells in their true well; > 85% of cells assigned; < 8% of doublets assigned (1 in 20 doublets joins two cells of one well and is rightly assigned) | 100%; 98.7%; 5.1% |
@@ -287,6 +359,10 @@ line):
 | `instruments` | FCS reader (`fcs.js`) | 47 files from 42 instrument models (`cytoflow-instruments`, `flowio`, `flowcal`, `zenodo-instruments`, `zenodo-nanofcm`, `rosettax`): BD (Accuri C6 and C6 Plus, FACSCanto II as FCS 2.0, FACSDiscover S8 in FCS 3.2, FACSymphony A5 SE, FACSLyric, FACSVerse, FACSMelody, Influx), Beckman Coulter (CytoFLEX, CytoFLEX S, DxFLEX, CyAn, Gallios, MoFlo Astrios and XDP), Cytek (Aurora raw 71 and 74 channels, Aurora Evo, Northern Lights, xP3+, DxP10), Sony (SA3800, MA900, SH800, iCyt Eclipse), Agilent NovoCyte and Penteon, Thermo Fisher (Attune, Attune NxT, Bigfoot), Bio-Rad (ZE5, S3), Millipore and Luminex Guava, Amnis ImageStream and CellStream, Partec, Stratedigm, Apogee, NanoFCM, BeamCyte, Standard BioTools Helios; FlowIO 1.4 and fcsparser 0.2.8 on them (`reference/instruments.json`, written by `reference/generate_instruments.py`) and FlowIO's own published test values | Every file read; stored and scaled values within 1e-6 of each reader that reads the file, except where CytoWeave departs from one for a reason that is itself checked: stale keyword offsets (Accuri C6, CyAn: the HEADER's offsets give a counter and time that count up), FCS 3.2 integer channels (compared only on float channels), float log channels stored as decades (each equal to its linear twin), `$PnG` left off log channels (FCS 3.1). Supplemental TEXT read with the primary delimiter or ignored when it holds no keywords; empty values kept apart; a truncated file opened with the events present; written and read back bit-exact; de-identified copies hold the same events | 47 of 47 (62 data sets); within 3.7e-7 (FlowIO 41 files, fcsparser 44; neither reads 3, which CytoWeave reads); counter 2, 3, 4 and time 134 → 1635; log twins within 3.5e-7; Stratedigm 52 of 52 published values; no junk keywords; DxFLEX 466 of 10,000 events with an error; bit-exact; 47 of 47 |
 | `ontology` | `suggestForPopulation`, `suggestTerms` (`ontology.js`) with the curated terms (`cell-ontology.js`, written by `reference/generate_cell_ontology.mjs` from `reference/cell-ontology-terms.json`) | 40 populations experts named in three public workspaces: the bundled FlowJo example, FlowKit's 8-color ICS (`flowkit`), FlowSOM's mouse workspace (`rpackages`); the name says which terms are right (`ontology-cases.mjs`): quality gates take their parent's term or none, cytokine-positive subsets their T-cell parent's | Each top suggestion a term its name denotes; suggestions from the data and gates only: the same with every gate renamed | 40 of 40 (27 exact, 7 likely, 6 quality gates with none); 14 of 14 the same |
 | `fuzz-corpus` | As `fuzz` | 10,000 mutations of the 21 generated files and 73 instrument files of up to 4 MB (every FCS data set above) | As `fuzz` | 0 of 10,000 failed; slowest 0.7 s (a 4 MB file whose mutated HEADER makes all of it TEXT). Longer runs: 0 of 110,000 |
+| `migration` | FlowJo 11 workbench import (`flowjo11.js`) and the migration (`flowjo-match.js`, engine) | Twelve workbenches FlowJo 11.2 saved (350 population-sample counts: polygons, rectangles, ellipses, quadrants, one with an offset arm, per-sample gates, compensation, linear, biex and arcsinh-as-biex scales) | CytoWeave's reading of every gate, evaluated as FlowJo 11 evaluates gates (on its display grid), gives FlowJo's own counts; every population imported exactly; imported as the app imports them and recomputed on the exact geometry, each population's percentage of its parent within 0.6 points of FlowJo's (or one event) | 337 of 350 equal, the other 13 quadrant counts drawn in FlowJo 11 within 3 events; all 350 exact; 147 equal, 35 one event apart, the rest within 0.56 points |
+| `acquisition` | FACSChorus gate import (`chorus.js`); SpectroFlo experiment import (`spectroflo.js`) with the Spectral view's control gating and spectra (`spectral.js`) | The gates FACSChorus 6.1.0 recorded in a FACSDiscover A8 file; a SpectroFlo experiment (5-laser Aurora) with its raw BUV395, BV421, APC, eFluor 780 and unstained cell controls | Every drawn gate imported exactly, on the file's parameters with its vertices unchanged, the saturation gates reported; the experiment's 7 controls read and its 64 detectors named as the raw files name them; the controls marked and each spectrum computed by CytoWeave peaking in the detector SpectroFlo gated it on; SpectroFlo's stored vectors far from the controls' own spectra (why they are not used) | 6 of 6, 1.4e-16; equal; 4 of 4 (UV2, V3, R1, R7); 0.50–0.87 |
+| `autospectral` | The unmixing doctor's control checks (`diagnoseControls`) and `diagnoseUnmixing` on real data | The AutoSpectral example (5-laser Aurora, mouse; external data `autospectral` and `spectroflo`): bead and cell controls of BUV395 (CD45), BUV805 (CD11b), BV421 (CD4), PE (Siglec F), PE-Cy7 (F4/80) and APC (CD3), the eFluor 780 viability control, the unstained cells, and unstained spleen unfixed and fixed in 4% PFA | Cell controls of markers on autofluorescent cells (myeloid cells, eosinophils, macrophages) named as carrying autofluorescence, and not those of lymphoid markers or the viability dye; no bead control flagged; against the bead spectra, the two cell controls that differ most named as autofluorescence; the fixed spleen named as autofluorescence the fresh unstained control lacks (high), the unfixed spleen and the control itself not; the fix lowers the fixed spleen's residual | BUV805 0.15, PE 0.063, PE-Cy7 0.051 named, the others not; none; BUV805 0.49 and PE 0.18 (BV421 0.009, APC 0.03); fixed: autofluorescence (high), unfixed: a low-confidence note of light that is a dye or autofluorescence; 0.55 → 0.505 (unfixed 0.278) |
+| `diva` | FACSDiva experiment import (`diva.js`) and the migration | PE_2 (FACSDiva 6.1.3, 13 tubes; flowWorkspaceData), tube _001 with its FCS file; Diva's counts in the XML and CytoML 2.24's | Every population imported (44); compensation equal to the FCS file's $SPILLOVER; counts equal to CytoML's; Diva's counts, evaluated on Diva's 256-step display grid, exact on linear axes and within 0.3% on biexponential and log axes | All 44; 3e-5; 5 of 5; linear 2 of 2 exact, all within 0.26% |
 | `diva` | `computeSpillover` (`compensation.js`), as the Compensation view runs it, with no gating | The spillover matrix BD FACSDiva computed from the same 15 single-stain controls (LSRFortessa; Zenodo 22808501) and stored in the samples | Every one of the 210 entries within 0.02 (median method) and 0.03 (regression) | Largest difference 0.0145 and 0.026 |
 | `fortessa` | `fitNoise`, `crossValidate` (`spread.js`); the compensation spreading matrix (`compensation.js`) | A BD LSRFortessa's 15 bead single-stain controls (Zenodo 22808501) | Off-scale events left out of the spreading matrix (one entry once read 53 with them); photon noise physical in every detector; each control's spread predicted from the other 14 > 70% within 2× and r > 0.8 | 3.98 (53.5 with them); 1.24–9.07 units per photoelectron; 79% within 2× (median ×1.32), r 0.85 (photon noise alone 67%, r 0.82) |
 | `multiverse-ics` | As `multiverse`, on imported FlowJo workspaces | The four FlowJo workspaces of the cytokine study (`als-ics`) | IFNγ+ CD4 T cells, PMA against negative, the same in every analysis; the fragile peptide comparisons reported with what they depend on | All 4 agree in 64/64; one fragile (IL-4 peptide in one workspace, 42/64), depending on the expert's per-donor gates and 2% of a scatter gate |

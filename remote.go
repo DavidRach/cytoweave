@@ -66,6 +66,9 @@ type remoteEvent struct {
 	Client string          `json:"client,omitempty"`
 	// Output: where the page uploads the file an export action makes (output.go).
 	Output string `json:"output,omitempty"`
+	// Trusted: sent by "cytoweave run" itself (run.go), which stands for the user who started it;
+	// never set for agents' or scripts' actions. The page performs a few actions only when trusted.
+	Trusted bool `json:"trusted,omitempty"`
 }
 
 var (
@@ -82,7 +85,7 @@ type remoteResult struct {
 }
 
 // Actions that can run for a long time (analyses over many samples).
-var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "differential_analysis": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true}
+var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "differential_analysis": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "diagnose_unmixing": true, "kinetics": true, "plate": true, "dose_response": true, "bead_assay": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true, "export_report": true, "export_events": true, "apply_template": true}
 
 func newRemoteHub() *remoteHub {
 	return &remoteHub{

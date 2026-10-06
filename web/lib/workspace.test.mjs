@@ -53,3 +53,13 @@ test('Boolean populations: combine gates, refuse cycles, and evaluate as all of 
   assert.equal(countOf(populationSet(view, edited.ws, both.gate.id), view), 50);
   assert.throws(() => setBooleanGate(ws, { op: 'xor', operands: [low.id] }), /operator/);
 });
+
+test('several samples annotated at once: values set, an empty value removing the field', async () => {
+  const { annotateSamples, createWorkspace } = await import('./workspace.js');
+  let ws = createWorkspace('Plate');
+  ws = { ...ws, samples: [{ id: 'a', name: 'A01', meta: { compound: 'X', dose: '1 nM' } }, { id: 'b', name: 'A02', meta: {} }, { id: 'c', name: 'A03', meta: { compound: 'Y' } }] };
+  const next = annotateSamples(ws, { a: { compound: 'CW-1', dose: '' }, b: { compound: 'CW-1', dose: 10 } }, 'layout');
+  assert.deepEqual(next.samples.map((s) => s.meta), [{ compound: 'CW-1' }, { compound: 'CW-1', dose: '10' }, { compound: 'Y' }]);
+  assert.equal(next.samples[2], ws.samples[2]);
+  assert.equal(next.provenance.at(-1).action, 'annotate');
+});

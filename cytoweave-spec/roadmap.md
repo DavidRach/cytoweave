@@ -542,74 +542,211 @@ fluorochromes rather than detectors: the Compensate view now points to unmixing.
 Left for later: kinetics, plates and titration plates stay in wave 7; drawing a gate from the
 keyboard (V4) stays open.
 
-## Next (0.7–0.8)
+## 0.7.0: migration, the unmixing doctor, plates and runs (released 2026-10-06)
 
-The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0) comes from `research.md` §8
-and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
-Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
-asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
-single tool combines. Waves 7–8 are a plan, to be revised as each wave lands.
+Wave 7 makes moving to CytoWeave easier (FlowJo 11 workbenches, FACSDiva experiments, FACSChorus
+gates and SpectroFlo reference controls, each with a fidelity report), names the likely cause of a
+poor unmixing and tries its fix, measures kinetics such as a calcium flux, adds a Plates view with
+heat maps and Z′, dose-response curves and bead immunoassays checked against R's drc and
+beadplexr, and runs a template on a folder of files without a window (`cytoweave run`).
+Publishing the R and Python clients, first planned here, is parked.
 
-### Wave 7: plates, migration and the spectral doctor
+### Wave 7: migration, the spectral doctor, plates and runs
 
 1. **Migration from acquisition software (I7):** FACSDiva experiments, FACSChorus and S8 files'
    embedded gates, SpectroFlo reference controls, and FlowJo 11 `.flowjo` workspaces, each with a
    fidelity report like the `.wsp` import's.
    - Validation: counts against the source software's saved statistics; independent readers
      (CyFj11 for `.flowjo`) where they exist.
-2. **Plates (A5):** wells as samples, plate layouts from CSV or keywords, and heat maps of any
-   statistic across the plate.
-3. **Curves (A6, A4):** dose-response (4PL/5PL, EC50/IC50) and Z′ for screens; standard curves
-   and concentrations for bead-based immunoassays (LEGENDplex, CBA); kinetics and calcium flux
-   (baseline, peak, time to peak, area under the curve, responding fraction), moved here from
-   wave 5.
-   - Validation: simulated plates and kinetics with known parameters; R `drc` and beadplexr as
-     oracles.
-4. **The unmixing doctor (S8):** names the likely cause of a poor unmixing (a missing or wrong
+   - Done (slice 1): FlowJo 11 workbenches, checked against twelve workbenches FlowJo 11.2 saved
+     (FlowJo 11's display-grid evaluation found and reproduced: every count equal, quadrants
+     drawn in FlowJo 11 within 3 events), and FACSDiva experiments, checked against Diva's and
+     CytoML's counts. CyFj11's example workbench turned out inconsistent (stale per-sample gates)
+     and is not used.
+   - Done (slice 2): FACSChorus gates from S8/A8 FCS files (a real A8 record read exactly; no counts
+     in the files), and SpectroFlo experiments' reference controls, matched to their raw files
+     (the spectra SpectroFlo stores turned out not to match the controls' events, so CytoWeave
+     computes them; its spectra peak where SpectroFlo gated). FACSChorus `.cef` files are not read
+     (no public file to check against).
+2. **The unmixing doctor (S8):** names the likely cause of a poor unmixing (a missing or wrong
    reference, a degraded tandem, a bead control for a cell stain, autofluorescence that differs
    between controls and sample) from the residuals, the library and the control checks, and
    proposes the fix.
    - Validation: each fault planted in the simulator, named first; AutoSpectral's bead and cell
      controls.
+   - Done (slice 3): the Spectral view's Diagnose tab and agents' `diagnose_unmixing`. Six faults
+     planted in the spectral example are each named first on its seed and a held-out one, with
+     nothing on clean samples, and each tried fix moves the unmixed values toward the truth (a
+     held-out sweep of three more seeds named 20 of 21; the miss, a 6 nm bead shift, changed no
+     dye's accuracy). On real data, AutoSpectral's bead and cell controls showed that the large
+     bead–cell differences are autofluorescence carried by cell controls of markers on
+     autofluorescent cells (CD11b, Siglec F, F4/80), not the dyes emitting differently on beads, so
+     the doctor checks cell controls for it; it names the example's PFA-fixed spleen as
+     autofluorescence the unstained control lacks. A degraded tandem leaves no residual (its donor
+     is in the panel) and is found from its donor's population lining up with it.
+3. **Kinetics (A4):** a signal or ratio (Indo-1 violet/blue) against time, smoothed per time bin,
+   with baseline, peak, time to peak, area under the curve and the responding fraction, and
+   samples overlaid; moved here from wave 5 and split from the curves below.
+   - Validation: simulated calcium flux with known parameters.
+   - Done (slice 4): the Kinetics platform (population menu) and agents' `kinetics`, with a
+     calcium-flux example (Indo-1, buffer, two anti-CD3 doses, ionomycin, an injection without a
+     pause). The stimulus is found where acquisition paused; against the noise-free ratios every
+     time is within one bin, and the responding share within 0.2 points of the cells responding
+     when measured. The median barely moves at the low dose (38% respond), which is why the
+     responding share is reported beside it.
+4. **Plates (A5):** wells as samples, plate layouts from CSV or keywords, and heat maps of any
+   statistic across the plate. Done with the curves below (slice 5).
+5. **Curves (A6):** dose-response (4PL/5PL, EC50/IC50) and Z′ for screens; standard curves and
+   concentrations for bead-based immunoassays (LEGENDplex, CBA).
+   - Validation: simulated plates with known parameters; R `drc` and beadplexr as oracles.
+   - Done (slice 5, with plates): the Plates view (wells from keywords, names or annotations;
+     layouts set on selected wells, as dilution series or from CSV and plater maps; heat maps of any
+     statistic with Z′), dose-response curves (LL.4/LL.5 in drc's parameterization, EC50 with its
+     CI, flags for no dose-response and undetermined EC50s) and bead immunoassays (classification
+     levels found once across wells, 5PL standard curves weighted 1/Y², quantifiable range from the
+     FDA 2018 recovery and CV limits), with agents' `plate`, `plate_layout`, `dose_response` and
+     `bead_assay`, and two examples (a 96-well drug screen, a LEGENDplex-like 8-plex). Against drc
+     4.0 CytoWeave's fits are never worse and often better (drc's default starts stop at local
+     optima, especially weighted five-parameter fits); started from CytoWeave's estimate drc stays
+     there, and the standard errors match the exact Hessian (drc's own come from a coarse one, and
+     its ED(type = "absolute") errors are not the delta method's). On beadplexr's own LEGENDplex
+     data the bead identification is identical on 17 of 18 files; on the 18th beadplexr's clustering
+     merged two analytes.
+6. **Headless runs (M8):** `cytoweave run` applies a template to a folder of files without a
+   window (a headless browser) and writes its tables, reports and exports, for cores' nightly
+   runs, pipelines and CI.
+   - Validation: the same files run headless and in the window give identical outputs.
+   - Done (slice 6): `cytoweave run` starts CytoWeave on a private port with no library, opens it in
+     a headless Chrome and performs the steps through the agents' actions: by default the files
+     and an annotations table opened, the template applied (and optionally QC), the run's own
+     proposals accepted as the user's (an action only the run can send), then the template's
+     tables (Excel and a CSV each), its last figure's batch report, the workspace, the methods and
+     run.json (inputs' checksums, every step, every count, the outputs); `--steps` runs any agent
+     actions from a JSON file. Agents and scripts gained `export_workspace` and `templateJSON`.
+     Validated by `validation/headless-run.mjs` (in CI): two runs and the window's own exports give
+     the same outputs, and every count equals Node's.
+
+Publishing the R and Python clients (M9), first planned as item 7 of this wave, is parked until
+there is more adoption (see the parking lot below).
+
+## Next (0.8)
+
+The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0, wave 7 as 0.7.0) comes from `research.md` §8
+and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
+Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
+asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
+single tool combines. Wave 8 is a plan, to be revised as it lands.
+
+Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-05,
+`product_research/feature-comparison.html`):
+- **Agents are no longer distinctive; agents proven right are.** Dotmatics' Luma Agent, Ozette,
+  Conspecta and flow-atlas now offer agents or MCP servers, so wave 8 adds a public agent benchmark
+  and WebMCP in place of the on-device assistant.
+- **Users before features.** CytoWeave's gaps come down to adoption: no institutional users yet,
+  and validation mostly on simulated truth. Core-facility studies move from Later to run beside
+  wave 7, with validation on real expert-gated data.
+- **The FlowJo 11 transition is an opening that closes as FlowJo 11 matures**, so migration stays
+  first in wave 7; the unmixing doctor moves ahead of plates (unmixing, controls and panels are
+  where most users struggle, and HoneyChrome is now a free rival on spectral depth); kinetics,
+  small once formula channels exist, is split out of "Curves" to land early.
+- **Collaboration without a cloud:** a self-contained review report covers most sharing (a PI or
+  reviewer reading an analysis) before any multi-user work.
+- **Automation for cores:** headless runs of a template on a folder. (Publishing the clients, also
+  planned here, is parked until there is more adoption.)
+
+### Beside wave 8: core-facility studies and real data
+
+Planned beside wave 7, not started there; they continue beside wave 8.
+
+- **Design studies with one or two core facilities** (moved from Later): their files, panels and
+  routines; what blocks daily use; the first institutional users. Findings reorder the waves.
+- **Validation on real expert-gated data (V7):** public studies with expert gates or published
+  counts (FlowCAP, FlowRepository studies such as the ALS cytokine workspaces already used),
+  beside the simulated truth.
+- **Tutorials** built on public FlowRepository studies.
 
 ### Wave 8: designed, explained, certified
 
 1. **Reproducibility certificate (R8):** a bundle (workspace, file checksums, versions, seeds)
    that re-runs itself to confirm every reported number, ready for Zenodo or a journal, with
-   MIFlowCyt filled in.
-   - Validation: certificates of every example re-run bit for bit; a changed file or gate
-     detected.
-2. **A virtual FMO (C4):** where each population's negative would fall without a given dye,
+   MIFlowCyt filled in. It carries a tamper-evident (hash-chained) change log, the first step of
+   the audit trail (R6).
+   - Validation: certificates of every example re-run bit for bit; a changed file, gate or log
+     entry detected.
+2. **A review report (R9):** one self-contained HTML file of an analysis (plots, gates, tables,
+   every number traced to its source) that a PI, collaborator or reviewer opens without
+   CytoWeave.
+   - Validation: every number in the report equal to the workspace's; the file makes no network
+     requests.
+3. **A virtual FMO (C4):** where each population's negative would fall without a given dye,
    predicted from the spread model of wave 4, drawn on the plot as a guide for gating. No tool
    offers it.
    - Validation: two public data sets with real FMO controls (Zenodo 22808501 and 20644656).
-3. **A panel optimizer (S9):** assigns fluorochromes to markers by expression level and
+4. **A panel optimizer (S9):** assigns fluorochromes to markers by expression level and
    co-expression, using the user's own instrument model and library, warns of pairs prone to
    energy transfer, and is checked against the panel's result once run.
    - Validation: simulated panels with known best assignments; the predicted spread against the
      run's unmixed controls.
-4. **An on-device assistant (M6):** an optional local model (in the browser, no network) that
-   answers questions about the workspace through the same tools as external agents.
-5. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
+5. **A public agent benchmark (V6):** graded tasks on the examples (gate a population, find a
+   compensation error, test a difference, export a report), each scored against the simulated
+   truth, with published results per agent and model. It extends the validation suite to
+   agents, where users' distrust is greatest.
+6. **WebMCP (M7):** the same tools exposed to agents in the browser through WebMCP (Chrome origin
+   trial, 2026), beside the MCP server; it replaces the on-device assistant (M6, now an idea).
+7. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
 
-## Later
-- Branches of an analysis, three-way merge of non-conflicting edits, and
-  signed approval of checkpoints, building on the semantic diff.
-- A tool contract for external algorithms: declared inputs and outputs,
-  parameters and a pinned runtime (a WASM module, or a container run by the
-  host without network). Results are imported as ordinary derived channels,
-  so a tool cannot change a workspace invisibly. This would replace the
-  plugin approach of other tools, which depends on the user's own R or Python
-  installation.
-- Robustness to analysis choices for designs of more than two groups and for
-  cluster abundances.
-- Design studies with one or two core facilities, and tutorials built on
-  public FlowRepository studies.
+## Toward 1.0 (0.9–1.0)
 
-- Imaging flow cytometry: image galleries for FACSDiscover CellView and Amnis
-  files.
-- Audit trail and electronic signatures for regulated labs (R6).
+### 1.0 means
+
+- Stable workspace and template formats, with a promise that later versions open them.
+- A stable, versioned MCP and HTTP API, covered by the clients' tests.
+- Validation on real expert-gated data as well as simulated truth (V7).
+- At least two core facilities using CytoWeave in production.
+- Documented support, security and release policies.
+
+### Wave 9: shared and audited
+
+The scope of this wave depends on an open decision: whether CytoWeave pursues regulated (GxP)
+labs. 21 CFR Part 11 needs user identities, e-signatures and a validation package with support
+commitments, which sit uneasily with a free, local tool. Without GxP, the wave keeps the shared
+library and signed approvals and drops e-signatures.
+1. **A shared library for a core's server:** the program serving a lab's or core's workspaces to
+   several users, with roles, instead of one person's library.
+2. **Audit trail and electronic signatures (R6):** users, an append-only audit trail and
+   signatures on approvals, building on the wave-8 change log.
+3. **Signed approval of checkpoints**, building on the semantic diff.
+
+### Wave 10: images and extensions
+
+1. **Imaging flow cytometry (A7):** image galleries for FACSDiscover CellView and Amnis files,
+   then image features (size, texture, nuclear overlap) to gate on.
+2. **A tool contract for external algorithms (M10):** declared inputs and outputs, parameters and
+   a pinned runtime (a WASM module, or a container run by the host without network). Results are
+   imported as ordinary derived channels, so a tool cannot change a workspace invisibly. This
+   would replace the plugin approach of other tools, which depends on the user's own R or Python
+   installation, and brings in the embeddings and batch corrections where OMIQ is ahead (PaCMAP,
+   PHATE, cyCombine).
+
+## Parking lot
+
+Decided but deferred, outside the planned waves (and releases) until what they wait for happens.
+
+- **The clients published (M9):** the R package on r-universe (CRAN later) and the Python package
+  on PyPI, released with each version. Parked on 2026-10-06 until CytoWeave has more users: the
+  clients install from the GitHub repository (`remotes::install_github(...,
+  subdir = "clients/r")`, `pip install "git+...#subdirectory=clients/python"`), as `clients/README.md`,
+  the clients' READMEs and the scripting documentation describe, and that is enough for now.
+
+## Ideas (unscheduled)
+
+- Robustness to analysis choices for designs of more than two groups and for cluster
+  abundances.
+- Branches of an analysis and three-way merge of non-conflicting edits, building on the semantic
+  diff.
 - Real-time co-annotation of one workspace by several people.
+- An optional on-device assistant (M6), if local models become good enough to add to the
+  external agents.
 
 ## Risks
 
@@ -623,3 +760,6 @@ single tool combines. Waves 7–8 are a plan, to be revised as each wave lands.
 | Clinical use | Research software mistaken for a diagnostic device | "Research use only" in the app and README |
 | Scope | A broad tool stalls before it is dependable | Validation first; features land with tests and a validation check |
 | Data governance | Sample data that may not leave the institution | Local-first, no uploads, no network requests of its own |
+| Licensing of ported code | limma and statmod are GPL; the moderated t-statistics follow their sources closely, in an Apache-2.0 project | Provenance recorded in the code, README and Science page; a decision is open: accept, seek the authors' permission, or reimplement independently from the publications |
+| One developer | Competitors have teams; users and institutions judge whether a project will last | Validation and documentation that let others check and continue the work; core-facility studies to find co-maintainers and users |
+| Competitors' AI moves fast | Luma Agent, Ozette and others narrow the agent lead | Agents proven right rather than merely present: the public agent benchmark (wave 8) |

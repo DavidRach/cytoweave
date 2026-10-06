@@ -36,7 +36,7 @@ import {
   updateSample,
 } from './lib/workspace.js';
 
-const VERSION = '0.6.1';
+const VERSION = '0.7.0';
 
 const MODES = [
   { id: 'welcome', label: 'Start', icon: 'flask', hidden: true, load: () => import('./ui/mode-welcome.js').then((m) => m.mountWelcome) },
@@ -47,6 +47,7 @@ const MODES = [
   'sep',
   { id: 'explore', label: 'Explore', icon: 'explore', load: () => import('./ui/mode-explore.js').then((m) => m.mountExploreMode) },
   { id: 'tables', label: 'Tables', icon: 'table', load: () => import('./ui/mode-tables.js').then((m) => m.mountTablesMode) },
+  { id: 'plates', label: 'Plates', icon: 'plate', load: () => import('./ui/mode-plates.js').then((m) => m.mountPlatesMode) },
   { id: 'compare', label: 'Compare', icon: 'compare', load: () => import('./ui/mode-compare.js').then((m) => m.mountCompareMode) },
   'sep',
   { id: 'figures', label: 'Figures', icon: 'figure', load: () => import('./ui/mode-figures.js').then((m) => m.mountFiguresMode) },
@@ -104,6 +105,7 @@ async function start() {
   installChannelDialogs(app);
   installFigureProvenance(app);
   installAutogating(app);
+  app.applySpectroFloImport = (result, fileName) => import('./ui/import-spectroflo.js').then((m) => m.applySpectroFloImport(app, result, fileName));
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
   app.exportCLR = () => import('./ui/import-flowjo.js').then((m) => m.exportCLRDialog(app));
   app.compareColumn = (table, column) => {
@@ -184,7 +186,7 @@ async function start() {
 
   app.selectGate = (id, options = {}) => {
     store.setUI({ gateId: id ?? null }, ['gate', 'lineage']);
-    if (!options.keepMode && store.ui.mode !== 'gate' && store.ui.mode !== 'tables' && store.ui.mode !== 'compare' && store.ui.mode !== 'explore') app.setMode('gate');
+    if (!options.keepMode && store.ui.mode !== 'gate' && store.ui.mode !== 'tables' && store.ui.mode !== 'plates' && store.ui.mode !== 'compare' && store.ui.mode !== 'explore') app.setMode('gate');
   };
 
   app.openPopulation = (id) => app.selectGate(id);
@@ -242,7 +244,7 @@ async function start() {
   const fileInput = document.getElementById('file-input');
   const folderInput = document.getElementById('folder-input');
   app.pickFiles = (accept) => {
-    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.xml,.csv,.acs,.zip,.cwt';
+    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.flowjo,.xml,.expt,.csv,.acs,.zip,.cwt';
     fileInput.value = '';
     fileInput.click();
   };
@@ -260,12 +262,13 @@ async function start() {
     const items = files.map((file, order) => ({ file, name: file.name, folder: file.webkitRelativePath ? file.webkitRelativePath.split('/').slice(-2, -1)[0] : file.folder ?? null, order }));
     const fcs = items.filter((item) => /\.(fcs|lmd)$/i.test(item.name) || (!/\.\w+$/.test(item.name) && item.file.size > 256));
     const workspaces = items.filter((item) => /\.(cwz|json)$/i.test(item.name));
-    const flowjo = items.filter((item) => /\.wspt?$/i.test(item.name));
+    const flowjo = items.filter((item) => /\.(wspt?|flowjo)$/i.test(item.name));
     const gatingml = items.filter((item) => /\.xml$/i.test(item.name));
     const tables = items.filter((item) => /\.(csv|tsv|txt)$/i.test(item.name));
     const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
     const figures = items.filter((item) => /\.(svg|png|pdf)$/i.test(item.name));
     const templates = items.filter((item) => /\.cwt$/i.test(item.name));
+    const experiments = items.filter((item) => /\.expt$/i.test(item.name));
     for (const item of workspaces) await openWorkspaceFile(item);
     if (fcs.length) await importFCSItems(fcs);
     for (const item of archives) await importArchive(item);
@@ -282,7 +285,9 @@ async function start() {
     const csv = eventTables.length ? await app.importEventCSVs(eventTables, { interactive: options.interactive !== false }) : [];
     for (const item of figures) await app.openFigureFile(item);
     for (const item of templates) await app.openTemplateFile(item);
-    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf), and events in CSV files.', { kind: 'error' });
+    // SpectroFlo experiments name the reference controls, so they come after the FCS files.
+    for (const item of experiments) await importSpectroFloItem(item);
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && !experiments.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp) and FlowJo 11 workbenches (.flowjo), FACSDiva experiments and Gating-ML (.xml), SpectroFlo experiments (.Expt), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf), and events in CSV files.', { kind: 'error' });
     return { csv };
   };
 
@@ -323,8 +328,25 @@ async function start() {
     const first = records.find((r) => r.role === 'sample') ?? records[0];
     if (!store.ui.sampleId || options.select !== false) app.selectSample(first.id);
     if (store.ui.mode === 'welcome') app.setMode('gate');
+    // Files that carry the gates FACSChorus recorded: offer them.
+    const recorded = records.filter((r) => r.acquisitionGates);
+    if (recorded.length && options.offerGates !== false) {
+      toast(`${recorded.length === 1 ? 'This file carries' : `${recorded.length} files carry`} the gates FACSChorus recorded.`, { action: { label: 'Import the gates', onClick: () => app.importAcquisitionGates(recorded.map((r) => r.id)) } });
+    }
     return records;
   }
+
+  // Imports the gates FACSChorus recorded in samples' files (all samples that have them when
+  // sampleIds is omitted), through the migration dialog.
+  app.importAcquisitionGates = async (sampleIds) => {
+    const samples = store.ws.samples.filter((s) => s.acquisitionGates && (!sampleIds || sampleIds.includes(s.id)));
+    if (!samples.length) {
+      toast('No sample carries gates recorded by FACSChorus.');
+      return null;
+    }
+    const { importChorus } = await import('./lib/chorus.js');
+    return app.applyFlowJoImport?.(importChorus(samples), samples.length === 1 ? samples[0].fileName : `${samples.length} FACSChorus files`);
+  };
   app.importFCSItems = importFCSItems;
 
   // Records a default scale for every new channel, so the workspace states the scales it uses.
@@ -384,10 +406,28 @@ async function start() {
 
   async function importFlowJo(item) {
     try {
-      const flowjo = await import('./lib/flowjo.js');
-      const text = new TextDecoder().decode(await readBytes(item));
-      const result = flowjo.importFlowJo(text);
+      let result;
+      if (/\.flowjo$/i.test(item.name)) {
+        const { importFlowJo11 } = await import('./lib/flowjo11.js');
+        result = await importFlowJo11(await readBytes(item));
+      } else {
+        const flowjo = await import('./lib/flowjo.js');
+        result = flowjo.importFlowJo(new TextDecoder().decode(await readBytes(item)));
+      }
       await app.applyFlowJoImport?.(result, item.name);
+    } catch (error) {
+      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  async function importSpectroFloItem(item) {
+    try {
+      const { importSpectroFlo } = await import('./lib/spectroflo.js');
+      // The detectors of the workspace's raw spectral files name the experiment's vectors.
+      const raw = store.ws.samples.find((s) => s.channels.filter((c) => c.type === 'fluorescence' && /-A$/.test(c.name)).length >= 14);
+      const detectors = raw?.channels.filter((c) => c.type === 'fluorescence' && /-A$/.test(c.name)).map((c) => c.name);
+      const result = importSpectroFlo(new TextDecoder().decode(await readBytes(item)), { detectors });
+      await app.applySpectroFloImport(result, item.name);
     } catch (error) {
       toast(`${item.name}: ${error.message}`, { kind: 'error' });
     }
@@ -395,8 +435,14 @@ async function start() {
 
   async function importGatingML(item) {
     try {
-      const gml = await import('./lib/gatingml.js');
       const text = new TextDecoder().decode(await readBytes(item));
+      // A FACSDiva experiment (File → Export → Experiment as XML) opens like a FlowJo workspace.
+      if (/<bdfacs[\s>]/.test(text.slice(0, 4096))) {
+        const { importDiva } = await import('./lib/diva.js');
+        await app.applyFlowJoImport?.(importDiva(text), item.name);
+        return;
+      }
+      const gml = await import('./lib/gatingml.js');
       const result = gml.importGatingML(text);
       const { addGates, addCompensation, addDerived } = await import('./lib/workspace.js');
       let next = store.ws;
@@ -415,6 +461,26 @@ async function start() {
   // A CSV whose first column names samples and whose other columns are metadata fields.
   async function importMetadataTable(item) {
     const text = new TextDecoder().decode(await readBytes(item));
+    // A plate layout (a "well" column, or plate maps) annotates the samples by their wells.
+    const { parseLayout } = await import('./lib/plates.js');
+    let layout = null;
+    try {
+      layout = parseLayout(text);
+    } catch {
+      layout = null;
+    }
+    // Tables keyed by sample name (in the first column) stay sample annotations even with a well column.
+    const firstColumn = text.split(/\r?\n/).slice(1).map((line) => line.split(/[,;\t]/)[0]?.trim().replace(/^"|"$/g, '')).filter(Boolean);
+    const byName = firstColumn.some((key) => store.ws.samples.some((s) => s.name === key || s.fileName === key || s.fileName === `${key}.fcs`));
+    if (layout?.entries.length && (layout.format === 'map' || !byName)) {
+      const { applyLayoutText } = await import('./ui/mode-plates.js');
+      try {
+        applyLayoutText(app, text, item.name);
+      } catch (error) {
+        toast(error.message, { kind: 'error' });
+      }
+      return;
+    }
     const delimiter = item.name.toLowerCase().endsWith('.tsv') || text.split('\n')[0].includes('\t') ? '\t' : ',';
     const rows = text.split(/\r?\n/).filter((line) => line.trim()).map((line) => line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, '')));
     if (rows.length < 2) return;
@@ -676,11 +742,12 @@ async function start() {
       { label: 'De-identified FCS files…', icon: 'download', onSelect: () => app.exportDeidentified() },
       { label: 'Events: concatenated FCS, downsampled, AnnData…', icon: 'download', onSelect: () => app.exportEventsDialog() },
       { label: 'Tables as an Excel workbook', icon: 'download', onSelect: () => import('./ui/mode-tables.js').then((m) => m.exportTablesWorkbook(app)) },
-      ...(store.ws.migrations?.length ? [{ label: 'FlowJo migration report…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
+      ...(store.ws.migrations?.length ? [{ label: 'Migration report (FlowJo, FACSDiva, FACSChorus)…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
       '-',
       { section: 'Import' },
       { label: 'FCS files…', icon: 'file', onSelect: () => app.pickFiles() },
-      { label: 'Workspace, FlowJo .wsp, Gating-ML or ACS…', icon: 'upload', onSelect: () => app.pickFiles('.cwz,.json,.wsp,.wspt,.xml,.acs,.zip') },
+      { label: 'Workspace, FlowJo (.wsp, .flowjo), Gating-ML or ACS…', icon: 'upload', onSelect: () => app.pickFiles('.cwz,.json,.wsp,.wspt,.flowjo,.xml,.acs,.zip') },
+      ...(store.ws.samples.some((x) => x.acquisitionGates) ? [{ label: 'Gates FACSChorus recorded in the files…', icon: 'upload', onSelect: () => app.importAcquisitionGates() }] : []),
       { label: 'Events or sample annotations (CSV)…', icon: 'tag', onSelect: () => app.pickFiles('.csv,.tsv,.txt') },
       '-',
       { label: 'Example experiments…', icon: 'flask', onSelect: () => app.showExamples() },
@@ -701,6 +768,7 @@ async function start() {
     { label: 'Export workspace file', icon: 'download', run: exportWorkspaceFile },
     { label: 'Export gates as Gating-ML', icon: 'download', run: exportGatingML },
     { label: 'Export as a FlowJo workspace', icon: 'download', run: () => app.exportFlowJo(), keywords: 'wsp flowjo' },
+    { label: 'Import the gates FACSChorus recorded in the files', icon: 'upload', run: () => app.importAcquisitionGates(), keywords: 'chorus s8 a8 discover gates' },
     { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymize privacy keywords' },
     { label: 'Export events (concatenated FCS, downsampled, AnnData)', icon: 'download', run: () => app.exportEventsDialog(), keywords: 'concatenate downsample h5ad anndata scanpy merge subsample' },
     { label: 'Export tables to Excel', icon: 'download', run: () => import('./ui/mode-tables.js').then((m) => m.exportTablesWorkbook(app)), keywords: 'xlsx spreadsheet workbook statistics' },
@@ -710,6 +778,8 @@ async function start() {
     { label: 'New formula channel', icon: 'plus', run: () => app.formulaDialog(), keywords: 'formula ratio derived parameter channel calculate' },
     { label: 'Computed channels', icon: 'layers', run: () => app.computedChannelsDialog(), keywords: 'formula calibration mef derived parameters' },
     { label: 'Calibrate fluorescence with beads', icon: 'gauge', run: () => app.openCalibration(), keywords: 'mef mefl erf calibration beads rainbow units' },
+    { label: 'Dose-response curves of a plate', icon: 'wave', run: () => import('./ui/dose-response.js').then((m) => m.openDoseResponse(app, {})), keywords: 'ec50 ic50 4pl 5pl hill curve plate screen inhibition' },
+    { label: 'Bead immunoassay (LEGENDplex, CBA)', icon: 'flask', run: () => import('./ui/bead-assay.js').then((m) => m.openBeadAssay(app, {})), keywords: 'legendplex cba cytokine standard curve concentration plate beads multiplex' },
     { label: 'Toggle backgating', icon: 'backgate', hint: 'B', run: () => store.setUI({ backgate: !store.ui.backgate }, ['backgate']) },
     { label: 'Review the selected gate across samples', icon: 'target', run: () => store.ui.gateId && app.reviewGate(store.ui.gateId) },
     { label: 'Adapt the selected gate to each sample', icon: 'sparkles', run: () => store.ui.gateId && app.adaptGate(store.ui.gateId), keywords: 'autogating autogate adjust learn' },
@@ -1017,7 +1087,7 @@ async function start() {
   app.openStartupFiles = async (files) => {
     const opened = new Set(prefs.get(`opened:${info.session}`, []));
     const known = new Set(store.ws.samples.map((s) => s.fileName));
-    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table', 'figure'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
+    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table', 'figure', 'spectroflo'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
     for (const file of files) opened.add(file.url);
     prefs.set(`opened:${info.session}`, [...opened]);
     if (!pending.length) return;
