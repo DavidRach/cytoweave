@@ -582,6 +582,11 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
    fidelity report like the `.wsp` import's.
    - Validation: counts against the source software's saved statistics; independent readers
      (CyFj11 for `.flowjo`) where they exist.
+   - Done (slice 1): FlowJo 11 workbenches, checked against twelve workbenches FlowJo 11.2 saved
+     (FlowJo 11's display-grid evaluation found and reproduced: every count equal, quadrants
+     drawn in FlowJo 11 within 3 events), and FACSDiva experiments, checked against Diva's and
+     CytoML's counts. CyFj11's example workbench turned out inconsistent (stale per-sample gates)
+     and is not used. FACSChorus/S8 gates and SpectroFlo references go with the unmixing doctor.
 2. **The unmixing doctor (S8):** names the likely cause of a poor unmixing (a missing or wrong
    reference, a degraded tandem, a bead control for a cell stain, autofluorescence that differs
    between controls and sample) from the residuals, the library and the control checks, and

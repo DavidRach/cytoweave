@@ -242,7 +242,7 @@ async function start() {
   const fileInput = document.getElementById('file-input');
   const folderInput = document.getElementById('folder-input');
   app.pickFiles = (accept) => {
-    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.xml,.csv,.acs,.zip,.cwt';
+    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.flowjo,.xml,.csv,.acs,.zip,.cwt';
     fileInput.value = '';
     fileInput.click();
   };
@@ -260,7 +260,7 @@ async function start() {
     const items = files.map((file, order) => ({ file, name: file.name, folder: file.webkitRelativePath ? file.webkitRelativePath.split('/').slice(-2, -1)[0] : file.folder ?? null, order }));
     const fcs = items.filter((item) => /\.(fcs|lmd)$/i.test(item.name) || (!/\.\w+$/.test(item.name) && item.file.size > 256));
     const workspaces = items.filter((item) => /\.(cwz|json)$/i.test(item.name));
-    const flowjo = items.filter((item) => /\.wspt?$/i.test(item.name));
+    const flowjo = items.filter((item) => /\.(wspt?|flowjo)$/i.test(item.name));
     const gatingml = items.filter((item) => /\.xml$/i.test(item.name));
     const tables = items.filter((item) => /\.(csv|tsv|txt)$/i.test(item.name));
     const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
@@ -282,7 +282,7 @@ async function start() {
     const csv = eventTables.length ? await app.importEventCSVs(eventTables, { interactive: options.interactive !== false }) : [];
     for (const item of figures) await app.openFigureFile(item);
     for (const item of templates) await app.openTemplateFile(item);
-    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp), Gating-ML (.xml), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf), and events in CSV files.', { kind: 'error' });
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp) and FlowJo 11 workbenches (.flowjo), FACSDiva experiments and Gating-ML (.xml), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf), and events in CSV files.', { kind: 'error' });
     return { csv };
   };
 
@@ -384,9 +384,14 @@ async function start() {
 
   async function importFlowJo(item) {
     try {
-      const flowjo = await import('./lib/flowjo.js');
-      const text = new TextDecoder().decode(await readBytes(item));
-      const result = flowjo.importFlowJo(text);
+      let result;
+      if (/\.flowjo$/i.test(item.name)) {
+        const { importFlowJo11 } = await import('./lib/flowjo11.js');
+        result = await importFlowJo11(await readBytes(item));
+      } else {
+        const flowjo = await import('./lib/flowjo.js');
+        result = flowjo.importFlowJo(new TextDecoder().decode(await readBytes(item)));
+      }
       await app.applyFlowJoImport?.(result, item.name);
     } catch (error) {
       toast(`${item.name}: ${error.message}`, { kind: 'error' });
@@ -395,8 +400,14 @@ async function start() {
 
   async function importGatingML(item) {
     try {
-      const gml = await import('./lib/gatingml.js');
       const text = new TextDecoder().decode(await readBytes(item));
+      // A FACSDiva experiment (File → Export → Experiment as XML) opens like a FlowJo workspace.
+      if (/<bdfacs[\s>]/.test(text.slice(0, 4096))) {
+        const { importDiva } = await import('./lib/diva.js');
+        await app.applyFlowJoImport?.(importDiva(text), item.name);
+        return;
+      }
+      const gml = await import('./lib/gatingml.js');
       const result = gml.importGatingML(text);
       const { addGates, addCompensation, addDerived } = await import('./lib/workspace.js');
       let next = store.ws;
@@ -676,11 +687,11 @@ async function start() {
       { label: 'De-identified FCS files…', icon: 'download', onSelect: () => app.exportDeidentified() },
       { label: 'Events: concatenated FCS, downsampled, AnnData…', icon: 'download', onSelect: () => app.exportEventsDialog() },
       { label: 'Tables as an Excel workbook', icon: 'download', onSelect: () => import('./ui/mode-tables.js').then((m) => m.exportTablesWorkbook(app)) },
-      ...(store.ws.migrations?.length ? [{ label: 'FlowJo migration report…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
+      ...(store.ws.migrations?.length ? [{ label: 'Migration report (FlowJo, FACSDiva)…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
       '-',
       { section: 'Import' },
       { label: 'FCS files…', icon: 'file', onSelect: () => app.pickFiles() },
-      { label: 'Workspace, FlowJo .wsp, Gating-ML or ACS…', icon: 'upload', onSelect: () => app.pickFiles('.cwz,.json,.wsp,.wspt,.xml,.acs,.zip') },
+      { label: 'Workspace, FlowJo (.wsp, .flowjo), Gating-ML or ACS…', icon: 'upload', onSelect: () => app.pickFiles('.cwz,.json,.wsp,.wspt,.flowjo,.xml,.acs,.zip') },
       { label: 'Events or sample annotations (CSV)…', icon: 'tag', onSelect: () => app.pickFiles('.csv,.tsv,.txt') },
       '-',
       { label: 'Example experiments…', icon: 'flask', onSelect: () => app.showExamples() },

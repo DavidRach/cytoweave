@@ -256,6 +256,9 @@ export function buildFlowJoMigration(ws, result, matches, options = {}) {
   }
 
   // The merged gate tree: overrides keyed by CytoWeave sample ids, group-only populations scoped.
+  // FACSDiva gates belong to their tubes, so a gate some tubes have and no group matches gets a
+  // group of exactly those tubes (FlowJo gates without a group apply to every sample, as in FlowJo).
+  const ownGroups = new Map();
   const scopeFor = (present) => {
     const ids = new Set(present.map((s) => s.sampleId));
     for (const group of result.groups ?? []) {
@@ -264,9 +267,35 @@ export function buildFlowJoMigration(ws, result, matches, options = {}) {
       const members = new Set(group.sampleIds.filter((id) => result.samples.some((s) => s.sampleId === id)));
       if (members.size === ids.size && [...ids].every((id) => members.has(id))) return { scope: { groupId }, name: group.name };
     }
-    return null;
+    if (result.format !== 'diva') return null;
+    const workspaceIds = present.map((s) => workspaceIdOf.get(s)).filter(Boolean);
+    if (!workspaceIds.length) return null;
+    const key = [...ids].sort().join('|');
+    if (!ownGroups.has(key)) {
+      const name = present.length === 1 ? present[0].name : `${present[0].name} and ${present.length - 1} other tube${present.length > 2 ? 's' : ''}`;
+      const added = addGroup(next, name, workspaceIds);
+      next = added.ws;
+      groupsAdded.push(name);
+      ownGroups.set(key, { scope: { groupId: added.group.id }, name });
+    }
+    return ownGroups.get(key);
   };
-  const merged = mergeFlowJoGates(result.samples, { keyOf: (s) => workspaceIdOf.get(s) ?? null, scopeFor });
+  // FACSDiva gates belong to their tubes: with some tubes matched, the others' gates are left out
+  // (they would apply to no sample); with none matched, every gate is imported as a template.
+  let gateSamples = result.samples;
+  if (result.format === 'diva' && result.samples.some((s) => workspaceIdOf.has(s))) {
+    gateSamples = result.samples.filter((s) => workspaceIdOf.has(s));
+    const left = result.samples.length - gateSamples.length;
+    if (left) warnings.push(`The gates of ${left} FACSDiva tube${left === 1 ? '' : 's'} without an FCS file in this workspace were not imported; add the files and import the experiment again to include them.`);
+  }
+  const merged = mergeFlowJoGates(gateSamples, { keyOf: (s) => workspaceIdOf.get(s) ?? null, scopeFor });
+  // Each sample's populations and the merged gate that computes them (FACSDiva tubes can give the
+  // same path to different gates).
+  const mergedIdOfKey = new Map(merged.gates.map((g) => [g.meta.flowJoKey, g.id]));
+  const sampleGates = Object.fromEntries(result.samples.map((s) => [s.sampleId, Object.fromEntries(s.gates
+    .filter((g) => !g.meta?.helper && g.meta?.flowJo?.path)
+    .map((g) => [g.meta.flowJo.path, mergedIdOfKey.get(g.meta.flowJo.key ?? g.meta.flowJo.path)])
+    .filter(([, id]) => id))]));
   warnings.push(...merged.warnings);
   const fidelity = summarizeFidelity([...(result.fidelity ?? []), ...merged.fidelity]);
   const gates = merged.gates.map((gate) => {
@@ -282,6 +311,7 @@ export function buildFlowJoMigration(ws, result, matches, options = {}) {
     id: newId('m'),
     source: fileName,
     flowJoVersion: result.flowJoVersion ?? null,
+    sourceVersion: result.version ?? null,
     imported: time,
     samples: matches.map((m) => ({
       flowJoSampleId: m.flowJo.sampleId,
@@ -294,6 +324,8 @@ export function buildFlowJoMigration(ws, result, matches, options = {}) {
       counts: m.flowJo.populationCounts ?? {},
     })),
     gates: Object.fromEntries(gates.filter((g) => !g.meta.helper).map((g) => [g.meta.flowJoPath, g.id])),
+    sampleGates,
+    format: result.format ?? 'flowjo',
     fidelity: {
       counts: fidelity.counts,
       paths: fidelity.paths.filter((r) => r.status !== 'imported').map((r) => ({ path: r.path, status: r.status, note: fidelityNote(r, 6) })),
@@ -309,6 +341,20 @@ export function buildFlowJoMigration(ws, result, matches, options = {}) {
 
 // --- The migration report --------------------------------------------------------------------
 
+// How the import's source is named in the dialog and report: FlowJo 10 workspaces (.wsp),
+// FlowJo 11 workbenches (.flowjo) and FACSDiva experiments (XML).
+export function sourceOf(format, version = null) {
+  if (format === 'diva') return { name: 'FACSDiva', what: 'experiment', sample: 'tube', label: version ? `FACSDiva ${String(version).replace(/^Version\s*/i, '')}` : 'FACSDiva' };
+  if (format === 'flowjo11') return { name: 'FlowJo', what: 'workbench', sample: 'sample', label: 'FlowJo 11' };
+  return { name: 'FlowJo', what: 'workspace', sample: 'sample', label: version ? `FlowJo ${version}` : 'FlowJo' };
+}
+
+// The populations of one migrated sample (by its id in the imported file) and the gates that
+// compute them: { path: gateId }.
+export function migrationGates(migration, flowJoSampleId) {
+  return migration.sampleGates?.[flowJoSampleId] ?? migration.gates;
+}
+
 // Rows comparing FlowJo's counts with CytoWeave's. counts: { [sampleId]: { [path]: count | null } }
 // (from migration.comparison.counts). Status: 'exact', 'close' (within 1% or one event),
 // 'differs', or 'missing' (no CytoWeave count: the population was not imported or not computed).
@@ -320,7 +366,7 @@ export function migrationCountRows(migration, counts = migration.comparison?.cou
     const compared = compareFlowJoCounts(s.counts, Object.fromEntries(Object.entries(ours).filter(([, v]) => v !== null)), { absolute: 1, relative: 0.01 });
     for (const row of compared) {
       const status = row.cytoweave === null ? 'missing' : row.difference === 0 ? 'exact' : row.agree ? 'close' : 'differs';
-      rows.push({ ...row, sampleId: s.sampleId, sampleName: s.flowJoName, gateId: migration.gates[row.path] ?? null, status });
+      rows.push({ ...row, sampleId: s.sampleId, sampleName: s.flowJoName, gateId: migrationGates(migration, s.flowJoSampleId)[row.path] ?? null, status });
     }
   }
   return sortCountRows(rows);
@@ -368,9 +414,13 @@ export function explainCountRows(rows, migration) {
     const sample = samples.get(row.sampleId);
     if (sample?.note) causes.push(`the FCS file may not be the one FlowJo analyzed (${sample.note})`);
     if (row.status === 'missing' && !note) causes.push('the population was not recomputed on this sample (its data could not be loaded or the gate does not apply)');
-    if (row.status === 'close' && !causes.length) causes.push('events on the gate boundary: FlowJo evaluates gates at its display resolution');
+    const { name } = sourceOf(migration.format);
+    if (row.status === 'close' && !causes.length) causes.push(`events on the gate boundary: ${name} evaluates gates at its display resolution`);
     // A small population differs by many percent when only a few boundary events move.
-    if (row.status === 'differs' && !causes.length && Math.abs(row.difference) <= 20) causes.push(`only ${Math.abs(row.difference)} event${Math.abs(row.difference) === 1 ? '' : 's'} differ: events on the gate boundary, which FlowJo evaluates at its display resolution`);
+    if (row.status === 'differs' && !causes.length && Math.abs(row.difference) <= 20) causes.push(`only ${Math.abs(row.difference)} event${Math.abs(row.difference) === 1 ? '' : 's'} differ: events on the gate boundary, which ${name} evaluates at its display resolution`);
+    // A small gate on a dense population: its outline holds many events, so display resolution
+    // moves a few percent of them.
+    if (row.status === 'differs' && !causes.length && Math.abs(row.relative) <= 0.05) causes.push(`${Math.abs(row.difference)} events near the gate's edge: ${name} evaluates gates at its display resolution, which matters most for a small gate drawn on a dense population`);
     if (row.status === 'differs' && !causes.length) causes.push("check this sample's compensation and the gate's position on its data");
     row.causes = [...new Set(causes)];
   }

@@ -104,7 +104,7 @@ export function mountSidebar(app) {
       { label: 'Add a folder of FCS files…', icon: 'folder', onSelect: () => app.pickFolder() },
       '-',
       { label: 'Open an example experiment…', icon: 'flask', onSelect: () => app.showExamples() },
-      { label: 'Import a FlowJo workspace or Gating-ML…', icon: 'upload', onSelect: () => app.pickFiles('.wsp,.wspt,.xml') },
+      { label: 'Import a FlowJo workspace or Gating-ML…', icon: 'upload', onSelect: () => app.pickFiles('.wsp,.wspt,.flowjo,.xml') },
     ]);
   }
 

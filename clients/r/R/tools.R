@@ -16,10 +16,12 @@ cw_workspace_summary <- function(cw = cw_default()) {
 #' Open FCS files
 #'
 #' Open FCS files, folders of FCS files (each folder becomes a group), CytoWeave workspaces
-#' (.cwz), FlowJo workspaces (.wsp), Gating-ML files, or CSV files of events (a row per event,
-#' a column per channel; each becomes a sample, with the columns' kinds and scales guessed and
-#' checked, reported in data.csv), by absolute path on this computer. A CSV whose first column
-#' names samples annotates them instead.
+#' (.cwz), FlowJo workspaces (.wsp) and FlowJo 11 workbenches (.flowjo), FACSDiva experiments
+#' exported as XML (these open in the import dialog for the user, with a fidelity report and a
+#' count comparison), Gating-ML files, or CSV files of events (a row per event, a column per
+#' channel; each becomes a sample, with the columns' kinds and scales guessed and checked,
+#' reported in data.csv), by absolute path on this computer. A CSV whose first column names
+#' samples annotates them instead.
 #'
 #' @param paths Absolute paths of files or folders. Required; a list of strings.
 #' @param cw A connection from cw_connect() (default: the last one made).

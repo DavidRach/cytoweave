@@ -16,9 +16,11 @@ import {
   matchFlowJoSamples,
   migrationCSV,
   migrationCountRows,
+  migrationGates,
   planCompensations,
   sameSpillover,
   scaleChanges,
+  sourceOf,
   summarizeCountRows,
   summarizeFidelity,
 } from '../lib/flowjo-match.js';
@@ -47,6 +49,7 @@ function distinctMatrices(samples) {
 // Resolves to the migration record, or null when canceled.
 export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
   const { store } = app;
+  const src = sourceOf(result.format, result.format === 'diva' ? result.version : result.flowJoVersion);
   return new Promise((resolve) => {
     let matches = matchFlowJoSamples(result.samples, store.ws.samples);
     const fidelity = summarizeFidelity(result.fidelity ?? []);
@@ -78,7 +81,7 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
           : h('span.badge.warn', 'not in this workspace'),
         m.note ? h('div.muted', { style: { fontSize: '11px' } }, m.note) : null)));
       return h('div', { style: { maxHeight: '220px', overflow: 'auto' } },
-        h('table.data', h('thead', h('tr', h('th', 'FlowJo sample'), h('th.r', 'Events'), h('th', 'Groups'), h('th', 'FCS file in CytoWeave'))), h('tbody', rows)));
+        h('table.data', h('thead', h('tr', h('th', `${src.name} ${src.sample}`), h('th.r', 'Events'), h('th', 'Groups'), h('th', 'FCS file in CytoWeave'))), h('tbody', rows)));
     }
 
     function fidelityDetails() {
@@ -99,7 +102,7 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
       const scales = scaleChanges(store.ws, consensus);
       const compPlans = planCompensations(matches);
       body.append(
-        h('p', `${fileName}${result.flowJoVersion ? ` · FlowJo ${result.flowJoVersion}` : ''}. CytoWeave rebuilds FlowJo's gating tree with FlowJo's axis scales and compensation, then checks every population count against the count FlowJo saved.`),
+        h('p', `${fileName} · ${src.label}. CytoWeave rebuilds ${src.name}'s gating tree with ${src.name}'s axis scales and compensation, then checks every population count against the count ${src.name} saved.`),
         h('div.stat-grid', { style: { gridTemplateColumns: 'repeat(5, 1fr)' } },
           statTile('Samples matched', `${matched.length} / ${matches.length}`),
           statTile('Populations', formatCount(paths.size)),
@@ -111,24 +114,24 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
           statTile('Exact', formatCount(fidelity.counts.imported), 'ok'),
           statTile('Approximated', formatCount(fidelity.counts.approximated), fidelity.counts.approximated ? 'warn' : null),
           statTile('Not imported', formatCount(fidelity.counts.unsupported), fidelity.counts.unsupported ? 'danger' : null)),
-        h('p.muted', { style: { fontSize: '12px' } }, 'Exact populations select the same events as in FlowJo. Approximated ones may differ for events near the gate boundary (the reason is listed); the migration report shows by how much. Populations that are not imported must be redrawn.'),
+        h('p.muted', { style: { fontSize: '12px' } }, `Exact populations select the same events as in ${src.name}. Approximated ones may differ for events near the gate boundary (the reason is listed); the migration report shows by how much. Populations that are not imported must be redrawn.`),
         fidelityDetails(),
         h('div.section-title', { style: { marginTop: '14px' } }, 'Samples'),
         samplesTable());
       if (missing.length) {
         body.append(h('div.callout.warn', { style: { marginTop: '10px' } },
-          h('p', { style: { margin: '0 0 8px' } }, `${plural(missing.length, 'FlowJo sample')} ${missing.length === 1 ? 'has' : 'have'} no FCS file in this workspace. Add the files to import their sample-specific gate adjustments and compare counts, or continue with the gates alone.`),
+          h('p', { style: { margin: '0 0 8px' } }, `${plural(missing.length, `${src.name} ${src.sample}`)} ${missing.length === 1 ? 'has' : 'have'} no FCS file in this workspace. Add the files to import their sample-specific gate adjustments and compare counts, or continue with the gates alone.`),
           h('div.btn-row',
             h('button.btn.small', { type: 'button', onclick: () => { fileInput.value = ''; fileInput.click(); } }, icon('file'), 'Add the FCS files…'),
             h('button.btn.small', { type: 'button', onclick: () => { folderInput.value = ''; folderInput.click(); } }, icon('folder'), 'Add a folder…'),
-            h('span.muted', { style: { fontSize: '11px' } }, `FlowJo read them from ${commonFolder(missing.map((m) => m.flowJo.uri)) || 'another computer'}.`))));
+            h('span.muted', { style: { fontSize: '11px' } }, `${src.name} read them from ${commonFolder(missing.map((m) => m.flowJo.uri)) || 'another computer'}.`))));
       }
       if (result.warnings?.length) {
-        body.append(h('details', h('summary', { style: { cursor: 'pointer', margin: '8px 0' } }, `Notes from reading the workspace (${result.warnings.length})`),
+        body.append(h('details', h('summary', { style: { cursor: 'pointer', margin: '8px 0' } }, `Notes from reading the ${src.what} (${result.warnings.length})`),
           h('ul', { style: { margin: '0', paddingLeft: '18px', fontSize: '12px' } }, result.warnings.slice(0, 50).map((w) => h('li', w)))));
       }
       const scaleSelect = h('select.input', { onchange: (event) => { options.scales = event.target.value; } },
-        h('option', { value: 'all', selected: options.scales === 'all' }, `Use FlowJo's scales (${scales.differ.length + scales.unset.length} of ${Object.keys(consensus).length} channels change)`),
+        h('option', { value: 'all', selected: options.scales === 'all' }, `Use ${src.name}'s scales (${scales.differ.length + scales.unset.length} of ${Object.keys(consensus).length} channels change)`),
         h('option', { value: 'missing', selected: options.scales === 'missing' }, `Only for channels without a scale (${scales.unset.length})`),
         h('option', { value: 'none', selected: options.scales === 'none' }, 'Keep the current scales'));
       const fileKept = compPlans.find((p) => p.kind === 'file')?.sampleIds.length ?? 0;
@@ -140,17 +143,17 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
           h('span.muted', { style: { fontWeight: 400 } }, 'Each gate keeps the scale it was drawn on either way; this sets how plots draw the axes.')),
         h('label.check', h('input', { type: 'checkbox', checked: options.compensation && compCount > 0, disabled: !compCount, onchange: (event) => { options.compensation = event.target.checked; } }),
           compCount
-            ? `Apply FlowJo's compensation to ${plural(compCount, 'matched sample')}${fileKept ? ` (${fileKept} keep${fileKept === 1 ? 's' : ''} the file's own matrix, which FlowJo used)` : ''}${newMatrices ? `; adds ${plural(newMatrices, 'matrix', 'matrices')}` : ''}`
-            : 'No compensation to apply (no matched sample has a FlowJo matrix)'),
+            ? `Apply ${src.name}'s compensation to ${plural(compCount, 'matched sample')}${fileKept ? ` (${fileKept} keep${fileKept === 1 ? 's' : ''} the file's own matrix, which ${src.name} used)` : ''}${newMatrices ? `; adds ${plural(newMatrices, 'matrix', 'matrices')}` : ''}`
+            : `No compensation to apply (no matched sample has a ${src.name} matrix)`),
         h('label.check', { style: { marginTop: '6px' } }, h('input', { type: 'checkbox', checked: options.compare && matched.length > 0, disabled: !matched.length, onchange: (event) => { options.compare = event.target.checked; } }),
-          matched.length ? `Then load the ${plural(matched.length, 'matched sample')} and compare every population count with FlowJo's` : 'Counts can be compared once FCS files are matched'),
+          matched.length ? `Then load the ${plural(matched.length, 'matched sample')} and compare every population count with ${src.name}'s` : 'Counts can be compared once FCS files are matched'),
         fileInput, folderInput);
       const primary = dialog?.dialog.querySelector('.dialog-foot .btn.primary');
       if (primary) primary.textContent = matched.length ? 'Import' : 'Import gates only';
     }
 
     const dialog = showDialog({
-      title: 'Import FlowJo workspace',
+      title: `Import ${src.name} ${src.what}`,
       width: 'wide',
       content: body,
       buttons: [
@@ -166,11 +169,11 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
       try {
         plan = buildFlowJoMigration(store.ws, result, matches, { fileName, scales: options.scales, compensation: options.compensation });
       } catch (error) {
-        toast(`The FlowJo import failed: ${error.message}`, { kind: 'error' });
+        toast(`The ${src.name} import failed: ${error.message}`, { kind: 'error' });
         resolve(null);
         return;
       }
-      store.commit(plan.ws, `Import FlowJo workspace ${fileName}`, ['samples', 'groups', 'gates', 'compensation', 'scales', 'migration']);
+      store.commit(plan.ws, `Import ${src.name} ${src.what} ${fileName}`, ['samples', 'groups', 'gates', 'compensation', 'scales', 'migration']);
       app.data.syncAll?.();
       const populations = Object.keys(plan.migration.gates).length;
       const approximated = plan.fidelity.counts.approximated;
@@ -214,7 +217,8 @@ export async function runMigrationComparison(app, migrationId) {
   const targets = migration.samples.filter((s) => s.sampleId && store.ws.samples.some((w) => w.id === s.sampleId));
   if (!targets.length) return false;
   let canceled = false;
-  const progress = progressToast(`Comparing counts with FlowJo on ${plural(targets.length, 'sample')}…`, () => { canceled = true; });
+  const { name } = sourceOf(migration.format);
+  const progress = progressToast(`Comparing counts with ${name} on ${plural(targets.length, 'sample')}…`, () => { canceled = true; });
   const counts = {};
   const errors = {};
   for (const [i, target] of targets.entries()) {
@@ -225,7 +229,7 @@ export async function runMigrationComparison(app, migrationId) {
       const view = await data.ensure(target.sampleId);
       const ws = store.ws;
       const out = {};
-      for (const [path, gateId] of Object.entries(migration.gates)) {
+      for (const [path, gateId] of Object.entries(migrationGates(migration, target.flowJoSampleId))) {
         if (!gateById(ws, gateId)) continue;
         try {
           const indices = populationSet(view, ws, gateId);
@@ -245,7 +249,7 @@ export async function runMigrationComparison(app, migrationId) {
     progress.fail(canceled ? 'Comparison canceled.' : `No sample could be loaded: ${Object.values(errors)[0] ?? 'unknown error'}`);
     return false;
   }
-  progress.done(`Compared ${plural(compared, 'sample')} with FlowJo.`);
+  progress.done(`Compared ${plural(compared, 'sample')} with ${name}.`);
   const comparison = { time: new Date().toISOString(), counts, errors, partial: canceled || compared < targets.length };
   const current = find();
   if (current) store.replace({ ...store.ws, migrations: store.ws.migrations.map((m) => (m.id === migrationId ? { ...m, comparison } : m)) }, ['migration']);
@@ -253,6 +257,13 @@ export async function runMigrationComparison(app, migrationId) {
 }
 
 // --- Migration report ----------------------------------------------------------------------------
+
+// Why counts can differ slightly, by source (validation/flowjo11-cases.mjs, diva-cases.mjs).
+const MIGRATION_NOTES = {
+  flowjo: 'FlowJo evaluates gates at its display resolution, which moves events near gate boundaries (typically well under 1% of a large population, more for populations of a few dozen events), and gates marked approximated were converted to the closest CytoWeave gate. FlowJo\'s biexponential scale is reproduced exactly.',
+  flowjo11: 'FlowJo 11 evaluates gates on its display grid (an event counts in a polygon when the grid point it falls on does), which moves events near gate boundaries, typically well under 1% of a large population. Evaluated the same way, CytoWeave\'s reading of FlowJo 11\'s gates reproduces FlowJo 11\'s own counts exactly (validation suite).',
+  diva: 'FACSDiva evaluates gates on a 256-step display grid, which moves events near gate boundaries, and its biexponential scale is read as the logicle it approximates (as CytoML reads it), which moves a few events near gates on biexponential axes. Gates on linear axes, evaluated on Diva\'s grid, reproduce its counts exactly (validation suite).',
+};
 
 // "+0.42%", or the event difference when FlowJo's count is zero.
 function differenceText(row) {
@@ -269,7 +280,7 @@ export async function showMigrationReport(app, migrationId) {
   const all = store.ws.migrations ?? [];
   let migration = all.find((m) => m.id === migrationId) ?? all[all.length - 1];
   if (!migration) {
-    toast('This workspace has no FlowJo import to report on.');
+    toast('This workspace has no FlowJo or FACSDiva import to report on.');
     return;
   }
   if (!migration.comparison && migration.samples.some((s) => s.sampleId)) {
@@ -278,6 +289,7 @@ export async function showMigrationReport(app, migrationId) {
   }
   const rows = explainCountRows(migrationCountRows(migration), migration);
   const summary = summarizeCountRows(rows);
+  const src = sourceOf(migration.format, migration.format === 'diva' ? migration.sourceVersion : migration.flowJoVersion);
   let filter = 'all';
   const tableHost = h('div', { style: { maxHeight: '52vh', overflow: 'auto' } });
   const filters = h('div.segmented');
@@ -320,15 +332,15 @@ export async function showMigrationReport(app, migrationId) {
         h('td', gate ? h('button.btn.small', { type: 'button', title: 'Show this population on this sample', onclick: () => show(row) }, icon('target'), 'Show') : null));
     }));
     tableHost.append(h('table.data',
-      h('thead', h('tr', h('th', 'Population'), h('th', 'Sample'), h('th.r', 'FlowJo'), h('th.r', 'CytoWeave'), h('th.r', 'Difference'), h('th', 'Status'), h('th', 'Likely cause'), h('th', ''))),
+      h('thead', h('tr', h('th', 'Population'), h('th', 'Sample'), h('th.r', src.name), h('th.r', 'CytoWeave'), h('th.r', 'Difference'), h('th', 'Status'), h('th', 'Likely cause'), h('th', ''))),
       body));
     if (visible.length > REPORT_LIMIT) tableHost.append(h('p.muted', `Showing the first ${REPORT_LIMIT} of ${formatCount(visible.length)} rows; export the CSV for all of them.`));
   }
 
   const compared = rows.length - summary.missing;
   const headline = !rows.length
-    ? (migration.samples.some((s) => s.sampleId) ? 'No counts were compared yet.' : 'No FCS file of this FlowJo workspace is in CytoWeave, so counts cannot be compared. Add the files and run the comparison.')
-    : `${formatCount(summary.exact)} of ${formatCount(compared)} population counts agree exactly with FlowJo${summary.close ? `, ${formatCount(summary.close)} within 1%` : ''}${summary.differs ? `, and ${formatCount(summary.differs)} differ` : ''}.`;
+    ? (migration.samples.some((s) => s.sampleId) ? 'No counts were compared yet.' : `No FCS file of this ${src.name} ${src.what} is in CytoWeave, so counts cannot be compared. Add the files and run the comparison.`)
+    : `${formatCount(summary.exact)} of ${formatCount(compared)} population counts agree exactly with ${src.name}${summary.close ? `, ${formatCount(summary.close)} within 1%` : ''}${summary.differs ? `, and ${formatCount(summary.differs)} differ` : ''}.`;
   const errorCount = Object.keys(migration.comparison?.errors ?? {}).length;
   const content = [
     h('p', h('strong', headline), ` Imported from ${migration.source} on ${new Date(migration.imported).toLocaleString()}${migration.comparison ? `; counts computed ${new Date(migration.comparison.time).toLocaleString()}` : ''}.`),
@@ -337,7 +349,7 @@ export async function showMigrationReport(app, migrationId) {
       statTile('Within 1%', formatCount(summary.close), summary.close ? 'accent' : null),
       statTile('Differs', formatCount(summary.differs), summary.differs ? 'danger' : null),
       statTile('Not compared', formatCount(summary.missing), summary.missing ? 'warn' : null)),
-    h('p.muted', { style: { fontSize: '12px' } }, 'CytoWeave recomputed each imported population from the FCS data. Small differences are expected: FlowJo evaluates gates at its display resolution, which moves events near gate boundaries (typically well under 1% of a large population, more for populations of a few dozen events), and gates marked approximated were converted to the closest CytoWeave gate. FlowJo\'s biexponential scale is reproduced exactly. Larger differences usually mean different compensation, a different FCS file, or a population whose parent already differs.'),
+    h('p.muted', { style: { fontSize: '12px' } }, `CytoWeave recomputed each imported population from the FCS data, on the exact gate geometry. Small differences are expected: ${MIGRATION_NOTES[migration.format] ?? MIGRATION_NOTES.flowjo} Larger differences usually mean different compensation, a different FCS file, or a population whose parent already differs.`),
     migration.comparison?.partial || errorCount ? h('div.callout.warn', `Not every matched sample was compared${errorCount ? ` (${errorCount} could not be loaded: ${Object.values(migration.comparison.errors)[0]})` : ''}.`) : null,
     h('div.row', { style: { margin: '10px 0' } }, filters, h('span.grow')),
     tableHost,
@@ -345,11 +357,11 @@ export async function showMigrationReport(app, migrationId) {
   renderFilters();
   renderTable();
   const dialog = showDialog({
-    title: 'FlowJo migration report',
+    title: `${src.name} migration report`,
     width: 'xwide',
     content,
     buttons: [
-      { label: 'Export CSV', ghost: true, onClick: () => { downloadBlob(new Blob([migrationCSV(rows)], { type: 'text/csv' }), `${baseName(migration.source)}-flowjo-comparison.csv`); return false; } },
+      { label: 'Export CSV', ghost: true, onClick: () => { downloadBlob(new Blob([migrationCSV(rows)], { type: 'text/csv' }), `${baseName(migration.source)}-${src.name.toLowerCase()}-comparison.csv`); return false; } },
       { label: 'Recompute', ghost: true, onClick: async () => { if (await runMigrationComparison(app, migration.id)) setTimeout(() => showMigrationReport(app, migration.id), 0); return true; } },
       { label: 'Close', primary: true },
     ],

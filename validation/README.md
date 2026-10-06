@@ -42,6 +42,10 @@ that are known in advance:
     flowQB's results on them.
   - FlowCal's MEF example: 8-level beads on two days and two gains and 12 cell
     samples on a Cytek xP3+, with FlowCal's results on them.
+  - Twelve FlowJo 11 workbenches (`.flowjo`) saved by FlowJo 11.2 during a
+    trial, with FlowJo's count of every population (`reference/`).
+  - A FACSDiva experiment exported as XML with one tube's FCS file
+    (flowWorkspaceData, CytoML's test data), with Diva's and CytoML's counts.
   - Four FlowJo workspaces of an intracellular cytokine study (ALS C9orf72,
     Zenodo, CC BY 4.0) whose expert adjusted the gates per donor: 48 wells,
     four donors per workspace in a negative, a peptide and a PMA well.
@@ -65,7 +69,7 @@ a minute without them, and about four minutes with them.
 
 | Option | Effect |
 | --- | --- |
-| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `comparisons`, `calibration`, `flowcal`, `reports`, `events`, `differential`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
+| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `comparisons`, `calibration`, `flowcal`, `reports`, `events`, `differential`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `migration`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
 | `--verbose` | Print every check, not only failures |
 | `--require-data` | Fail, rather than skip, when the public test data are missing |
 
@@ -134,6 +138,25 @@ sample), read from FlowJo during a trial license, with notes on what FlowJo 11
 does with exports and with FlowJo 10's own workspaces. It cannot be
 regenerated without FlowJo; the `flowjo` and `flowkit` suites compare
 CytoWeave's counts with it.
+
+`reference/flowjo11-workbenches/` holds twelve workbenches (`.flowjo`) that
+FlowJo 11.2.0 (build 11.2.0.210156) saved on 2026-10-05 during a trial: the
+exports of the FlowJo export cases opened with File → Import FlowJo v10
+Workspace and saved with File → Save Workbench As, and one with gates drawn in
+FlowJo 11 itself (an ellipse, a polygon, a rectangle and a quadrant gate with
+one arm moved for one sample). Each holds FlowJo's count of every population.
+Their file paths were rewritten to `/data/<case>/`; nothing else was changed.
+They cannot be regenerated without FlowJo; the `migration` suite reads them
+(`flowjo11-cases.mjs`), with the FCS files of the bundled and built examples
+(generated) and of FlowKit's test data.
+
+`reference/cytoml-diva.json` holds CytoML's counts on the FACSDiva experiment
+of the `diva` data set (tube _001), with Diva's own:
+
+```bash
+node validation/fetch.mjs diva
+Rscript validation/reference/generate_cytoml_diva.R
+```
 
 `reference/cytoml.json` holds CytoML's counts (Bioconductor's FlowJo reader)
 on the same exports and on the original FlowKit workspaces; regenerate it
@@ -287,6 +310,8 @@ line):
 | `instruments` | FCS reader (`fcs.js`) | 47 files from 42 instrument models (`cytoflow-instruments`, `flowio`, `flowcal`, `zenodo-instruments`, `zenodo-nanofcm`, `rosettax`): BD (Accuri C6 and C6 Plus, FACSCanto II as FCS 2.0, FACSDiscover S8 in FCS 3.2, FACSymphony A5 SE, FACSLyric, FACSVerse, FACSMelody, Influx), Beckman Coulter (CytoFLEX, CytoFLEX S, DxFLEX, CyAn, Gallios, MoFlo Astrios and XDP), Cytek (Aurora raw 71 and 74 channels, Aurora Evo, Northern Lights, xP3+, DxP10), Sony (SA3800, MA900, SH800, iCyt Eclipse), Agilent NovoCyte and Penteon, Thermo Fisher (Attune, Attune NxT, Bigfoot), Bio-Rad (ZE5, S3), Millipore and Luminex Guava, Amnis ImageStream and CellStream, Partec, Stratedigm, Apogee, NanoFCM, BeamCyte, Standard BioTools Helios; FlowIO 1.4 and fcsparser 0.2.8 on them (`reference/instruments.json`, written by `reference/generate_instruments.py`) and FlowIO's own published test values | Every file read; stored and scaled values within 1e-6 of each reader that reads the file, except where CytoWeave departs from one for a reason that is itself checked: stale keyword offsets (Accuri C6, CyAn: the HEADER's offsets give a counter and time that count up), FCS 3.2 integer channels (compared only on float channels), float log channels stored as decades (each equal to its linear twin), `$PnG` left off log channels (FCS 3.1). Supplemental TEXT read with the primary delimiter or ignored when it holds no keywords; empty values kept apart; a truncated file opened with the events present; written and read back bit-exact; de-identified copies hold the same events | 47 of 47 (62 data sets); within 3.7e-7 (FlowIO 41 files, fcsparser 44; neither reads 3, which CytoWeave reads); counter 2, 3, 4 and time 134 → 1635; log twins within 3.5e-7; Stratedigm 52 of 52 published values; no junk keywords; DxFLEX 466 of 10,000 events with an error; bit-exact; 47 of 47 |
 | `ontology` | `suggestForPopulation`, `suggestTerms` (`ontology.js`) with the curated terms (`cell-ontology.js`, written by `reference/generate_cell_ontology.mjs` from `reference/cell-ontology-terms.json`) | 40 populations experts named in three public workspaces: the bundled FlowJo example, FlowKit's 8-color ICS (`flowkit`), FlowSOM's mouse workspace (`rpackages`); the name says which terms are right (`ontology-cases.mjs`): quality gates take their parent's term or none, cytokine-positive subsets their T-cell parent's | Each top suggestion a term its name denotes; suggestions from the data and gates only: the same with every gate renamed | 40 of 40 (27 exact, 7 likely, 6 quality gates with none); 14 of 14 the same |
 | `fuzz-corpus` | As `fuzz` | 10,000 mutations of the 21 generated files and 73 instrument files of up to 4 MB (every FCS data set above) | As `fuzz` | 0 of 10,000 failed; slowest 0.7 s (a 4 MB file whose mutated HEADER makes all of it TEXT). Longer runs: 0 of 110,000 |
+| `migration` | FlowJo 11 workbench import (`flowjo11.js`) and the migration (`flowjo-match.js`, engine) | Twelve workbenches FlowJo 11.2 saved (350 population-sample counts: polygons, rectangles, ellipses, quadrants, one with an offset arm, per-sample gates, compensation, linear, biex and arcsinh-as-biex scales) | CytoWeave's reading of every gate, evaluated as FlowJo 11 evaluates gates (on its display grid), gives FlowJo's own counts; every population imported exactly; imported as the app imports them and recomputed on the exact geometry, each population's percentage of its parent within 0.6 points of FlowJo's (or one event) | 337 of 350 equal, the other 13 quadrant counts drawn in FlowJo 11 within 3 events; all 350 exact; 147 equal, 35 one event apart, the rest within 0.56 points |
+| `diva` | FACSDiva experiment import (`diva.js`) and the migration | PE_2 (FACSDiva 6.1.3, 13 tubes; flowWorkspaceData), tube _001 with its FCS file; Diva's counts in the XML and CytoML 2.24's | Every population imported (44); compensation equal to the FCS file's $SPILLOVER; counts equal to CytoML's; Diva's counts, evaluated on Diva's 256-step display grid, exact on linear axes and within 0.3% on biexponential and log axes | All 44; 3e-5; 5 of 5; linear 2 of 2 exact, all within 0.26% |
 | `diva` | `computeSpillover` (`compensation.js`), as the Compensation view runs it, with no gating | The spillover matrix BD FACSDiva computed from the same 15 single-stain controls (LSRFortessa; Zenodo 22808501) and stored in the samples | Every one of the 210 entries within 0.02 (median method) and 0.03 (regression) | Largest difference 0.0145 and 0.026 |
 | `fortessa` | `fitNoise`, `crossValidate` (`spread.js`); the compensation spreading matrix (`compensation.js`) | A BD LSRFortessa's 15 bead single-stain controls (Zenodo 22808501) | Off-scale events left out of the spreading matrix (one entry once read 53 with them); photon noise physical in every detector; each control's spread predicted from the other 14 > 70% within 2× and r > 0.8 | 3.98 (53.5 with them); 1.24–9.07 units per photoelectron; 79% within 2× (median ×1.32), r 0.85 (photon noise alone 67%, r 0.82) |
 | `multiverse-ics` | As `multiverse`, on imported FlowJo workspaces | The four FlowJo workspaces of the cytokine study (`als-ics`) | IFNγ+ CD4 T cells, PMA against negative, the same in every analysis; the fragile peptide comparisons reported with what they depend on | All 4 agree in 64/64; one fragile (IL-4 peptide in one workspace, 42/64), depending on the expert's per-donor gates and 2% of a scatter gate |

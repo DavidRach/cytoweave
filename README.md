@@ -182,8 +182,9 @@ guides to every view, with screenshots.
   - Checkpoints, with a plain-language diff of what changed between two
     versions of an analysis and how it moved every frequency.
 - **Interchange.**
-  - FlowJo workspaces (.wsp), imported with a report of exactly what was
-    reproduced, plus a population-by-population count comparison, and
+  - FlowJo workspaces (.wsp), FlowJo 11 workbenches (.flowjo) and FACSDiva
+    experiments (XML), imported with a report of exactly what was reproduced,
+    plus a population-by-population count comparison; FlowJo workspaces
     exported with one gating tree per sample.
   - De-identified FCS files: only technical keywords kept, the events copied
     byte for byte.
@@ -327,7 +328,8 @@ Press ⌘K (Ctrl+K) to search samples, populations, channels and commands, and
 | `.cwz` | A CytoWeave workspace |
 | `.acs`, `.zip` | An Archival Cytometry Standard container: a workspace with its FCS files |
 | `.wsp` | A FlowJo 10 workspace (see [below](#working-with-flowjo-and-other-tools)) |
-| `.xml` | Gating-ML 2.0 gates and compensation |
+| `.flowjo` | A FlowJo 11 workbench (see [below](#working-with-flowjo-and-other-tools)) |
+| `.xml` | Gating-ML 2.0 gates and compensation, or a FACSDiva experiment exported as XML |
 | `.csv`, `.tsv`, `.txt` | Events, a row per event and a column per channel (checked before import, below); or, when the first column names samples, sample annotations |
 | `.svg`, `.png`, `.pdf` | A figure or plot CytoWeave exported: where it came from, what changed since, and a rebuild (see [Figures](#figures)) |
 
@@ -944,6 +946,20 @@ FlowJo saved; on real workspaces it matches them exactly at least as often as
 FlowKit does, and within 0.1–0.3% for large populations (FlowJo evaluates
 gates at its display resolution, which moves events near gate boundaries).
 
+**FlowJo 11 workbenches** (`.flowjo`) import the same way: polygons,
+rectangles, ellipses, ranges, quadrant gates (one with an offset arm becomes the
+rectangles each quadrant covers), Booleans, per-sample adjustments,
+compensation and linear, log and biexponential scales, compared with the
+counts FlowJo stored in the workbench. FlowJo 11 counts events on its display
+grid; evaluated that way, CytoWeave's reading gives FlowJo 11's own count for
+every population of twelve workbenches FlowJo 11.2 saved.
+
+**FACSDiva experiments** exported as XML import their tubes (one sample each,
+matched to their FCS files), specimens (groups), gates (rectangles, polygons,
+intervals, quadrants, Booleans and "rest of" populations, on the linear, log or
+biexponential axes they were drawn on) and compensation, compared with Diva's
+counts. On the experiment CytoML is tested with, every count equals CytoML's.
+
 **Exporting to FlowJo.** **Workspace → Export → FlowJo workspace** writes a
 FlowJo 10 workspace (which FlowJo 11 also opens). Each sample gets its own
 gating tree: the gates that apply to it, with its own adjustments. The
@@ -1012,7 +1028,7 @@ recorded):
 ## Command-line options
 
 ```text
-cytoweave [flags] [FCS files, folders, workspaces (.cwz), Gating-ML or FlowJo .wsp files...]
+cytoweave [flags] [FCS files, folders, workspaces (.cwz), Gating-ML or FlowJo .wsp and .flowjo files...]
 cytoweave mcp [flags]
 ```
 
@@ -1169,8 +1185,9 @@ used for diagnosis.
 
 ## Limitations
 
-- FlowJo 9 workspaces and FlowJo 11's `.flowjo` format are not read; export
-  `.wsp` from FlowJo 10 or 11.
+- FlowJo 9 workspaces are not read. FlowJo 11 logicle and arcsinh axes and
+  spectral matrices in a `.flowjo` workbench are read but not checked against
+  FlowJo 11's counts (logicle and arcsinh) or not applied (spectral).
 - Curly quadrants import with straight dividers. Template group gates import
   as per-sample copies, merged where samples agree.
 - FlowJo evaluates gates at its display resolution; CytoWeave evaluates them

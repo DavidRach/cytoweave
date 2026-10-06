@@ -210,7 +210,7 @@ func parseConfig(args []string) (config, error) {
 	flags.BoolVar(&cfg.remote, "remote-control", false, "accept actions from programs on this computer at /api/remote/action (for example Python or Jupyter)")
 	noOpen := flags.Bool("no-open", false, "same as --window none")
 	flags.Usage = func() {
-		fmt.Fprintln(flags.Output(), "Usage: cytoweave [flags] [FCS files, folders of FCS files, workspaces (.cwz), Gating-ML or FlowJo .wsp files...]")
+		fmt.Fprintln(flags.Output(), "Usage: cytoweave [flags] [FCS files, folders of FCS files, workspaces (.cwz), Gating-ML or FlowJo .wsp and .flowjo files...]")
 		fmt.Fprintln(flags.Output(), "       cytoweave mcp [flags]   (a Model Context Protocol server for AI agents, on stdin and stdout)")
 		flags.PrintDefaults()
 	}

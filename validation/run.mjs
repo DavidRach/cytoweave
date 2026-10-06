@@ -7,7 +7,7 @@
 //   node validation/run.mjs [suite …] [--verbose]
 //
 // Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, flowjo, figures, autogating, instrument, reference,
+// normalization, debarcode, transforms, flowjo, migration, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor
 // (all by default). Exits with status 1 when a check fails.
@@ -63,7 +63,9 @@ import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositiv
 import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
 import { EXPERT_GATES, ORDER, TRUTH, adaptTopDown, againstExperts, buildCohort, expertCorrection, expertWorkspace, f1 as truthF1, randomGains } from './autogating-cases.mjs';
 import { adaptAcrossSamples } from '../web/lib/autogating.js';
-import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows } from '../web/lib/flowjo-match.js';
+import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows, migrationGates } from '../web/lib/flowjo-match.js';
+import { FLOWJO11_WORKBENCHES, flowJo11Case } from './flowjo11-cases.mjs';
+import { divaCase } from './diva-cases.mjs';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
@@ -206,7 +208,7 @@ function flowJoMigration(xml, files) {
       view.setCompensation({ id: comp.id, channels: comp.channels, matrix: comp.matrix });
     }
     const out = {};
-    for (const [path, gateId] of Object.entries(plan.migration.gates)) {
+    for (const [path, gateId] of Object.entries(migrationGates(plan.migration, target.flowJoSampleId))) {
       const members = population(view, ws, gateId);
       out[path] = members === undefined ? null : countOf(members, view);
     }
@@ -270,6 +272,30 @@ function flowKitExportChecks(c, ref, originals) {
     else worse.push(`${k}: ${before} → ${n} (FlowJo ${saved})`);
   }
   check('flowkit', `${c.name}: FlowKit's counts on the export vs on the original workspace`, `${unchanged} unchanged${closer ? `, ${closer} closer to FlowJo's saved counts (time gates, which the export writes in $TIMESTEP units)` : ''}${worse.length ? `; ${worse.slice(0, 2).join('; ')}` : ''}`, !worse.length && unchanged + closer === original.size, 'each unchanged or closer to FlowJo');
+}
+
+// FlowJo 11 workbenches (.flowjo) saved by FlowJo 11.2 during a trial, with FlowJo's own count of
+// every population (flowjo11-cases.mjs): the reading of the format, checked by evaluating the
+// imported gates the way FlowJo 11 does, and the app's import recomputed by CytoWeave's engine.
+async function flowJo11WorkbenchChecks(suite) {
+  const cases = [];
+  for (const entry of FLOWJO11_WORKBENCHES) cases.push(await flowJo11Case(entry));
+  const missing = [...new Set(cases.filter((c) => c.missing).map((c) => c.missing))];
+  const done = cases.filter((c) => !c.missing);
+  const rows = done.flatMap((c) => c.rows.map((r) => ({ ...r, native: c.native, case: c.name })));
+  const exact = rows.filter((r) => r.grid === r.flowjo);
+  const off = rows.filter((r) => r.grid !== r.flowjo);
+  const nativeQuadrants = off.filter((r) => r.native && /^Q\d:/.test(r.path) && Math.abs(r.grid - r.flowjo) <= 3);
+  const unexplained = off.filter((r) => !nativeQuadrants.includes(r));
+  check(suite, `FlowJo 11 workbenches (${done.length} saved by FlowJo 11.2${missing.length ? `; ${cases.length - done.length} need the ${missing.join(', ')} data` : ''}): FlowJo's own counts reproduced by CytoWeave's reading of every gate, evaluated as FlowJo 11 evaluates gates (on its display grid)`, `${exact.length} of ${rows.length} equal${nativeQuadrants.length ? `; ${nativeQuadrants.length} quadrant counts drawn in FlowJo 11 within 3 events` : ''}${unexplained.length ? `; ${unexplained.slice(0, 2).map((r) => `${r.case} ${r.sample} ${r.path}: FlowJo ${r.flowjo}, ${r.grid}`).join('; ')}` : ''}`, !unexplained.length && rows.length > 300, 'all equal (quadrants drawn in FlowJo 11 within 3 events)');
+  const fidelity = done.flatMap((c) => c.fidelity.filter((f) => f.status !== 'imported').map((f) => `${c.name} ${f.path}: ${f.detail}`));
+  check(suite, 'FlowJo 11 workbenches: every population imported exactly (polygons, rectangles, ellipses, quadrants with an offset arm, per-sample gates, compensation, linear and biex scales)', fidelity.length ? fidelity.slice(0, 2).join('; ') : `all ${rows.length}`, !fidelity.length && rows.length > 0, 'all');
+  const gaps = rows.map((r) => ({ ...r, gap: r.parent && r.appParent ? Math.abs((100 * r.cytoweave) / r.appParent - (100 * r.flowjo) / r.parent) : (r.cytoweave === r.flowjo ? 0 : Infinity) }));
+  // One event apart counts as agreeing (a population of 100 events moves 1 point per event).
+  const beyondOne = gaps.filter((g) => Math.abs(g.cytoweave - g.flowjo) > 1);
+  const worst = beyondOne.reduce((a, b) => (b.gap > a.gap ? b : a), beyondOne[0] ?? { gap: 0, path: '', case: '', sample: '' });
+  const same = rows.filter((r) => r.cytoweave === r.flowjo).length;
+  check(suite, 'FlowJo 11 workbenches imported as the app imports them (samples matched, one gate tree with per-sample adjustments, FlowJo\'s scales and compensation) and recomputed by CytoWeave, which evaluates the exact gate geometry: each population\'s percentage of its parent against FlowJo\'s', `${same} of ${rows.length} counts equal, ${rows.length - same - beyondOne.length} one event apart; the rest within ${worst.gap.toFixed(2)} percentage points (largest: ${worst.case} ${worst.sample} ${worst.path.split('/').pop()}, FlowJo ${worst.flowjo}, CytoWeave ${worst.cytoweave})`, beyondOne.every((g) => g.gap <= 0.6) && rows.length > 0, 'within 0.6 percentage points or one event');
 }
 
 // FlowJo 11 itself on the exports (reference/flowjo11.json, read from FlowJo 11.2 during a trial):
@@ -1560,7 +1586,7 @@ const suites = {
     check('transforms', `FlowJo biex reproduces BD's lookup tables (${tables.length} tables, width basis −1 to −1000; worst: ${worstTable})`, `max relative difference ${worstRelative.toExponential(1)}`, worstRelative < 2e-5, '< 2e-5 (tables print 6 digits)');
     check('transforms', 'FlowJo biex: event positions', `max ${fmt(worstChannel, 3)} of 4096 channels`, worstChannel < 0.05, '< 0.05 channel');
   },
-  flowjo() {
+  async flowjo() {
     // The bundled FlowJo example: its workspace's counts are computed independently of the import
     // (examples.js), the way FlowJo evaluates each gate.
     const { files, attachments } = generateExample('flowjo-workspace', { scale: 0.25 });
@@ -1577,6 +1603,10 @@ const suites = {
     for (const c of [bundled, built]) exportChecks('flowjo', c);
 
     flowJo11Checks('flowjo', [bundled, built]);
+  },
+  // FlowJo 11 workbenches (.flowjo) saved by FlowJo 11.2, with FlowJo's own counts.
+  async migration() {
+    await flowJo11WorkbenchChecks('migration');
   },
   // Figure provenance: a gating-strategy figure of every PBMC sample, exported, read back from
   // SVG, PNG and PDF, and rebuilt in a new workspace from the same files.
@@ -2475,6 +2505,22 @@ const suites = {
     check('fuzz-corpus', `10,000 mutations of ${corpus.length} instrument files (every FCS data set above, files up to 4 MB) and the seeds`, `${summary.read} read, ${summary.refused} refused, ${summary.failures.length} failed${summary.failures.length ? `: ${summary.failures.slice(0, 2).map((f) => `${f.file} #${f.seed} ${f.problem}`).join('; ')}` : ''}; slowest ${summary.slowest.toFixed(0)} ms`, summary.failures.length === 0, 'no crash, hang, outsized allocation, disagreement or case over 1 s');
   },
   diva() {
+    // A FACSDiva experiment exported as XML (CytoML's test file), against Diva's own counts and
+    // CytoML's (diva-cases.mjs).
+    const experiment = dataset('diva');
+    const c = divaCase(experiment.text('PE_2.xml'), experiment.read('124500.fcs'));
+    const populations = c.result.fidelity.length;
+    const notExact = c.result.fidelity.filter((f) => f.status !== 'imported');
+    check('diva', `FACSDiva experiment (PE_2, Diva 6.1.3, ${c.result.samples.length} tubes in ${c.result.groups.length} specimens): every population imported (${populations}: rectangles, polygons, intervals, quadrants, "rest of" populations)`, notExact.length ? notExact.slice(0, 2).map((f) => `${f.sample} ${f.path}: ${f.detail}`).join('; ') : `all ${populations}`, !notExact.length && populations > 40, 'all');
+    check('diva', 'FACSDiva compensation read from the experiment equals the FCS file\'s $SPILLOVER (tube _001, 8 × 8)', `largest difference ${c.worstSpill.toExponential(1)}`, c.worstSpill < 5e-5, '< 5e-5 (the XML stores 8 digits)');
+    const cytoml = JSON.parse(readFileSync(new URL('./reference/cytoml-diva.json', import.meta.url), 'utf8'));
+    const theirs = new Map(cytoml.populations.map((p) => [p.path, p.cytoml]));
+    const same = c.rows.filter((r) => r.cytoweave === theirs.get(r.path));
+    check('diva', `FACSDiva tube _001 imported as the app imports it (the whole experiment matched against its FCS file) and recomputed by CytoWeave: counts equal CytoML ${cytoml.versions.CytoML}'s (Bioconductor's Diva reader)`, `${same.length} of ${c.rows.length}${same.length < c.rows.length ? `; ${c.rows.filter((r) => !same.includes(r)).map((r) => `${r.path}: CytoML ${theirs.get(r.path)}, CytoWeave ${r.cytoweave}`).slice(0, 2).join('; ')}` : ''}`, same.length === c.rows.length && c.matched === 1, 'all');
+    const linear = c.rows.filter((r) => r.linear);
+    const worst = c.rows.reduce((a, r) => Math.max(a, Math.abs(r.grid - r.diva) / r.diva), 0);
+    check('diva', 'FACSDiva\'s own counts (tube _001), evaluated on Diva\'s 256-step display grid: exact on linear axes; on biexponential and log axes, which CytoWeave and CytoML read as logicle and log10, within 0.3%', `${linear.filter((r) => r.grid === r.diva).length} of ${linear.length} linear-axis populations exact; all within ${(100 * worst).toFixed(2)}% (${c.rows.map((r) => `${r.path.split('/').pop()} ${r.grid}/${r.diva}`).join(', ')})`, linear.length > 0 && linear.every((r) => r.grid === r.diva) && worst <= 0.003, 'linear exact; all ≤ 0.3%');
+
     const data = dataset('zenodo-skull');
     const sample = parseFCS(data.read('Skull BM Broad_Tube_017.fcs')).datasets[0];
     const diva = readSpillover(sample.keywords, sample.parameters);

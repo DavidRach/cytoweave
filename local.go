@@ -50,7 +50,7 @@ func fileKind(name string) string {
 		return "fcs"
 	case strings.HasSuffix(lower, ".cwz"), strings.HasSuffix(lower, ".cytoweave.json"):
 		return "workspace"
-	case strings.HasSuffix(lower, ".wsp"), strings.HasSuffix(lower, ".wspt"):
+	case strings.HasSuffix(lower, ".wsp"), strings.HasSuffix(lower, ".wspt"), strings.HasSuffix(lower, ".flowjo"):
 		return "flowjo"
 	case strings.HasSuffix(lower, ".xml"):
 		return "gatingml"
