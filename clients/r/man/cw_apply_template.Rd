@@ -3,20 +3,21 @@
 \alias{cw_apply_template}
 \title{Apply an analysis template}
 \usage{
-cw_apply_template(template, channels = NULL, figures = NULL, parent = NULL, sample = NULL, cw = cw_default())
+cw_apply_template(channels = NULL, figures = NULL, parent = NULL, sample = NULL, template = NULL, template_json = NULL, cw = cw_default())
 }
 \arguments{
-\item{template}{Template name, or a strategy id (omip-101). Required; a string.}
 \item{channels}{Template marker or channel name → channel here. Optional; a named list (Python: a dict).}
 \item{figures}{Also propose its figures (default true). Optional; TRUE or FALSE (Python: True or False).}
 \item{parent}{Population to put the template's top gates under (default: the top of the tree). Optional; a string.}
 \item{sample}{Sample whose events a strategy's gates are placed on (default: the current sample). Optional; a string.}
+\item{template}{Template name, or a strategy id (omip-101). Optional; a string.}
+\item{template_json}{Instead of template: the contents of a template file (.cwt). Optional; a string.}
 \item{cw}{A connection from \code{\link{cw_connect}} (default: the last one made).}
 }
 \value{
 A \code{cytoweave_result}: the \code{message} and the \code{data} CytoWeave answered with.
 }
 \description{
-Apply a template from the library, or a published gating strategy (omip-101, omip-090; see list_templates), to the open samples: each of its channels is matched by marker (preferring the same area/height suffix), scatter and time by name, and the report says how each matched and which populations could not be applied (with the reason). A strategy's gates are placed on the events of one sample (sample, default the current one), each from its parent population: density peaks for scatter, valleys between a marker's modes for positive and negative cells, and come with suggested Cell Ontology terms. The gates and figures are proposed for the user's review; gates keep their position in data values, so check them across samples with review_gate and adjust with adapt_gate. channels overrides a match: \{"CD3": "FL4-A"\}.
+Apply a template from the library (or a template file's contents, templateJSON), or a published gating strategy (omip-101, omip-090; see list_templates), to the open samples: each of its channels is matched by marker (preferring the same area/height suffix), scatter and time by name, and the report says how each matched and which populations could not be applied (with the reason). A strategy's gates are placed on the events of one sample (sample, default the current one), each from its parent population: density peaks for scatter, valleys between a marker's modes for positive and negative cells, and come with suggested Cell Ontology terms. The gates and figures are proposed for the user's review; gates keep their position in data values, so check them across samples with review_gate and adjust with adapt_gate. channels overrides a match: \{"CD3": "FL4-A"\}.
 }
 \seealso{\code{\link{cw_call}}, which sends any action by its name (here \code{"apply_template"}).}

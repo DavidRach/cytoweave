@@ -1242,6 +1242,17 @@ export function installRemote(app) {
     async export_table(args) {
       const extension = requireExtension(args.path, ['.csv', '.tsv', '.xlsx', '.pzfx'], 'a table');
       if (extension === '.xlsx' || extension === '.pzfx') return exportSpreadsheet(args, extension);
+      if (args.table) {
+        // A Tables table, as the Tables view's CSV export writes it.
+        const w = ws();
+        const table = w.tables.find((t) => t.name.toLowerCase() === String(args.table).toLowerCase());
+        if (!table) throw new ActionError(`No table "${args.table}". Tables: ${w.tables.map((t) => t.name).join(', ') || 'none'}.`);
+        const { delimitedText, tableControlSamples, tableMatrix, tableSamples } = await import('../lib/tables.js');
+        const rows = tableSamples(w, table);
+        for (const x of [...rows, ...tableControlSamples(w, table)]) await loadedView(x);
+        const matrix = tableMatrix(w, table, rows, (id) => app.data.view(id));
+        return { file: delimitedText(matrix, extension === '.tsv' ? '\t' : ','), message: `The table ${table.name}: ${rows.length} rows, ${table.columns.length} column${table.columns.length === 1 ? '' : 's'}.` };
+      }
       const table = await actions.statistics_table(args);
       const separator = extension === '.tsv' ? '\t' : ',';
       const quote = (v) => {
@@ -1253,6 +1264,14 @@ export function installRemote(app) {
       const columns = rows.length ? Object.keys(rows[0].values) : [];
       const lines = [['Sample', ...fields, ...columns].map(quote).join(separator), ...rows.map((r) => [r.sample, ...fields.map((f) => r.meta?.[f] ?? ''), ...columns.map((c) => r.values[c])].map(quote).join(separator))];
       return { file: `${lines.join('\n')}\n`, message: `${table.message} ${rows.length} rows, ${columns.length} population column${columns.length === 1 ? '' : 's'}.` };
+    },
+
+    async export_workspace(args) {
+      requireExtension(args.path, ['.cwz'], 'a workspace');
+      const { serializeWorkspace } = await import('../lib/workspace.js');
+      const w = ws();
+      const open = openProposals(w);
+      return { file: serializeWorkspace(w), message: `The workspace ${w.name}: ${w.samples.length} samples, ${w.gates.length} populations, ${w.tables.length} tables, ${w.figures.length} figures${open.length ? `; ${open.length} proposal${open.length === 1 ? '' : 's'} still open (saved as proposals)` : ''}.` };
     },
 
     async export_events(args) {
@@ -1351,8 +1370,19 @@ export function installRemote(app) {
       const { applyTemplate } = await import('../lib/templates.js');
       const { STRATEGIES } = await import('../lib/strategies.js');
       const wanted = String(args.template ?? '').toLowerCase();
-      // A published strategy by id (omip-101) or name, else a template in the library.
-      let template = STRATEGIES.find((t) => t.id === wanted || t.name.toLowerCase() === wanted || t.name.toLowerCase().startsWith(`${wanted}:`)) ?? null;
+      // A template file's contents (a .cwt), else a published strategy by id (omip-101) or name,
+      // else a template in the library.
+      let template = null;
+      if (args.templateJSON) {
+        const { parseTemplate } = await import('../lib/templates.js');
+        try {
+          template = parseTemplate(typeof args.templateJSON === 'string' ? args.templateJSON : JSON.stringify(args.templateJSON));
+        } catch (error) {
+          throw new ActionError(error.message);
+        }
+      }
+      if (!template && !wanted) throw new ActionError('Name the template (a template in the library, or a strategy id such as omip-101), or give templateJSON, a template file\'s contents.');
+      template ??= STRATEGIES.find((t) => t.id === wanted || t.name.toLowerCase() === wanted || t.name.toLowerCase().startsWith(`${wanted}:`)) ?? null;
       if (!template) {
         const list = await app.listTemplates();
         const entry = list.find((t) => (t.name ?? '').toLowerCase() === wanted) ?? list.find((t) => t.id === args.template) ?? list.find((t) => (t.name ?? '').toLowerCase().includes(wanted));
@@ -1834,10 +1864,25 @@ export function installRemote(app) {
 
   // --- Connection ---------------------------------------------------------------------------------
 
+  // Actions only "cytoweave run" sends (the program marks its own events trusted; agents' and
+  // scripts' actions never are): the run stands for the user who started it.
+  const trusted = {
+    async accept_proposals() {
+      const { acceptProposal } = await import('../lib/proposals.js');
+      const open = openProposals(ws());
+      const changes = open.flatMap((p) => describeProposal(ws(), p).map((i) => i.text));
+      let next = ws();
+      // The run's own proposals are the user's own changes; any other author's stay attributed.
+      for (const p of open) next = acceptProposal(next, p.id, 'cytoweave run', { own: p.author === author });
+      if (open.length) store.commit(next, `Accept ${open.length} proposal${open.length === 1 ? '' : 's'} (cytoweave run)`);
+      return { message: open.length ? `Accepted ${open.length} proposal${open.length === 1 ? '' : 's'}: ${changes.join('; ')}.` : 'No open proposals.', data: { accepted: open.length, changes } };
+    },
+  };
+
   async function perform(event) {
     let outcome;
     try {
-      const handler = actions[event.action];
+      const handler = event.trusted && trusted[event.action] ? trusted[event.action] : actions[event.action];
       if (!handler) throw new ActionError(`Unknown action "${event.action}". Actions: ${Object.keys(actions).join(', ')}.`);
       const args = typeof event.args === 'object' && event.args ? event.args : {};
       author = event.client || 'a program on this computer';

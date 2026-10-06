@@ -66,6 +66,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
 		os.Exit(runMCP(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "run" {
+		os.Exit(runHeadless(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	cfg, err := parseConfig(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		return
@@ -212,6 +215,7 @@ func parseConfig(args []string) (config, error) {
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), "Usage: cytoweave [flags] [FCS files, folders of FCS files, workspaces (.cwz), Gating-ML or FlowJo .wsp and .flowjo files...]")
 		fmt.Fprintln(flags.Output(), "       cytoweave mcp [flags]   (a Model Context Protocol server for AI agents, on stdin and stdout)")
+		fmt.Fprintln(flags.Output(), "       cytoweave run --template panel.cwt --output results/ FILES...   (an analysis without a window; cytoweave run -h)")
 		flags.PrintDefaults()
 	}
 	files, err := parseArgs(flags, args)

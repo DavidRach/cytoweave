@@ -1025,22 +1025,21 @@ class Tools:
         """
         return self.call("save_template", **{"name": name, "population": population})
 
-    def apply_template(self, template, *, channels=None, figures=None, parent=None, sample=None):
+    def apply_template(self, *, channels=None, figures=None, parent=None, sample=None, template=None, template_json=None):
         """Apply an analysis template.
 
-        Apply a template from the library, or a published gating strategy (omip-101, omip-090; see
-        list_templates), to the open samples: each of its channels is matched by marker (preferring
-        the same area/height suffix), scatter and time by name, and the report says how each matched
-        and which populations could not be applied (with the reason). A strategy's gates are placed
-        on the events of one sample (sample, default the current one), each from its parent
-        population: density peaks for scatter, valleys between a marker's modes for positive and
-        negative cells, and come with suggested Cell Ontology terms. The gates and figures are
-        proposed for the user's review; gates keep their position in data values, so check them
-        across samples with review_gate and adjust with adapt_gate. channels overrides a match:
-        {"CD3": "FL4-A"}.
+        Apply a template from the library (or a template file's contents, templateJSON), or a
+        published gating strategy (omip-101, omip-090; see list_templates), to the open samples:
+        each of its channels is matched by marker (preferring the same area/height suffix), scatter
+        and time by name, and the report says how each matched and which populations could not be
+        applied (with the reason). A strategy's gates are placed on the events of one sample
+        (sample, default the current one), each from its parent population: density peaks for
+        scatter, valleys between a marker's modes for positive and negative cells, and come with
+        suggested Cell Ontology terms. The gates and figures are proposed for the user's review;
+        gates keep their position in data values, so check them across samples with review_gate and
+        adjust with adapt_gate. channels overrides a match: {"CD3": "FL4-A"}.
 
         Args:
-            template: Template name, or a strategy id (omip-101). Required; a string.
             channels: Template marker or channel name → channel here. Optional; a named list
                 (Python: a dict).
             figures: Also propose its figures (default true). Optional; TRUE or FALSE (Python: True
@@ -1049,11 +1048,14 @@ class Tools:
                 Optional; a string.
             sample: Sample whose events a strategy's gates are placed on (default: the current
                 sample). Optional; a string.
+            template: Template name, or a strategy id (omip-101). Optional; a string.
+            template_json: Instead of template: the contents of a template file (.cwt). Optional; a
+                string.
 
         Returns:
             A Result: the message and the data CytoWeave answered with.
         """
-        return self.call("apply_template", **{"template": template, "channels": channels, "figures": figures, "parent": parent, "sample": sample})
+        return self.call("apply_template", **{"channels": channels, "figures": figures, "parent": parent, "sample": sample, "template": template, "templateJSON": template_json})
 
     def suggest_cell_types(self, *, populations=None, propose=None, sample=None):
         """Suggest Cell Ontology terms.
@@ -1155,6 +1157,23 @@ class Tools:
             A Result: the message and the data CytoWeave answered with.
         """
         return self.call("methods")
+
+    def export_workspace(self, path, *, overwrite=None):
+        """Export the workspace.
+
+        Write the workspace as a CytoWeave workspace file (.cwz): the samples (by file name and
+        checksum, not their events), annotations, gates, compensation, scales, tables, figures and
+        results, which CytoWeave opens again with the FCS files beside it. Open proposals are saved
+        as proposals. The file must not exist unless overwrite is true.
+
+        Args:
+            path: Absolute path of the file to write (.cwz). Required; a string.
+            overwrite: Optional; TRUE or FALSE (Python: True or False).
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("export_workspace", **{"path": path, "overwrite": overwrite})
 
     def export_gating_ml(self):
         """Export gates as Gating-ML.

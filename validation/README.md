@@ -115,6 +115,30 @@ examples, or against the files the exports write, read back:
 | `add_formula_channel` | A formula channel proposed and used at once: its medians in `statistics_table` equal to the formula computed directly |
 | `calibrate_beads` | Simulated 8-level beads of known response calibrated and applied to a cell sample: the slope within 0.01 of the truth, the cells' median MEFL within 2%, the calibrated channels proposed |
 | `apply_template` with a strategy | OMIP-101 placed on one sample of the PBMC example: its 25 gates proposed, each the same as placing the strategy directly, 19 with a suggested Cell Ontology term |
+| `diagnose_unmixing` | The spectral example's sample diagnosed with the proposed library: healthy, every check run |
+| `kinetics` | The calcium-flux example: the Indo-1 ratio found by name, every tube measured, the pause found in the four paused tubes, responding events rising with the stimulus |
+| `plate`, `plate_layout`, `dose_response`, `bead_assay` | The drug screen's wells from their keywords and its Z′ as in Node; a layout held until accepted, then applied; each compound's EC50 as in Node; every serum's concentrations as in Node |
+| `export_workspace` | The bead assay's workspace written as a .cwz file with its 56 samples, annotations and gates |
+
+Continuous integration runs it on each pull request and push to `main`.
+
+### Headless runs
+
+```bash
+node validation/headless-run.mjs
+```
+
+checks `cytoweave run` (built from source with Go, in headless Chrome) on the PBMC example's
+twelve samples, an annotations table and the templates suite's analysis saved as a template file
+(`run-cases.mjs`). It takes about 20 seconds:
+
+| Check | Required | Result |
+| --- | --- | --- |
+| The run exits 0 and writes the tables (Excel and CSV), the report, the workspace, the methods and `run.json` | All written | Exit 0 in 1.9 s |
+| `run.json` lists every input with its SHA-256, each step's outcome and every output with its size and SHA-256 | 13 inputs, all steps ok, 5 outputs | 13, 9 of 9, 5 |
+| A second run of the same files | The same CSV and methods bytes, workbook values, report text and workspace | The same |
+| The same analysis in the window, with the files on CytoWeave's command line, the template applied in its Apply dialog and every output exported with the window's own buttons and menus (Tables CSV, Excel workbook, batch report dialog, workspace file, Report → Markdown) | The same CSV bytes, workbook values (the About sheet's date aside), report pages and text, workspace (samples, annotations, gates, tables, figures, scales; no open proposal) and methods | The same; 12 pages |
+| Every population's count in `run.json` against Node's, from the same files and template | All equal | 228 of 228 |
 
 Continuous integration runs it on each pull request and push to `main`.
 

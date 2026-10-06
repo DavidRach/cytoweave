@@ -242,15 +242,23 @@ export function describeProposal(ws, proposal) {
 }
 
 // Applies a proposal's held changes and keeps its gates, recording who accepted it.
-export function acceptProposal(ws, proposalId, acceptedBy = 'the user') {
+// options.own: the proposal's author stands for the user ("cytoweave run", which the user started
+// to apply an analysis): its changes are kept as the user's own, with no record of an agent's
+// proposal and acceptance (the change log still names the run).
+export function acceptProposal(ws, proposalId, acceptedBy = 'the user', options = {}) {
   const proposal = proposalById(ws, proposalId);
   if (!proposal) return ws;
   let next = ws;
   const time = now();
+  const stamp = (value) => {
+    if (!options.own) return { ...value, proposedBy: proposal.author, acceptedBy, accepted: time };
+    const { proposedBy, ...rest } = value;
+    return rest;
+  };
   for (const change of proposal.changes) {
     if (change.kind === 'add-gates') {
       const ids = new Set(change.gateIds);
-      next = { ...next, gates: next.gates.map((g) => (ids.has(g.id) ? { ...g, meta: { ...withoutProposal(g.meta), proposedBy: proposal.author, acceptedBy, accepted: time } } : g)) };
+      next = { ...next, gates: next.gates.map((g) => (ids.has(g.id) ? { ...g, meta: stamp(withoutProposal(g.meta)) } : g)) };
     } else if (change.kind === 'edit-gate' && gateById(next, change.gateId)) {
       next = updateGate(next, change.gateId, change.patch, 'edit-gate');
     } else if (change.kind === 'remove-gate' && gateById(next, change.gateId)) {
@@ -267,7 +275,7 @@ export function acceptProposal(ws, proposalId, acceptedBy = 'the user') {
       for (const id of change.derivedIds) {
         const record = next.derived.find((d) => d.id === id);
         if (!record) continue;
-        const kept = { ...withoutProposal(record), proposedBy: proposal.author, acceptedBy, accepted: time };
+        const kept = stamp(withoutProposal(record));
         // Results of more samples for an accepted result of the same kind and channels (QC of
         // other samples) join it; otherwise the result is kept as it is.
         const into = record.outputs?.length ? next.derived.find((d) => d.id !== id && !d.proposal && d.kind === record.kind && sameOutputs(d.outputs, record.outputs)) : null;
@@ -280,7 +288,7 @@ export function acceptProposal(ws, proposalId, acceptedBy = 'the user') {
       }
     } else if (change.kind === 'add-figure') {
       const ids = new Set(change.figureIds);
-      next = { ...next, figures: next.figures.map((f) => (ids.has(f.id) ? { ...withoutProposal(f), proposedBy: proposal.author, acceptedBy, accepted: time } : f)) };
+      next = { ...next, figures: next.figures.map((f) => (ids.has(f.id) ? stamp(withoutProposal(f)) : f)) };
     } else if (change.kind === 'annotate-samples') {
       next = { ...next, samples: next.samples.map((s) => {
         const c = change.samples[s.id];
@@ -293,11 +301,11 @@ export function acceptProposal(ws, proposalId, acceptedBy = 'the user') {
         return { ...s, meta, ...(c.role ? { role: c.role } : {}), ...(c.stain !== undefined ? { stain: c.stain } : {}) };
       }) };
     } else if (change.kind === 'insert-root-gate') {
-      next = insertRootGate(next, { ...change.gate, meta: { ...(change.gate.meta ?? {}), proposedBy: proposal.author, acceptedBy, accepted: time } }, 'add-root-gate').ws;
+      next = insertRootGate(next, { ...change.gate, meta: stamp(change.gate.meta ?? {}) }, 'add-root-gate').ws;
     }
   }
   next = forgetGates({ ...next, proposals: openProposals(next).filter((p) => p.id !== proposalId) });
-  return log(next, 'accept-proposal', `${summary(ws, proposal)} — proposed by ${proposal.author}, accepted by ${acceptedBy}`);
+  return log(next, 'accept-proposal', options.own ? `${summary(ws, proposal)} — applied by ${proposal.author}` : `${summary(ws, proposal)} — proposed by ${proposal.author}, accepted by ${acceptedBy}`);
 }
 
 // Drops a proposal: its gates (and anything since drawn under them) are removed and its held

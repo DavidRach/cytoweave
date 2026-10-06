@@ -641,6 +641,15 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
    window (a headless browser) and writes its tables, reports and exports, for cores' nightly
    runs, pipelines and CI.
    - Validation: the same files run headless and in the window give identical outputs.
+   - Done (slice 6): `cytoweave run` starts CytoWeave on a private port with no library, opens it in
+     a headless Chrome and performs the steps through the agents' actions: by default the files
+     and an annotations table opened, the template applied (and optionally QC), the run's own
+     proposals accepted as the user's (an action only the run can send), then the template's
+     tables (Excel and a CSV each), its last figure's batch report, the workspace, the methods and
+     run.json (inputs' checksums, every step, every count, the outputs); `--steps` runs any agent
+     actions from a JSON file. Agents and scripts gained `export_workspace` and `templateJSON`.
+     Validated by `validation/headless-run.mjs` (in CI): two runs and the window's own exports give
+     the same outputs, and every count equals Node's.
 
 Publishing the R and Python clients (M9), first planned as item 7 of this wave, is parked until
 there is more adoption (see the parking lot below).

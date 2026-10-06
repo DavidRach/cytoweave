@@ -157,3 +157,15 @@ test('a result proposed without an id gets one, and rejecting it leaves the othe
   ws = rejectProposal(ws, openProposals(ws)[0].id);
   assert.deepEqual(ws.derived.map((d) => d.id), ['qc1']);
 });
+
+test('a run\'s own proposals are accepted as the user\'s own changes, with the run in the change log', () => {
+  const { ws: start } = base();
+  const ws = proposeGates(start, 'cytoweave run', [rect('Cells')]).ws;
+  const accepted = acceptProposal(ws, openProposals(ws)[0].id, 'cytoweave run', { own: true });
+  const cells = accepted.gates.find((g) => g.name === 'Cells');
+  assert.equal(cells.meta.proposal, undefined);
+  assert.equal(cells.meta.proposedBy, undefined);
+  assert.equal(cells.meta.acceptedBy, undefined);
+  assert.equal(openProposals(accepted).length, 0);
+  assert.match(proposalHistory(accepted)[0].detail, /Add Cells — applied by cytoweave run/);
+});

@@ -999,18 +999,17 @@ cw_save_template <- function(name, population = NULL, cw = cw_default()) {
 
 #' Apply an analysis template
 #'
-#' Apply a template from the library, or a published gating strategy (omip-101, omip-090; see
-#' list_templates), to the open samples: each of its channels is matched by marker (preferring
-#' the same area/height suffix), scatter and time by name, and the report says how each matched
-#' and which populations could not be applied (with the reason). A strategy's gates are placed
-#' on the events of one sample (sample, default the current one), each from its parent
-#' population: density peaks for scatter, valleys between a marker's modes for positive and
-#' negative cells, and come with suggested Cell Ontology terms. The gates and figures are
-#' proposed for the user's review; gates keep their position in data values, so check them
-#' across samples with review_gate and adjust with adapt_gate. channels overrides a match:
-#' {"CD3": "FL4-A"}.
+#' Apply a template from the library (or a template file's contents, templateJSON), or a
+#' published gating strategy (omip-101, omip-090; see list_templates), to the open samples:
+#' each of its channels is matched by marker (preferring the same area/height suffix), scatter
+#' and time by name, and the report says how each matched and which populations could not be
+#' applied (with the reason). A strategy's gates are placed on the events of one sample
+#' (sample, default the current one), each from its parent population: density peaks for
+#' scatter, valleys between a marker's modes for positive and negative cells, and come with
+#' suggested Cell Ontology terms. The gates and figures are proposed for the user's review;
+#' gates keep their position in data values, so check them across samples with review_gate and
+#' adjust with adapt_gate. channels overrides a match: {"CD3": "FL4-A"}.
 #'
-#' @param template Template name, or a strategy id (omip-101). Required; a string.
 #' @param channels Template marker or channel name → channel here. Optional; a named list
 #' (Python: a dict).
 #' @param figures Also propose its figures (default true). Optional; TRUE or FALSE (Python:
@@ -1019,11 +1018,14 @@ cw_save_template <- function(name, population = NULL, cw = cw_default()) {
 #' tree). Optional; a string.
 #' @param sample Sample whose events a strategy's gates are placed on (default: the current
 #' sample). Optional; a string.
+#' @param template Template name, or a strategy id (omip-101). Optional; a string.
+#' @param template_json Instead of template: the contents of a template file (.cwt). Optional;
+#' a string.
 #' @param cw A connection from cw_connect() (default: the last one made).
 #' @return A cytoweave_result: the message and the data CytoWeave answered with.
 #' @export
-cw_apply_template <- function(template, channels = NULL, figures = NULL, parent = NULL, sample = NULL, cw = cw_default()) {
-  cw_call("apply_template", template = template, channels = channels, figures = figures, parent = parent, sample = sample, cw = cw)
+cw_apply_template <- function(channels = NULL, figures = NULL, parent = NULL, sample = NULL, template = NULL, template_json = NULL, cw = cw_default()) {
+  cw_call("apply_template", channels = channels, figures = figures, parent = parent, sample = sample, template = template, templateJSON = template_json, cw = cw)
 }
 
 #' Suggest Cell Ontology terms
@@ -1125,6 +1127,22 @@ cw_proposals <- function(cw = cw_default()) {
 #' @export
 cw_methods <- function(cw = cw_default()) {
   cw_call("methods", cw = cw)
+}
+
+#' Export the workspace
+#'
+#' Write the workspace as a CytoWeave workspace file (.cwz): the samples (by file name and
+#' checksum, not their events), annotations, gates, compensation, scales, tables, figures and
+#' results, which CytoWeave opens again with the FCS files beside it. Open proposals are saved
+#' as proposals. The file must not exist unless overwrite is true.
+#'
+#' @param path Absolute path of the file to write (.cwz). Required; a string.
+#' @param overwrite Optional; TRUE or FALSE (Python: True or False).
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_export_workspace <- function(path, overwrite = NULL, cw = cw_default()) {
+  cw_call("export_workspace", path = path, overwrite = overwrite, cw = cw)
 }
 
 #' Export gates as Gating-ML

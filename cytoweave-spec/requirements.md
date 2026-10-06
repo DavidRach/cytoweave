@@ -158,7 +158,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M5 | R and Python clients for remote control | done: `clients/r` and `clients/python`, functions generated from the tools, connection found through `remote.json`, tested in CI against a running CytoWeave (not published to CRAN or PyPI) |
 | M6 | Optional on-device assistant, without network | idea (replaced by WebMCP, M7) |
 | M7 | Tools exposed to browser agents through WebMCP | planned (wave 8) |
-| M8 | Headless runs: a template applied to a folder without a window, writing tables, reports and exports | planned (wave 7) |
+| M8 | Headless runs: a template applied to a folder without a window, writing tables, reports and exports | done (wave 7): `cytoweave run` in a headless Chrome, default steps or a steps file of agent actions, tables, report, workspace, methods and a run record with checksums and counts; the same outputs as the window's own exports, every count equal to Node's |
 | M9 | The R and Python clients published (r-universe, PyPI) with each release | parked (outside the waves): installed from the GitHub repository for now, as documented; to publish once CytoWeave has more users |
 | M10 | A tool contract for external algorithms (pinned WASM or container runtimes, results as derived channels) | planned (wave 10) |
 

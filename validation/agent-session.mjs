@@ -574,6 +574,10 @@ try {
     return got && Object.entries(x.results).every(([k, r]) => got.concentrations[k].mean === rounded(r.mean, 5));
   });
   check('bead_assay: the bead groups\' analytes, standards and dilutions found from the layout; every serum\'s concentrations as in Node', `${assay.analytes.length} analytes, ${assay.samples.length} sera; S01 IL-6 ${s01Agent?.concentrations['IL-6']?.mean} (${rounded(s01.results['IL-6'].mean, 5)}) ${assay.unit}`, assay.analytes.length === 8 && assay.samples.length === 20 && beadSame, 'equal');
+  const cwzPath = join(temp, 'beads.cwz');
+  const wrote = await tool('export_workspace', { path: cwzPath }, 'Plates agent');
+  const cwz = JSON.parse(readFileSync(cwzPath, 'utf8'));
+  check('export_workspace: the workspace written as a .cwz file, its samples, annotations and gates as the app holds them', `${wrote.message.split('.')[0]}; ${cwz.samples.length} samples, ${cwz.gates.length} gates, ${cwz.samples.filter((x) => x.meta?.standard).length} standards annotated`, cwz.format === 'cytoweave-workspace' && cwz.samples.length === 56 && cwz.gates.length === 2 && cwz.samples.filter((x) => x.meta?.standard).length === 16, '56 samples, 2 gates, 16 standards');
 } catch (error) {
   check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

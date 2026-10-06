@@ -164,6 +164,16 @@ export function tableCells(ws, table, viewOf) {
   return { columns, cell };
 }
 
+// Rows of strings as delimited text: CSV (quoted where a cell holds a comma, quote or line break)
+// or TSV; the Tables view's CSV export and agents' and runs' export_table write the same bytes.
+export function delimitedText(rows, separator = ',') {
+  const special = separator === '\t' ? /[\t"\n]/ : /[",\n]/;
+  return rows.map((row) => row.map((cell) => {
+    const text = cell === null || cell === undefined ? '' : String(cell);
+    return special.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }).join(separator)).join('\n');
+}
+
 // The table as rows of strings for CSV and the clipboard: sample, file, annotations, then each
 // column (full precision, 8 significant digits), a column with limits followed by its status.
 export function tableMatrix(ws, table, rows, viewOf) {

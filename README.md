@@ -218,6 +218,9 @@ guides to every view, with screenshots.
   data, gate, run QC, unmix, cluster, compute statistics, review gates, build
   figures, write methods and export files. Their changes arrive as proposals
   that you accept or reject, and every change can be undone.
+- **Headless runs.** `cytoweave run` applies a template to a folder of FCS
+  files without a window and writes its tables, report, workspace and methods,
+  with a record of every input and count, for nightly runs, pipelines and CI.
 - **Large files.** Samples of ten million events open in seconds and stay
   responsive: files are read in parts and never held whole, populations are
   kept as bitsets, and analyses in the background share the events rather
@@ -1104,6 +1107,7 @@ recorded):
 ```text
 cytoweave [flags] [FCS files, folders, workspaces (.cwz), Gating-ML or FlowJo .wsp and .flowjo files...]
 cytoweave mcp [flags]
+cytoweave run [flags] [FCS files or folders...]
 ```
 
 | Flag | Default | Effect |
@@ -1120,6 +1124,31 @@ cytoweave mcp [flags]
 | `--remote-control` | | Accept actions from local programs (see below) |
 | `--dev` | | Serve `web/` from the working directory (for development) |
 | `--version` | | Print the version |
+
+### Headless runs
+
+`cytoweave run` applies an analysis template to FCS files without a window, for
+a core's nightly runs, pipelines and CI:
+
+```sh
+cytoweave run --template panel.cwt --annotations samples.csv --output results/ plate-12/
+```
+
+It opens CytoWeave in a headless Chrome (or Chromium, Edge, Brave), applies the
+template with the same code as the window, and writes these files to the output
+folder:
+
+- the template's tables, as an Excel workbook (`tables.xlsx`) and a CSV per table;
+- the batch report of its last figure (`report.pdf`, or `--report pptx`);
+- the workspace (`workspace.cwz`), to open and review in the window;
+- the methods (`methods.txt`);
+- `run.json`, which records each input file's checksum, each step's outcome,
+  every population's count in every sample, and what was written.
+
+`--qc` runs acquisition QC first and `--flowjo` adds a FlowJo workspace.
+`--steps steps.json` runs any sequence of the agent actions instead. The exit
+status is 0 when every step succeeded, 1 when one failed and 2 for a usage
+error. See [Scripting and command line](https://robert-mcdermott.github.io/cytoweave/docs/scripting.html#run).
 
 ## Scripting and AI agents
 
@@ -1161,7 +1190,7 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 41 tools, other clients
+[Using CytoWeave with AI agents](docs/MCP.md) for the 48 tools, other clients
 and how it works.
 
 The same actions are available to your own programs with `--remote-control`.
@@ -1222,6 +1251,7 @@ pipelines, as the app does, against answers known in advance:
 | Differential state | diffcyt 1.32 and limma 3.68 in R on the mass cytometry examples (8 samples with a batch, 20 paired wells); limma on 11 synthetic cases; activation known in advance | Every count and median identical, every moderated t, p and adjusted p within 3e-11; the known activation changes found (15 of 15 strong ones) with 3 of 53 calls false; no call where no marker differs |
 | Events in and out | Concatenated, downsampled and per-sample FCS files against their sources; CSV files from CytoWeave, FlowJo and European locales, and a damaged one; AnnData files read by anndata 0.10 and 0.13, h5py, pyfive, fcsparser and FlowIO | Every event its source's; every population counted alike per SampleID; seeded downsampling exact and uniform; CSV values back exactly, every fault reported; X, obs and maps read exactly by every reader |
 | Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
+| Headless runs | The PBMC example's 12 samples and a template run twice with `cytoweave run`, and analyzed in the window with its own buttons; Node on the same files | The same outputs both times and as the window exports them (CSV bytes, workbook values, report text, workspace, methods); all 228 counts equal to Node's |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |
 | Accessibility | Every text color on every surface, the palettes in simulated color-vision deficiencies, and axe-core in 86 pages | Contrast ≥ 4.5:1 everywhere in both themes; friendly palette ≥ 11 apart (CIEDE2000) in every kind of vision; no axe-core violations |
