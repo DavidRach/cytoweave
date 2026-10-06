@@ -342,7 +342,7 @@ export async function openKinetics(app, gateId, sampleId) {
     const pmax = Math.max(5, ...[...result.percentCurve.smooth].filter(Number.isFinite));
     const py = valueScale(0, Math.min(100, pmax * 1.1), strip.y + strip.h, strip.y, { target: 2 });
     leftAxis(items, py, strip, colors, '% above');
-    for (const points of curvePath(result.curve.centers, result.percentCurve.smooth, shift, py)) items.push({ t: 'path', points, stroke: colors.warn, width: 1.6 });
+    for (const points of curvePath(result.curve.centers, result.percentCurve.smooth, shift, py)) items.push({ t: 'path', points, stroke: aligned ? CATEGORICAL[0] : colors.warn, width: 1.6 });
     bottomAxis(items, x, strip, colors, aligned ? 'Seconds after the stimulus' : 'Time (s)');
     for (let b = 0; b < result.curve.centers.length; b += 1) {
       const c = result.curve.centers[b];

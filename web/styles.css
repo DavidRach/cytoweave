@@ -831,9 +831,9 @@ table.spectral-bars td { min-width: 120px; }
 .plates-well.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 .plates-well.multiple { box-shadow: inset 0 0 0 2px var(--warn); }
 .plates-well.few { background-image: repeating-linear-gradient(45deg, transparent 0 3px, rgba(128, 128, 128, 0.6) 3px 4.5px); }
-.stat-tile .v.ok { color: var(--ok); }
-.stat-tile .v.warn { color: var(--warn); }
-.stat-tile .v.danger { color: var(--danger); }
+.stat-tile .v.ok { color: var(--ok-text); }
+.stat-tile .v.warn { color: var(--warn-text); }
+.stat-tile .v.danger { color: var(--danger-text); }
 .curve-results td .badge { margin-right: 3px; }
 .bead-groups { display: grid; gap: 8px; }
 .bead-group { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; }

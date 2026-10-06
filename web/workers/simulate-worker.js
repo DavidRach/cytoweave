@@ -3,7 +3,9 @@
 // Protocol (cytoweave-spec/conventions.md): the page posts { id, type, payload }; the worker
 // replies { id, progress: [fraction, message] } zero or more times, then { id, result } or
 // { id, error }. Requests:
-//   generateExample  payload { id, options: { seed, scale, samples, truth, tandemDegradation, instrumentShift, laserCV } }
+//   generateExample  payload { id, options } with generateExample's options (seed, scale, samples,
+//                    truth and each example's own: tandemDegradation, degradationIn,
+//                    controlSubstitutes, beadShift, unstainedCells, instrumentShift, laserCV, clogs)
 //                    → { files: [{ name, bytes, meta }], workspaceHints }
 //   listExamples     → catalog summaries
 //   getExample       payload { id } → the catalog entry
@@ -48,15 +50,13 @@ self.addEventListener('message', async (event) => {
         const signal = { aborted: false };
         running.set(id, signal);
         try {
-          const { seed, scale, samples, truth, tandemDegradation, instrumentShift, laserCV } = payload.options ?? {};
+          // Every option the page sends (they are plain data); the worker supplies its own signal
+          // and progress.
+          const options = { ...(payload.options ?? {}) };
+          delete options.signal;
+          delete options.onProgress;
           const result = await generateExampleAsync(payload.id, {
-            seed,
-            scale,
-            samples,
-            truth,
-            tandemDegradation,
-            instrumentShift,
-            laserCV,
+            ...options,
             signal,
             onProgress: (fraction, message) => self.postMessage({ id, progress: [fraction, message] }),
           });

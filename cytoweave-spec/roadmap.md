@@ -542,39 +542,14 @@ fluorochromes rather than detectors: the Compensate view now points to unmixing.
 Left for later: kinetics, plates and titration plates stay in wave 7; drawing a gate from the
 keyboard (V4) stays open.
 
-## Next (0.7–0.8)
+## 0.7.0: migration, the unmixing doctor, plates and runs (released 2026-10-06)
 
-The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0) comes from `research.md` §8
-and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
-Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
-asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
-single tool combines. Waves 7–8 are a plan, to be revised as each wave lands.
-
-Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-05,
-`product_research/feature-comparison.html`):
-- **Agents are no longer distinctive; agents proven right are.** Dotmatics' Luma Agent, Ozette,
-  Conspecta and flow-atlas now offer agents or MCP servers, so wave 8 adds a public agent benchmark
-  and WebMCP in place of the on-device assistant.
-- **Users before features.** CytoWeave's gaps come down to adoption: no institutional users yet,
-  and validation mostly on simulated truth. Core-facility studies move from Later to run beside
-  wave 7, with validation on real expert-gated data.
-- **The FlowJo 11 transition is an opening that closes as FlowJo 11 matures**, so migration stays
-  first in wave 7; the unmixing doctor moves ahead of plates (unmixing, controls and panels are
-  where most users struggle, and HoneyChrome is now a free rival on spectral depth); kinetics,
-  small once formula channels exist, is split out of "Curves" to land early.
-- **Collaboration without a cloud:** a self-contained review report covers most sharing (a PI or
-  reviewer reading an analysis) before any multi-user work.
-- **Automation for cores:** headless runs of a template on a folder. (Publishing the clients, also
-  planned here, is parked until there is more adoption.)
-
-### Beside wave 7: core-facility studies and real data
-
-- **Design studies with one or two core facilities** (moved from Later): their files, panels and
-  routines; what blocks daily use; the first institutional users. Findings reorder the waves.
-- **Validation on real expert-gated data (V7):** public studies with expert gates or published
-  counts (FlowCAP, FlowRepository studies such as the ALS cytokine workspaces already used),
-  beside the simulated truth.
-- **Tutorials** built on public FlowRepository studies.
+Wave 7 makes moving to CytoWeave easier (FlowJo 11 workbenches, FACSDiva experiments, FACSChorus
+gates and SpectroFlo reference controls, each with a fidelity report), names the likely cause of a
+poor unmixing and tries its fix, measures kinetics such as a calcium flux, adds a Plates view with
+heat maps and Z′, dose-response curves and bead immunoassays checked against R's drc and
+beadplexr, and runs a template on a folder of files without a window (`cytoweave run`).
+Publishing the R and Python clients, first planned here, is parked.
 
 ### Wave 7: migration, the spectral doctor, plates and runs
 
@@ -653,6 +628,42 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
 
 Publishing the R and Python clients (M9), first planned as item 7 of this wave, is parked until
 there is more adoption (see the parking lot below).
+
+## Next (0.8)
+
+The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0, wave 7 as 0.7.0) comes from `research.md` §8
+and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
+Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
+asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
+single tool combines. Wave 8 is a plan, to be revised as it lands.
+
+Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-05,
+`product_research/feature-comparison.html`):
+- **Agents are no longer distinctive; agents proven right are.** Dotmatics' Luma Agent, Ozette,
+  Conspecta and flow-atlas now offer agents or MCP servers, so wave 8 adds a public agent benchmark
+  and WebMCP in place of the on-device assistant.
+- **Users before features.** CytoWeave's gaps come down to adoption: no institutional users yet,
+  and validation mostly on simulated truth. Core-facility studies move from Later to run beside
+  wave 7, with validation on real expert-gated data.
+- **The FlowJo 11 transition is an opening that closes as FlowJo 11 matures**, so migration stays
+  first in wave 7; the unmixing doctor moves ahead of plates (unmixing, controls and panels are
+  where most users struggle, and HoneyChrome is now a free rival on spectral depth); kinetics,
+  small once formula channels exist, is split out of "Curves" to land early.
+- **Collaboration without a cloud:** a self-contained review report covers most sharing (a PI or
+  reviewer reading an analysis) before any multi-user work.
+- **Automation for cores:** headless runs of a template on a folder. (Publishing the clients, also
+  planned here, is parked until there is more adoption.)
+
+### Beside wave 8: core-facility studies and real data
+
+Planned beside wave 7, not started there; they continue beside wave 8.
+
+- **Design studies with one or two core facilities** (moved from Later): their files, panels and
+  routines; what blocks daily use; the first institutional users. Findings reorder the waves.
+- **Validation on real expert-gated data (V7):** public studies with expert gates or published
+  counts (FlowCAP, FlowRepository studies such as the ALS cytokine workspaces already used),
+  beside the simulated truth.
+- **Tutorials** built on public FlowRepository studies.
 
 ### Wave 8: designed, explained, certified
 

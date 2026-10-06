@@ -207,6 +207,40 @@ const scenes = {
     await waitFor(`/Extract again/.test(${mainText})`, 300000);
     await sleep(2500);
   },
+  // The unmixing doctor on the spectral example with PE-Cy7 degraded by 10% in the samples.
+  async doctor() {
+    await example('spectral-25color', { gates: false, options: { tandemDegradation: { 'PE-Cy7': 0.1 }, degradationIn: 'samples' } });
+    await mode('spectral');
+    await waitFor(`/Gate all controls/.test(${mainText})`, 60000);
+    await click('Gate all controls');
+    await waitFor(`/Extract signatures/.test(${mainText})`, 300000);
+    await sleep(1500);
+    await click('Extract signatures');
+    await waitFor(`/Extract again/.test(${mainText})`, 300000);
+    await sleep(1500);
+    await app(`app.selectSample(app.store.ws.samples.find((s) => s.role === 'sample').id);`);
+    await sleep(800);
+    await click('Diagnose');
+    await sleep(800);
+    await js(`[...document.querySelectorAll('main button.btn.primary')].find((e) => e.textContent.trim() === 'Diagnose')?.click()`);
+    await waitFor(`/the most likely first|No fault found/.test(${mainText})`, 300000);
+    await sleep(2000);
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /^Diagnosis/.test(e.textContent.trim()))?.scrollIntoView({ block: 'start' })`);
+    await sleep(800);
+  },
+  // Kinetics: the Indo-1 ratio of T cells after the high anti-CD3 dose, the other tubes overlaid.
+  async kinetics() {
+    await example('calcium-flux');
+    await selectSample('aCD3_high');
+    await mode('gate');
+    await selectGate('T cells');
+    await app(`const m = await import('/ui/kinetics.js'); m.openKinetics(app, app.store.ui.gateId, app.store.ui.sampleId);`);
+    await sleep(3000);
+    await js(`[...document.querySelectorAll('.kinetics-overlay label')].filter((l) => /Buffer|aCD3_low|Ionomycin/.test(l.textContent) && !/injected/.test(l.textContent)).forEach((l) => l.querySelector('input').click())`);
+    await sleep(3500);
+    await js(`[...document.querySelectorAll('.dialog h3')].find((e) => /^Kinetics/.test(e.textContent.trim()))?.scrollIntoView({ block: 'start' })`);
+    await sleep(800);
+  },
   // Acquisition QC of the QC plate, with a clogged well open.
   async qc() {
     await example('qc-showcase', { gates: false });

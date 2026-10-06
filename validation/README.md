@@ -258,7 +258,9 @@ values (the best of several) and from CytoWeave's estimate, with the exact stand
 numDeriv's Hessian at that optimum; and beadplexr's analysis of its own LEGENDplex data as its
 vignette runs it. `write_curves.mjs` first writes the inputs; `generate_curves.R` also exports the
 LEGENDplex events, with beadplexr's bead groups and analytes, to `validation/cache/curves/lplex/`
-for the `beadplexr` suite, which is skipped without them:
+for the `beadplexr` suite, which is skipped without them, even with `--require-data` (fetch.mjs
+cannot make them, so continuous integration, which has no R, skips it; the `plates` suite checks
+drc and beadplexr from the committed results):
 
 ```bash
 node validation/reference/write_curves.mjs

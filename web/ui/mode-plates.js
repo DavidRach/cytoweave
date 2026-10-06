@@ -223,9 +223,9 @@ export function mountPlatesMode(app, container) {
       h('div.btn-row', h('button.btn.small.primary', { type: 'button', disabled: !ids.length, onclick: () => apply(valueInput.value.trim()) }, 'Set'),
         h('button.btn.small', { type: 'button', disabled: !ids.length, onclick: () => apply('') }, 'Clear')));
     // A dilution series across the selection.
-    const top = h('input.input.small', { type: 'number', step: 'any', placeholder: 'e.g. 10000', style: { width: '100px' } });
-    const factor = h('input.input.small', { type: 'number', step: 'any', value: 3, style: { width: '70px' } });
-    const unit = h('input.input.small', { value: 'nM', style: { width: '70px' } });
+    const top = h('input.input.small', { type: 'number', step: 'any', placeholder: 'e.g. 10000', 'aria-label': 'Top dose', style: { width: '100px' } });
+    const factor = h('input.input.small', { type: 'number', step: 'any', value: 3, 'aria-label': 'Dilution factor', style: { width: '70px' } });
+    const unit = h('input.input.small', { value: 'nM', 'aria-label': 'Dose unit', style: { width: '70px' } });
     let along = 'rows';
     const series = () => {
       const t = Number.parseFloat(top.value);
@@ -400,7 +400,7 @@ export function mountPlatesMode(app, container) {
     const { colorOf, legend } = colorsFor(plate, values);
     const byId = new Map(store.ws.samples.map((s) => [s.id, s]));
     const small = plate.columns > 12;
-    const grid = h(`div.plates-grid${small ? '.small' : ''}`, { style: { gridTemplateColumns: `22px repeat(${plate.columns}, minmax(0, 1fr))` }, role: 'grid', 'aria-label': `${plate.name}, ${plate.format} wells` });
+    const grid = h(`div.plates-grid${small ? '.small' : ''}`, { style: { gridTemplateColumns: `22px repeat(${plate.columns}, minmax(0, 1fr))` }, role: 'group', 'aria-label': `${plate.name}, ${plate.format} wells` });
     const all96 = Array.from({ length: plate.rows * plate.columns }, (_, i) => i);
     grid.append(h('button.plates-corner', { type: 'button', title: 'Select every well', onclick: (e) => select(plate, all96, e) }),
       ...Array.from({ length: plate.columns }, (_, c) => h('button.plates-head', { type: 'button', title: `Column ${c + 1}`, onclick: (e) => select(plate, all96.filter((i) => i % plate.columns === c), e) }, String(c + 1))));

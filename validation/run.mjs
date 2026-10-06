@@ -142,6 +142,9 @@ function median(values) {
 // External data (validation/sources.json, fetched into validation/cache/ by fetch.mjs).
 const sources = JSON.parse(readFileSync(new URL('./sources.json', import.meta.url), 'utf8'));
 class MissingData extends Error {}
+// Data that only an R script exports (fetch.mjs cannot make it), so a suite needing it is skipped
+// even with --require-data: its reference results are committed and checked by other suites.
+class NeedsR extends Error {}
 // PeacoQC as the app runs a large sample: each channel's work done apart (in parallel workers, here
 // one after another, each with fresh scratch space and through a structured clone, as postMessage
 // passes it), then combined. Must equal the serial run event for event.
@@ -1765,7 +1768,7 @@ const suites = {
     // vignette does (reference/generate_curves.R), and by CytoWeave: bead sizes by a two-cluster
     // split of FSC and SSC, classification levels pooled across the 18 files.
     const files = lplexFiles(fileURLToPath(new URL('./cache/curves/lplex/', import.meta.url)));
-    if (!files) throw new MissingData('beadplexr\'s LEGENDplex events are exported by Rscript validation/reference/generate_curves.R into validation/cache/curves/lplex/');
+    if (!files) throw new NeedsR('beadplexr\'s LEGENDplex events are exported by Rscript validation/reference/generate_curves.R into validation/cache/curves/lplex/');
     const ref = JSON.parse(readFileSync(new URL('./reference/curves.json', import.meta.url), 'utf8')).lplex;
     const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-300);
     const groups = scatterGroups(files);
@@ -3293,6 +3296,7 @@ const suites = {
 
 const names = requested.length ? requested : Object.keys(suites);
 const skipped = [];
+const skippedForR = [];
 const started = performance.now();
 for (const name of names) {
   if (!suites[name]) {
@@ -3303,6 +3307,11 @@ for (const name of names) {
   try {
     await suites[name]();
   } catch (error) {
+    if (error instanceof NeedsR) {
+      skippedForR.push(name);
+      console.log(`- ${name}: skipped (${error.message})`);
+      continue;
+    }
     if (error instanceof MissingData) {
       skipped.push(name);
       console.log(`- ${name}: skipped (external data: ${error.message})`);
@@ -3317,4 +3326,5 @@ for (const name of names) {
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
 if (skipped.length) console.log(`Skipped for want of external data: ${skipped.join(', ')} (node validation/fetch.mjs downloads it).`);
+if (skippedForR.length) console.log(`Skipped for want of data R exports: ${skippedForR.join(', ')} (Rscript validation/reference/generate_curves.R writes it).`);
 if (failed.length) process.exit(1);

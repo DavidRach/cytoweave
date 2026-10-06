@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 (2026-10-06)
+
+CytoWeave 0.7 makes moving to it easier, explains poor unmixings, and takes on plate-based assays and automation. FlowJo 11 workbenches, FACSDiva experiments, FACSChorus gates and SpectroFlo reference controls import with a fidelity report, FlowJo 11's own counts reproduced for every population of twelve workbenches FlowJo 11.2 saved; the unmixing doctor names the likely cause of a poor unmixing (a missing or wrong reference, a degraded tandem, autofluorescence the controls lack) and tries its fix; kinetics measures a calcium flux over time; a Plates view lays out a plate, shows any statistic across it with Z′, fits dose-response curves and reads bead immunoassays (LEGENDplex, CBA) against their standard curves, checked against R's drc and beadplexr; and `cytoweave run` applies a template to a folder of files without a window, for nightly runs, pipelines and CI.
 
 ### Added
 
@@ -30,6 +32,7 @@
 ### Fixed
 
 - Files that agents, scripts and runs export are created with the permissions any new file gets (the user's umask); they were readable by their owner only.
+- Example options given when opening an example in the window (the spectral example's planted faults, the PBMC example's clogs) reached the simulator only if the example worker knew them; it now passes every option on.
 
 ### Validation
 
