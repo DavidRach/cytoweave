@@ -46,6 +46,10 @@ that are known in advance:
     trial, with FlowJo's count of every population (`reference/`).
   - A FACSDiva experiment exported as XML with one tube's FCS file
     (flowWorkspaceData, CytoML's test data), with Diva's and CytoML's counts.
+  - The HEADER and TEXT of a FACSDiscover A8 file holding FACSChorus's gates
+    (Zenodo, CC BY 4.0), and a SpectroFlo experiment with five of its raw
+    reference control files (the AutoSpectral example, Mendeley, CC BY 4.0),
+    each fetched by byte range from a large file or archive.
   - Four FlowJo workspaces of an intracellular cytokine study (ALS C9orf72,
     Zenodo, CC BY 4.0) whose expert adjusted the gates per donor: 48 wells,
     four donors per workspace in a negative, a peptide and a PMA well.
@@ -59,7 +63,7 @@ node validation/fetch.mjs
 node validation/run.mjs
 ```
 
-`fetch.mjs` downloads the public test data (about 550 MB) into
+`fetch.mjs` downloads the public test data (about 590 MB) into
 `validation/cache/` and checks every file against the SHA-256 recorded in
 `sources.json`, which also records each data set's source and license. Files
 already present are not downloaded again. The data are not part of the
@@ -69,7 +73,7 @@ a minute without them, and about four minutes with them.
 
 | Option | Effect |
 | --- | --- |
-| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `comparisons`, `calibration`, `flowcal`, `reports`, `events`, `differential`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `migration`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
+| `fcs`, `fuzz`, `templates`, `strategies`, `titration`, `comparisons`, `calibration`, `flowcal`, `reports`, `events`, `differential`, `compensation`, `gating`, `qc`, `spectral`, `spread`, `cellcycle`, `proliferation`, `clustering`, `normalization`, `debarcode`, `transforms`, `flowjo`, `migration`, `acquisition`, `figures`, `autogating`, `experts`, `multiverse`, `multiverse-ics`, `instrument`, `flowqb`, `gatingml`, `flowkit`, `fcsparser`, `instruments`, `ontology`, `fuzz-corpus`, `diva`, `fortessa`, `bioconductor`, `accessibility`, `reference` | Run only these suites |
 | `--verbose` | Print every check, not only failures |
 | `--require-data` | Fail, rather than skip, when the public test data are missing |
 
@@ -311,6 +315,7 @@ line):
 | `ontology` | `suggestForPopulation`, `suggestTerms` (`ontology.js`) with the curated terms (`cell-ontology.js`, written by `reference/generate_cell_ontology.mjs` from `reference/cell-ontology-terms.json`) | 40 populations experts named in three public workspaces: the bundled FlowJo example, FlowKit's 8-color ICS (`flowkit`), FlowSOM's mouse workspace (`rpackages`); the name says which terms are right (`ontology-cases.mjs`): quality gates take their parent's term or none, cytokine-positive subsets their T-cell parent's | Each top suggestion a term its name denotes; suggestions from the data and gates only: the same with every gate renamed | 40 of 40 (27 exact, 7 likely, 6 quality gates with none); 14 of 14 the same |
 | `fuzz-corpus` | As `fuzz` | 10,000 mutations of the 21 generated files and 73 instrument files of up to 4 MB (every FCS data set above) | As `fuzz` | 0 of 10,000 failed; slowest 0.7 s (a 4 MB file whose mutated HEADER makes all of it TEXT). Longer runs: 0 of 110,000 |
 | `migration` | FlowJo 11 workbench import (`flowjo11.js`) and the migration (`flowjo-match.js`, engine) | Twelve workbenches FlowJo 11.2 saved (350 population-sample counts: polygons, rectangles, ellipses, quadrants, one with an offset arm, per-sample gates, compensation, linear, biex and arcsinh-as-biex scales) | CytoWeave's reading of every gate, evaluated as FlowJo 11 evaluates gates (on its display grid), gives FlowJo's own counts; every population imported exactly; imported as the app imports them and recomputed on the exact geometry, each population's percentage of its parent within 0.6 points of FlowJo's (or one event) | 337 of 350 equal, the other 13 quadrant counts drawn in FlowJo 11 within 3 events; all 350 exact; 147 equal, 35 one event apart, the rest within 0.56 points |
+| `acquisition` | FACSChorus gate import (`chorus.js`); SpectroFlo experiment import (`spectroflo.js`) with the Spectral view's control gating and spectra (`spectral.js`) | The gates FACSChorus 6.1.0 recorded in a FACSDiscover A8 file; a SpectroFlo experiment (5-laser Aurora) with its raw BUV395, BV421, APC, eFluor 780 and unstained cell controls | Every drawn gate imported exactly, on the file's parameters with its vertices unchanged, the saturation gates reported; the experiment's 7 controls read and its 64 detectors named as the raw files name them; the controls marked and each spectrum computed by CytoWeave peaking in the detector SpectroFlo gated it on; SpectroFlo's stored vectors far from the controls' own spectra (why they are not used) | 6 of 6, 1.4e-16; equal; 4 of 4 (UV2, V3, R1, R7); 0.50–0.87 |
 | `diva` | FACSDiva experiment import (`diva.js`) and the migration | PE_2 (FACSDiva 6.1.3, 13 tubes; flowWorkspaceData), tube _001 with its FCS file; Diva's counts in the XML and CytoML 2.24's | Every population imported (44); compensation equal to the FCS file's $SPILLOVER; counts equal to CytoML's; Diva's counts, evaluated on Diva's 256-step display grid, exact on linear axes and within 0.3% on biexponential and log axes | All 44; 3e-5; 5 of 5; linear 2 of 2 exact, all within 0.26% |
 | `diva` | `computeSpillover` (`compensation.js`), as the Compensation view runs it, with no gating | The spillover matrix BD FACSDiva computed from the same 15 single-stain controls (LSRFortessa; Zenodo 22808501) and stored in the samples | Every one of the 210 entries within 0.02 (median method) and 0.03 (regression) | Largest difference 0.0145 and 0.026 |
 | `fortessa` | `fitNoise`, `crossValidate` (`spread.js`); the compensation spreading matrix (`compensation.js`) | A BD LSRFortessa's 15 bead single-stain controls (Zenodo 22808501) | Off-scale events left out of the spreading matrix (one entry once read 53 with them); photon noise physical in every detector; each control's spread predicted from the other 14 > 70% within 2× and r > 0.8 | 3.98 (53.5 with them); 1.24–9.07 units per photoelectron; 79% within 2× (median ×1.32), r 0.85 (photon noise alone 67%, r 0.82) |

@@ -104,6 +104,7 @@ async function start() {
   installChannelDialogs(app);
   installFigureProvenance(app);
   installAutogating(app);
+  app.applySpectroFloImport = (result, fileName) => import('./ui/import-spectroflo.js').then((m) => m.applySpectroFloImport(app, result, fileName));
   app.applyFlowJoImport = (result, fileName) => import('./ui/import-flowjo.js').then((m) => m.applyFlowJoImport(app, result, fileName));
   app.exportCLR = () => import('./ui/import-flowjo.js').then((m) => m.exportCLRDialog(app));
   app.compareColumn = (table, column) => {
@@ -242,7 +243,7 @@ async function start() {
   const fileInput = document.getElementById('file-input');
   const folderInput = document.getElementById('folder-input');
   app.pickFiles = (accept) => {
-    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.flowjo,.xml,.csv,.acs,.zip,.cwt';
+    fileInput.accept = accept ?? '.fcs,.lmd,.cwz,.json,.wsp,.wspt,.flowjo,.xml,.expt,.csv,.acs,.zip,.cwt';
     fileInput.value = '';
     fileInput.click();
   };
@@ -266,6 +267,7 @@ async function start() {
     const archives = items.filter((item) => /\.(acs|zip)$/i.test(item.name));
     const figures = items.filter((item) => /\.(svg|png|pdf)$/i.test(item.name));
     const templates = items.filter((item) => /\.cwt$/i.test(item.name));
+    const experiments = items.filter((item) => /\.expt$/i.test(item.name));
     for (const item of workspaces) await openWorkspaceFile(item);
     if (fcs.length) await importFCSItems(fcs);
     for (const item of archives) await importArchive(item);
@@ -282,7 +284,9 @@ async function start() {
     const csv = eventTables.length ? await app.importEventCSVs(eventTables, { interactive: options.interactive !== false }) : [];
     for (const item of figures) await app.openFigureFile(item);
     for (const item of templates) await app.openTemplateFile(item);
-    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp) and FlowJo 11 workbenches (.flowjo), FACSDiva experiments and Gating-ML (.xml), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf), and events in CSV files.', { kind: 'error' });
+    // SpectroFlo experiments name the reference controls, so they come after the FCS files.
+    for (const item of experiments) await importSpectroFloItem(item);
+    if (!fcs.length && !workspaces.length && !flowjo.length && !gatingml.length && !tables.length && !archives.length && !figures.length && !templates.length && !experiments.length && files.length) toast('CytoWeave opens FCS files and folders of them, CytoWeave workspaces (.cwz), ACS archives, FlowJo workspaces (.wsp) and FlowJo 11 workbenches (.flowjo), FACSDiva experiments and Gating-ML (.xml), SpectroFlo experiments (.Expt), sample annotation tables (.csv, .tsv), templates (.cwt) and figures it exported (.svg, .png, .pdf), and events in CSV files.', { kind: 'error' });
     return { csv };
   };
 
@@ -323,8 +327,25 @@ async function start() {
     const first = records.find((r) => r.role === 'sample') ?? records[0];
     if (!store.ui.sampleId || options.select !== false) app.selectSample(first.id);
     if (store.ui.mode === 'welcome') app.setMode('gate');
+    // Files that carry the gates FACSChorus recorded: offer them.
+    const recorded = records.filter((r) => r.acquisitionGates);
+    if (recorded.length && options.offerGates !== false) {
+      toast(`${recorded.length === 1 ? 'This file carries' : `${recorded.length} files carry`} the gates FACSChorus recorded.`, { action: { label: 'Import the gates', onClick: () => app.importAcquisitionGates(recorded.map((r) => r.id)) } });
+    }
     return records;
   }
+
+  // Imports the gates FACSChorus recorded in samples' files (all samples that have them when
+  // sampleIds is omitted), through the migration dialog.
+  app.importAcquisitionGates = async (sampleIds) => {
+    const samples = store.ws.samples.filter((s) => s.acquisitionGates && (!sampleIds || sampleIds.includes(s.id)));
+    if (!samples.length) {
+      toast('No sample carries gates recorded by FACSChorus.');
+      return null;
+    }
+    const { importChorus } = await import('./lib/chorus.js');
+    return app.applyFlowJoImport?.(importChorus(samples), samples.length === 1 ? samples[0].fileName : `${samples.length} FACSChorus files`);
+  };
   app.importFCSItems = importFCSItems;
 
   // Records a default scale for every new channel, so the workspace states the scales it uses.
@@ -393,6 +414,19 @@ async function start() {
         result = flowjo.importFlowJo(new TextDecoder().decode(await readBytes(item)));
       }
       await app.applyFlowJoImport?.(result, item.name);
+    } catch (error) {
+      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  async function importSpectroFloItem(item) {
+    try {
+      const { importSpectroFlo } = await import('./lib/spectroflo.js');
+      // The detectors of the workspace's raw spectral files name the experiment's vectors.
+      const raw = store.ws.samples.find((s) => s.channels.filter((c) => c.type === 'fluorescence' && /-A$/.test(c.name)).length >= 14);
+      const detectors = raw?.channels.filter((c) => c.type === 'fluorescence' && /-A$/.test(c.name)).map((c) => c.name);
+      const result = importSpectroFlo(new TextDecoder().decode(await readBytes(item)), { detectors });
+      await app.applySpectroFloImport(result, item.name);
     } catch (error) {
       toast(`${item.name}: ${error.message}`, { kind: 'error' });
     }
@@ -687,11 +721,12 @@ async function start() {
       { label: 'De-identified FCS files…', icon: 'download', onSelect: () => app.exportDeidentified() },
       { label: 'Events: concatenated FCS, downsampled, AnnData…', icon: 'download', onSelect: () => app.exportEventsDialog() },
       { label: 'Tables as an Excel workbook', icon: 'download', onSelect: () => import('./ui/mode-tables.js').then((m) => m.exportTablesWorkbook(app)) },
-      ...(store.ws.migrations?.length ? [{ label: 'Migration report (FlowJo, FACSDiva)…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
+      ...(store.ws.migrations?.length ? [{ label: 'Migration report (FlowJo, FACSDiva, FACSChorus)…', icon: 'report', onSelect: () => app.showFlowJoReport() }] : []),
       '-',
       { section: 'Import' },
       { label: 'FCS files…', icon: 'file', onSelect: () => app.pickFiles() },
       { label: 'Workspace, FlowJo (.wsp, .flowjo), Gating-ML or ACS…', icon: 'upload', onSelect: () => app.pickFiles('.cwz,.json,.wsp,.wspt,.flowjo,.xml,.acs,.zip') },
+      ...(store.ws.samples.some((x) => x.acquisitionGates) ? [{ label: 'Gates FACSChorus recorded in the files…', icon: 'upload', onSelect: () => app.importAcquisitionGates() }] : []),
       { label: 'Events or sample annotations (CSV)…', icon: 'tag', onSelect: () => app.pickFiles('.csv,.tsv,.txt') },
       '-',
       { label: 'Example experiments…', icon: 'flask', onSelect: () => app.showExamples() },
@@ -712,6 +747,7 @@ async function start() {
     { label: 'Export workspace file', icon: 'download', run: exportWorkspaceFile },
     { label: 'Export gates as Gating-ML', icon: 'download', run: exportGatingML },
     { label: 'Export as a FlowJo workspace', icon: 'download', run: () => app.exportFlowJo(), keywords: 'wsp flowjo' },
+    { label: 'Import the gates FACSChorus recorded in the files', icon: 'upload', run: () => app.importAcquisitionGates(), keywords: 'chorus s8 a8 discover gates' },
     { label: 'Export de-identified FCS files', icon: 'download', run: () => app.exportDeidentified(), keywords: 'anonymize anonymize privacy keywords' },
     { label: 'Export events (concatenated FCS, downsampled, AnnData)', icon: 'download', run: () => app.exportEventsDialog(), keywords: 'concatenate downsample h5ad anndata scanpy merge subsample' },
     { label: 'Export tables to Excel', icon: 'download', run: () => import('./ui/mode-tables.js').then((m) => m.exportTablesWorkbook(app)), keywords: 'xlsx spreadsheet workbook statistics' },
@@ -1028,7 +1064,7 @@ async function start() {
   app.openStartupFiles = async (files) => {
     const opened = new Set(prefs.get(`opened:${info.session}`, []));
     const known = new Set(store.ws.samples.map((s) => s.fileName));
-    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table', 'figure'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
+    const pending = files.filter((file) => ['fcs', 'workspace', 'flowjo', 'archive', 'gatingml', 'table', 'figure', 'spectroflo'].includes(file.kind) && !opened.has(file.url) && !(file.kind === 'fcs' && known.has(file.name)));
     for (const file of files) opened.add(file.url);
     prefs.set(`opened:${info.session}`, [...opened]);
     if (!pending.length) return;

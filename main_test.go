@@ -329,7 +329,7 @@ func TestParseConfig(t *testing.T) {
 }
 
 func TestFileKinds(t *testing.T) {
-	cases := map[string]string{"a.FCS": "fcs", "b.lmd": "fcs", "w.cwz": "workspace", "x.wsp": "flowjo", "y.flowjo": "flowjo", "g.xml": "gatingml", "t.csv": "table", "p.acs": "archive", "f.svg": "figure", "f.PNG": "figure", "f.pdf": "figure", "r.txt": ""}
+	cases := map[string]string{"a.FCS": "fcs", "b.lmd": "fcs", "w.cwz": "workspace", "x.wsp": "flowjo", "y.flowjo": "flowjo", "g.xml": "gatingml", "e.Expt": "spectroflo", "t.csv": "table", "p.acs": "archive", "f.svg": "figure", "f.PNG": "figure", "f.pdf": "figure", "r.txt": ""}
 	for name, want := range cases {
 		if got := fileKind(name); got != want {
 			t.Errorf("%s: %q, want %q", name, got, want)

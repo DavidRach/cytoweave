@@ -586,7 +586,12 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
      (FlowJo 11's display-grid evaluation found and reproduced: every count equal, quadrants
      drawn in FlowJo 11 within 3 events), and FACSDiva experiments, checked against Diva's and
      CytoML's counts. CyFj11's example workbench turned out inconsistent (stale per-sample gates)
-     and is not used. FACSChorus/S8 gates and SpectroFlo references go with the unmixing doctor.
+     and is not used.
+   - Done (slice 2): FACSChorus gates from S8/A8 FCS files (a real A8 record read exactly; no counts
+     in the files), and SpectroFlo experiments' reference controls, matched to their raw files
+     (the spectra SpectroFlo stores turned out not to match the controls' events, so CytoWeave
+     computes them; its spectra peak where SpectroFlo gated). FACSChorus `.cef` files are not read
+     (no public file to check against).
 2. **The unmixing doctor (S8):** names the likely cause of a poor unmixing (a missing or wrong
    reference, a degraded tandem, a bead control for a cell stain, autofluorescence that differs
    between controls and sample) from the residuals, the library and the control checks, and

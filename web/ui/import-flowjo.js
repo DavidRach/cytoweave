@@ -53,11 +53,12 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
   return new Promise((resolve) => {
     let matches = matchFlowJoSamples(result.samples, store.ws.samples);
     const fidelity = summarizeFidelity(result.fidelity ?? []);
-    const paths = new Set(result.samples.flatMap((s) => Object.keys(s.populationCounts ?? {})));
+    const hasCounts = result.samples.some((s) => Object.keys(s.populationCounts ?? {}).length);
+    const paths = new Set(result.samples.flatMap((s) => [...Object.keys(s.populationCounts ?? {}), ...(s.gates ?? []).filter((g) => !g.meta?.helper).map((g) => g.meta?.flowJo?.path).filter(Boolean)]));
     const matrices = distinctMatrices(result.samples);
     const consensus = consensusTransforms(result.samples);
     const groups = (result.groups ?? []).filter((g) => !g.builtIn && !/^all samples$/i.test(g.name));
-    const options = { scales: store.ws.gates.length ? 'missing' : 'all', compensation: true, compare: true };
+    const options = { scales: store.ws.gates.length ? 'missing' : 'all', compensation: true, compare: hasCounts };
     let finished = false;
 
     const fileInput = h('input', { type: 'file', multiple: true, accept: '.fcs,.lmd', style: { display: 'none' }, onchange: () => addFiles([...fileInput.files]) });
@@ -102,7 +103,9 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
       const scales = scaleChanges(store.ws, consensus);
       const compPlans = planCompensations(matches);
       body.append(
-        h('p', `${fileName} · ${src.label}. CytoWeave rebuilds ${src.name}'s gating tree with ${src.name}'s axis scales and compensation, then checks every population count against the count ${src.name} saved.`),
+        h('p', hasCounts
+          ? `${fileName} · ${src.label}. CytoWeave rebuilds ${src.name}'s gating tree with ${src.name}'s axis scales and compensation, then checks every population count against the count ${src.name} saved.`
+          : `${fileName} · ${src.label}. CytoWeave rebuilds ${src.name}'s gating tree. ${src.name} does not store its population counts in the file, so there are none to compare with.`),
         h('div.stat-grid', { style: { gridTemplateColumns: 'repeat(5, 1fr)' } },
           statTile('Samples matched', `${matched.length} / ${matches.length}`),
           statTile('Populations', formatCount(paths.size)),
@@ -145,8 +148,8 @@ export function applyFlowJoImport(app, result, fileName = 'FlowJo workspace') {
           compCount
             ? `Apply ${src.name}'s compensation to ${plural(compCount, 'matched sample')}${fileKept ? ` (${fileKept} keep${fileKept === 1 ? 's' : ''} the file's own matrix, which ${src.name} used)` : ''}${newMatrices ? `; adds ${plural(newMatrices, 'matrix', 'matrices')}` : ''}`
             : `No compensation to apply (no matched sample has a ${src.name} matrix)`),
-        h('label.check', { style: { marginTop: '6px' } }, h('input', { type: 'checkbox', checked: options.compare && matched.length > 0, disabled: !matched.length, onchange: (event) => { options.compare = event.target.checked; } }),
-          matched.length ? `Then load the ${plural(matched.length, 'matched sample')} and compare every population count with ${src.name}'s` : 'Counts can be compared once FCS files are matched'),
+        h('label.check', { style: { marginTop: '6px' } }, h('input', { type: 'checkbox', checked: options.compare && matched.length > 0, disabled: !matched.length || !hasCounts, onchange: (event) => { options.compare = event.target.checked; } }),
+          !hasCounts ? `No counts to compare (${src.name} does not store them)` : matched.length ? `Then load the ${plural(matched.length, 'matched sample')} and compare every population count with ${src.name}'s` : 'Counts can be compared once FCS files are matched'),
         fileInput, folderInput);
       const primary = dialog?.dialog.querySelector('.dialog-foot .btn.primary');
       if (primary) primary.textContent = matched.length ? 'Import' : 'Import gates only';

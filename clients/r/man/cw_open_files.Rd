@@ -13,6 +13,6 @@ cw_open_files(paths, cw = cw_default())
 A \code{cytoweave_result}: the \code{message} and the \code{data} CytoWeave answered with.
 }
 \description{
-Open FCS files, folders of FCS files (each folder becomes a group), CytoWeave workspaces (.cwz), FlowJo workspaces (.wsp) and FlowJo 11 workbenches (.flowjo), FACSDiva experiments exported as XML (these open in the import dialog for the user, with a fidelity report and a count comparison), Gating-ML files, or CSV files of events (a row per event, a column per channel; each becomes a sample, with the columns' kinds and scales guessed and checked, reported in data.csv), by absolute path on this computer. A CSV whose first column names samples annotates them instead.
+Open FCS files, folders of FCS files (each folder becomes a group), CytoWeave workspaces (.cwz), FlowJo workspaces (.wsp) and FlowJo 11 workbenches (.flowjo), FACSDiva experiments exported as XML (these open in the import dialog for the user, with a fidelity report and a count comparison), SpectroFlo experiments (.Expt, whose reference controls the user can mark for spectral unmixing), Gating-ML files, or CSV files of events (a row per event, a column per channel; each becomes a sample, with the columns' kinds and scales guessed and checked, reported in data.csv), by absolute path on this computer. A CSV whose first column names samples annotates them instead.
 }
 \seealso{\code{\link{cw_call}}, which sends any action by its name (here \code{"open_files"}).}

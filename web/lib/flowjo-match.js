@@ -346,6 +346,7 @@ export function buildFlowJoMigration(ws, result, matches, options = {}) {
 export function sourceOf(format, version = null) {
   if (format === 'diva') return { name: 'FACSDiva', what: 'experiment', sample: 'tube', label: version ? `FACSDiva ${String(version).replace(/^Version\s*/i, '')}` : 'FACSDiva' };
   if (format === 'flowjo11') return { name: 'FlowJo', what: 'workbench', sample: 'sample', label: 'FlowJo 11' };
+  if (format === 'chorus') return { name: 'FACSChorus', what: 'gates', sample: 'file', label: version ? `FACSChorus ${version}` : 'FACSChorus' };
   return { name: 'FlowJo', what: 'workspace', sample: 'sample', label: version ? `FlowJo ${version}` : 'FlowJo' };
 }
 

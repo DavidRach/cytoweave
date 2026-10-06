@@ -182,10 +182,11 @@ guides to every view, with screenshots.
   - Checkpoints, with a plain-language diff of what changed between two
     versions of an analysis and how it moved every frequency.
 - **Interchange.**
-  - FlowJo workspaces (.wsp), FlowJo 11 workbenches (.flowjo) and FACSDiva
-    experiments (XML), imported with a report of exactly what was reproduced,
-    plus a population-by-population count comparison; FlowJo workspaces
-    exported with one gating tree per sample.
+  - FlowJo workspaces (.wsp), FlowJo 11 workbenches (.flowjo), FACSDiva
+    experiments (XML) and the gates FACSChorus records in its files, imported
+    with a report of exactly what was reproduced, plus a population-by-population
+    count comparison; FlowJo workspaces exported with one gating tree per sample.
+  - SpectroFlo experiments (.Expt): reference controls set up for unmixing.
   - De-identified FCS files: only technical keywords kept, the events copied
     byte for byte.
   - Gating-ML 2.0 in and out, and classification results (CLR).
@@ -329,6 +330,7 @@ Press ⌘K (Ctrl+K) to search samples, populations, channels and commands, and
 | `.acs`, `.zip` | An Archival Cytometry Standard container: a workspace with its FCS files |
 | `.wsp` | A FlowJo 10 workspace (see [below](#working-with-flowjo-and-other-tools)) |
 | `.flowjo` | A FlowJo 11 workbench (see [below](#working-with-flowjo-and-other-tools)) |
+| `.Expt` | A SpectroFlo experiment: its reference controls, set up for spectral unmixing |
 | `.xml` | Gating-ML 2.0 gates and compensation, or a FACSDiva experiment exported as XML |
 | `.csv`, `.tsv`, `.txt` | Events, a row per event and a column per channel (checked before import, below); or, when the first column names samples, sample annotations |
 | `.svg`, `.png`, `.pdf` | A figure or plot CytoWeave exported: where it came from, what changed since, and a rebuild (see [Figures](#figures)) |
@@ -959,6 +961,15 @@ matched to their FCS files), specimens (groups), gates (rectangles, polygons,
 intervals, quadrants, Booleans and "rest of" populations, on the linear, log or
 biexponential axes they were drawn on) and compensation, compared with Diva's
 counts. On the experiment CytoML is tested with, every count equals CytoML's.
+
+**FACSChorus gates** recorded in FACSDiscover S8 and A8 FCS files are offered
+for import when the files open: polygons and rectangles, exact on linear and
+log axes (FACSChorus does not record the width of its biexponential axes, so a
+polygon on one is approximated; FACSChorus stores no counts to compare).
+**SpectroFlo experiments** (`.Expt`) set up the Spectral view's reference
+controls from the experiment: each control file's fluorochrome, marker, beads
+or cells, and the unstained control. CytoWeave computes the spectra from the
+files; the experiment's stored spectra do not match the controls' own events.
 
 **Exporting to FlowJo.** **Workspace → Export → FlowJo workspace** writes a
 FlowJo 10 workspace (which FlowJo 11 also opens). Each sample gets its own

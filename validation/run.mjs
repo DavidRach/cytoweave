@@ -7,7 +7,7 @@
 //   node validation/run.mjs [suite …] [--verbose]
 //
 // Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
-// normalization, debarcode, transforms, flowjo, migration, figures, autogating, instrument, reference,
+// normalization, debarcode, transforms, flowjo, migration, acquisition, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
 // fortessa, bioconductor
 // (all by default). Exits with status 1 when a check fails.
@@ -16,7 +16,7 @@
 // validation/cache/; without them the suite is skipped (and fails with --require-data, as in CI).
 
 import { generateExample } from '../web/lib/examples.js';
-import { FCSError, parseFCS, readSpillover, writeFCS } from '../web/lib/fcs.js';
+import { FCSError, parseFCS, parseTextSegment, readHeader, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
 import { SampleView, computeStatistic, countOf, population } from '../web/lib/engine.js';
 import { resolveFormula } from '../web/lib/formula.js';
@@ -66,6 +66,9 @@ import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows, migrationGates } from '../web/lib/flowjo-match.js';
 import { FLOWJO11_WORKBENCHES, flowJo11Case } from './flowjo11-cases.mjs';
 import { divaCase } from './diva-cases.mjs';
+import { chorusGates, importChorus } from '../web/lib/chorus.js';
+import { cytekDetectors, importSpectroFlo, planSpectroFloControls } from '../web/lib/spectroflo.js';
+import { compareSpectra } from '../web/lib/spectral-library.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
@@ -1603,6 +1606,60 @@ const suites = {
     for (const c of [bundled, built]) exportChecks('flowjo', c);
 
     flowJo11Checks('flowjo', [bundled, built]);
+  },
+  // External data: gates FACSChorus recorded in a FACSDiscover A8 file (its HEADER and TEXT,
+  // Zenodo 15726118), and a SpectroFlo experiment with raw reference controls (Mendeley
+  // ch5dnspd79, the AutoSpectral example).
+  acquisition() {
+    const a8 = dataset('chorus-a8');
+    const bytes = new Uint8Array(a8.read('HD PBMC.fcs.head'));
+    const header = readHeader(bytes);
+    let text = '';
+    for (let i = header.textStart; i <= header.textEnd; i += 1) text += String.fromCharCode(bytes[i]);
+    const keywords = Object.fromEntries(parseTextSegment(text));
+    const channels = Object.entries(keywords).filter(([k]) => /^\$P\d+N$/.test(k)).map(([k, v]) => ({ name: v, range: Number(keywords[k.replace(/N$/, 'R')]) }));
+    const record = chorusGates(keywords);
+    const result = importChorus([{ id: 'a8', name: 'HD PBMC', fileName: 'HD PBMC.fcs', eventCount: Number(keywords.$TOT), channels, acquisitionGates: record }]);
+    const drawn = record.gates.filter((g) => !['Saturated', 'Unsaturated'].includes(g.kind));
+    const exact = result.fidelity.filter((f) => f.status === 'imported');
+    check('acquisition', `FACSChorus ${record.version} gates recorded in a ${record.cytometer} file (BDCHORUSDATARECORD, ${record.gates.length} gates): every drawn gate imported exactly (polygons and rectangles on scatter, time and image-feature axes, all linear), the automatic saturation gates reported`, `${exact.length} of ${drawn.length} exact; ${result.warnings.length ? 'saturation gates reported' : 'saturation gates not reported'}`, exact.length === drawn.length && drawn.length === 6 && /Saturated and Unsaturated/.test(result.warnings[0] ?? ''), 'all; reported');
+    // The vertices back in data values, from the imported geometry.
+    let worst = 0;
+    let named = 0;
+    for (const gate of result.samples[0].gates) {
+      const g = drawn.find((d) => d.name === gate.name);
+      const ranges = gate.dims.map((d) => d.transform.max - d.transform.min);
+      if (gate.dims.every((d) => channels.some((c) => c.name === d.channel))) named += 1;
+      const back = gate.type === 'rectangle'
+        ? [[gate.geometry.min[0] * ranges[0], gate.geometry.min[1] * ranges[1]], [gate.geometry.max[0] * ranges[0], gate.geometry.max[1] * ranges[1]]]
+        : gate.geometry.vertices.map(([x, y]) => [x * ranges[0], y * ranges[1]]);
+      const want = gate.type === 'rectangle'
+        ? [[Math.min(...g.vertices.map((v) => v[0])), Math.min(...g.vertices.map((v) => v[1]))], [Math.max(...g.vertices.map((v) => v[0])), Math.max(...g.vertices.map((v) => v[1]))]]
+        : g.vertices;
+      back.forEach(([x, y], i) => { worst = Math.max(worst, Math.abs(x - want[i][0]) / Math.max(1, Math.abs(want[i][0])), Math.abs(y - want[i][1]) / Math.max(1, Math.abs(want[i][1]))); });
+    }
+    check('acquisition', 'FACSChorus gates: each on parameters the file has, with its vertices unchanged (data values)', `${named} of ${result.samples[0].gates.length} on the file's parameters; largest relative difference ${worst.toExponential(1)}`, named === result.samples[0].gates.length && worst < 1e-12, 'all; < 1e-12');
+
+    const sf = dataset('spectroflo');
+    const experiment = importSpectroFlo(sf.text('20250218 AF data for collab.Expt'));
+    const files = sf.files.filter((f) => f.endsWith('.fcs'));
+    const datasets = new Map(files.map((f) => [f, parseFCS(sf.read(f)).datasets[0]]));
+    const first = datasets.get(files[0]);
+    const rawDetectors = readSpillover(first.keywords, first.parameters).channels;
+    check('acquisition', `SpectroFlo experiment (.Expt, version ${experiment.version}): ${experiment.references.length} reference controls read (fluorochrome, marker, control file, carrier, paired unstained) and the ${experiment.detectors.length} detectors named as the experiment's raw files name them (5-laser Aurora)`, `${experiment.references.map((r) => r.fluorochrome).join(', ')}; detector names ${JSON.stringify(experiment.detectors) === JSON.stringify(rawDetectors) ? 'equal to' : 'differ from'} the raw files' $SPILLOVER`, experiment.references.length === 7 && experiment.references.every((r) => r.controlFile && r.carrier === 'cells' && r.unstained === 'Unstained') && experiment.unstained?.controlFile && JSON.stringify(cytekDetectors(64)) === JSON.stringify(rawDetectors), 'all');
+    const samples = files.map((f) => ({ ...sampleFromDataset(datasets.get(f), { name: f }) }));
+    const plan = planSpectroFloControls(experiment, samples);
+    const marked = plan.filter((r) => r.sample);
+    const unstainedRow = plan.find((r) => r.kind === 'unstained' && r.sample);
+    const unstainedColumns = columnsOf(datasets.get(unstainedRow.sample.fileName));
+    const rows = marked.filter((r) => r.kind === 'reference').map((r) => {
+      const cols = columnsOf(datasets.get(r.sample.fileName));
+      const gate = autoGateControl(cols, experiment.detectors, { range: 4194304 });
+      const ref = referenceSpectrum(cols, experiment.detectors, gate.positive, gate.negative, {});
+      return { name: r.reference.fluorochrome, peak: ref.peakDetector, gated: r.reference.gatedDetector, stored: compareSpectra(ref.spectrum, r.reference.storedVector) };
+    });
+    check('acquisition', `SpectroFlo controls marked on the experiment's raw files (${marked.length - 1} reference controls and the unstained of the ${files.length} fetched) and their spectra computed as the Spectral view computes them: each peaks in the detector SpectroFlo gated the control on`, rows.map((r) => `${r.name} ${r.peak}${r.peak === r.gated ? '' : ` (SpectroFlo ${r.gated})`}`).join(', '), rows.length === 4 && rows.every((r) => r.peak === r.gated) && Boolean(unstainedColumns), 'all');
+    check('acquisition', 'SpectroFlo\'s stored vectors are not the controls\' spectra, so CytoWeave computes spectra from the control files (the largest peak-normalized difference from each control\'s own spectrum)', rows.map((r) => `${r.name} ${fmt(r.stored.maxDiff, 2)}`).join(', '), rows.every((r) => r.stored.maxDiff > 0.3), '> 0.3 for each (not usable as references)');
   },
   // FlowJo 11 workbenches (.flowjo) saved by FlowJo 11.2, with FlowJo's own counts.
   async migration() {

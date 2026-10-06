@@ -2332,6 +2332,100 @@
      "sha256": "69c90eaeb68ecfe742ea970f4ddad9a2351895d4191e83604d2640c6c8baf4a4"
     }
    ]
+  },
+  "chorus-a8": {
+   "title": "FACSDiscover A8 recording (Zenodo 15726118), HEADER and TEXT only",
+   "description": "The HEADER and TEXT segments (the first 1,012,655 bytes) of HD PBMC.fcs, a BD FACSDiscover A8 recording made with FACSChorus 6.1.0, whose BDCHORUSDATARECORD keyword holds the recording's gates (scatter, singlets, time and image-feature gates, and Chorus's automatic saturation gates) as FACSChorus defined them.",
+   "source": "https://zenodo.org/records/15726118 (Imaging cytometry data supporting Cleanet manuscript)",
+   "license": "CC BY 4.0. CytoWeave downloads the bytes for testing and does not redistribute them.",
+   "base": "https://zenodo.org/api/records/15726118/files/",
+   "files": [
+    {
+     "path": "HD PBMC.fcs.head",
+     "url": "https://zenodo.org/api/records/15726118/files/HD%20PBMC.fcs/content",
+     "range": [
+      0,
+      1012654
+     ],
+     "size": 1012655,
+     "sha256": "a469a3cd1e25c2d2eb72f04b6cd388fcd5e6737cddd5a4fdeb56fee6d30ac4ca"
+    }
+   ]
+  },
+  "spectroflo": {
+   "title": "Cytek Aurora experiment with reference controls (AutoSpectral example, Mendeley ch5dnspd79 v1)",
+   "description": "From a SpectroFlo experiment on a 5-laser Cytek Aurora (mouse, 9 colors): the experiment file (.Expt), which holds the reference spectra SpectroFlo computed from its cell controls, and the raw files of four of those controls (BUV395, BV421, APC, eFluor 780) and of the unstained cell control. Each file is fetched by byte range from the dataset's 2.1 GB ZIP archive and inflated.",
+   "source": "https://data.mendeley.com/datasets/ch5dnspd79/1 (AutoSpectral: Full Workflow Example 1; doi:10.17632/ch5dnspd79.1)",
+   "license": "CC BY 4.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "base": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/",
+   "files": [
+    {
+     "path": "20250218 AF data for collab.Expt",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      21667,
+      56668
+     ],
+     "zipEntry": true,
+     "size": 500028,
+     "sha256": "f6a72648f0f165a657dc4fdc429c3473cea7e8a745e8e6eae49881e946eafe4f"
+    },
+    {
+     "path": "A8 CD3 APC (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1258145182,
+      1265418229
+     ],
+     "zipEntry": true,
+     "size": 7271856,
+     "sha256": "4a3e940a68bc5513f57b96c70047dfc76cd7bc7d63ff54b00ed695e07bf55bc7"
+    },
+    {
+     "path": "A3 CD45 BUV395 (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1272248695,
+      1280039846
+     ],
+     "zipEntry": true,
+     "size": 7789876,
+     "sha256": "82af2c1710913fba3fa68e5705883ef4fb7b81bfa7d1576899d791ce1969830b"
+    },
+    {
+     "path": "B1 viability e780 (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1324124141,
+      1331367951
+     ],
+     "zipEntry": true,
+     "size": 7242612,
+     "sha256": "a4cd378bb18cce6cf99be27a8168f6f46d0143390763112699ee16f8673cb8d5"
+    },
+    {
+     "path": "A5 CD4 BV421 (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1393444895,
+      1400773338
+     ],
+     "zipEntry": true,
+     "size": 7327240,
+     "sha256": "2857d351162cd037bf9d10c1ca20ecfb408d356b3190e65ee69b740100075416"
+    },
+    {
+     "path": "A1 Unstained (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1404357486,
+      1411608103
+     ],
+     "zipEntry": true,
+     "size": 7249424,
+     "sha256": "f8df3cfc4b987a8efdacc54930b15ded7eca1de4417d228a89d15e4598cf21fc"
+    }
+   ]
   }
  }
 }

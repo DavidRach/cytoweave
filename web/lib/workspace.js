@@ -5,6 +5,7 @@
 
 import { describeAcquisition, detectTechnology, readSpillover } from './fcs.js';
 import { newId } from './gates.js';
+import { chorusGates } from './chorus.js';
 import { categoricalColor } from './colormaps.js';
 
 export const FORMAT = 'cytoweave-workspace';
@@ -115,8 +116,15 @@ export function sampleFromDataset(dataset, file) {
     compensationId: spill && !spill.identity ? 'file' : 'none',
     hasFileSpillover: Boolean(spill && !spill.identity),
     diagnostics: dataset.diagnostics.filter((d) => d.level !== 'info').map((d) => d.message),
+    // Gates the acquisition software recorded in the file (FACSChorus), for import on request.
+    ...(acquisitionGatesOf(dataset.keywords) ?? {}),
     added: now(),
   };
+}
+
+function acquisitionGatesOf(keywords) {
+  const gates = chorusGates(keywords);
+  return gates?.gates.length ? { acquisitionGates: gates } : null;
 }
 
 export function addSamples(ws, records) {

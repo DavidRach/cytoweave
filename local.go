@@ -54,6 +54,9 @@ func fileKind(name string) string {
 		return "flowjo"
 	case strings.HasSuffix(lower, ".xml"):
 		return "gatingml"
+	case strings.HasSuffix(lower, ".expt"):
+		// A Cytek SpectroFlo experiment: its reference controls.
+		return "spectroflo"
 	case strings.HasSuffix(lower, ".csv"), strings.HasSuffix(lower, ".tsv"):
 		return "table"
 	case strings.HasSuffix(lower, ".acs"), strings.HasSuffix(lower, ".zip"):
