@@ -1676,18 +1676,25 @@ const suites = {
       const o = r?.ours;
       const keys = o ? Object.keys(o.coefficients) : [];
       const pDiff = o ? Math.max(...keys.map((k) => rel(ours.parameters[k], o.coefficients[k]))) : Number.NaN;
+      // In standard errors: an ill-determined fit lies in a nearly flat valley, where the last bits
+      // of floating point (x64 or arm64, Node versions) move where either optimizer stops.
+      const pDiffSE = o ? Math.max(...keys.map((k) => Math.abs(ours.parameters[k] - o.coefficients[k]) / ours.standardErrors[k])) : Number.NaN;
       const seDiff = o?.exactSE ? Math.max(...keys.map((k) => rel(ours.standardErrors[k], o.exactSE[k]))) : Number.NaN;
       const ecDiff = o ? Math.max(rel(ours.ec50, o.ec50), rel(ours.ec50SE, o.exactEC50SE)) : Number.NaN;
       const ill = ours.flags.some((f) => ['no-effect', 'wide-ci', 'at-bound'].includes(f));
-      return { label, lower: ours.rss <= r.rss * (1 + 1e-7), drcRss: r.rss, rss: ours.rss, pDiff, seDiff: ill || options.skipSE ? Number.NaN : seDiff, ecDiff: ill ? Number.NaN : ecDiff, ill };
+      return { label, lower: ours.rss <= r.rss * (1 + 1e-7), drcRss: r.rss, rss: ours.rss, pDiff, pDiffSE, seDiff: ill || options.skipSE ? Number.NaN : seDiff, ecDiff: ill ? Number.NaN : ecDiff, ill };
     };
     const cases = curveCases();
     const caseRows = cases.map((k, i) => drcCompare(k.name, fitLogLogistic(k.x, k.y, { model: k.model, weighting: k.weighting, fixed: k.fixed ?? undefined }), ref.cases[i]));
     const screenRows = [...input.compounds.map((c, i) => drcCompare(c.name, fitLogLogistic(c.x, c.y, { model: 'LL.4' }), ref.screen.compounds[i])), drcCompare(input.normalized.name, fitLogLogistic(input.normalized.x, input.normalized.y, { model: 'LL.4', fixed: { c: 0, d: 100 } }), ref.screen.normalized)];
     const allRows = [...caseRows, ...screenRows];
     const maxOf = (rows, key) => Math.max(...rows.map((r) => r[key]).filter(Number.isFinite));
+    // Parameters: relative for well-determined fits, in standard errors for ill-determined ones.
+    const paramDiff = (rows) => ({ rel: maxOf(rows.filter((r) => !r.ill), 'pDiff'), se: Math.max(0, maxOf(rows.filter((r) => r.ill), 'pDiffSE')), ill: rows.filter((r) => r.ill).length });
+    const paramText = (d) => `${d.rel.toExponential(1)}${d.ill ? ` (${d.ill} ill-determined within ${d.se.toExponential(1)} SE)` : ''}`;
+    const paramOk = (d) => d.rel < 1e-6 && d.se < 1e-3;
     check('plates', `drc ${ref.drc}, 8 synthetic curves (4PL and 5PL, rising and falling, weights, fixed asymptotes) and the screen's 7 fits: CytoWeave's residual sum of squares never above drc's best from its own starts`, `${allRows.filter((r) => r.lower).length} of ${allRows.length}; lower in ${allRows.filter((r) => r.rss < r.drcRss * (1 - 1e-6)).length} (drc stopping at a local optimum)`, allRows.every((r) => r.lower), 'all');
-    check('plates', 'drc started from CytoWeave\'s estimate stays on it: parameters', `max relative difference ${maxOf(allRows, 'pDiff').toExponential(1)}`, maxOf(allRows, 'pDiff') < 1e-6, '< 1e-6');
+    check('plates', 'drc started from CytoWeave\'s estimate stays on it: parameters (fits flagged as ill-determined in their standard errors)', `max relative difference ${paramText(paramDiff(allRows))}`, paramOk(paramDiff(allRows)), '< 1e-6; < 1e-3 SE');
     check('plates', 'standard errors and the EC50 with its standard error against the exact Hessian (numDeriv at drc\'s optimum; drc\'s own come from optim\'s coarse numerical Hessian); fits flagged as ill-determined left out', `max relative difference ${maxOf(allRows, 'seDiff').toExponential(1)} and ${maxOf(allRows, 'ecDiff').toExponential(1)}; ${allRows.filter((r) => r.ill).length} left out`, maxOf(allRows, 'seDiff') < 1e-3 && maxOf(allRows, 'ecDiff') < 1e-3, '< 1e-3');
     // The bead assay against its truth.
     const beads = beadWells(exampleWorkspace('bead-immunoassay'));
@@ -1759,7 +1766,7 @@ const suites = {
       });
     }
     check('plates', 'the bead assay\'s 32 five-parameter standard curves (median and geometric MFIs, unweighted as beadplexr fits them and weighted 1/Y²): residual sum of squares never above drc\'s best', `${beadRows.filter((r) => r.lower).length} of ${beadRows.length}; lower in ${beadRows.filter((r) => r.rss < r.drcRss * (1 - 1e-6)).length}; beadplexr's fit_standard_curve (drc from its default start) at or above drc's best in ${beadplexrHigher} of 16`, beadRows.every((r) => r.lower), 'all');
-    check('plates', 'from CytoWeave\'s estimate, drc\'s parameters, and the sera\'s concentrations (beadplexr\'s calculate_concentration, drc\'s ED) and their standard errors (exact delta method; within the standards\' range)', `max relative differences ${maxOf(beadRows, 'pDiff').toExponential(1)}, ${concWorst.toExponential(1)} and ${concSEWorst.toExponential(1)}`, maxOf(beadRows, 'pDiff') < 1e-6 && concWorst < 1e-6 && concSEWorst < 1e-3, '< 1e-6, 1e-6, 1e-3');
+    check('plates', 'from CytoWeave\'s estimate, drc\'s parameters, and the sera\'s concentrations (beadplexr\'s calculate_concentration, drc\'s ED) and their standard errors (exact delta method; within the standards\' range); parameters of fits flagged as ill-determined in their standard errors', `max relative differences ${paramText(paramDiff(beadRows))}, ${concWorst.toExponential(1)} and ${concSEWorst.toExponential(1)}`, paramOk(paramDiff(beadRows)) && concWorst < 1e-6 && concSEWorst < 1e-3, '< 1e-6 (1e-3 SE), 1e-6, 1e-3');
     check('plates', 'time: two plates (152 wells) gated, the screen\'s curves and the bead assay fitted', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
   },
   beadplexr() {
