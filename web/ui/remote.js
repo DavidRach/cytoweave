@@ -793,6 +793,40 @@ export function installRemote(app) {
       };
     },
 
+    async diagnose_unmixing(args) {
+      const run = await import('./spectral-run.js');
+      const { SPECTRA_RECORDS } = await import('../lib/spectral-library.js');
+      const { instrumentOf } = await import('../lib/instrument-record.js');
+      const state = run.spectralState(ws());
+      if (!state.activeRefs().length) throw new ActionError('The reference library has no spectra yet: unmix first (or the user computes them in the Spectral view).');
+      const sample = args.sample ? resolveSample(args.sample) : ws().samples.find((x) => x.id === store.ui.sampleId && x.role !== 'single-stain' && x.role !== 'unstained') ?? ws().samples.find((x) => x.role === 'sample');
+      if (!sample) throw new ActionError('Name the sample to diagnose (a stained sample, not a control).');
+      const gateId = args.population ? resolvePopulation(args.population) : null;
+      const control = state.controls[0] ?? sample;
+      const inst = instrumentOf(control.keywords);
+      const library = inst && app.library?.getRecord ? ((await app.library.getRecord(SPECTRA_RECORDS, inst.id).catch(() => null)) ?? null) : null;
+      const diagnosis = await run.diagnose(app, sample.id, { gateId, library });
+      if (!diagnosis) throw new ActionError('The diagnosis was canceled.');
+      const { result } = diagnosis;
+      const findings = result.findings.map((f) => ({
+        kind: f.kind,
+        subject: f.subject ?? undefined,
+        title: f.title,
+        severity: f.severity,
+        confidence: f.confidence,
+        fromControlsAlone: f.fromControls ? true : undefined,
+        evidence: f.evidence,
+        fix: f.fix ? { action: f.fix.action, label: f.fix.label, text: f.fix.text } : undefined,
+        alternatives: f.alternatives?.length ? f.alternatives.map((x) => ({ action: x.action, label: x.label, text: x.text })) : undefined,
+        effect: f.effect ?? undefined,
+      }));
+      const notable = findings.filter((f) => f.severity !== 'low');
+      return {
+        message: `${result.healthy && !notable.length ? `No fault found in ${diagnosis.sample} (${diagnosis.population}, ${result.events} events): the references and autofluorescence explain it.` : `${notable.length || findings.length} likely cause${(notable.length || findings.length) === 1 ? '' : 's'} in ${diagnosis.sample} (${diagnosis.population}, ${result.events} events), the most likely first: ${findings.slice(0, 3).map((f, k) => `${k + 1}. ${f.title} (${f.severity} impact, ${f.confidence} confidence; fix: ${f.fix?.label ?? 'none'})`).join(' ')}`} The user applies a fix in the Spectral view's Diagnose tab; then unmix again.`,
+        data: { sample: diagnosis.sample, population: diagnosis.population, events: result.events, healthy: result.healthy, baseline: result.baseline, findings, checks: result.checks },
+      };
+    },
+
     async explore(args) {
       const run = await import('./explore-run.js');
       const { markerCandidates } = await import('../lib/explore.js');

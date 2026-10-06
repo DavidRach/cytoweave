@@ -2426,6 +2426,136 @@
      "sha256": "f8df3cfc4b987a8efdacc54930b15ded7eca1de4417d228a89d15e4598cf21fc"
     }
    ]
+  },
+  "autospectral": {
+   "title": "AutoSpectral example: bead and cell controls of six dyes, and unstained spleen unfixed and fixed (Mendeley ch5dnspd79 v1)",
+   "description": "From the same 5-laser Cytek Aurora experiment as the spectroflo data set (mouse): the bead controls of the six dyes that also have cell controls (BUV395, BUV805, BV421, PE, PE-Cy7, APC), the three cell controls the spectroflo set lacks (CD11b BUV805, Siglec F PE, F4/80 PE-Cy7), and unstained spleen unfixed and fixed in 4% PFA. Each file is fetched by byte range from the dataset's 2.1 GB ZIP archive and inflated.",
+   "source": "https://data.mendeley.com/datasets/ch5dnspd79/1 (AutoSpectral: Full Workflow Example 1; doi:10.17632/ch5dnspd79.1)",
+   "license": "CC BY 4.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "base": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/",
+   "files": [
+    {
+     "path": "B2 CD45 BUV395 (Beads)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1376674721,
+      1378191625
+     ],
+     "zipEntry": true,
+     "size": 1516584,
+     "sha256": "d29946b5068b793d005fa15e5c10a439ac3c0502d9dd61c502b60dc1ea338ee6"
+    },
+    {
+     "path": "B3 CD11b BUV805 (Beads)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1269093252,
+      1270601641
+     ],
+     "zipEntry": true,
+     "size": 1508068,
+     "sha256": "3288c42d263efdf18558ebd1c8c054f8f9a002daba695b0b54d4dc3d96037ffd"
+    },
+    {
+     "path": "B4 CD4 BV421 (Beads)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1266955811,
+      1268455668
+     ],
+     "zipEntry": true,
+     "size": 1499544,
+     "sha256": "1e777a313c4330ab53f14fdee14c3b0f49ed2cb287f2ac9df2400d8fc93368d7"
+    },
+    {
+     "path": "B5 Siglec F PE (Beads)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1402678392,
+      1404357485
+     ],
+     "zipEntry": true,
+     "size": 1678748,
+     "sha256": "9d595d51133199d7a7a91508dd522c83a23bafe52c8451fa4f08db4c34bc7b47"
+    },
+    {
+     "path": "B6 F480 PE-Cy7 (Beads)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1380483345,
+      1382057911
+     ],
+     "zipEntry": true,
+     "size": 1574236,
+     "sha256": "d4ddcf2bd0d85ab6ad539064833eb2e38cfedd4548198af8ac639717f7a21c59"
+    },
+    {
+     "path": "B7 CD3 APC (Beads)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1391576635,
+      1393444894
+     ],
+     "zipEntry": true,
+     "size": 1867888,
+     "sha256": "4c7a7d04d48a8e6da75f96c870757154264f5705958f93a8a46b2bb23833e069"
+    },
+    {
+     "path": "A4 CD11b BUV805 (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1383925467,
+      1391180919
+     ],
+     "zipEntry": true,
+     "size": 7254256,
+     "sha256": "7576c9772c290d5b000de70ec64bf23ffdb970094b751297d60f66b431d285a9"
+    },
+    {
+     "path": "A6 Siglec F PE (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1340535476,
+      1376674720
+     ],
+     "zipEntry": true,
+     "size": 36133644,
+     "sha256": "851d65259401c82b73b1ca3795ed83cfd53a4acfa10284d97e22a3dd761641de"
+    },
+    {
+     "path": "A7 F480 PE-Cy7 (Cells)_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1280039847,
+      1316434163
+     ],
+     "zipEntry": true,
+     "size": 36388676,
+     "sha256": "8bbebc6d21d02ec6b7c3786efbee9b29cda9e2a05923d5950f6f32e9a7c33476"
+    },
+    {
+     "path": "C1 Spleen_unfixed_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1071998517,
+      1121513642
+     ],
+     "zipEntry": true,
+     "size": 49507484,
+     "sha256": "d85eddd6125359bf9b513d1a208e690ce327b68eb6cca47aca797a75c00f7223"
+    },
+    {
+     "path": "C3 Spleen_4%PFA_Set1.fcs",
+     "url": "https://data.mendeley.com/public-files/datasets/ch5dnspd79/files/2d64647d-c62f-41a3-81aa-d4a266cf61a4/file_downloaded",
+     "range": [
+      1021054531,
+      1054474898
+     ],
+     "zipEntry": true,
+     "size": 33415188,
+     "sha256": "7a5bfd31cb3d292951bbcb5939008a08147ad7e7e079adbef10deacdd1f33c62"
+    }
+   ]
   }
  }
 }

@@ -6,10 +6,10 @@
 //
 //   node validation/run.mjs [suite …] [--verbose]
 //
-// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, spread, cellcycle, proliferation, clustering,
+// Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, clustering,
 // normalization, debarcode, transforms, flowjo, migration, acquisition, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
-// fortessa, bioconductor
+// fortessa, bioconductor, autospectral
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -68,6 +68,7 @@ import { FLOWJO11_WORKBENCHES, flowJo11Case } from './flowjo11-cases.mjs';
 import { divaCase } from './diva-cases.mjs';
 import { chorusGates, importChorus } from '../web/lib/chorus.js';
 import { cytekDetectors, importSpectroFlo, planSpectroFloControls } from '../web/lib/spectroflo.js';
+import { diagnoseControls, diagnoseUnmixing } from '../web/lib/spectral-doctor.js';
 import { compareSpectra } from '../web/lib/spectral-library.js';
 import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
@@ -1382,6 +1383,102 @@ const suites = {
     const staleResult = unmixWithAutofluorescence(dCols, stale, dAF.signatures, { detectors });
     check('spectral', 'degraded PE-Cy7 unmixed with its stale library spectrum vs its own control: Pearson r of PE (whose detectors the donor emission reaches) and PE-Cy7', `PE ${fmt(rOf(staleResult, 'PE'), 3)} vs ${fmt(rOf(fresh, 'PE'), 3)}; PE-Cy7 ${fmt(rOf(staleResult, 'PE-Cy7'), 3)} vs ${fmt(rOf(fresh, 'PE-Cy7'), 3)}`, rOf(staleResult, 'PE') < rOf(fresh, 'PE'), 'the stale spectrum is worse for PE');
   },
+  // The unmixing doctor (S8) on the spectral example with faults planted by the simulator: a dye
+  // without a reference, a control stained with another dye, a tandem degraded in the samples or
+  // in the controls, a dye that emits differently on beads, and an unstained control without the
+  // samples' myeloid cells. Each must be named first, clean samples must show nothing, and each
+  // fix the doctor proposes must bring the unmixed values closer to the truth. The library is
+  // another experiment's controls, with the same physics (a dye shifted on beads is shifted there
+  // too) but none of this experiment's mistakes.
+  doctor() {
+    const experiments = new Map();
+    const experiment = (options) => {
+      const key = JSON.stringify(options);
+      if (experiments.has(key)) return experiments.get(key);
+      const { files, workspaceHints } = generateExample('spectral-25color', options);
+      const detectors = workspaceHints.spectral.detectors;
+      const read = (file) => {
+        const d = load(file);
+        const cols = columnsOf(d);
+        return { cols: detectors.map((n) => cols[n]), fsc: cols['FSC-A'], ssc: cols['SSC-A'] };
+      };
+      const refs = files.filter((f) => f.meta.role === 'single-stain').map((f) => {
+        const { cols } = read(f);
+        const gate = autoGateControl(cols, detectors, {});
+        const ref = referenceSpectrum(cols, detectors, gate.positive, gate.negative, {});
+        return { name: f.meta.stain, spectrum: ref.spectrum, carrier: /bead/.test(f.meta.carrier) ? 'beads' : 'cells', mixture: ref.quality.mixture };
+      });
+      const unstained = read(files.find((f) => f.meta.role === 'unstained'));
+      const af = extractAutofluorescence(unstained.cols, detectors, {}).signatures;
+      const out = { files, detectors, refs, af, unstained, read };
+      experiments.set(key, out);
+      return out;
+    };
+    const libraryFor = (options) => {
+      const lib = experiment({ seed: 2, ...(options.beadShift ? { beadShift: options.beadShift } : {}) });
+      return lib.refs.map((r) => libraryEntry({ fluorochrome: r.name, spectrum: r.spectrum, detectors: lib.detectors, date: '2026-05-01', file: `Ref_${r.name}.fcs`, sha256: `lib-${r.name}`, carrier: r.carrier }));
+    };
+    const cases = [
+      { name: 'clean', options: {}, expect: null },
+      { name: 'BV605 without a reference', options: {}, drop: 'BV605', expect: 'missing-reference:BV605' },
+      { name: 'the APC control stained with Alexa Fluor 647', options: { controlSubstitutes: { APC: 'Alexa Fluor 647' } }, expect: 'wrong-reference:APC' },
+      { name: 'PE-Cy7 degraded by 5% in the samples', options: { tandemDegradation: { 'PE-Cy7': 0.05 }, degradationIn: 'samples' }, expect: 'degraded-tandem:PE-Cy7', truthOf: 'PE' },
+      { name: 'PE-Cy7 degraded by 10% in the controls', options: { tandemDegradation: { 'PE-Cy7': 0.1 }, degradationIn: 'controls' }, expect: 'degraded-tandem:PE-Cy7', truthOf: 'PE' },
+      { name: 'PE-CF594 emitting 6 nm redder on beads', options: { beadShift: { 'PE-CF594': 6 } }, expect: 'bead-control:PE-CF594' },
+      { name: 'an unstained control of lymphocytes only', options: { unstainedCells: 'lymphocytes' }, expect: 'autofluorescence:null' },
+    ];
+    // The example's seed and a held-out one (the thresholds were set on the first).
+    const runs = [{ seed: undefined, donor: 'Donor_S1.fcs' }, { seed: 7, donor: 'Donor_S3.fcs' }];
+    const named = [];
+    const improvements = [];
+    let worst = null;
+    for (const run of runs) {
+      for (const c of cases) {
+        const options = run.seed === undefined ? c.options : { ...c.options, seed: run.seed };
+        const e = experiment(options);
+        const donor = e.files.find((f) => f.name === run.donor);
+        const sample = e.read(donor);
+        const spectra = e.refs.filter((r) => r.name !== c.drop);
+        const library = libraryFor(c.options);
+        const started = performance.now();
+        const result = diagnoseUnmixing(sample.cols, { detectors: e.detectors, spectra, afSignatures: e.af }, { references: spectra, library, unstainedAF: e.af, unstained: { columns: e.unstained.cols }, scatter: { sample: { fsc: sample.fsc, ssc: sample.ssc }, unstained: { fsc: e.unstained.fsc, ssc: e.unstained.ssc } } });
+        const ms = performance.now() - started;
+        if (!worst || ms > worst.ms) worst = { ms, events: result.events };
+        const top = result.findings.find((f) => !f.fromControls && f.severity !== 'low') ?? null;
+        const got = top ? `${top.kind}:${top.subject}` : null;
+        named.push({ seed: run.seed ?? 'example', name: c.name, expect: c.expect, got, ok: got === c.expect });
+        // The fix against the truth: Pearson r of the dye it concerns (or of the donor a degraded
+        // tandem leaks into), before and after.
+        const fix = top?.fix;
+        if (!fix || !['add-library', 'use-library', 'replace-spectrum', 'add-spectrum'].includes(fix.action)) continue;
+        const entry = fix.entryId ? library.find((x) => x.id === fix.entryId) : null;
+        const replacement = entry ? entry.spectrum : fix.spectrum;
+        const subject = fix.fluorochrome ?? entry?.fluorochrome ?? top.subject;
+        const fixed = fix.action.startsWith('add') ? [...spectra, { name: subject, spectrum: replacement }] : spectra.map((s) => (s.name === subject ? { name: s.name, spectrum: replacement } : s));
+        const truth = donor.meta.truth;
+        const rOf = (result, name) => {
+          const f = result.names.indexOf(name);
+          return f < 0 ? Number.NaN : pearson(result.abundances[f], truth.abundances[truth.abundanceNames.indexOf(name)]);
+        };
+        const before = unmixWithAutofluorescence(sample.cols, spectra, e.af, { detectors: e.detectors });
+        const after = unmixWithAutofluorescence(sample.cols, fixed, e.af, { detectors: e.detectors });
+        const dye = c.truthOf ?? subject;
+        // A wrong reference harms the dyes that share its light more than its own: the largest
+        // gain anywhere in the panel.
+        const gains = spectra.map((x) => ({ name: x.name, before: rOf(before, x.name), after: rOf(after, x.name) })).filter((g) => Number.isFinite(g.before) && Number.isFinite(g.after));
+        const most = gains.reduce((a, b) => (b.after - b.before > a.after - a.before ? b : a));
+        const worse = gains.reduce((a, b) => (b.after - b.before < a.after - a.before ? b : a));
+        improvements.push({ seed: run.seed ?? 'example', name: c.name, dye, before: rOf(before, dye), after: rOf(after, dye), most, worse });
+      }
+    }
+    const faults = named.filter((n) => n.expect);
+    const missed = faults.filter((n) => !n.ok);
+    check('doctor', `planted faults named first (${cases.length - 1} faults, the example's seed and a held-out one)`, missed.length ? missed.map((n) => `${n.name} (seed ${n.seed}): ${n.got ?? 'nothing'}`).join('; ') : `${faults.length} of ${faults.length}`, !missed.length, 'all');
+    const clean = named.filter((n) => !n.expect);
+    check('doctor', 'clean samples: no fault reported', clean.map((n) => `seed ${n.seed}: ${n.got ?? 'none'}`).join(', '), clean.every((n) => n.ok), 'none');
+    check('doctor', 'each proposed fix against the truth: Pearson r of the dye it concerns (of PE for a degraded PE-Cy7), before → after, and the largest gain and loss of any dye in the panel', improvements.map((x) => `${x.name} (seed ${x.seed}): ${x.dye} ${Number.isFinite(x.before) ? fmt(x.before, 4) : 'no channel'} → ${fmt(x.after, 4)}; most gained ${x.most.name} ${fmt(x.most.before, 4)} → ${fmt(x.most.after, 4)}; most lost ${x.worse.name} ${fmt(x.worse.after - x.worse.before, 4)}`).join(' | '), improvements.length >= 8 && improvements.every((x) => !(x.after < (Number.isFinite(x.before) ? x.before : 0.9)) && x.worse.after - x.worse.before > -0.005), 'the dye no worse; no dye loses more than 0.005 (a dye added back spreads into its neighbors; a library spectrum carries its own control\'s noise); a missing dye > 0.9');
+    check('doctor', 'diagnosis time for 20 000 events × 64 detectors × 25 dyes (Node, longest case)', `${fmt(worst.ms / 1000, 2)} s`, true, 'reported');
+  },
   // Predicted spread (S6) on the spectral example with known noise: every detector's photon noise
   // (c1 = k) and each laser's intensity CV. The noise is fitted to the controls, each control's
   // spread is predicted from the others, and a panel that was never fitted (15 of the 25 dyes) is
@@ -1660,6 +1757,61 @@ const suites = {
     });
     check('acquisition', `SpectroFlo controls marked on the experiment's raw files (${marked.length - 1} reference controls and the unstained of the ${files.length} fetched) and their spectra computed as the Spectral view computes them: each peaks in the detector SpectroFlo gated the control on`, rows.map((r) => `${r.name} ${r.peak}${r.peak === r.gated ? '' : ` (SpectroFlo ${r.gated})`}`).join(', '), rows.length === 4 && rows.every((r) => r.peak === r.gated) && Boolean(unstainedColumns), 'all');
     check('acquisition', 'SpectroFlo\'s stored vectors are not the controls\' spectra, so CytoWeave computes spectra from the control files (the largest peak-normalized difference from each control\'s own spectrum)', rows.map((r) => `${r.name} ${fmt(r.stored.maxDiff, 2)}`).join(', '), rows.every((r) => r.stored.maxDiff > 0.3), '> 0.3 for each (not usable as references)');
+  },
+  // External data: the AutoSpectral example (Mendeley ch5dnspd79), whose six dyes have both bead
+  // and cell controls, and whose unstained spleen was also fixed. The unmixing doctor's control
+  // checks against biology: the cell controls of markers on autofluorescent cells (CD11b on
+  // myeloid cells, Siglec F on eosinophils, F4/80 on macrophages) carry their positives'
+  // autofluorescence, those of lymphoid markers (CD45, CD4, CD3) and the viability dye do not, and
+  // bead controls never do. Then a sample whose autofluorescence the unstained control does not
+  // describe: spleen fixed in 4% PFA, against the same spleen unfixed.
+  autospectral() {
+    const base = dataset('spectroflo');
+    const more = dataset('autospectral');
+    const detectors = cytekDetectors(64);
+    const read = (set, file) => {
+      const cols = columnsOf(parseFCS(set.read(file)).datasets[0]);
+      return { cols: detectors.map((n) => cols[n]), fsc: cols['FSC-A'], ssc: cols['SSC-A'] };
+    };
+    const control = (set, name, file) => {
+      const { cols } = read(set, file);
+      const gate = autoGateControl(cols, detectors, { range: 4194304 });
+      const ref = referenceSpectrum(cols, detectors, gate.positive, gate.negative, { range: 4194304 });
+      return { name, spectrum: ref.spectrum, carrier: /Beads/.test(file) ? 'beads' : 'cells', mixture: ref.quality.mixture, file };
+    };
+    const unstained = read(base, 'A1 Unstained (Cells)_Set1.fcs');
+    const af = extractAutofluorescence(unstained.cols, detectors, { seed: 1, maxSignatures: 6 }).signatures;
+    const cells = [
+      [base, 'BUV395', 'A3 CD45 BUV395 (Cells)_Set1.fcs'], [more, 'BUV805', 'A4 CD11b BUV805 (Cells)_Set1.fcs'], [base, 'BV421', 'A5 CD4 BV421 (Cells)_Set1.fcs'],
+      [more, 'PE', 'A6 Siglec F PE (Cells)_Set1.fcs'], [more, 'PE-Cy7', 'A7 F480 PE-Cy7 (Cells)_Set1.fcs'], [base, 'APC', 'A8 CD3 APC (Cells)_Set1.fcs'], [base, 'eFluor 780', 'B1 viability e780 (Cells)_Set1.fcs'],
+    ].map(([set, name, file]) => control(set, name, file));
+    const beads = [['BUV395', 'B2 CD45 BUV395 (Beads)_Set1.fcs'], ['BUV805', 'B3 CD11b BUV805 (Beads)_Set1.fcs'], ['BV421', 'B4 CD4 BV421 (Beads)_Set1.fcs'], ['PE', 'B5 Siglec F PE (Beads)_Set1.fcs'], ['PE-Cy7', 'B6 F480 PE-Cy7 (Beads)_Set1.fcs'], ['APC', 'B7 CD3 APC (Beads)_Set1.fcs']]
+      .map(([name, file]) => control(more, name, file));
+    const flagged = diagnoseControls(cells, { detectors, afSignatures: af }).filter((f) => f.kind === 'control-autofluorescence');
+    const names = flagged.map((f) => f.subject).sort();
+    check('autospectral', 'cell controls whose positives carry autofluorescence (the dim positives\' spectrum departs from the bright ones\' in the unstained control\'s autofluorescence shape): those of markers on autofluorescent cells', flagged.map((f) => `${f.subject} ${fmt(f.measures.departure, 3)} (${f.severity})`).join(', ') || 'none', JSON.stringify(names) === JSON.stringify(['BUV805', 'PE', 'PE-Cy7']), 'CD11b BUV805, Siglec F PE, F4/80 PE-Cy7; not CD45, CD4, CD3 or the viability dye');
+    const beadFlags = diagnoseControls(beads, { detectors, afSignatures: af });
+    check('autospectral', 'bead controls of the same six dyes: nothing flagged', beadFlags.map((f) => `${f.kind} ${f.subject}`).join(', ') || 'none', !beadFlags.length, 'none');
+    // The same controls against a library of the bead spectra: the cell–bead differences.
+    const differences = cells.filter((c) => beads.some((b) => b.name === c.name)).map((c) => ({ name: c.name, diff: compareSpectra(c.spectrum, beads.find((b) => b.name === c.name).spectrum).maxDiff }));
+    const library = beads.map((b) => libraryEntry({ fluorochrome: b.name, spectrum: b.spectrum, detectors, date: '2025-02-18', file: b.file, sha256: `bead-${b.name}`, carrier: 'beads' }));
+    const vsBeads = diagnoseControls(cells, { detectors, afSignatures: af, library }).filter((f) => f.kind === 'control-autofluorescence').map((f) => f.subject);
+    check('autospectral', 'cell controls against the bead controls (largest difference, peak = 1): the two that differ most are named as autofluorescent cells, with the bead spectrum as the fix', differences.map((d) => `${d.name} ${fmt(d.diff, 3)}${vsBeads.includes(d.name) ? ' (autofluorescence)' : ''}`).join(', '), vsBeads.includes('BUV805') && vsBeads.includes('PE') && !vsBeads.includes('BV421') && !vsBeads.includes('APC'), 'BUV805 and PE named; BV421 and APC not');
+    // Unfixed and PFA-fixed spleen, unmixed with the bead references, the viability dye's cell
+    // control and the unstained control's autofluorescence.
+    const model = { detectors, spectra: [...beads, cells.find((c) => c.name === 'eFluor 780')], afSignatures: af };
+    const diagnose = (set, file) => {
+      const sample = read(set, file);
+      return diagnoseUnmixing(sample.cols, model, { unstainedAF: af, unstained: { columns: unstained.cols }, scatter: { sample: { fsc: sample.fsc, ssc: sample.ssc }, unstained: { fsc: unstained.fsc, ssc: unstained.ssc } } });
+    };
+    const own = diagnose(base, 'A1 Unstained (Cells)_Set1.fcs');
+    const unfixed = diagnose(more, 'C1 Spleen_unfixed_Set1.fcs');
+    const fixedSpleen = diagnose(more, 'C3 Spleen_4%PFA_Set1.fcs');
+    const afFinding = (r) => r.findings.find((f) => f.kind === 'autofluorescence');
+    const describe = (r) => (r.findings.length ? r.findings.map((f) => `${f.kind} (${f.severity})`).join(', ') : 'nothing');
+    check('autospectral', 'unstained spleen fixed in 4% PFA, against the fresh unstained control\'s autofluorescence: named as autofluorescence the unstained control does not describe; the same spleen unfixed and the unstained control itself: no autofluorescence finding beyond a low-severity note', `fixed: ${describe(fixedSpleen)}; unfixed: ${describe(unfixed)}; unstained control: ${describe(own)}`, fixedSpleen.findings[0]?.kind === 'autofluorescence' && fixedSpleen.findings[0].severity === 'high' && !(afFinding(unfixed) && afFinding(unfixed).severity !== 'low') && own.healthy, 'fixed: autofluorescence, high; unfixed and control: none above low');
+    const fix = afFinding(fixedSpleen);
+    check('autospectral', 'its fix tried on the fixed spleen: the bright events\' median relative residual (the unfixed spleen\'s for comparison)', fix?.effect ? `${fmt(fix.effect.before.brightResidual, 3)} → ${fmt(fix.effect.after.brightResidual, 3)} (unfixed ${fmt(unfixed.baseline.brightResidual, 3)})` : 'no fix', fix?.effect && fix.effect.after.brightResidual < fix.effect.before.brightResidual, 'lower');
   },
   // FlowJo 11 workbenches (.flowjo) saved by FlowJo 11.2, with FlowJo's own counts.
   async migration() {

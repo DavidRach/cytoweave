@@ -567,6 +567,30 @@ class Tools:
         """
         return self.call("unmix", **{"autofluorescence": autofluorescence, "autofluorescenceMode": autofluorescence_mode, "method": method, "recompute": recompute, "samples": samples, "unstainedPopulation": unstained_population})
 
+    def diagnose_unmixing(self, *, population=None, sample=None):
+        """Diagnose a spectral unmixing.
+
+        Names the likely causes of a poor spectral unmixing of a sample, most likely first, each
+        with its evidence and a fix that was tried on the sample's events (its effect is reported):
+        a dye in the sample without a reference (named from the spectral library when it holds it),
+        a reference that does not match the dye in the sample (a wrong or mislabeled control; a bead
+        control for a stain on cells), a tandem degraded in the sample or in its control (its
+        donor's population rises with it), a cell control whose positives carry autofluorescence,
+        and autofluorescence the unstained control does not represent (fixation, cells it lacks).
+        Uses the reference library and its autofluorescence signatures (unmix first). The user
+        applies a fix in the Spectral view's Diagnose tab.
+
+        Args:
+            population: Population to diagnose, e.g. its live single cells (default: all events).
+                Optional; a string.
+            sample: A stained sample (default: the selected one, else the first sample). Optional; a
+                string.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("diagnose_unmixing", **{"population": population, "sample": sample})
+
     def explore(self, *, clustering=None, embedding=None, events_per_sample=None, group=None, k=None, markers=None, min_dist=None, n_neighbors=None, neighbors=None, perplexity=None, population=None, populations=None, resolution=None, samples=None, seed=None):
         """Cluster and map cells.
 

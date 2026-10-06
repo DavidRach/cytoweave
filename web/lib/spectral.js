@@ -194,7 +194,9 @@ function prepareEvents(columns, ref, options) {
 // spectrum values (a negative that does not match the positive's autofluorescence); saturation
 // (with options.range); and heterogeneity — the spectra of the dimmest and brightest thirds of
 // the positive population should agree (cosine ≥ options.heterogeneityThreshold, default 0.98),
-// or the control may hold a mixture (degraded tandem, autofluorescent cells, a second dye).
+// or the control may hold a mixture (degraded tandem, autofluorescent cells, a second dye);
+// quality.mixture is the dim third's spectrum minus the bright third's, each normalized at the
+// peak detector (its shape says what the mixture is; spectral-doctor.js reads it).
 export function referenceSpectrum(columns, detectors, positiveIdx, negativeIdx, options = {}) {
   const D = detectors.length;
   const cols = columnsFor(columns, detectors, D);
@@ -244,6 +246,7 @@ export function referenceSpectrum(columns, detectors, positiveIdx, negativeIdx, 
     if (saturated > 0.01 * peakValues.length) warnings.push(`${((100 * saturated) / peakValues.length).toFixed(1)}% of positive events are at the top of the detector range in ${detectors[peakIndex]}; off-scale events distort the spectrum.`);
   }
   let heterogeneity = Number.NaN;
+  let mixture = null;
   if (positiveIdx.length >= 60) {
     // Spectra of the dimmest and brightest thirds of the positives (ranked on the peak detector).
     const peakColumn = cols[peakIndex];
@@ -258,6 +261,11 @@ export function referenceSpectrum(columns, detectors, positiveIdx, negativeIdx, 
       highSpectrum[d] = median(valuesAt(cols[d], high)) - negativeMedian[d];
     }
     heterogeneity = cosine(lowSpectrum, highSpectrum);
+    // The shape of the difference, each third normalized at the peak detector: autofluorescence
+    // when the positives are autofluorescent cells (it weighs more on the dimmer ones).
+    if (lowSpectrum[peakIndex] > 0 && highSpectrum[peakIndex] > 0) {
+      mixture = Float64Array.from(lowSpectrum, (v, d) => v / lowSpectrum[peakIndex] - highSpectrum[d] / highSpectrum[peakIndex]);
+    }
     const threshold = options.heterogeneityThreshold ?? 0.98;
     if (heterogeneity < threshold) {
       warnings.push(`The spectrum of the dimmest positive events differs from that of the brightest (similarity ${heterogeneity.toFixed(3)}); the positive population may be a mixture (degraded tandem, autofluorescent cells or a second fluorochrome).`);
@@ -282,6 +290,7 @@ export function referenceSpectrum(columns, detectors, positiveIdx, negativeIdx, 
       separation,
       stainIndex: brightness / (2 * Math.max(negativeRSD[peakIndex], 1e-12)),
       heterogeneity,
+      mixture,
       warnings,
     },
   };

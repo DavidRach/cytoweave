@@ -111,6 +111,10 @@ guides to every view, with screenshots.
     sample.
   - A **spectral library** across experiments that flags a degraded tandem
     and supplies spectra for dyes without a control.
+  - An **unmixing doctor** that names the likely cause of a poor unmixing (a
+    dye without a reference, a wrong or bead control, a degraded tandem, a
+    cell control carrying autofluorescence, autofluorescence the unstained
+    control lacks) and tries its fix on your sample.
 - **Panel design.** A panel's spreading matrix predicted from its spectra and
   the instrument's noise (photon counting and laser fluctuations), fitted to
   your controls, kept for the instrument or taken from its bead runs. Leave a
@@ -614,6 +618,16 @@ changed (a tandem that degraded, a new lot) is flagged before it distorts the
 unmixing; a fluorochrome you have no control for can be unmixed with its
 library spectrum.
 
+**Diagnose** names the likely causes of a poor unmixing of a sample, most
+likely first: a dye in the sample without a reference (named from the library
+when it holds the dye), a reference that does not match the dye in the sample
+(another dye in the control tube, a dye that emits differently on beads than
+on cells), a tandem degraded in the samples or in its control, a cell control
+whose positives carry autofluorescence, or autofluorescence the unstained
+control does not describe (fixation, cells it lacks). Each comes with its
+evidence and a fix already tried on the sample's events, applied in one
+click.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/spectral-design-dark.webp">
   <img alt="The Panel design tab: noise fitted to the 25 controls with its check, the panel with BV711 left out, and the predicted spreading matrix" src="docs/images/spectral-design-light.webp">
@@ -1065,7 +1079,8 @@ server. With it, an AI agent such as Claude Code can drive the CytoWeave
 window you are watching:
 - open files and examples, annotate samples, and inspect the gating tree;
 - create gates from coordinates or propose them from the data's density;
-- run acquisition QC, unmix spectral files, and cluster and map cells;
+- run acquisition QC, unmix spectral files (and diagnose a poor unmixing),
+  and cluster and map cells;
 - save and apply analysis templates and published gating strategies (OMIP-101,
   OMIP-090), and name populations with Cell Ontology terms;
 - analyze an antibody titration or a detector voltage walk;
@@ -1135,6 +1150,7 @@ pipelines, as the app does, against answers known in advance:
 | Gating | True cell types | Precision 91–100%, recall 96–100% |
 | QC | Known clogs, bubbles and drift | 99.8–100% of anomalous events removed; ≤ 1.4% of clean events, none from clean or drifting files |
 | Spectral | True abundances of 25 fluorochromes | Median r = 0.988; within 0.001 of unmixing with the true spectra |
+| Unmixing doctor | Six faults planted in the spectral example; real bead and cell controls and fixed spleen (AutoSpectral example) | Each fault named first on two experiments, nothing on clean samples, each fix closer to the truth; the autofluorescent cell controls and the fixed spleen named |
 | Cell cycle | True phase fractions | Dean–Jett–Fox within 1.6 points, Watson within 2 |
 | Proliferation | True precursor frequencies | Division index within 3% |
 | Debarcoding | True wells of a 20-sample barcoded plate | 100% of assigned cells in their true well; 98.7% of cells assigned |

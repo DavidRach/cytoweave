@@ -506,6 +506,9 @@ try {
     const setup = ws.derived.find((d) => d.kind === 'spectral-setup');
     return { worst, channels, setupProposed: Boolean(setup?.proposal), afSignatures: setup?.autofluorescence?.signatures?.length ?? 0 };`);
   check('unmix: the reference library proposed (spectra and autofluorescence), and every unmixed channel equal to the same unmixing run directly', `${unmixed.references.length} references, ${spectral.afSignatures} autofluorescence signatures, complexity ${unmixed.complexityIndex}; ${spectral.channels} channels within ${spectral.worst}`, unmixed.references.length === 25 && spectral.setupProposed && spectral.afSignatures >= 1 && spectral.channels === unmixed.channels.length && spectral.worst === 0, '25 references, identical');
+  // The unmixing doctor on the same sample: the example has no fault to name.
+  const diagnosis = (await tool('diagnose_unmixing', { sample }, 'Spectral agent')).data;
+  check('diagnose_unmixing: the example\'s sample diagnosed with the proposed library, no fault named', `${diagnosis.events} events; healthy ${diagnosis.healthy}; ${diagnosis.findings.filter((f) => f.severity !== 'low').map((f) => f.title).join('; ') || 'no finding'}; ${diagnosis.checks.length} checks`, diagnosis.healthy && diagnosis.events === 20000 && diagnosis.checks.length >= 4, 'healthy');
 
   // 3. QC as files are acquired: a watched folder's files are added and checked.
   const watched = join(temp, 'exports');

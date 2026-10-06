@@ -993,6 +993,29 @@
     }
   },
   {
+    "name": "diagnose_unmixing",
+    "title": "Diagnose a spectral unmixing",
+    "description": "Names the likely causes of a poor spectral unmixing of a sample, most likely first, each with its evidence and a fix that was tried on the sample's events (its effect is reported): a dye in the sample without a reference (named from the spectral library when it holds it), a reference that does not match the dye in the sample (a wrong or mislabeled control; a bead control for a stain on cells), a tandem degraded in the sample or in its control (its donor's population rises with it), a cell control whose positives carry autofluorescence, and autofluorescence the unstained control does not represent (fixation, cells it lacks). Uses the reference library and its autofluorescence signatures (unmix first). The user applies a fix in the Spectral view's Diagnose tab.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "population": {
+          "description": "Population to diagnose, e.g. its live single cells (default: all events)",
+          "type": "string"
+        },
+        "sample": {
+          "description": "A stained sample (default: the selected one, else the first sample)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "explore",
     "title": "Cluster and map cells",
     "description": "Cluster the events of a population across samples (flowsom, phenograph (Leiden), louvain, kmeans or none; every event gets a cluster) and map them (umap, tsne, pca or none, on an equal subsample per sample), as the Explore view does. Returns each cluster's name from marker enrichment, frequency and abundance per sample, and the map's faithfulness (trustworthiness, continuity, neighbor preservation, sample mixing) with warnings. The channels (e.g. \"FlowSOM cluster\", \"UMAP 1\") are proposed and usable at once; with populations: true the clusters are proposed as populations (category gates) to compare. Markers default to the lineage and phenotype markers (viability, DNA and dump channels left out).",

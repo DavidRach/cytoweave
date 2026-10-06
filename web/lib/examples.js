@@ -13,6 +13,7 @@ import { parseFCS } from './fcs.js';
 import { pointTest } from './gates.js';
 import { createTransform } from './transforms.js';
 import {
+  FLUOROCHROMES,
   INSTRUMENTS,
   acquisitionKeywords,
   buildPanel,
@@ -27,6 +28,7 @@ import {
   simulateCellCycle,
   simulateEvents,
   degradeTandem,
+  shiftedFluorochrome,
   simulateMassEvents,
   spectralSignature,
 } from './simulate.js';
@@ -242,8 +244,16 @@ function createContext(entry, options) {
     signal: options.signal,
     truth: options.truth !== false,
     only: options.samples ? new Set(options.samples) : null,
-    // { fluorochrome → fraction }: tandems degraded in this experiment (spectral example).
+    // { fluorochrome → fraction }: tandems degraded in this experiment (spectral example), in
+    // every file or only in the controls or the samples.
     degrade: options.tandemDegradation ?? null,
+    degradeIn: options.degradationIn ?? 'all',
+    // Faults of the reference controls (spectral example): { fluorochrome → the dye its control
+    // was stained with instead }, { fluorochrome → nm its emission is shifted on beads }, and
+    // an unstained control of lymphocytes only ('lymphocytes').
+    substitutes: options.controlSubstitutes ?? null,
+    beadShift: options.beadShift ?? null,
+    unstainedCells: options.unstainedCells ?? null,
     // Detector gains that differ between the PBMC samples, as day-to-day instrument drift
     // (PBMC example): log-uniform within ±strength per fluorescence detector, a quarter of that
     // for scatter; the first sample is left as it is.
@@ -731,12 +741,39 @@ function* generateSpectral(ctx, samples, all) {
   ctx.schedule(3000, all);
   const instrument = INSTRUMENTS.aurora;
   const names = spectralDetectorNames();
-  const panel = buildPanel(instrument, SPECTRAL_PANEL, names);
-  for (const [fluor, fraction] of Object.entries(ctx.degrade ?? {})) {
-    const a = SPECTRAL_PANEL.find((x) => x.fluor === fluor);
-    if (!a) throw new Error(`The spectral panel has no ${fluor}.`);
-    degradeTandem(panel, a.marker, fluor.split('-')[0], fraction);
+  for (const fluor of Object.keys(ctx.degrade ?? {})) if (!SPECTRAL_PANEL.some((x) => x.fluor === fluor)) throw new Error(`The spectral panel has no ${fluor}.`);
+  for (const [fluor, dye] of Object.entries(ctx.substitutes ?? {})) {
+    if (!SPECTRAL_PANEL.some((x) => x.fluor === fluor)) throw new Error(`The spectral panel has no ${fluor}.`);
+    if (!FLUOROCHROMES[dye]) throw new Error(`Unknown fluorochrome "${dye}".`);
   }
+  // The panel as a file sees it: its tandems degraded or not, and one control's dye replaced.
+  const panels = new Map();
+  const panelOf = (degraded, marker = null, dye = null, key = '') => {
+    const id = `${degraded}|${marker}|${key}`;
+    if (!panels.has(id)) {
+      const panel = buildPanel(instrument, SPECTRAL_PANEL.map((a) => (a.marker === marker ? { ...a, dye } : a)), names);
+      if (degraded) {
+        for (const [fluor, fraction] of Object.entries(ctx.degrade)) {
+          const a = SPECTRAL_PANEL.find((x) => x.fluor === fluor);
+          degradeTandem(panel, a.marker, fluor.split('-')[0], fraction);
+        }
+      }
+      panels.set(id, panel);
+    }
+    return panels.get(id);
+  };
+  const panel = panelOf(Boolean(ctx.degrade));
+  const panelFor = (sample) => {
+    const control = sample.role !== 'sample';
+    const degraded = Boolean(ctx.degrade) && (ctx.degradeIn === 'all' || (ctx.degradeIn === 'controls') === control);
+    if (sample.role === 'single-stain') {
+      const substitute = ctx.substitutes?.[sample.stain];
+      const shift = sample.carrier === 'beads' ? ctx.beadShift?.[sample.stain] : null;
+      if (substitute) return panelOf(degraded, sample.marker, FLUOROCHROMES[substitute], `as ${substitute}`);
+      if (shift) return panelOf(degraded, sample.marker, shiftedFluorochrome(sample.stain, shift), `shifted ${shift}`);
+    }
+    return panelOf(degraded);
+  };
   const signatures = {};
   const peaks = {};
   for (const a of SPECTRAL_PANEL) {
@@ -753,20 +790,27 @@ function* generateSpectral(ctx, samples, all) {
     ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
     let sim;
     let truth = {};
+    const filePanel = panelFor(sample);
+    // What the control's tube really holds (another dye when it was substituted).
+    const held = ctx.substitutes?.[sample.stain] ?? sample.stain;
+    const heldSignature = () => signatures[held] ?? Array.from(spectralSignature(held, instrument.detectors), (v) => +v.toFixed(5));
     if (sample.role === 'single-stain' && sample.carrier === 'beads') {
-      sim = simulateBeads(ctx, sample, instrument, panel, sample.marker, 1.2e6, 3000, { laserCV: ctx.laserCV });
-      truth = { signature: signatures[sample.stain], fluorochrome: sample.stain };
+      sim = simulateBeads(ctx, sample, instrument, filePanel, sample.marker, 1.2e6, 3000, { laserCV: ctx.laserCV });
+      const shift = ctx.beadShift?.[sample.stain];
+      truth = { signature: shift && held === sample.stain ? Array.from(spectralSignature(shiftedFluorochrome(held, shift), instrument.detectors), (v) => +v.toFixed(5)) : heldSignature(), fluorochrome: held };
     } else if (sample.role !== 'sample') {
       const { specs, weights } = pbmcComposition(ctx, sample.subject);
+      // An unstained control of lymphocytes only has none of the myeloid cells' autofluorescence.
+      if (sample.role === 'unstained' && ctx.unstainedCells === 'lymphocytes') specs.forEach((spec, k) => { if (spec.afType === 'M') weights[k] = 0; });
       const stained = new Set(sample.role === 'unstained' ? [] : [sample.marker]);
-      const populations = compilePopulations(specs, panel.markers, { stained });
+      const populations = compilePopulations(specs, filePanel.markers, { stained });
       const mix = sample.role === 'unstained' ? PBMC_MIX : { dead: 0.45, debris: 0.08, doublets: 0.03 };
-      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix, viability: sample.role === 'unstained' ? null : 'Viability', rate, scatterWidth: false, laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
-      if (sample.role === 'single-stain') truth = { signature: signatures[sample.stain], fluorochrome: sample.stain };
+      sim = simulateEvents({ count: sample.events, instrument, panel: filePanel, populations, weights, mix, viability: sample.role === 'unstained' ? null : 'Viability', rate, scatterWidth: false, laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
+      if (sample.role === 'single-stain') truth = { signature: heldSignature(), fluorochrome: held };
     } else {
       const { specs, weights } = pbmcComposition(ctx, sample.subject);
-      const populations = compilePopulations(specs, panel.markers);
-      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: PBMC_MIX, viability: 'Viability', rate, keepAbundances: ctx.truth, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers), laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
+      const populations = compilePopulations(specs, filePanel.markers);
+      sim = simulateEvents({ count: sample.events, instrument, panel: filePanel, populations, weights, mix: PBMC_MIX, viability: 'Viability', rate, keepAbundances: ctx.truth, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers), laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
       if (sim.abundances) {
         truth = {
           abundances: sim.abundances,
@@ -775,7 +819,7 @@ function* generateSpectral(ctx, samples, all) {
         };
       }
     }
-    files.push(flowFile(ctx, sample, sim, { instrument, panel, date, truth }));
+    files.push(flowFile(ctx, sample, sim, { instrument, panel: filePanel, date, truth }));
     yield;
   }
   const transforms = channelTransforms(spectralChannels(), () => LOGICLE_AURORA, 4194304, 1 << 20);

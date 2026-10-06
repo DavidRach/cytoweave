@@ -8,6 +8,7 @@
 import { population } from '../lib/engine.js';
 import { ROOT, gatePath } from '../lib/workspace.js';
 import { complexityIndex } from '../lib/spectral.js';
+import { spectrumOn } from '../lib/spectral-library.js';
 import {
   AF_CHANNEL,
   AF_MODES,
@@ -28,7 +29,7 @@ import {
 
 export const SETUP_ID = 'spectral-setup';
 export const SEED = 1;
-export const LIMITS = { control: 100000, unstained: 30000, af: 60000, check: 30000, compare: 20000, ribbon: 40000 };
+export const LIMITS = { control: 100000, unstained: 30000, af: 60000, check: 30000, compare: 20000, ribbon: 40000, doctor: 20000 };
 
 // The spectral state of a workspace: controls, the reference library and its settings.
 export function spectralState(ws) {
@@ -188,6 +189,7 @@ export async function computeReferences(app, options = {}) {
         separation: ref?.quality.separation ?? null,
         stainIndex: ref?.quality.stainIndex ?? null,
         heterogeneity: Number.isFinite(ref?.quality.heterogeneity) ? ref.quality.heterogeneity : null,
+        mixture: ref?.quality.mixture ? serializeSpectrum(ref.quality.mixture) : null,
         brightness: ref?.quality.brightness ?? null,
         warnings: [...result.gate.warnings, ...(ref?.quality.warnings ?? [])].filter((w, k, all) => all.indexOf(w) === k),
         error: ref ? null : (result.error ?? 'No spectrum could be computed.'),
@@ -376,4 +378,82 @@ export function withChannelSettings(ws, channelSettings, count) {
   if (!channelSettings) return ws;
   const time = new Date().toISOString();
   return { ...ws, channelSettings, modified: time, provenance: [...ws.provenance, { time, action: 'scale', detail: `unmixed channels: ${count}` }] };
+}
+
+// The scatter of a sample's events (FSC-A and SSC-A, or the first forward and side scatter areas),
+// or null without them.
+function scatterColumns(view, indices) {
+  const names = [...view.raw.keys()];
+  const pick = (exact, pattern) => (view.raw.has(exact) ? exact : names.find((n) => pattern.test(n)) ?? null);
+  const fsc = pick('FSC-A', /^FSC.*-A$/i);
+  const ssc = pick('SSC-A', /^SSC.*-A$/i);
+  if (!fsc || !ssc) return null;
+  const [f, s] = copyColumns([view.raw.get(fsc), view.raw.get(ssc)], indices);
+  return { fsc: f, ssc: s };
+}
+
+// Diagnoses the unmixing of a sample's population (lib/spectral-doctor.js) with the reference
+// library and its settings: the population thinned to LIMITS.doctor events, the unstained control
+// (its detectors and scatter, to check that it represents the sample's autofluorescence), the
+// controls' carriers and mixture checks, and the instrument's spectral library (options.library,
+// its record). The doctor fits ordinary least squares with the library's autofluorescence
+// signatures whatever unmixing method is chosen: the faults it looks for are the references'.
+// Returns { result, sample, population, events } or null when canceled. options: gateId,
+// library, onProgress, track.
+export async function diagnose(app, sampleId, options = {}) {
+  const { gateId = null, onProgress, track = (job) => job } = options;
+  const ws = app.store.ws;
+  const state = spectralState(ws);
+  const problems = state.unmixProblems();
+  if (problems.length) throw new Error(problems[0]);
+  const sample = ws.samples.find((s) => s.id === sampleId);
+  if (!sample) throw new Error('Choose a sample to diagnose.');
+  const detectors = state.setup?.params?.detectors ?? state.panelDetectors();
+  const view = await app.data.ensure(sample.id);
+  let indices = null;
+  let label = 'All events';
+  if (gateId && gateId !== ROOT) {
+    try {
+      const pop = population(view, ws, gateId);
+      if (pop) {
+        indices = pop;
+        label = gatePath(ws, gateId);
+      }
+    } catch { /* all events */ }
+  }
+  const thinned = thinIndices(indices, view.eventCount, LIMITS.doctor);
+  const columns = copyColumns(detectorColumns(view, detectors), thinned);
+  const context = {
+    references: state.activeRefs().filter((r) => !r.sample.library).map((r) => ({ name: r.name, spectrum: r.ref.spectrum, carrier: r.sample.meta?.carrier ?? null, mixture: r.ref.mixture ?? null, heterogeneity: r.ref.heterogeneity ?? null })),
+    library: (options.library?.entries ?? []).map((e) => {
+      const on = spectrumOn(e, detectors);
+      return on ? { id: e.id, fluorochrome: e.fluorochrome, spectrum: Array.from(on), carrier: e.carrier ?? null, date: e.date ?? null, added: e.added ?? null, file: e.file ?? null } : null;
+    }).filter(Boolean),
+    unstainedAF: state.afSignatures().map((s) => ({ name: s.name, spectrum: s.spectrum })),
+  };
+  const sampleScatter = scatterColumns(view, thinned);
+  const unstained = state.unstainedSample;
+  if (unstained) {
+    const uview = await app.data.ensure(unstained.id);
+    const uidx = thinIndices(null, uview.eventCount, LIMITS.unstained);
+    context.unstained = { columns: copyColumns(detectorColumns(uview, detectors), uidx) };
+    const unstainedScatter = scatterColumns(uview, uidx);
+    if (sampleScatter && unstainedScatter) context.scatter = { sample: sampleScatter, unstained: unstainedScatter };
+  }
+  const af = state.afSignatures();
+  const { afMode } = state.settings();
+  const model = {
+    detectors,
+    spectra: state.panelSpectra(),
+    afSignatures: afMode === 'none' ? [] : (afMode === 'single' ? af.slice(0, 1) : af).map((s) => ({ name: s.name, spectrum: s.spectrum })),
+  };
+  const transfer = [...columns, ...(context.unstained?.columns ?? []), ...(context.scatter ? [context.scatter.sample.fsc, context.scatter.sample.ssc, context.scatter.unstained.fsc, context.scatter.unstained.ssc] : [])].map((c) => c.buffer);
+  try {
+    const job = track(app.worker('spectral').run('diagnoseUnmixing', { columns, model, context, options: { seed: SEED, maxEvents: LIMITS.doctor } }, { transfer, onProgress }));
+    const result = await job.promise;
+    return { result, sample: sample.name, sampleId: sample.id, population: label, gateId: gateId ?? ROOT, events: columns[0].length };
+  } catch (error) {
+    if (error.canceled) return null;
+    throw error;
+  }
 }

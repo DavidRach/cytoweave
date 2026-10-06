@@ -546,6 +546,29 @@ cw_unmix <- function(autofluorescence = NULL, autofluorescence_mode = NULL, meth
   cw_call("unmix", autofluorescence = autofluorescence, autofluorescenceMode = autofluorescence_mode, method = method, recompute = recompute, samples = .cw_array(samples), unstainedPopulation = unstained_population, cw = cw)
 }
 
+#' Diagnose a spectral unmixing
+#'
+#' Names the likely causes of a poor spectral unmixing of a sample, most likely first, each
+#' with its evidence and a fix that was tried on the sample's events (its effect is reported):
+#' a dye in the sample without a reference (named from the spectral library when it holds it),
+#' a reference that does not match the dye in the sample (a wrong or mislabeled control; a bead
+#' control for a stain on cells), a tandem degraded in the sample or in its control (its
+#' donor's population rises with it), a cell control whose positives carry autofluorescence,
+#' and autofluorescence the unstained control does not represent (fixation, cells it lacks).
+#' Uses the reference library and its autofluorescence signatures (unmix first). The user
+#' applies a fix in the Spectral view's Diagnose tab.
+#'
+#' @param population Population to diagnose, e.g. its live single cells (default: all events).
+#' Optional; a string.
+#' @param sample A stained sample (default: the selected one, else the first sample). Optional;
+#' a string.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_diagnose_unmixing <- function(population = NULL, sample = NULL, cw = cw_default()) {
+  cw_call("diagnose_unmixing", population = population, sample = sample, cw = cw)
+}
+
 #' Cluster and map cells
 #'
 #' Cluster the events of a population across samples (flowsom, phenograph (Leiden), louvain,

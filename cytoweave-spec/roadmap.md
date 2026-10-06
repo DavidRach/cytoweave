@@ -598,6 +598,16 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
    proposes the fix.
    - Validation: each fault planted in the simulator, named first; AutoSpectral's bead and cell
      controls.
+   - Done (slice 3): the Spectral view's Diagnose tab and agents' `diagnose_unmixing`. Six faults
+     planted in the spectral example are each named first on its seed and a held-out one, with
+     nothing on clean samples, and each tried fix moves the unmixed values toward the truth (a
+     held-out sweep of three more seeds named 20 of 21; the miss, a 6 nm bead shift, changed no
+     dye's accuracy). On real data, AutoSpectral's bead and cell controls showed that the large
+     bead–cell differences are autofluorescence carried by cell controls of markers on
+     autofluorescent cells (CD11b, Siglec F, F4/80), not the dyes emitting differently on beads, so
+     the doctor checks cell controls for it; it names the example's PFA-fixed spleen as
+     autofluorescence the unstained control lacks. A degraded tandem leaves no residual (its donor
+     is in the panel) and is found from its donor's population lining up with it.
 3. **Kinetics (A4):** a signal or ratio (Indo-1 violet/blue) against time, smoothed per time bin,
    with baseline, peak, time to peak, area under the curve and the responding fraction, and
    samples overlaid; moved here from wave 5 and split from the curves below.

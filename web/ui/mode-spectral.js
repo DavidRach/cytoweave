@@ -10,6 +10,9 @@
 // Spectra are also kept across experiments in the library's spectral library of the instrument
 // (lib/spectral-library.js): the Library tab compares the controls with it, saves them to it,
 // and adds library spectra for fluorochromes without a control (setup.libraryReferences).
+// The Diagnose tab runs the unmixing doctor (lib/spectral-doctor.js) on the selected sample and
+// applies the fix it proposes to the reference library (a library or estimated spectrum in
+// setup.libraryReferences, a control excluded, autofluorescence signatures added).
 
 import { h, icon, clear, formatCount } from './dom.js';
 import { showMenu, showDialog, toast, progressToast, promptDialog } from './overlays.js';
@@ -43,6 +46,7 @@ import {
   baseSetup as baseSetupOf,
   buildModel as buildModelOf,
   computeReferences,
+  diagnose as diagnoseSample,
   findAutofluorescence,
   spectralState,
   unmixSamples as unmixSamplesOf,
@@ -58,6 +62,7 @@ const TABS = [
   { id: 'design', label: 'Panel design', icon: 'layers' },
   { id: 'compare', label: 'Compare models', icon: 'compare' },
   { id: 'residuals', label: 'Residuals', icon: 'target' },
+  { id: 'doctor', label: 'Diagnose', icon: 'stethoscope' },
   { id: 'ribbon', label: 'Signature', icon: 'density' },
   { id: 'library', label: 'Library', icon: 'library' },
 ];
@@ -83,6 +88,7 @@ export function mountSpectralMode(app, container) {
     compareNegatives: 'sample',
     compare: null,
     residual: null,
+    doctor: null,
     ribbon: null,
     busy: null,
     library: undefined, // the instrument's spectral library record (null: none; undefined: not read)
@@ -775,7 +781,7 @@ export function mountSpectralMode(app, container) {
   function renderTab() {
     disposeBoxes(tabHost);
     clear(tabHost);
-    const renderers = { spectra: renderSpectraTab, quality: renderQualityTab, design: renderDesignTab, compare: renderCompareTab, residuals: renderResidualTab, ribbon: renderRibbonTab, library: renderLibraryTab };
+    const renderers = { spectra: renderSpectraTab, quality: renderQualityTab, design: renderDesignTab, compare: renderCompareTab, residuals: renderResidualTab, doctor: renderDoctorTab, ribbon: renderRibbonTab, library: renderLibraryTab };
     try {
       renderers[ui.tab]();
     } catch (error) {
@@ -1325,6 +1331,195 @@ export function mountSpectralMode(app, container) {
       heatStripBox(detectors, bands, report.strip),
       h('p.muted.small-print', 'Each row is an equal-count bin of events, from the dimmest (bottom) to the brightest (top); each cell is the bin\'s median residual in a detector divided by its median signal. Red is signal the model under-explains, blue over-explains. A misfit that grows with brightness points to a wrong reference for a bright dye; one present in all bins points to autofluorescence or background.'));
     tabHost.append(pane);
+  }
+
+  // --- The unmixing doctor ----------------------------------------------------------------------
+
+  const KIND_LABELS = {
+    'missing-reference': 'Missing reference',
+    'wrong-reference': 'Wrong reference',
+    'degraded-tandem': 'Degraded tandem',
+    'bead-control': 'Bead control',
+    'control-autofluorescence': 'Autofluorescent control',
+    autofluorescence: 'Autofluorescence',
+    'library-change': 'Changed control',
+  };
+
+  function doctorKey() {
+    const s = settings();
+    return `${store.ui.sampleId}|${store.ui.gateId ?? ROOT}|${referencesKey()}|${setup()?.autofluorescence?.computed ?? ''}|${(setup()?.autofluorescence?.signatures ?? []).length}|${s.afMode}`;
+  }
+
+  async function runDiagnosis() {
+    if (unmixProblems().length || !store.ui.sampleId) return;
+    const key = doctorKey();
+    ui.busy = 'doctor';
+    ui.doctor = { key, running: true };
+    renderTab();
+    let job = null;
+    const progress = progressToast('Diagnosing the unmixing…', () => job?.cancel());
+    try {
+      // The doctor names spectra from the library: read it first.
+      const inst = instrument();
+      const library = inst && app.library?.getRecord ? ((await app.library.getRecord(SPECTRA_RECORDS, inst.id).catch(() => null)) ?? null) : null;
+      const run = await diagnoseSample(app, store.ui.sampleId, {
+        gateId: store.ui.gateId ?? ROOT,
+        library,
+        onProgress: (f, note) => progress.update(f, note),
+        track: (j) => { job = j; return track(j); },
+      });
+      if (!run) {
+        progress.done('Canceled.', 'info');
+        ui.doctor = null;
+        return;
+      }
+      ui.doctor = { key, ...run, libraryEntries: library?.entries ?? [] };
+      const n = run.result.findings.filter((f) => f.severity !== 'low').length;
+      progress.done(run.result.healthy ? 'No fault found.' : `${n} likely cause${n === 1 ? '' : 's'} found.`, run.result.healthy ? 'ok' : 'info');
+    } catch (error) {
+      progress.fail(error.message);
+      ui.doctor = { key, error: error.message };
+    } finally {
+      ui.busy = null;
+      if (ui.doctor) ui.doctor.running = false;
+      if (ui.tab === 'doctor') renderTab();
+    }
+  }
+
+  // A spectrum estimated from a sample, kept beside library spectra (setup.libraryReferences).
+  function estimatedEntry(name, spectrum, detectors, sampleName) {
+    const added = new Date().toISOString();
+    return { id: `sample-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`, fluorochrome: name, marker: '', detectors: [...detectors], spectrum: Array.from(spectrum, (v) => +v.toFixed(6)), peakDetector: detectors[spectrum.indexOf(Math.max(...spectrum))] ?? null, date: added.slice(0, 10), file: `estimated from ${sampleName}`, origin: 'sample', added };
+  }
+
+  function applyFix(finding, fix) {
+    const detectors = setup()?.params?.detectors ?? panelDetectors();
+    const current = setup() ?? baseSetup();
+    const references = current.libraryReferences ?? [];
+    const control = activeRefs().find((r) => !r.sample.library && r.name === (fix.fluorochrome ?? finding.subject));
+    const excluded = (patch) => {
+      if (!control) return patch;
+      const all = { ...(current.controlSettings ?? {}) };
+      all[control.sample.id] = { ...(all[control.sample.id] ?? {}), excluded: true };
+      return { ...patch, controlSettings: all };
+    };
+    const withReference = (entry) => [...references.filter((e) => e.fluorochrome.toLowerCase() !== entry.fluorochrome.toLowerCase()), entry];
+    const sampleName = ui.doctor?.sample ?? 'the sample';
+    let patch = null;
+    let label = '';
+    switch (fix.action) {
+      case 'add-library':
+      case 'use-library': {
+        const entry = (ui.doctor?.libraryEntries ?? []).find((e) => e.id === fix.entryId);
+        const spectrum = entry ? spectrumOn(entry, detectors) : null;
+        if (!spectrum) {
+          toast('That library spectrum is no longer in the library.', { kind: 'error' });
+          return;
+        }
+        patch = { libraryReferences: withReference({ ...entry, detectors: [...detectors], spectrum: Array.from(spectrum) }) };
+        if (fix.action === 'use-library') patch = excluded(patch);
+        label = fix.action === 'use-library' ? `Use the library's ${entry.fluorochrome} instead of its control` : `Add ${entry.fluorochrome} from the spectral library`;
+        break;
+      }
+      case 'add-spectrum':
+      case 'replace-spectrum': {
+        patch = { libraryReferences: withReference(estimatedEntry(fix.name, fix.spectrum, detectors, sampleName)) };
+        if (fix.action === 'replace-spectrum') patch = excluded(patch);
+        label = fix.action === 'replace-spectrum' ? `Use the ${fix.name} spectrum estimated from ${sampleName}` : `Add a spectrum estimated from ${sampleName}`;
+        break;
+      }
+      case 'add-autofluorescence': {
+        const af = current.autofluorescence ?? { method: 'Autofluorescence signatures added by the unmixing doctor.', signatures: [], computed: new Date().toISOString() };
+        const signatures = [...af.signatures, ...fix.signatures.map((x) => ({ name: x.name, spectrum: x.spectrum.map((v) => +v.toFixed(6)), fraction: null, count: null, brightness: null, source: sampleName }))];
+        patch = { autofluorescence: { ...af, signatures, modified: new Date().toISOString() }, settings: { ...(current.settings ?? {}), afMode: 'perEvent' } };
+        label = `Add ${fix.signatures.length} autofluorescence signature${fix.signatures.length > 1 ? 's' : ''} from ${sampleName}`;
+        break;
+      }
+      case 'per-event-af':
+        patch = { settings: { ...(current.settings ?? {}), afMode: 'perEvent' } };
+        label = 'Unmix with every autofluorescence signature';
+        break;
+      default:
+        return;
+    }
+    saveSetup({ ...patch, params: { ...(current.params ?? {}), detectors }, spreading: null }, label);
+    toast(`${label}. Diagnose again to check the fix, and unmix the samples again to update their channels.`, { kind: 'ok' });
+  }
+
+  function renderDoctorTab() {
+    const empty = needReferences();
+    if (empty) {
+      tabHost.append(empty);
+      return;
+    }
+    const problems = unmixProblems();
+    if (problems.length) {
+      problems.forEach((p) => tabHost.append(h('div.callout.warn', { style: { marginBottom: '8px' } }, icon('warning'), h('span', p))));
+      return;
+    }
+    const sample = ws().samples.find((s) => s.id === store.ui.sampleId);
+    const where = sample ? `${sample.name} · ${store.ui.gateId && store.ui.gateId !== ROOT ? gatePath(ws(), store.ui.gateId) : 'all events'}` : 'select a sample';
+    tabHost.append(h('div.pane',
+      h('h3', icon('stethoscope'), 'Unmixing doctor', h('span.muted', { style: { fontWeight: 500 } }, where)),
+      h('p.muted', { style: { marginTop: 0 } }, 'Names the likely cause of a poor unmixing and tries its fix on the same events: a dye without a reference, a reference that does not match the dye in the sample (a wrong control, a bead control for a stain on cells), a tandem that degraded, a cell control carrying autofluorescence, or autofluorescence the unstained control does not represent. Diagnose a stained sample, ideally its live single cells (select the population in the Gate view).'),
+      h('button.btn.primary', { type: 'button', disabled: Boolean(ui.busy) || !sample, onclick: () => runDiagnosis() }, icon('stethoscope'), ui.busy === 'doctor' ? 'Diagnosing…' : 'Diagnose')));
+    const state = ui.doctor;
+    if (!state || state.running) return;
+    if (state.error) {
+      tabHost.append(h('div.callout.danger', icon('warning'), h('span', state.error)));
+      return;
+    }
+    const { result } = state;
+    const stale = state.key !== doctorKey();
+    const head = h('div.pane', h('h3', 'Diagnosis', h('span.muted', { style: { fontWeight: 500 } }, `${state.sample} · ${state.population} · ${formatCount(result.events)} events`)));
+    if (stale) head.append(h('div.callout.warn', { style: { marginBottom: '8px' } }, icon('warning'), h('span', 'The sample, population, references or autofluorescence changed since this diagnosis; diagnose again.')));
+    const notable = result.findings.filter((f) => f.severity !== 'low');
+    head.append(result.healthy && !notable.length
+      ? h('div.callout.ok', icon('check'), h('span', `No fault found: the references and autofluorescence explain this population (bright events' median residual ${result.baseline.brightResidual.toFixed(3)}).`))
+      : h('div.callout.accent', icon('sparkles'), h('span', `${notable.length || result.findings.length} likely cause${(notable.length || result.findings.length) === 1 ? '' : 's'}, the most likely first. Each fix was tried on these events; its effect is shown.`)));
+    head.append(h('details', { style: { marginTop: '8px' } }, h('summary', 'What was checked'),
+      h('table.data', h('tbody', result.checks.map((c) => h('tr', h('td', c.check), h('td.muted', c.result)))))));
+    tabHost.append(head);
+    const detectors = result.detectors;
+    result.findings.forEach((f, k) => {
+      const card = h('div.pane.doctor-finding',
+        h('div.doctor-head',
+          h('span.badge', KIND_LABELS[f.kind] ?? f.kind),
+          h(`span.badge${f.severity === 'high' ? '.danger' : f.severity === 'medium' ? '.warn' : ''}`, `${f.severity} impact`),
+          h('span.muted.small-print', `${f.confidence} confidence${f.fromControls ? ' · from the controls alone' : ''}`)),
+        h('h3', { style: { marginTop: '6px' } }, `${k + 1}. ${f.title}`),
+        h('ul.spectral-caveats', f.evidence.map((e) => h('li', e))));
+      if (f.spectrum) {
+        const series = [{ name: f.kind === 'degraded-tandem' || f.kind === 'wrong-reference' || f.kind === 'bead-control' ? `${f.subject} in the sample` : f.kind === 'control-autofluorescence' ? 'Dim minus bright positives' : 'Unexplained signature', values: f.spectrum, color: categoricalColor(0) }];
+        if (f.compare) series.push({ name: f.compare.name, values: f.compare.spectrum, color: categoricalColor(3), dashed: true });
+        card.append(spectraBox(detectors, series),
+          h('div.spectral-legend', series.map((x) => h('span.chip', h('span.swatch', { style: { background: x.color, opacity: x.dashed ? 0.6 : 1 } }), `${x.name}${x.dashed ? ' (dashed)' : ''}`))));
+      }
+      if (f.effect) card.append(h('p.small-print', h('b', 'Trying the fix: '), effectText(f.effect)));
+      const fixes = [f.fix, ...(f.alternatives ?? [])].filter(Boolean);
+      if (fixes.length) {
+        card.append(h('div.doctor-fixes', fixes.map((fix, j) => h('div.doctor-fix',
+          fix.action === 'advice'
+            ? h('span.badge', 'Advice')
+            : h(`button.btn${j === 0 ? '.primary' : ''}.small`, { type: 'button', disabled: stale, title: stale ? 'Diagnose again first' : '', onclick: () => applyFix(f, fix) }, icon(j === 0 ? 'check' : 'plus'), fix.label),
+          h('span', fix.action === 'advice' ? h('b', `${fix.label}. `) : null, fix.text)))));
+      }
+      tabHost.append(card);
+    });
+  }
+
+  function effectText(effect) {
+    const parts = [];
+    const pair = (label, a, b, digits = 3) => {
+      if (a === undefined || a === null || b === undefined || b === null) return;
+      parts.push(`${label} ${Number(a).toFixed(digits)} → ${Number(b).toFixed(digits)}`);
+    };
+    if (effect.before.unexplained !== undefined) parts.push(`unexplained events ${formatCount(effect.before.unexplained)} → ${formatCount(Math.max(0, effect.after.unexplained ?? 0))}`);
+    pair('leak into the donor', effect.before.leak, effect.after.leak);
+    pair('departure from the reference', effect.before.mismatch, effect.after.mismatch);
+    pair('autofluorescent cells\' residual', effect.before.afDominatedResidual, effect.after.afDominatedResidual);
+    pair('bright events\' residual', effect.before.brightResidual, effect.after.brightResidual);
+    return `${parts.join('; ')}.`;
   }
 
   function renderRibbonTab() {

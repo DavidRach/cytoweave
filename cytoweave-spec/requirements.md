@@ -75,7 +75,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | S5 | Comparison of unmixing models on the user's own sample | done |
 | S6 | Predicted spread for panel design from the user's own references | done: photon and laser noise fitted to the controls, kept per instrument or from bead runs; validated on simulated and real (LSRFortessa) controls |
 | S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
-| S8 | Unmixing doctor: the likely cause of a poor unmixing, named with its fix | planned (wave 7) |
+| S8 | Unmixing doctor: the likely cause of a poor unmixing, named with its fix | done (wave 7): a dye without a reference, a wrong reference, a bead control whose dye differs on cells, a tandem degraded in samples or controls, a cell control carrying autofluorescence, and autofluorescence the unstained control lacks; each planted fault named first on two simulated experiments, fixes checked against the truth; AutoSpectral's autofluorescent cell controls and PFA-fixed spleen named |
 | S9 | Panel optimizer from the user's instrument model and library | planned (wave 8) |
 
 ## Quality control and normalization

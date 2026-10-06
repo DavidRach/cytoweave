@@ -239,12 +239,19 @@ export const FLUOROCHROMES = {
   BV750: { ex: { UV: 0.3, V: 1, R: 0.1 }, em: [band(750, 15, 32, 1, 0.2, 80), band(421, 10, 22, 0.03)], brightness: 0.25 },
   BV786: { ex: { UV: 0.3, V: 1, B: 0.02, YG: 0.03, R: 0.06 }, em: [band(786, 15, 32, 1, 0.2, 80), band(421, 10, 22, 0.03)], brightness: 0.25 },
   FITC: { ex: { UV: 0.05, V: 0.08, B: 1 }, em: [band(520, 10, 24, 1, 0.25, 70)], brightness: 0.12 },
+  // Blue-laser dyes read in FITC's detectors, with narrower emission (a control stained with one
+  // of them for a FITC stain is a wrong reference).
+  'Alexa Fluor 488': { ex: { UV: 0.03, V: 0.05, B: 1 }, em: [band(519, 9, 20, 1, 0.15, 60)], brightness: 0.3 },
+  BB515: { ex: { UV: 0.05, V: 0.1, B: 1 }, em: [band(515, 8, 17, 1, 0.1, 50)], brightness: 0.5 },
   'PerCP-Cy5.5': { ex: { UV: 0.1, V: 0.15, B: 1, YG: 0.08, R: 0.04 }, em: [band(695, 15, 28, 1, 0.15, 60), band(678, 8, 8, 0.15)], brightness: 0.15 },
   PE: { ex: { UV: 0.06, V: 0.03, B: 0.45, YG: 1 }, em: [band(575, 9, 22, 1, 0.25, 70)], brightness: 0.5 },
   'PE-CF594': { ex: { UV: 0.05, V: 0.02, B: 0.45, YG: 1 }, em: [band(612, 12, 28, 1, 0.2, 70), band(575, 9, 15, 0.12)], brightness: 0.4 },
   'PE-Cy5': { ex: { UV: 0.05, V: 0.02, B: 0.45, YG: 1, R: 0.35 }, em: [band(667, 12, 28, 1, 0.2, 70), band(575, 9, 15, 0.05)], brightness: 0.55 },
   'PE-Cy7': { ex: { UV: 0.05, V: 0.02, B: 0.45, YG: 1, R: 0.04 }, em: [band(780, 16, 32, 1), band(575, 9, 15, 0.04)], brightness: 0.35 },
   APC: { ex: { UV: 0.04, V: 0.03, B: 0.01, YG: 0.12, R: 1 }, em: [band(660, 10, 30, 1, 0.3, 70)], brightness: 0.45 },
+  // Read in APC's detectors, but narrower and red-shifted (an APC control for an Alexa Fluor 647
+  // stain is a wrong reference).
+  'Alexa Fluor 647': { ex: { UV: 0.02, V: 0.02, YG: 0.08, R: 1 }, em: [band(668, 10, 22, 1, 0.2, 60)], brightness: 0.4 },
   'Alexa Fluor 700': { ex: { UV: 0.03, V: 0.01, YG: 0.04, R: 1 }, em: [band(719, 12, 28, 1, 0.15, 60)], brightness: 0.18 },
   'APC-Cy7': { ex: { UV: 0.04, V: 0.02, YG: 0.1, R: 1 }, em: [band(780, 15, 32, 1), band(660, 10, 20, 0.08)], brightness: 0.2 },
   'Zombie NIR': { ex: { YG: 0.05, R: 1 }, em: [band(746, 15, 32, 1, 0.15, 60)], brightness: 0.25 },
@@ -253,6 +260,14 @@ export const FLUOROCHROMES = {
   AF: { ex: { UV: 1, V: 0.7, B: 0.35, YG: 0.08, R: 0.02 }, em: [band(460, 30, 60, 1, 0.3, 120), band(530, 25, 50, 0.6)], brightness: 1 },
   AFM: { ex: { UV: 1, V: 0.9, B: 0.6, YG: 0.15, R: 0.04 }, em: [band(505, 40, 80, 1, 0.35, 140)], brightness: 1 },
 };
+
+// A fluorochrome whose emission is shifted by `nm` (a dye whose emission differs on capture beads
+// from on cells, where its environment differs).
+export function shiftedFluorochrome(name, nm) {
+  const fluor = FLUOROCHROMES[name];
+  if (!fluor) throw new Error(`Unknown fluorochrome "${name}".`);
+  return { ...fluor, em: fluor.em.map((c) => ({ ...c, peak: c.peak + nm })) };
+}
 
 export function emissionAt(fluor, wavelength) {
   let sum = 0;
@@ -550,9 +565,10 @@ export function sampleCell(pop, normal, out, scratch) {
 // --- Panels ---------------------------------------------------------------------------------------
 
 // Builds the emitter → detector matrix for a panel on an instrument.
-// assignments: [{ marker, fluor, detector }] (detector names, one marker per detector);
-// detectorNames: the recorded fluorescence detectors (default: the assigned ones, in order).
-// Returns { detectors, markers, fluors, emitters (Float64Array (2 + m) × nDet), spill }.
+// assignments: [{ marker, fluor, detector, dye? }] (detector names, one marker per detector; dye:
+// the fluorochrome's definition when it differs from FLUOROCHROMES[fluor], as shiftedFluorochrome
+// gives); detectorNames: the recorded fluorescence detectors (default: the assigned ones, in
+// order). Returns { detectors, markers, fluors, emitters (Float64Array (2 + m) × nDet), spill }.
 export function buildPanel(instrument, assignments, detectorNames = null) {
   const names = detectorNames ?? assignments.map((a) => a.detector);
   const detectors = names.map((name) => getDetector(instrument, name));
@@ -568,7 +584,7 @@ export function buildPanel(instrument, assignments, detectorNames = null) {
     for (let j = 0; j < nDet; j += 1) emitters[r * nDet + j] = (instrument.afScale * detectorResponse(af, detectors[j])) / max;
   });
   assignments.forEach((a, m) => {
-    const fluor = FLUOROCHROMES[a.fluor];
+    const fluor = a.dye ?? FLUOROCHROMES[a.fluor];
     if (!fluor) throw new Error(`Unknown fluorochrome "${a.fluor}".`);
     const primaryDetector = a.detector ? getDetector(instrument, a.detector) : null;
     let primary = primaryDetector ? detectorResponse(fluor, primaryDetector) : 0;
