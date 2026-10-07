@@ -75,17 +75,10 @@ async function start() {
   const info = await detectBackend();
   const library = createLibrary(info);
 
-  let ws = createWorkspace();
-  const lastId = prefs.get('lastWorkspace', null);
-  if (lastId) {
-    try {
-      ws = parseWorkspace(await library.loadWorkspace(lastId));
-    } catch {
-      prefs.set('lastWorkspace', null);
-    }
-  }
-
-  const store = createStore(ws);
+  // CytoWeave starts on the start page with a new, empty workspace: the last one is a click away
+  // in its recent workspaces (marked as last opened), and files named on the command line go into
+  // a workspace of their own rather than the last one.
+  const store = createStore(createWorkspace());
   store.state.ui.theme = themePref;
   store.state.ui.tileSize = prefs.get('tileSize', 330);
   store.state.ui.colormap = prefs.get('colormap', 'classic');

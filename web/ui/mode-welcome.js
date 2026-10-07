@@ -1,6 +1,7 @@
 // The welcome page: start from files, an example experiment or a saved workspace.
 
 import { h, icon, clear, relativeTime, formatBytes } from './dom.js';
+import { prefs } from './storage.js';
 
 const FEATURES = [
   ['gate', 'Fast, precise gating', 'Rectangle, polygon, ellipse, quadrant, range, split, freehand and magic-wand gates with live statistics while you drag.'],
@@ -47,9 +48,10 @@ export function mountWelcome(app, container) {
       recent.append(h('div.card', h('p.muted', `No saved workspaces yet. Workspaces save automatically to ${library.kind === 'desktop' ? `the library folder (${library.location})` : 'this browser'}.`)));
       return;
     }
+    const last = prefs.get('lastWorkspace', null);
     for (const item of list.slice(0, 8)) {
       recent.append(h('div.card.clickable', { onclick: () => app.openWorkspace(item.id) },
-        h('h4', icon('library'), item.name || 'Untitled workspace'),
+        h('h4', icon('library'), item.name || 'Untitled workspace', item.id === last ? h('span.badge.accent', { style: { marginLeft: '6px' } }, 'Last opened') : null),
         h('p', `${item.samples ?? 0} samples · ${relativeTime(item.modified)}${item.size ? ` · ${formatBytes(item.size)}` : ''}`)));
     }
   }

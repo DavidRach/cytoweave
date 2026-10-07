@@ -12,7 +12,7 @@ import { describeProposal, openProposals, proposalHistory, proposeAnnotations, p
 import { spilloverFromControls } from './controls.js';
 import { describe } from '../lib/stats.js';
 import { toast } from './overlays.js';
-import { presentSamples } from './store.js';
+import { WorkspaceChangedError, presentSamples } from './store.js';
 
 export class ActionError extends Error {}
 
@@ -2042,6 +2042,7 @@ export function installRemote(app) {
   //   perSample: Map(sampleId → { channel: Float32Array }).
   async function proposeResult(record, perSample, label) {
     const files = { ...(record.files ?? {}) };
+    const sameWorkspace = store.sameWorkspace();
     for (const [sampleId, columns] of presentSamples(ws(), perSample)) {
       files[sampleId] = {};
       for (const [name, column] of Object.entries(columns)) {
@@ -2049,6 +2050,8 @@ export function installRemote(app) {
         files[sampleId][name] = await data.persistColumn(column);
       }
     }
+    // Storing the columns takes a while: another workspace may have been opened meanwhile.
+    if (!sameWorkspace()) throw new WorkspaceChangedError();
     const result = proposeDerived(ws(), author, { ...record, files });
     store.commit(result.ws, label, ['derived', 'data']);
     return result.derived;

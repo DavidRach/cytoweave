@@ -56,6 +56,7 @@ export function installActions(app) {
   app.saveDerived = async (result, label) => {
     const { addDerived } = await import('../lib/workspace.js');
     const perSample = presentSamples(store.ws, result.perSample);
+    const sameWorkspace = store.sameWorkspace();
     const files = {};
     for (const [sampleId, columns] of perSample) {
       files[sampleId] = {};
@@ -64,6 +65,8 @@ export function installActions(app) {
         files[sampleId][name] = await data.persistColumn(column);
       }
     }
+    // Storing the columns takes a while: another workspace may have been opened meanwhile.
+    if (!sameWorkspace()) throw new WorkspaceChangedError();
     // Replacing a result with the same outputs drops the old record's channels first.
     const replaced = store.ws.derived.filter((d) => d.id !== result.id && d.outputs?.some((o) => result.outputs.includes(o)));
     let next = store.ws;
@@ -79,6 +82,7 @@ export function installActions(app) {
   app.addDerivedSamples = async (recordId, perSample, params, label) => {
     const { extendDerived } = await import('../lib/workspace.js');
     if (!store.ws.derived.some((d) => d.id === recordId)) throw new WorkspaceChangedError();
+    const sameWorkspace = store.sameWorkspace();
     const files = {};
     for (const [sampleId, columns] of presentSamples(store.ws, perSample)) {
       files[sampleId] = {};
@@ -87,6 +91,7 @@ export function installActions(app) {
         files[sampleId][name] = await data.persistColumn(column);
       }
     }
+    if (!sameWorkspace()) throw new WorkspaceChangedError();
     store.commit(extendDerived(store.ws, recordId, files, params, label), label, ['derived', 'data']);
   };
 

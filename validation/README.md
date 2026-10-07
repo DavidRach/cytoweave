@@ -134,7 +134,9 @@ node validation/headless-run.mjs
 
 checks `cytoweave run` (built from source with Go, in headless Chrome) on the PBMC example's
 twelve samples, an annotations table and the templates suite's analysis saved as a template file
-(`run-cases.mjs`). It takes about 20 seconds:
+(`run-cases.mjs`), then the window across workspaces: what only views do, which the suites above
+cannot reach (state kept while another workspace is opened, work that finishes after it was). It
+takes about two minutes:
 
 | Check | Required | Result |
 | --- | --- | --- |
@@ -143,6 +145,12 @@ twelve samples, an annotations table and the templates suite's analysis saved as
 | A second run of the same files | The same CSV and methods bytes, workbook values, report text and workspace | The same |
 | The same analysis in the window, with the files on CytoWeave's command line, the template applied in its Apply dialog and every output exported with the window's own buttons and menus (Tables CSV, Excel workbook, batch report dialog, workspace file, Report → Markdown) | The same CSV bytes, workbook values (the About sheet's date aside), report pages and text, workspace (samples, annotations, gates, tables, figures, scales; no open proposal) and methods | The same; 12 pages |
 | Every population's count in `run.json` against Node's, from the same files and template | All equal | 228 of 228 |
+| A reload of the window | The start page, a new empty workspace, the last one marked among the recent workspaces | As required |
+| Explore, Compare and QC opened on one example, shown again after another was opened while they were closed | The new workspace's markers, grouping and results only; QC keeps its settings | 13 → 2 markers, none foreign; grouping changed; no old result |
+| An Explore run (UMAP of 96 samples) still going when another workspace is opened | Refused with a message; nothing added to the new workspace | Refused |
+| A fast Explore run (k-means and PCA) whose result is being stored when another workspace opens, after 0, 150 and 400 ms | Nothing added to the new workspace, whatever the timing | Clean each time |
+| Two examples opened in quick succession | The second holds only its own files | 96 of 96 |
+| The inspector's boundary robustness on samples sharing a view version (one compensation, no simulated truth channel) | Not shown for another sample | Its own check offered |
 
 Continuous integration runs it on each pull request and push to `main`.
 
