@@ -2067,6 +2067,43 @@
     }
   },
   {
+    "name": "export_review_report",
+    "title": "Write a review report",
+    "description": "Write a review report of the analysis: one self-contained HTML file (.html) for a PI, collaborator or reviewer, opened in any browser without CytoWeave: the samples with their SHA-256 checksums, the gating hierarchy and every population's count in every sample, every sample's gates drawn on its own events (plots \"all\", the default; \"none\" leaves them out; includeControls draws the controls too), the workspace's figures and tables, the saved comparisons, the methods, MIFlowCyt and the change log. Every number is traced (a click shows its sample, file checksum, gates and the counts behind it); the numbers are those a reproducibility certificate records. The file loads nothing from the network. The file must not exist unless overwrite is true.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "includeControls": {
+          "type": "boolean"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.html)",
+          "type": "string"
+        },
+        "plots": {
+          "enum": [
+            "all",
+            "none"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
     "name": "verify_certificate",
     "title": "Verify a reproducibility certificate",
     "description": "Verify a CytoWeave reproducibility certificate (absolute path of the .acs file): check every file's SHA-256, the workspace, the change log's chain and certificate.json's fingerprint, compute every number again from the files and compare them bit for bit. A certificate written without its data needs data (a folder, or FCS file paths; files are recognized by their checksums). Returns the verdict (confirmed, incomplete or differs), a summary, and the numbers that differ. The analysis in the window is not changed.",

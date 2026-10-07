@@ -133,7 +133,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | partial: the change log is hash-chained (wave 8), so an entry changed, removed or reordered is detected; users, audit trail and signatures in wave 9, subject to a decision on GxP |
 | R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | done: a figure repeated by sample or by an annotation as PDF or PowerPoint with every number traced to its source; Excel workbooks with provenance sheets and Prism projects; read back by openpyxl, python-pptx, pypdf and R pzfx (validation `reports`) |
 | R8 | Reproducibility certificate that re-runs and confirms every reported number | done (wave 8): an ACS archive with certificate.json (inputs' SHA-256, version and engine, analyses and seeds, the change log's head, MIFlowCyt, every count, table cell and saved comparison) verified in the window, by `cytoweave verify` or by agents, every number computed again from the files; identical bit for bit within one JavaScript engine, equal to 12 digits across engines; derived analyses and screens not yet run again |
-| R9 | A self-contained review report of an analysis, every number traced, opened without CytoWeave | planned (wave 8) |
+| R9 | A self-contained review report of an analysis, every number traced, opened without CytoWeave | done (wave 8): one HTML file (samples with checksums, gating, every sample's gates drawn, figures, tables, saved comparisons, methods, MIFlowCyt, change log), every number traced on click; the numbers equal to the window's own; no network requests; WCAG 2.1 AA in both themes |
 
 ## Interchange
 

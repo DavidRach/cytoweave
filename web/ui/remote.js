@@ -1294,6 +1294,26 @@ export function installRemote(app) {
       };
     },
 
+    async export_review_report(args) {
+      requireExtension(args.path, ['.html', '.htm'], 'a review report');
+      const { makeReviewReport } = await import('./review.js');
+      const plots = args.plots ?? 'all';
+      if (!['all', 'none'].includes(plots)) throw new ActionError('plots is "all" (every sample\'s gates drawn) or "none".');
+      let out;
+      try {
+        out = await makeReviewReport(app, { plots, includeControls: Boolean(args.includeControls) });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const numbers = (out.html.match(/<button type="button" class="n/g) ?? []).length;
+      const w = ws();
+      return {
+        file: out.html,
+        message: `A review report of ${w.name}: one HTML file (${(out.html.length / 1e6).toFixed(1)} MB) with ${numbers.toLocaleString('en-US')} numbers, each traced to its source${plots === 'all' ? ', and every sample\'s gates drawn' : ''}. It opens in any browser without CytoWeave and loads nothing from the network.${out.warnings.length ? ` Warnings: ${out.warnings.join(' ')}` : ''}`,
+        data: { numbers, bytes: out.html.length, samples: w.samples.length, figures: w.figures.length, tables: w.tables.length, comparisons: out.model.comparisons.length, warnings: out.warnings },
+      };
+    },
+
     async verify_certificate(args, event) {
       const { readCertificate, verifyCertificate } = await import('../lib/certificate.js');
       const { sha256 } = await import('../lib/sha256.js');

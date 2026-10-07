@@ -42,8 +42,10 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
   await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));
   let next = 1;
   const pending = new Map();
+  const listeners = new Map();
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data);
+    if (message.method) for (const listener of listeners.get(message.method) ?? []) listener(message.params);
     if (!message.id || !pending.has(message.id)) return;
     const { resolve, reject } = pending.get(message.id);
     pending.delete(message.id);
@@ -60,6 +62,11 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
   await send('Runtime.enable');
   return {
     send,
+    // Events of the DevTools protocol (Network.requestWillBeSent, Runtime.exceptionThrown…).
+    on(method, listener) {
+      if (!listeners.has(method)) listeners.set(method, []);
+      listeners.get(method).push(listener);
+    },
     async goto(url, wait = 2500) {
       await send('Page.navigate', { url });
       await sleep(wait);

@@ -18,7 +18,7 @@
 import { BEAD_STANDARDS, SCREEN_COMPOUNDS, SCREEN_DOSES, generateExample, screenTruth } from '../web/lib/examples.js';
 import { FCSError, parseFCS, parseTextSegment, readHeader, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
-import { SampleView, computeStatistic, countOf, population } from '../web/lib/engine.js';
+import { SampleView, computeStatistic, countOf, population, populationSize, workspaceView } from '../web/lib/engine.js';
 import { resolveFormula } from '../web/lib/formula.js';
 import { quantileSorted } from '../web/lib/stats.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
@@ -46,7 +46,7 @@ import { analyzeCSV, csvDatasets, scaleFor } from '../web/lib/csv-events.js';
 import { readZip } from '../web/lib/zip.js';
 import { createHash } from 'node:crypto';
 import { fingerprint, readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
-import { columnLabel, columnValue, columnLimits, LIMIT_STATUS } from '../web/lib/tables.js';
+import { columnLabel, columnValue, columnLimits, LIMIT_STATUS, tableCells } from '../web/lib/tables.js';
 import { formatPercent, formatStatistic } from '../web/lib/stats.js';
 import { calibrateBeads, channelBounds, fitBeadModel, standardCurve } from '../web/lib/calibration.js';
 import { exportGatingML } from '../web/lib/gatingml.js';
@@ -60,6 +60,9 @@ import { textPairs, themeTokens } from './accessibility-cases.mjs';
 import { VISIONS, lab as labOf, paletteReport, simulate } from '../web/lib/colorvision.js';
 import { buildCertificate, readCertificate, verifyCertificate } from '../web/lib/certificate.js';
 import { CERTIFICATE_EXAMPLES, certifiableExample } from './certificate-cases.mjs';
+import { buildReviewReport } from '../web/lib/review-report.js';
+import { gatingStrategyFigure } from '../web/lib/figures.js';
+import { exportScene } from '../web/lib/scene.js';
 import { CATEGORICAL, CATEGORICAL_CVD, colormapColor } from '../web/lib/colormaps.js';
 import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositive, withQCGate } from './multiverse-cases.mjs';
 import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
@@ -77,7 +80,7 @@ import { layoutCSV, layoutChanges, paddedWellName, parseLayout, platesOf, sample
 import { beadAssay, classifyBeads, findBeadLevels, mfiOf } from '../web/lib/beadassay.js';
 import { BEAD_SPEC, beadInput, beadWells, curveCases, exampleWorkspace, lplexFiles, scatterGroups, screenInput, screenWells } from './curve-cases.mjs';
 import { compareSpectra } from '../web/lib/spectral-library.js';
-import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
+import { ROOT, createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setCollection, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
 import { autoGateControl, referenceSpectrum, extractAutofluorescence, spectralSpreading, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
@@ -3375,6 +3378,76 @@ const suites = {
     const stale = await buildCertificate(changed, example.source, { version: 'validation' });
     check('certificates', 'a saved comparison the analysis no longer gives (its gate moved after saving) is reported when certifying', stale.warnings[0] ?? 'no warning', stale.warnings.length === 1 && /no longer matches/.test(stale.warnings[0]), 'reported');
     check('certificates', 'time: 14 examples certified twice and verified, and the checks above', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+  async reviews() {
+    // Review reports (R9): every example's report (its gates drawn in every sample, a table, a
+    // saved comparison, a gating-strategy figure). Every traced number is checked against the
+    // window's own functions on views prepared as the window prepares them (populationSize,
+    // tableCells, exportScene), not against the certificate code that made it, and as shown; and
+    // the page refers to nothing outside itself.
+    const started = performance.now();
+    const rows = [];
+    for (const id of CERTIFICATE_EXAMPLES) {
+      const example = await certifiableExample(id);
+      let ws = example.ws;
+      const donor = ws.samples.find((s) => s.role === 'sample') ?? ws.samples[0];
+      const deepest = ws.gates.filter((g) => g.type !== 'boolean' && g.type !== 'category').at(-1);
+      if (deepest) ws = setCollection(ws, 'figures', [gatingStrategyFigure(ws, deepest.id, donor.id)], 'add-figure');
+      const { html } = await buildReviewReport(ws, example.source, { version: 'validation', date: new Date('2026-10-07T00:00:00Z') });
+      // The window's numbers: every sample loaded as the window loads it.
+      const views = new Map();
+      for (const sample of ws.samples) {
+        const dataset = parseFCS(example.source.fcs(sample)).datasets[sample.datasetIndex ?? 0];
+        const columns = [];
+        for (const d of ws.derived ?? []) for (const [name, ref] of Object.entries(d.files?.[sample.id] ?? {})) {
+          const bytes = example.source.derived(ref.sha256);
+          columns.push({ name, column: new Float32Array(bytes.slice().buffer), version: ref.sha256.slice(0, 16) });
+        }
+        views.set(sample.id, workspaceView(ws, sample, dataset, columns));
+      }
+      const viewOf = (sampleId) => views.get(sampleId) ?? null;
+      const cellsOf = new Map(ws.tables.map((t) => [t.id, tableCells(ws, t, viewOf)]));
+      const traced = [...html.matchAll(/<button type="button" class="n[^"]*" data-k="([^"]+)" data-v="([^"]*)">([^<]*)<\/button>/g)].map((m) => ({ key: m[1].replace(/&amp;/g, '&'), value: JSON.parse(m[2].replace(/&quot;/g, '"').replace(/&amp;/g, '&')), text: m[3].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') }));
+      let checked = 0;
+      let wrong = 0;
+      let shownWrong = 0;
+      const scenes = new Map();
+      const sceneOf = (sampleId, gate) => {
+        const key = `${sampleId}|${gate.parentId ?? ROOT}|${gate.dims[0].channel}|${gate.dims[1]?.channel ?? ''}`;
+        if (!scenes.has(key)) scenes.set(key, exportScene(ws, viewOf(sampleId), { populationId: gate.parentId ?? ROOT, x: gate.dims[0].channel, y: gate.dims[1]?.channel ?? null, type: gate.dims[1] ? 'pseudocolor' : 'histogram', options: {} }, { width: 250, height: 230, theme: 'light' }));
+        return scenes.get(key);
+      };
+      for (const n of traced) {
+        const [kind, a, b, c] = n.key.split('|');
+        let value;
+        let shown;
+        if (kind === 'count') {
+          value = populationSize(viewOf(a), ws, b);
+          shown = value.toLocaleString('en-US');
+        } else if (kind === 'plot') {
+          const gate = ws.gates.find((g) => g.id === b);
+          const g = sceneOf(a, gate).gates.find((x) => x.id === b);
+          value = g.frequency;
+          shown = g.label;
+        } else if (kind === 'table' || kind === 'table-status') {
+          const table = ws.tables.find((t) => t.id === a);
+          const cell = cellsOf.get(a).cell(Number(c), b);
+          value = kind === 'table' ? cell.value : cell.status;
+          shown = kind === 'table' ? formatStatistic(table.columns[Number(c)].stat, cell.value) : cell.tag;
+        } else continue;
+        checked += 1;
+        if (n.value !== value) wrong += 1;
+        if (n.text !== shown) shownWrong += 1;
+      }
+      const comparisons = traced.filter((n) => n.key.startsWith('comparison|')).length;
+      const outside = [...html.matchAll(/\s(?:src|href)="([^"]*)"/g)].map((m) => m[1]).filter((u) => !u.startsWith('data:') && !u.startsWith('#') && !u.startsWith('https://doi.org/'));
+      const loads = /<link\b|<script[^>]+src=|@import|url\((?!#)|<iframe|<object|<embed/i.test(html) || outside.length > 0;
+      rows.push({ id, checked, wrong, shownWrong, comparisons, loads, bytes: html.length });
+    }
+    const all = rows.reduce((n, r) => n + r.checked, 0);
+    check('reviews', `the ${rows.length} examples' review reports: every count, table cell and plot percentage they print equal to the window's own (populationSize, tableCells, exportScene on views prepared as the window prepares them), and shown as the window shows it`, `${all.toLocaleString('en-US')} numbers: ${rows.reduce((n, r) => n + r.wrong, 0)} differ, ${rows.reduce((n, r) => n + r.shownWrong, 0)} shown otherwise; and ${rows.reduce((n, r) => n + r.comparisons, 0)} numbers of comparisons`, rows.every((r) => r.wrong === 0 && r.shownWrong === 0 && r.checked > 0), 'all equal');
+    check('reviews', 'each report self-contained: no stylesheet, script, frame, font or image from outside (only data: URIs and in-page references; DOI links are followed only when clicked)', `${rows.filter((r) => !r.loads).length} of ${rows.length}; ${(rows.reduce((n, r) => n + r.bytes, 0) / rows.length / 1e6).toFixed(1)} MB on average`, rows.every((r) => !r.loads), 'all');
+    check('reviews', 'time: 14 examples reported (every sample\'s gates drawn) and checked', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
   },
 };
 

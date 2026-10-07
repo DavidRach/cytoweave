@@ -1,6 +1,6 @@
 ---
 title: Figures, methods and certificates
-description: Build publication figures from live plots in CytoWeave, export SVG, PNG or vector PDF that carry the analysis behind them, repeat a figure for every sample or subject as a PDF or PowerPoint batch report, copy a methods paragraph with numbered references and BibTeX, check the MIFlowCyt checklist, compare versions of an analysis with checkpoints, and make a reproducibility certificate that anyone can verify.
+description: Build publication figures from live plots in CytoWeave, export SVG, PNG or vector PDF that carry the analysis behind them, repeat a figure for every sample or subject as a PDF or PowerPoint batch report, copy a methods paragraph with numbered references and BibTeX, check the MIFlowCyt checklist, compare versions of an analysis with checkpoints, share it as a review report that opens in any browser, and make a reproducibility certificate that anyone can verify.
 lede: Leave with what a paper needs: figures that stay true to the analysis until you export them, a methods paragraph written from what you actually did, a record of every change, and a certificate that lets anyone confirm every number.
 ---
       <h2 id="figures">Publication figures</h2>
@@ -70,6 +70,19 @@ lede: Leave with what a paper needs: figures that stay true to the analysis unti
         <li>Select the checkpoint. CytoWeave lists what changed in words, such as "the Live gate moved by 3% of the axis" or "the compensation of 12 samples changed", and the effect on every population's frequency in the loaded samples.</li>
         <li><strong>Restore</strong> returns to the checkpoint; the current analysis stays available through undo.</li>
       </ol>
+
+      <h2 id="review">Review reports</h2>
+      <shot name="review-report" alt="A review report opened in a browser: every sample's gates drawn on its own events with each gate's percentage of its parent, and a clicked percentage traced to the counts behind it, the sample, its file's SHA-256, the compensation and the gates above it">A review report: every sample's gates, and where a number comes from.</shot>
+      <p>A review report is the analysis as one HTML file, for a PI, a collaborator or a reviewer who does not have CytoWeave. It opens in any browser and holds:</p>
+      <ul>
+        <li>the samples, with their files' SHA-256 checksums, annotations and compensation;</li>
+        <li>the gating hierarchy, the scales, and every population's event count in every sample;</li>
+        <li>every sample's gates, each drawn on its parent population's events, with each gate's % of parent;</li>
+        <li>the workspace's figures and tables, and the comparisons saved for the report, with their tests, effect sizes and every sample's value;</li>
+        <li>the methods with their references, MIFlowCyt, and the change log with the state of its chain.</li>
+      </ul>
+      <p>Every underlined number is traced: click it to see where it comes from: its exact value, the counts behind a percentage ("100 × 89,654 / 93,452 events"), the sample and its file's checksum, the compensation, and each gate above the population. The numbers are computed from the FCS files as the report is made, with the code certificates use, so a report and a certificate of the same analysis print the same numbers.</p>
+      <p>To make one, go to <strong>Report → Review report</strong> (or <strong>Workspace → Export → Review report</strong>) and click <strong>Make a review report</strong>. Untick <strong>Draw every sample's gates</strong> for a smaller file, or tick <strong>Draw the controls' gates too</strong>. The file loads nothing from the network: its styles, plots and images are inside it, so it opens offline, in an email attachment or on a journal's review site. Runs write one with <a href="scripting.html#run"><code>cytoweave run --review</code></a>, and agents with <code>export_review_report</code>.</p>
 
       <h2 id="certificate">Reproducibility certificates</h2>
       <p>A certificate lets anyone confirm the numbers of an analysis, years later, from its files. It packs the analysis with everything needed to compute them again and records every number it reported; verifying computes each one again and compares.</p>

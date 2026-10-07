@@ -188,7 +188,8 @@ async function loadView(ws, sample, source) {
 }
 
 // Every number the certificate reports, computed from the files sample by sample. Returns
-// { numbers, problems: [{ sampleId, name, message }] }. options: { onProgress(fraction, text) }.
+// { numbers, problems: [{ sampleId, name, message }] }. options: { onProgress(fraction, text),
+// onView(sample, view, viewOf): called while each sample is loaded (review reports draw it) }.
 export async function computeNumbers(ws, source, options = {}) {
   const scope = certificateScope(ws);
   const problems = [];
@@ -242,6 +243,7 @@ export async function computeNumbers(ws, source, options = {}) {
     scope.comparisons.forEach((c, k) => {
       if (wanted[k].has(sample.id)) comparisonValues[k].set(sample.id, measureValue(view, ws, c.measure, { viewOf }));
     });
+    await options.onView?.(sample, view, viewOf);
     current = null;
   }
   const comparisons = scope.comparisons.map((record, k) => {

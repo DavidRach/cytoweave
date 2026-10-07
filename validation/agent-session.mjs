@@ -588,6 +588,12 @@ try {
   const lean = await tool('verify_certificate', { path: leanPath }, 'Plates agent');
   const logged = (await page(`return app.store.ws.provenance.filter((e) => e.action === 'certify').length;`));
   check('a certificate without its files: incomplete until they are supplied, the missing files named; both certificates recorded in the change log', `${lean.data.verdict}: ${lean.data.files.missing.length} files missing (${lean.data.files.missing[0]}, …); ${logged} certificates in the log`, statSync(leanPath).size < statSync(certificatePath).size / 10 && lean.data.verdict === 'incomplete' && lean.data.files.missing.length === 56 && logged === 2, 'incomplete; 2 in the log');
+  const reviewPath = join(temp, 'beads.review.html');
+  const reviewed = await tool('export_review_report', { path: reviewPath, plots: 'none' }, 'Plates agent');
+  const reviewText = readFileSync(reviewPath, 'utf8');
+  const traced = (reviewText.match(/<button type="button" class="n/g) ?? []).length;
+  const wrongPath = await refused('export_review_report', { path: join(temp, 'beads.review.pdf') });
+  check('export_review_report: one self-contained HTML file of the analysis, every number traced; a path that is not .html refused', `${reviewed.data.numbers} numbers (${traced} in the file), ${(reviewed.data.bytes / 1e3).toFixed(0)} kB; ${wrongPath ? 'refused .pdf' : 'accepted .pdf'}`, reviewText.startsWith('<!doctype html>') && traced === reviewed.data.numbers && traced > 56 * 3 && !/<script[^>]+src=|<link\b/i.test(reviewText) && Boolean(wrongPath), 'traced; .pdf refused');
 } catch (error) {
   check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

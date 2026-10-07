@@ -759,6 +759,8 @@ async function start() {
       { section: 'Export' },
       { label: 'Workspace file (.cwz)', icon: 'download', onSelect: exportWorkspaceFile },
       { label: 'Workspace with FCS files (ACS archive)', icon: 'download', onSelect: exportBundle },
+      { label: 'Review report (HTML)…', icon: 'report', onSelect: async () => { await app.setMode('report'); app.showReviewReport?.(); } },
+      { label: 'Reproducibility certificate…', icon: 'report', onSelect: async () => { await app.setMode('report'); app.showCertificate?.(); } },
       { label: 'Gates as Gating-ML 2.0', icon: 'download', onSelect: exportGatingML },
       { label: 'Population memberships (CLR)…', icon: 'download', onSelect: () => app.exportCLR() },
       { label: 'FlowJo workspace (.wsp)…', icon: 'download', onSelect: () => app.exportFlowJo() },

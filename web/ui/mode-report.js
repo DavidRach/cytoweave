@@ -10,12 +10,22 @@ import { countOf, populationSet } from '../lib/engine.js';
 import { newId } from '../lib/gates.js';
 import { ROOT, gatePath, setNotes } from '../lib/workspace.js';
 import { certificatePane, logChainNote } from './certificates.js';
+import { reviewPane } from './review.js';
 
 export function mountReportMode(app, container) {
   const { store, data } = app;
   let tab = 'methods';
   let compareWith = null;
   const certificateState = { includeData: true, last: null };
+  const reviewState = { plots: 'all', includeControls: false, last: null };
+  app.showReviewReport = () => {
+    tab = 'review';
+    render();
+  };
+  app.showCertificate = () => {
+    tab = 'certificate';
+    render();
+  };
 
   const tabs = h('div.segmented');
   const body = h('div');
@@ -24,7 +34,7 @@ export function mountReportMode(app, container) {
     h('div.view-body', h('div', { style: { maxWidth: '1100px', margin: '0 auto' } }, body)));
   container.append(root);
 
-  const TABS = [['methods', 'Methods'], ['checklist', 'MIFlowCyt'], ['history', 'Checkpoints'], ['certificate', 'Certificate'], ['log', 'Change log']];
+  const TABS = [['methods', 'Methods'], ['checklist', 'MIFlowCyt'], ['history', 'Checkpoints'], ['review', 'Review report'], ['certificate', 'Certificate'], ['log', 'Change log']];
   function renderTabs() {
     clear(tabs);
     for (const [id, label] of TABS) tabs.append(h(`button${tab === id ? '.active' : ''}`, { type: 'button', onclick: () => { tab = id; render(); } }, label));
@@ -172,6 +182,7 @@ export function mountReportMode(app, container) {
     if (tab === 'methods') body.append(methodsTab());
     else if (tab === 'checklist') body.append(checklistTab());
     else if (tab === 'history') body.append(historyTab());
+    else if (tab === 'review') body.append(reviewPane(app, reviewState));
     else if (tab === 'certificate') body.append(certificatePane(app, certificateState));
     else body.append(logTab());
   }

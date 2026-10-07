@@ -1169,6 +1169,29 @@ cw_export_certificate <- function(path, include_data = NULL, overwrite = NULL, c
   cw_call("export_certificate", path = path, includeData = include_data, overwrite = overwrite, cw = cw)
 }
 
+#' Write a review report
+#'
+#' Write a review report of the analysis: one self-contained HTML file (.html) for a PI,
+#' collaborator or reviewer, opened in any browser without CytoWeave: the samples with their
+#' SHA-256 checksums, the gating hierarchy and every population's count in every sample, every
+#' sample's gates drawn on its own events (plots "all", the default; "none" leaves them out;
+#' includeControls draws the controls too), the workspace's figures and tables, the saved
+#' comparisons, the methods, MIFlowCyt and the change log. Every number is traced (a click
+#' shows its sample, file checksum, gates and the counts behind it); the numbers are those a
+#' reproducibility certificate records. The file loads nothing from the network. The file must
+#' not exist unless overwrite is true.
+#'
+#' @param path Absolute path of the file to write (.html). Required; a string.
+#' @param include_controls Optional; TRUE or FALSE (Python: True or False).
+#' @param overwrite Optional; TRUE or FALSE (Python: True or False).
+#' @param plots Optional; one of "all", "none".
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_export_review_report <- function(path, include_controls = NULL, overwrite = NULL, plots = NULL, cw = cw_default()) {
+  cw_call("export_review_report", path = path, includeControls = include_controls, overwrite = overwrite, plots = plots, cw = cw)
+}
+
 #' Verify a reproducibility certificate
 #'
 #' Verify a CytoWeave reproducibility certificate (absolute path of the .acs file): check every

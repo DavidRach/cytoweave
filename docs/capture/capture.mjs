@@ -779,6 +779,18 @@ const scenes = {
     await compensateFromControls();
     await mode('report');
   },
+  // The PBMC analysis's review report, opened in the browser, a plot's percentage traced.
+  async 'review-report'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await app(`const ui = await import('./ui/review.js'); const out = await ui.makeReviewReport(app, {}); window.__review = out.html;`);
+    // Opened from a file, as a reader opens it.
+    const file = join(mkdtempSync(join(tmpdir(), 'cytoweave-review-')), 'review.html');
+    writeFileSync(file, await js('window.__review'));
+    await b.goto(`file://${file}`, 1500);
+    await js(`(() => { const section = document.getElementById('plots'); window.scrollTo(0, section.getBoundingClientRect().top + window.scrollY - 12); [...section.querySelectorAll('button.n')][1].click(); return true; })()`);
+    await sleep(600);
+  },
   // A reproducibility certificate of the PBMC analysis, opened and verified.
   async certificate() {
     await example('pbmc-immunophenotyping');

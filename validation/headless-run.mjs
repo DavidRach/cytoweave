@@ -206,7 +206,7 @@ try {
     const result = spawnSync(binary, ['verify', '--chrome', findChrome(), ...args], { encoding: 'utf8' });
     return { status: result.status, out: `${result.stdout}${result.stderr}`.trim() };
   };
-  const c = run(join(temp, 'c'), ['--certificate']);
+  const c = run(join(temp, 'c'), ['--certificate', '--review']);
   const certificatePath = join(temp, 'c', 'certificate.acs');
   const fromRun = existsSync(certificatePath) ? await readCertificate(readFileSync(certificatePath)) : null;
   const inNode = fromRun ? await verifyCertificate(fromRun, { version: fromRun.certificate.software.version }) : null;
@@ -225,6 +225,39 @@ try {
   const withData = verify(join(temp, 'lean.acs'), '--data', dataFolder, '--report', join(temp, 'verification.json'));
   const written = existsSync(join(temp, 'verification.json')) ? JSON.parse(readFileSync(join(temp, 'verification.json'), 'utf8')) : null;
   check('a certificate made in Node (stored k-means clusters and a saved comparison) verified by cytoweave verify in Chrome: without its files incomplete (exit 3), with --data confirmed (exit 0; numbers through logarithms may differ between the engines in the last digits) and the report written', `exit ${without.status}, then ${withData.status}; report: ${written ? `${written.verdict}, ${written.numbers.identical} of ${written.numbers.checked} numbers identical and ${written.numbers.equalTo12Digits} equal to 12 digits (largest relative difference ${written.numbers.largestRelativeDifference.toExponential(1)}; ${written.engines.certificate} and ${written.engines.verifier})` : 'missing'}`, without.status === 3 && withData.status === 0 && written?.verdict === 'confirmed' && written.numbers.identical + written.numbers.equalTo12Digits === lean.certificate.total, 'exit 3, then 0');
+  // 5. The run's review report opened in Chrome: nothing requested beyond the file, no script
+  // error, and a number's trace shown when it is clicked.
+  const reviewPath = join(temp, 'c', 'review.html');
+  const requests = [];
+  const errors = [];
+  b ??= await launch({ port: PORT + 1 });
+  await b.send('Network.enable');
+  b.on('Network.requestWillBeSent', (event) => requests.push(event.request.url));
+  b.on('Runtime.exceptionThrown', (event) => errors.push(event.exceptionDetails?.exception?.description ?? event.exceptionDetails?.text));
+  await b.goto(`file://${reviewPath}`, 3000);
+  const opened = await b.eval(`(async () => {
+    const numbers = document.querySelectorAll('button.n');
+    const plot = document.querySelector('#plots button.n');
+    plot?.click();
+    await new Promise((r) => setTimeout(r, 200));
+    return { numbers: numbers.length, figures: document.querySelectorAll('#plots figure.plot').length, trace: document.getElementById('trace').innerText };
+  })()`);
+  const outsideRequests = requests.filter((url) => !url.startsWith('data:') && url !== `file://${reviewPath}`);
+  check('cytoweave run --review: the review report opened in Chrome requests nothing but itself, runs without errors, and shows a number\'s source when clicked', `${opened.numbers} traced numbers, ${opened.figures} plots; ${requests.length} requests (${outsideRequests.length} outside the file${outsideRequests.length ? `: ${outsideRequests.slice(0, 3).join(', ')}` : ''}); ${errors.length} errors; trace: ${opened.trace.split('\n').slice(1, 3).join(' / ')}`, existsSync(reviewPath) && outsideRequests.length === 0 && errors.length === 0 && opened.numbers > 500 && opened.figures > 0 && opened.figures % 12 === 0 && /% of parent/.test(opened.trace) && /SHA-256/.test(opened.trace), 'nothing outside; no errors; traced');
+
+  // The report's accessibility (axe-core, WCAG 2.1 A and AA), in both themes.
+  const AXE = join(ROOT, 'validation/cache/axe-core/axe.min.js');
+  const audits = [];
+  if (existsSync(AXE)) {
+    await b.eval(`(0, eval)(${JSON.stringify(readFileSync(AXE, 'utf8'))}); true`);
+    for (const dark of [false, true]) {
+      await b.theme(dark);
+      audits.push(...await b.eval(`(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })).violations.map((v) => '${dark ? 'dark' : 'light'} ' + v.id + ' (' + v.nodes.length + ')'))()`));
+    }
+    await b.theme(false);
+  }
+  check('the review report accessible (axe-core, WCAG 2.1 A and AA, light and dark)', existsSync(AXE) ? (audits.length ? audits.join(', ') : 'no violations') : 'axe-core missing (node validation/fetch.mjs axe-core)', existsSync(AXE) && audits.length === 0, 'no violations');
+
   // certificate.json edited inside the archive (a count raised by one).
   const entries = await readZip(lean.bytes);
   const edited = JSON.parse(new TextDecoder().decode(entries.get('certificate.json')));

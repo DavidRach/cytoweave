@@ -1200,6 +1200,30 @@ class Tools:
         """
         return self.call("export_certificate", **{"path": path, "includeData": include_data, "overwrite": overwrite})
 
+    def export_review_report(self, path, *, include_controls=None, overwrite=None, plots=None):
+        """Write a review report.
+
+        Write a review report of the analysis: one self-contained HTML file (.html) for a PI,
+        collaborator or reviewer, opened in any browser without CytoWeave: the samples with their
+        SHA-256 checksums, the gating hierarchy and every population's count in every sample, every
+        sample's gates drawn on its own events (plots "all", the default; "none" leaves them out;
+        includeControls draws the controls too), the workspace's figures and tables, the saved
+        comparisons, the methods, MIFlowCyt and the change log. Every number is traced (a click
+        shows its sample, file checksum, gates and the counts behind it); the numbers are those a
+        reproducibility certificate records. The file loads nothing from the network. The file must
+        not exist unless overwrite is true.
+
+        Args:
+            path: Absolute path of the file to write (.html). Required; a string.
+            include_controls: Optional; TRUE or FALSE (Python: True or False).
+            overwrite: Optional; TRUE or FALSE (Python: True or False).
+            plots: Optional; one of "all", "none".
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("export_review_report", **{"path": path, "includeControls": include_controls, "overwrite": overwrite, "plots": plots})
+
     def verify_certificate(self, path, *, data=None):
         """Verify a reproducibility certificate.
 

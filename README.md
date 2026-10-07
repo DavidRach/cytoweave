@@ -189,6 +189,8 @@ guides to every view, with screenshots.
     and file checksums): open one to see what changed since, or rebuild it.
   - Checkpoints, with a plain-language diff of what changed between two
     versions of an analysis and how it moved every frequency.
+  - Review reports: the analysis as one HTML file that opens in any browser,
+    every sample's gates drawn and every number traced to its source.
   - Reproducibility certificates: the analysis packed with its files and every
     number it reported, with a fingerprint to quote; anyone can verify it, and
     every number is computed again from the files and compared.
@@ -904,6 +906,12 @@ where it came from and what has changed since, plot by plot: for example
   Live gate moved by 3% of the axis" or "the compensation of 12 samples
   changed", and shows the effect on every population's frequency. Restore a
   checkpoint with one click.
+- **Review reports.** Report → Review report writes the analysis as one
+  self-contained HTML file for a PI, collaborator or reviewer without
+  CytoWeave: the samples with their checksums, the gating, every sample's
+  gates drawn on its own events, the figures, tables and saved comparisons,
+  the methods, MIFlowCyt and the change log. Click any number to see where it
+  comes from. The file loads nothing from the network.
 - **Reproducibility certificates.** Report → Certificate writes an ACS
   archive of the analysis: the workspace, the FCS files (or only their
   checksums), stored channels, Gating-ML, the methods and `certificate.json`,
@@ -1160,8 +1168,9 @@ folder:
 - `run.json`, which records each input file's checksum, each step's outcome,
   every population's count in every sample, and what was written.
 
-`--qc` runs acquisition QC first, `--flowjo` adds a FlowJo workspace and
-`--certificate` a reproducibility certificate (`certificate.acs`).
+`--qc` runs acquisition QC first, `--flowjo` adds a FlowJo workspace,
+`--review` a review report (`review.html`) and `--certificate` a
+reproducibility certificate (`certificate.acs`).
 `--steps steps.json` runs any sequence of the agent actions instead. The exit
 status is 0 when every step succeeded, 1 when one failed and 2 for a usage
 error. See [Scripting and command line](https://robert-mcdermott.github.io/cytoweave/docs/scripting.html#run).
@@ -1273,6 +1282,7 @@ pipelines, as the app does, against answers known in advance:
 | Events in and out | Concatenated, downsampled and per-sample FCS files against their sources; CSV files from CytoWeave, FlowJo and European locales, and a damaged one; AnnData files read by anndata 0.10 and 0.13, h5py, pyfive, fcsparser and FlowIO | Every event its source's; every population counted alike per SampleID; seeded downsampling exact and uniform; CSV values back exactly, every fault reported; X, obs and maps read exactly by every reader |
 | Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
 | Headless runs | The PBMC example's 12 samples and a template run twice with `cytoweave run`, and analyzed in the window with its own buttons; Node on the same files | The same outputs both times and as the window exports them (CSV bytes, workbook values, report text, workspace, methods); all 228 counts equal to Node's |
+| Review reports | Every example's report, every sample's gates drawn; a run's report opened in Chrome | All 2,892 counts, table cells and plot percentages equal to the window's own and shown as it shows them; nothing loaded from outside the file; no accessibility violations (WCAG 2.1 AA, both themes) |
 | Reproducibility certificates | Every example certified with its gates, a table, k-means clusters stored as a channel and a saved comparison, read back and verified; six kinds of tampering; certificates made in Chrome verified in Node and the reverse | All 2,413 numbers identical, bit for bit; the same archive byte for byte when made twice; every change caught; across engines, confidence limits equal to 12 digits |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
 | Robustness to analysis choices | Comparisons with known answers: a real effect, a gain shift, clogs and a stale matrix in one group, and no effect | The real effect holds in 64 of 64 analyses; each artifact called fragile or traced to the choice behind it; under no effect, half of the chance findings are flagged |

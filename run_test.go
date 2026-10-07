@@ -36,7 +36,7 @@ func TestRunDefaultSteps(t *testing.T) {
 	fcs := filepath.Join(dir, "fcs")
 	os.Mkdir(fcs, 0o755)
 	var stderr bytes.Buffer
-	opts, err := parseRunArgs([]string{"--template", template, fcs, "--output", filepath.Join(dir, "out"), "--qc", "--flowjo", "--certificate", "--report", "pptx", "--report-by", "subject", "--overwrite"}, &stderr)
+	opts, err := parseRunArgs([]string{"--template", template, fcs, "--output", filepath.Join(dir, "out"), "--qc", "--flowjo", "--review", "--certificate", "--report", "pptx", "--report-by", "subject", "--overwrite"}, &stderr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestRunDefaultSteps(t *testing.T) {
 	if templatePath != template {
 		t.Errorf("template %q", templatePath)
 	}
-	want := "open_files run_qc apply_template accept_proposals export_table export_table export_table export_report export_flowjo export_certificate export_workspace methods statistics_table"
+	want := "open_files run_qc apply_template accept_proposals export_table export_table export_table export_report export_flowjo export_review_report export_certificate export_workspace methods statistics_table"
 	if got := strings.Join(actions(steps), " "); got != want {
 		t.Fatalf("steps\n%s\nwant\n%s", got, want)
 	}
@@ -67,7 +67,7 @@ func TestRunDefaultSteps(t *testing.T) {
 			}
 		}
 	}
-	if got := strings.Join(paths, " "); got != "tables.xlsx CD4_T_cells_of_parent.csv CD4_T_cells_of_parent_2.csv report.pptx workspace.wsp certificate.acs workspace.cwz methods.txt" {
+	if got := strings.Join(paths, " "); got != "tables.xlsx CD4_T_cells_of_parent.csv CD4_T_cells_of_parent_2.csv report.pptx workspace.wsp review.html certificate.acs workspace.cwz methods.txt" {
 		t.Errorf("paths: %s", got)
 	}
 	if steps[7].Args["by"] != "subject" {

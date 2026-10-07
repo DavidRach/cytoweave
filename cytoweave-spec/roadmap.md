@@ -695,6 +695,17 @@ Planned beside wave 7, not started there; they continue beside wave 8.
    CytoWeave.
    - Validation: every number in the report equal to the workspace's; the file makes no network
      requests.
+   - Done (slice 2): Report → Review report (and Workspace → Export) writes one HTML file: samples
+     with checksums, gating, every population's count in every sample, every sample's gates drawn
+     (one plot per population and pair of channels), figures, tables, saved comparisons with a
+     dot plot, methods, MIFlowCyt and the change log; every number a button whose trace (exact
+     value, the counts behind a percentage, sample, checksum, compensation, gates) the inline
+     script shows. Numbers from the certificate's computeNumbers (an onView hook draws each
+     sample while it is loaded). Figures composed in lib/figure-svg.js. `cytoweave run --review`
+     and agents' `export_review_report`. Validated by the `reviews` suite (2,892 numbers equal to
+     the window's own functions' and shown alike; no outside references), headless-run (Chrome:
+     no request beyond the file, no error, a number traced; axe-core in both themes) and the
+     agent session.
 3. **A virtual FMO (C4):** where each population's negative would fall without a given dye,
    predicted from the spread model of wave 4, drawn on the plot as a guide for gating. No tool
    offers it.
