@@ -49,7 +49,7 @@ function compute(app, { sample, view, populationId, channel, other, onReady }) {
   const fmoSample = fmoControlFor(ws, channel, marker);
   const fmoView = fmoSample ? app.data.view(fmoSample.id) : null;
   if (fmoSample && !fmoView) app.data.ensure(fmoSample.id).then(() => onReady?.(), () => {});
-  const key = [sample.id, view.version, unstained.version, popKey(ws, populationId, sample.id), channel, other ?? '', JSON.stringify(found.record.noise?.fitted ?? ''), fmoView?.version ?? 'none'].join('|');
+  const key = [sample.id, view.version, unstainedSample.id, unstained.version, popKey(ws, populationId, sample.id), popKey(ws, populationId, unstainedSample.id), channel, other ?? '', JSON.stringify(found.record.noise?.fitted ?? ''), fmoView?.version ?? 'none'].join('|');
   if (cache.has(key)) return cache.get(key);
   let entry;
   try {

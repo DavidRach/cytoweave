@@ -3,6 +3,25 @@
 
 const MAX_HISTORY = 300;
 
+// Work that started in one workspace and finished after another was opened (a run, an agent's
+// action, files still being read) must not write into the workspace now open.
+export class WorkspaceChangedError extends Error {
+  constructor(message = 'Another workspace was opened while this was running, so its result was not added.') {
+    super(message);
+    this.name = 'WorkspaceChangedError';
+  }
+}
+
+// A result's per-sample columns for the samples of the workspace now open. Samples removed while
+// it ran are left out; when none is left, the result belongs to another workspace opened
+// meanwhile, and is refused.
+export function presentSamples(ws, perSample) {
+  const ids = new Set(ws.samples.map((s) => s.id));
+  const kept = new Map([...perSample].filter(([id]) => ids.has(id)));
+  if (perSample.size && !kept.size) throw new WorkspaceChangedError();
+  return kept;
+}
+
 export function createStore(initialWorkspace) {
   const listeners = new Set();
   const state = {
@@ -70,6 +89,8 @@ export function createStore(initialWorkspace) {
     // Replaces the workspace with an edited one, recording it for undo.
     commit(next, label = 'Edit', topics = ['ws']) {
       if (!next || next === state.ws) return;
+      // A workspace built from another one (captured before that one was replaced).
+      if (next.id !== state.ws.id) throw new WorkspaceChangedError();
       state.past.push(state.ws);
       state.labels.past.push(label);
       if (state.past.length > MAX_HISTORY) {
@@ -83,8 +104,14 @@ export function createStore(initialWorkspace) {
     },
     // Replaces the workspace without an undo step (loading, background results).
     replace(next, topics = ['ws']) {
+      if (next.id !== state.ws.id) throw new WorkspaceChangedError();
       state.ws = next;
       notify(['ws', ...topics]);
+    },
+    // A check that the workspace open now is still open later: () => true until another is loaded.
+    sameWorkspace() {
+      const generation = state.generation;
+      return () => state.generation === generation;
     },
     reset(next) {
       state.generation += 1;

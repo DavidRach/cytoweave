@@ -170,7 +170,7 @@ async function start() {
     data.pinned.clear();
     data.pinned.add(id);
     store.setUI({ sampleId: id }, ['sample']);
-    data.ensure(id).catch((error) => toast(error.message, { kind: 'error' }));
+    data.ensure(id).catch((error) => { if (error.name !== 'AbortError') toast(error.message, { kind: 'error' }); });
   };
 
   app.stepSample = (delta) => {
@@ -298,11 +298,16 @@ async function start() {
 
   async function importFCSItems(items, options = {}) {
     const progress = progressToast(`Reading ${items.length} FCS file${items.length > 1 ? 's' : ''}…`);
+    const sameWorkspace = store.sameWorkspace();
     // Files are handed over as they are (a File is read in parts by the worker), not read here.
     const files = items.map((item) => ({ name: item.name, file: item.bytes ? null : item.file instanceof Blob ? item.file : null, bytes: item.bytes ?? null, localUrl: item.localUrl ?? null, size: item.file?.size ?? item.size, order: item.order, folder: item.folder }));
     const { records, problems } = await data.importFCS(files, (done, total, name) => progress.update(done / total, `Reading ${name} (${Math.min(total, Math.floor(done) + 1)}/${total})`));
     if (!records.length) {
       progress.fail(problems[0] ?? 'No FCS data could be read.');
+      return [];
+    }
+    if (!sameWorkspace()) {
+      progress.fail('Another workspace was opened while the files were read, so they were not added to it. Add them again.');
       return [];
     }
     let next = addSamples(store.ws, records);
@@ -331,7 +336,8 @@ async function start() {
     // Files that carry the gates FACSChorus recorded: offer them.
     const recorded = records.filter((r) => r.acquisitionGates);
     if (recorded.length && options.offerGates !== false) {
-      toast(`${recorded.length === 1 ? 'This file carries' : `${recorded.length} files carry`} the gates FACSChorus recorded.`, { action: { label: 'Import the gates', onClick: () => app.importAcquisitionGates(recorded.map((r) => r.id)) } });
+      const offered = store.sameWorkspace();
+      toast(`${recorded.length === 1 ? 'This file carries' : `${recorded.length} files carry`} the gates FACSChorus recorded.`, { action: { label: 'Import the gates', onClick: () => (offered() ? app.importAcquisitionGates(recorded.map((r) => r.id)) : toast('Those gates belong to the workspace that was open when they were offered.')) } });
     }
     return records;
   }
@@ -551,6 +557,8 @@ async function start() {
       progress.update(0.65, 'Reading the generated files…');
       const records = await importFCSItems(items, { noGroups: true, select: false });
       progress.done();
+      // Another example (or workspace) opened meanwhile: this one's annotations are not its.
+      if (!records.length) return;
       applyExampleHints(records, result);
       // Workspaces that come with an example (a FlowJo .wsp) open in their import dialog; not
       // awaited, so a script or agent that opened the example is not held by the dialog.
@@ -595,11 +603,17 @@ async function start() {
     app.setMode('gate');
     const suggested = hints.suggestedGates ?? [];
     if (suggested.length) {
+      // The suggestion is this example's: not another workspace opened while the toast shows.
+      const offered = store.sameWorkspace();
       toast(`This example comes with a suggested gating strategy (${suggested.length} gates). Gate it yourself, or add the suggestion.`, {
         timeout: 15000,
         action: {
           label: 'Add suggested gates',
           onClick: async () => {
+            if (!offered()) {
+              toast('That suggestion was for the example that was open when it was offered.');
+              return;
+            }
             const { addGates } = await import('./lib/workspace.js');
             store.commit(addGates(store.ws, suggested.map((g) => ({ ...g, overrides: g.overrides ?? {} })), 'add-suggested-gates').ws, 'Add the suggested gates');
           },
@@ -633,18 +647,17 @@ async function start() {
   };
 
   const saveState = document.getElementById('save-state');
-  let saving = false;
-  async function saveNow() {
-    const ws = store.ws;
-    if (!store.isDirty() || saving) return;
-    if (!ws.samples.length && !ws.gates.length) return;
-    saving = true;
+  // The save under way, if any. A save asked for meanwhile (opening another workspace) waits for
+  // it, then saves what changed since: returning at once would lose those edits.
+  let saving = null;
+  async function writeWorkspace(ws) {
     saveState.className = 'save-state saving';
     saveState.setAttribute('aria-label', 'Saving');
     try {
       await library.saveWorkspace(ws.id, serializeWorkspace(ws));
       prefs.set('lastWorkspace', ws.id);
-      store.markSaved(ws);
+      // Another workspace may have been opened while this one was written.
+      if (store.ws.id === ws.id) store.markSaved(ws);
       saveState.className = 'save-state';
       saveState.title = `Saved to ${library.kind === 'desktop' ? library.location : 'this browser'}`;
       saveState.setAttribute('aria-label', 'Saved');
@@ -652,10 +665,20 @@ async function start() {
       saveState.className = 'save-state error';
       saveState.title = `Not saved: ${error.message}`;
       saveState.setAttribute('aria-label', 'Not saved');
-    } finally {
-      saving = false;
-      if (store.isDirty()) autosave();
     }
+  }
+  async function saveNow() {
+    while (saving) await saving;
+    const ws = store.ws;
+    if (!store.isDirty()) return;
+    if (!ws.samples.length && !ws.gates.length) return;
+    saving = writeWorkspace(ws);
+    try {
+      await saving;
+    } finally {
+      saving = null;
+    }
+    if (store.isDirty()) autosave();
   }
   app.saveNow = saveNow;
   const autosave = debounce(saveNow, 1200);
@@ -1074,6 +1097,8 @@ async function start() {
       // A selection that no longer exists (after undo or delete) falls back to its parent.
       if (store.ui.gateId && !gateById(store.ws, store.ui.gateId)) store.setUI({ gateId: null }, ['gate']);
       if (store.ui.sampleId && !store.ws.samples.some((s) => s.id === store.ui.sampleId)) store.setUI({ sampleId: store.ws.samples[0]?.id ?? null }, ['sample']);
+      const present = [...store.ui.selectedSamples].filter((id) => store.ws.samples.some((s) => s.id === id));
+      if (present.length !== store.ui.selectedSamples.size) store.setUI({ selectedSamples: new Set(present) }, ['selection']);
     }
     if (topics.has('tiles')) prefs.set('tileSize', store.ui.tileSize);
     app.sidebar.update(topics);

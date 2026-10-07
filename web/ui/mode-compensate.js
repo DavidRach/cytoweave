@@ -5,6 +5,7 @@ import { h, icon, clear, formatCount } from './dom.js';
 import { shownColor } from '../lib/colormaps.js';
 import { showMenu, showDialog, toast, progressToast, promptDialog, confirmDialog } from './overlays.js';
 import { compensationInputs, optimizerPane } from './panel-design.js';
+import { WorkspaceChangedError } from './store.js';
 import { conditionNumber, compensate, controlResiduals, leanCheck, identityMatrix } from '../lib/compensation.js';
 import { isDetectorOf, spectralWorkspace, spilloverFromControls } from './controls.js';
 import { readSpillover } from '../lib/fcs.js';
@@ -139,8 +140,10 @@ export function mountCompensateMode(app, container) {
       return;
     }
     const progress = progressToast('Computing spillover from controls…');
+    const sameWorkspace = store.sameWorkspace();
     try {
       const { detectors, matrix, report, spreading, spread } = await spilloverFromControls(data, store.ws, { gateId, unstainedId, method, onProgress: (f, m) => progress.update(f, m) });
+      if (!sameWorkspace()) throw new WorkspaceChangedError();
       const added = addCompensation(store.ws, { name: `Computed ${new Date().toLocaleDateString()} (${method})`, channels: detectors, matrix, source: 'computed', method, report, ...(spread ? { spread } : {}) });
       store.commit(added.ws, 'Compute compensation');
       selectedId = added.compensation.id;

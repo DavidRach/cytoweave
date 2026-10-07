@@ -7,6 +7,7 @@ import { channelTransform } from '../lib/engine.js';
 import { addDerived } from '../lib/workspace.js';
 import { peacoQCLayout } from '../lib/qc.js';
 import { WorkerClient } from './workers.js';
+import { presentSamples } from './store.js';
 
 export const QC_CHANNEL = 'QC pass';
 export const QC_GREEN = '#1f9d55';
@@ -248,7 +249,7 @@ export async function saveDerivedMergedIn(app, record, perSample, label, options
   const existing = store.ws.derived.find((d) => d.kind === record.kind && sameSet(d.outputs, record.outputs));
   if (!existing) return app.saveDerived({ ...record, perSample }, label);
   const files = { ...(existing.files ?? {}) };
-  for (const [sampleId, columns] of perSample) {
+  for (const [sampleId, columns] of presentSamples(store.ws, perSample)) {
     files[sampleId] = {};
     for (const [name, column] of Object.entries(columns)) {
       data.setDerived(sampleId, name, column);

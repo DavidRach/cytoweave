@@ -502,8 +502,16 @@ function drawYield(ctx, w, hgt, c, run, cutoff) {
 
 export function mountQCMode(app, container) {
   const { store, data } = app;
-  // Session state survives switching modes; the workspace keeps the saved results.
+  // Session state survives switching modes but belongs to one workspace (store.state.generation
+  // counts workspaces loaded): another workspace starts afresh, keeping only the QC settings and
+  // the section shown. The workspace keeps the saved results.
+  let kept = null;
+  if (app.qcState && app.qcState.generation !== store.state.generation) {
+    kept = app.qcState;
+    app.qcState = null;
+  }
   const S = (app.qcState ??= {
+    generation: store.state.generation,
     section: 'clean',
     results: new Map(),
     selectedId: null,
@@ -514,6 +522,7 @@ export function mountQCMode(app, container) {
     beads: { sampleId: null, scope: 'sample', baseline: 'file', results: new Map(), shownId: null },
     debarcode: { sampleId: null, channels: null, k: 3, keyMode: 'combination', csv: '', cofactor: 10, cutoff: 0.3, mahalanobis: 30, run: null, updating: false },
   });
+  if (kept) Object.assign(S, { section: kept.section, settings: kept.settings });
   if (app.qcStartSection) {
     S.section = app.qcStartSection;
     app.qcStartSection = null;
@@ -1354,6 +1363,8 @@ export function mountQCMode(app, container) {
     const progress = progressToast('Normalizing batches…', () => cancelRun());
     const advance = (message) => progress.update(step++ / steps, message);
     const run = async (type, payload, message) => {
+      // A cancel while a sample was loading stops here, before the next step.
+      if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
       const job = track(worker.run(type, payload, { onProgress: (f, m) => progress.update((step - 1 + f) / steps, `${message}: ${m}`) }));
       token.job = job;
       const result = await job.promise;
@@ -1557,6 +1568,8 @@ export function mountQCMode(app, container) {
     const total = list.length * (B.baseline === 'mean' && list.length > 1 ? 2 : 1);
     let step = 0;
     const run = async (type, payload, message) => {
+      // A cancel while a sample was loading stops here, before the next step.
+      if (token.canceled) throw Object.assign(new Error('Canceled'), { canceled: true });
       const job = track(worker.run(type, payload, { onProgress: (f) => progress.update((step + f) / total, message) }));
       token.job = job;
       const result = await job.promise;

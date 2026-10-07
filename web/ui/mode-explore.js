@@ -35,6 +35,7 @@ export function mountExploreMode(app, container) {
   const S = store.state.ui.explore;
   let running = null;
   let destroyed = false;
+  let plotObserver = null;
 
   const setupHost = h('div');
   const plotHost = h('div.pane.explore-plot-pane');
@@ -323,7 +324,10 @@ export function mountExploreMode(app, container) {
       draw();
       if (points.length >= 3) createLassoPopulation(points);
     });
-    new ResizeObserver(() => draw()).observe(wrap);
+    // One observer for the map shown: the previous map's goes with it.
+    plotObserver?.disconnect();
+    plotObserver = new ResizeObserver(() => draw());
+    plotObserver.observe(wrap);
     requestAnimationFrame(draw);
   }
 
@@ -739,6 +743,7 @@ export function mountExploreMode(app, container) {
     },
     destroy() {
       destroyed = true;
+      plotObserver?.disconnect();
       root.remove();
     },
   };

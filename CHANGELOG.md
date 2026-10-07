@@ -25,6 +25,14 @@
 ### Fixed
 
 - Explore kept the previous workspace's map, clusters and marker choice when another workspace or example was opened while a different view was shown, so Run failed with the new samples "lacking" the old markers' channels. Its settings now belong to the workspace they were made in, and markers, populations and groups the current data do not have are dropped.
+- The same for Compare (a population, grouping, pairing or table of the previous workspace drove the next analysis) and QC (the previous workspace's titration and batch normalization results were shown); QC keeps only its settings. Compare also no longer analyzes a population deleted since it was chosen while its menu shows another.
+- Work that finished after another workspace was opened wrote its result into that one: an Explore run (replacing the new workspace's own map or clusters of the same name), QC checks, unmixing, reference spectra, autofluorescence, a compensation from controls, Q and B, an agent's results, a certificate's log entry, FCS files still being read (two examples opened in quick succession were mixed), and the "Add suggested gates" and "Import the gates" offers. Such a result is now refused with a message, and a workspace is never replaced by one built from another.
+- Opening another workspace while the current one was being saved lost the edits made since that save began.
+- The inspector's boundary robustness showed one sample's result for another sample with the same compensation, and kept it after a parent gate moved.
+- A virtual FMO was not recomputed when another sample became the unstained control.
+- Spectral: gating a control again (or changing its negative, peak detector or name) while all controls were being gated was overwritten by the first run, with nothing to show it; canceling while the noise was being fitted still saved the spreading matrix without its noise model; and Compare models marked a result made on one sample as current for the sample selected when it finished.
+- Canceling a batch or bead normalization while a sample was loading did not stop it.
+- Samples removed from the workspace stayed in the selection used by "selected samples" actions.
 
 ### Validation
 

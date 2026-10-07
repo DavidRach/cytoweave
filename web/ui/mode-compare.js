@@ -149,9 +149,29 @@ export function mountCompareMode(app, container) {
     };
   }
 
-  // Fill in missing settings (compareColumn may have set a few before this view was ever opened).
-  if (!store.ui.compare?.initialized) store.ui.compare = { ...defaults(), ...(store.ui.compare ?? {}), initialized: true };
-  const cfg = () => store.ui.compare;
+  // The settings belong to one workspace (store.state.generation counts workspaces loaded):
+  // another workspace starts from its own defaults. compareColumn may have set a few before this
+  // view was ever opened.
+  const generation = store.state.generation;
+  const kept = store.ui.compare?.generation === generation ? store.ui.compare : {};
+  if (!kept.initialized) store.ui.compare = { ...defaults(), ...kept, initialized: true, generation };
+  // Populations deleted since they were chosen (an edit, an undo) fall back to the default, so the
+  // analysis uses the population the menu shows.
+  const cfg = () => {
+    const c = store.ui.compare;
+    const ws = store.ws;
+    const missing = (id) => id && id !== ROOT && !gateById(ws, id);
+    if (missing(c.gateId) || missing(c.ancestorId) || missing(c.clusterParent) || (c.stateGateIds ?? []).some(missing)) {
+      store.ui.compare = {
+        ...c,
+        gateId: missing(c.gateId) ? defaults().gateId : c.gateId,
+        ancestorId: missing(c.ancestorId) ? ROOT : c.ancestorId,
+        clusterParent: missing(c.clusterParent) ? ROOT : c.clusterParent,
+        stateGateIds: c.stateGateIds ? c.stateGateIds.filter((id) => !missing(id)) : c.stateGateIds,
+      };
+    }
+    return store.ui.compare;
+  };
   const setCfg = (patch, options = {}) => {
     store.ui.compare = { ...cfg(), ...patch };
     if (options.invalidate !== false) screenResult = screenResult ? { ...screenResult, stale: true } : null;
@@ -160,7 +180,7 @@ export function mountCompareMode(app, container) {
 
   // Tables' column menu → compare that column.
   app.compareColumn = (table, column) => {
-    store.ui.compare = { ...defaults(), ...(store.ui.compare ?? {}), initialized: true, tab: 'one', source: 'table', tableId: table.id, columnId: column.id };
+    store.ui.compare = { ...defaults(), ...(store.ui.compare ?? {}), initialized: true, generation: store.state.generation, tab: 'one', source: 'table', tableId: table.id, columnId: column.id };
     if (store.ui.mode !== 'compare') app.setMode('compare');
     else render();
   };
@@ -1529,7 +1549,9 @@ export function mountCompareMode(app, container) {
 // (app.js lazily imports this module only when the mode is shown).
 export function installCompareHook(app) {
   app.compareColumn ??= (table, column) => {
-    app.store.ui.compare = { ...(app.store.ui.compare ?? {}), tab: 'one', source: 'table', tableId: table.id, columnId: column.id };
+    const generation = app.store.state.generation;
+    const kept = app.store.ui.compare?.generation === generation ? app.store.ui.compare : {};
+    app.store.ui.compare = { ...kept, generation, tab: 'one', source: 'table', tableId: table.id, columnId: column.id };
     app.setMode('compare');
   };
 }

@@ -31,6 +31,7 @@ async function gatingMLOf(ws) {
 // workspace's change log records it (with its fingerprint).
 export async function makeCertificate(app, options = {}) {
   const ws = app.store.ws;
+  const sameWorkspace = app.store.sameWorkspace();
   const built = await buildCertificate(ws, certificateSource(app), {
     version: app.version,
     includeData: options.includeData !== false,
@@ -44,6 +45,8 @@ export async function makeCertificate(app, options = {}) {
   // Whoever shows the result does so before the log entry re-renders the views.
   await options.onMade?.(out);
   const short = shortFingerprint(built.certificate.fingerprint);
+  // The log is the certified workspace's: not another one opened while the numbers were computed.
+  if (!sameWorkspace()) return out;
   app.store.commit(logEvent(app.store.ws, 'certify', `certificate ${short}: ${plural(built.certificate.total, 'number')} of ${plural(built.certificate.inputs.length, 'file')}${options.includeData === false ? ' (files not included)' : ''}`), 'Make a certificate');
   return out;
 }

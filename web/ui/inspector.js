@@ -2,7 +2,7 @@
 
 import { h, icon, clear, formatCount, formatPercent, iconButton } from './dom.js';
 import { showMenu, toast } from './overlays.js';
-import { channelTransform, countOf, describePopulation, gateRobustness, isMultidimensional, populationSet } from '../lib/engine.js';
+import { channelTransform, countOf, describePopulation, gateRobustness, gateSignature, isMultidimensional, populationSet } from '../lib/engine.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { formatStatistic } from '../lib/stats.js';
 import { binomialInterval, countPrecision, eventsNeeded, poissonInterval } from '../lib/rare-events.js';
@@ -223,7 +223,9 @@ export function mountInspector(app) {
 
   // Gate robustness: how much the frequency depends on the exact boundary.
   function robustnessBlock(ws, view, gate) {
-    const key = `${view.version}|${gate.id}|${JSON.stringify(effectiveGeometry(gate, view.id))}|${gate.parentId}`;
+    // Per sample (a view's version is shared by samples with the same compensation) and with the
+    // whole gate path (a parent moved changes the population).
+    const key = `${view.id}|${view.version}|${gateSignature(ws, gate, view.id)}`;
     const holder = h('div', { style: { marginTop: '12px' } });
     const show = (result) => {
       clear(holder);

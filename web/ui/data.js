@@ -174,7 +174,9 @@ export class DataStore {
       const parsed = await this.parse(source, { hash: false, keep: true });
       const dataset = parsed.datasets[record.datasetIndex ?? 0];
       if (!dataset) throw new Error(`"${record.fileName}" no longer has data set ${record.datasetIndex + 1}.`);
-      const current = this.getWorkspace().samples.find((s) => s.id === sampleId) ?? record;
+      // Another workspace may have been opened meanwhile: its samples are not this one.
+      const current = this.getWorkspace().samples.find((s) => s.id === sampleId);
+      if (!current) throw Object.assign(new Error(`"${record.name}" is no longer in the workspace.`), { name: 'AbortError' });
       this.install(current, dataset);
       return this.views.get(sampleId);
     })();

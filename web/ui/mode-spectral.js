@@ -23,6 +23,7 @@ import { LIBRARY_TOLERANCE, SPECTRA_RECORDS, compareWithLibrary, latestEntries, 
 import { INSTRUMENT_RECORDS, acquisitionDate, instrumentOf } from '../lib/instrument-record.js';
 import { predictedSpreading, spreadModel, spreadReceived, spreadRecord } from '../lib/spread.js';
 import { keptDesign, keptDesignsPane, libraryInputs, noiseSources, optimizerPane, spectralInputs } from './panel-design.js';
+import { WorkspaceChangedError } from './store.js';
 import { applyTransform, axisTicks, createTransform, defaultTransform } from '../lib/transforms.js';
 import { categoricalColor, colormapLUT, luminance } from '../lib/colormaps.js';
 import {
@@ -75,6 +76,7 @@ const isDark = () => document.documentElement.dataset.theme === 'dark';
 export function mountSpectralMode(app, container) {
   const { store, data } = app;
   const worker = app.worker('spectral');
+  const sameWorkspace = store.sameWorkspace();
   const jobs = new Set();
   const boxes = new Set();
   const unstainedCache = new Map();
@@ -140,6 +142,9 @@ export function mountSpectralMode(app, container) {
   const baseSetup = () => baseSetupOf(state(), app.version);
 
   function saveSetup(patch, label) {
+    // Work that finished after another workspace was opened (this view is then closed) is not
+    // saved into it.
+    if (!sameWorkspace()) throw new WorkspaceChangedError();
     const current = setup() ?? baseSetup();
     const record = { ...current, ...patch, id: SETUP_ID, kind: 'spectral-setup', modified: new Date().toISOString() };
     store.commit(addDerived(ws(), record).ws, label, ['derived']);
@@ -219,6 +224,11 @@ export function mountSpectralMode(app, container) {
   // --- Actions -------------------------------------------------------------------------------
 
   async function gateControls(only = null) {
+    // One step at a time: a second run would save spectra from its own snapshot over the first's.
+    if (ui.busy) {
+      toast('Wait for the step that is running to finish, or cancel it.');
+      return;
+    }
     if (!panelDetectors().length) {
       toast('The controls have no raw spectral detectors in common.', { kind: 'error' });
       return;
@@ -321,6 +331,8 @@ export function mountSpectralMode(app, container) {
     const refs = activeRefs();
     const detectors = setup()?.params?.detectors ?? panelDetectors();
     if (refs.length < 2 || unmixProblems().length) return;
+    // The references the matrix is computed from (not those of the end of the run).
+    const key = referencesKey();
     ui.busy = 'spreading';
     renderTab();
     let canceled = false;
@@ -390,10 +402,14 @@ export function mountSpectralMode(app, container) {
         } finally {
           jobs.delete(current);
         }
+        if (canceled) {
+          progress.done('Canceled; the spreading matrix was not changed.', 'info');
+          return;
+        }
       }
       saveSetup({
         spreading: {
-          key: referencesKey(),
+          key,
           names,
           matrix,
           method: 'Spillover spreading matrix of the OLS-unmixed controls (Nguyen et al. 2013): SS = √(σ²pos − σ²neg) / √ΔF, σ the robust SD; controls gated as for their reference spectra.',
@@ -437,6 +453,8 @@ export function mountSpectralMode(app, container) {
       return;
     }
     const detectors = setup()?.params?.detectors ?? panelDetectors();
+    // The sample, population and references compared (not those of the end of the run).
+    const key = compareKey();
     ui.busy = 'compare';
     renderTab();
     try {
@@ -452,7 +470,7 @@ export function mountSpectralMode(app, container) {
       }
       const result = await runJob('compareUnmixing', { columns, models, options }, { message: `Comparing ${models.length} unmixing models…`, transfer: columns.map((c) => c.buffer) });
       if (!result) return;
-      ui.compare = { result, sample: pop.view.record.name, population: pop.label, note: pop.note, key: compareKey() };
+      ui.compare = { result, sample: pop.view.record.name, population: pop.label, note: pop.note, key };
     } catch (error) {
       toast(error.message, { kind: 'error' });
     } finally {
@@ -561,6 +579,10 @@ export function mountSpectralMode(app, container) {
   }
 
   function controlMenu(anchor, entry) {
+    if (ui.busy) {
+      toast('Wait for the step that is running to finish, or cancel it.');
+      return;
+    }
     const detectors = setup()?.params?.detectors ?? panelDetectors();
     const cs = controlSettings(entry.sample.id);
     if (entry.sample.library) {
