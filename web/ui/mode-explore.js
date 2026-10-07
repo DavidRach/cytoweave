@@ -20,7 +20,10 @@ function cssVar(name) {
 
 export function mountExploreMode(app, container) {
   const { store, data } = app;
-  const S = (store.state.ui.explore ??= {
+  // The view's state belongs to one workspace: opened again after another workspace was loaded
+  // (while another view was shown), it starts afresh rather than show the old run and markers.
+  const fresh = () => ({
+    generation: store.state.generation,
     settings: { ...DEFAULT_SETTINGS },
     run: null,
     colorBy: 'cluster',
@@ -28,6 +31,8 @@ export function mountExploreMode(app, container) {
     hidden: new Set(),
     shade: false,
   });
+  if (store.state.ui.explore?.generation !== store.state.generation) store.state.ui.explore = fresh();
+  const S = store.state.ui.explore;
   let running = null;
   let destroyed = false;
 
@@ -50,11 +55,13 @@ export function mountExploreMode(app, container) {
   // --- Setup --------------------------------------------------------------------------------------
 
   function populationId() {
-    return S.settings.populationId ?? store.ui.gateId ?? ROOT;
+    const id = S.settings.populationId ?? store.ui.gateId ?? ROOT;
+    return id === ROOT || gateById(store.ws, id) ? id : ROOT;
   }
 
   function scopedSamples() {
     const ws = store.ws;
+    if (S.settings.scope.startsWith('group:') && !ws.groups.some((g) => g.id === S.settings.scope.slice(6))) S.settings.scope = 'all';
     if (S.settings.scope === 'current') return ws.samples.filter((s) => s.id === store.ui.sampleId);
     if (S.settings.scope.startsWith('group:')) {
       const group = ws.groups.find((g) => g.id === S.settings.scope.slice(6));
@@ -87,7 +94,9 @@ export function mountExploreMode(app, container) {
       markersBox.append(h('p.muted', 'Select a sample to list its markers.'));
     } else {
       const candidates = markerCandidates(view);
-      if (!settings.markers) settings.markers = new Set(candidates.filter((c) => c.selected).map((c) => c.name));
+      // Markers these samples do not have (chosen on other data) are dropped.
+      if (settings.markers) settings.markers = new Set([...settings.markers].filter((name) => candidates.some((c) => c.name === name)));
+      if (!settings.markers?.size) settings.markers = new Set(candidates.filter((c) => c.selected).map((c) => c.name));
       for (const c of candidates) {
         markersBox.append(h('label.check', h('input', { type: 'checkbox', checked: settings.markers.has(c.name), onchange: (e) => { if (e.target.checked) settings.markers.add(c.name); else settings.markers.delete(c.name); countLabel.textContent = `${settings.markers.size} selected`; } }), c.label));
       }
@@ -723,7 +732,7 @@ export function mountExploreMode(app, container) {
       }
       if (topics.has('theme')) renderAll();
       if (topics.has('workspace-loaded')) {
-        S.settings.markers = null;
+        Object.assign(S, fresh());
         renderAll();
         restore().then((restored) => { if (restored && !destroyed) renderAll(); }).catch(() => {});
       }

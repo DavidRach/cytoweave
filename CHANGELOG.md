@@ -22,6 +22,10 @@
 - Plot scenes take guides (lines at a value, polylines in data units), drawn on canvas, in SVG and in PDF.
 - Figures are composed as SVG in `web/lib/figure-svg.js` (from the Figures view's export code), so review reports draw them in the window and in Node; the exported SVG is unchanged.
 
+### Fixed
+
+- Explore kept the previous workspace's map, clusters and marker choice when another workspace or example was opened while a different view was shown, so Run failed with the new samples "lacking" the old markers' channels. Its settings now belong to the workspace they were made in, and markers, populations and groups the current data do not have are dropped.
+
 ### Validation
 
 - `panel`: the panel optimizer on simulated panels whose every assignment can be stained, unmixed or compensated, and measured. For an 8-marker T-cell panel on 10 dyes, the predicted cost against the measured one across 26 assignments: r = 0.996 (Aurora-like, unmixed) and 0.999 (LSRFortessa-like, compensated). The optimum measured best, 4× and 29× less noisy than putting the dimmest markers on the brightest dyes, and local search found the exhaustive optimum of every small panel. A 25-color design takes about 8 s. On the public Aurora panel's 25 bead references, a 12-dye panel's spread predicted from the noise of the other 12 dyes' controls was within 2× for 65% and 73% of pairs (r = 0.76 and 0.80); this is the first real-data check of predicted spread on a spectral instrument.

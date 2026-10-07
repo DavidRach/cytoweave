@@ -29,6 +29,9 @@ export function createStore(initialWorkspace) {
     },
     saved: initialWorkspace,
     busy: new Map(),
+    // Counts workspaces loaded (reset): views keep state for one workspace and start afresh when
+    // it changes, even if they were not shown when it did.
+    generation: 0,
   };
 
   let pending = new Set();
@@ -84,6 +87,7 @@ export function createStore(initialWorkspace) {
       notify(['ws', ...topics]);
     },
     reset(next) {
+      state.generation += 1;
       state.ws = next;
       state.past = [];
       state.future = [];
