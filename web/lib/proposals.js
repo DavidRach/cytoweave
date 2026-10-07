@@ -27,12 +27,13 @@
 //   { kind: 'insert-root-gate', gate }                (a gate above the whole tree, as "QC pass")
 
 import { newId } from './gates.js';
-import { addCompensation, addDerived, addGates, gateById, gateDescendants, insertRootGate, removeDerived, removeGate, setCollection, setGateGeometry, setSampleCompensation, updateGate } from './workspace.js';
+import { addCompensation, addDerived, addGates, appendLog, gateById, gateDescendants, insertRootGate, removeDerived, removeGate, setCollection, setGateGeometry, setSampleCompensation, updateGate } from './workspace.js';
 
 const now = () => new Date().toISOString();
 
 function log(ws, action, detail) {
-  return { ...ws, modified: now(), provenance: [...(ws.provenance ?? []), { time: now(), action, detail }].slice(-5000) };
+  const time = now();
+  return { ...ws, modified: time, ...appendLog(ws, action, detail, time) };
 }
 
 export function openProposals(ws) {

@@ -477,6 +477,36 @@ function ownSignature(gate, geometry) {
 }
 
 // The cache key of a gate's population on a sample: its own content and its parent chain.
+// The compensation a sample uses, as { id, channels, matrix } or null: none, the file's own
+// $SPILLOVER, or a matrix of the workspace.
+export function compensationOf(ws, record, view) {
+  const id = record?.compensationId ?? 'none';
+  if (id === 'none') return null;
+  if (id === 'file') {
+    const spill = view ? readSpillover(view.dataset.keywords, view.parameters) : null;
+    return spill && !spill.identity ? { id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) } : null;
+  }
+  const comp = ws.compensations.find((c) => c.id === id);
+  return comp ? { id: comp.id, channels: comp.channels, matrix: comp.matrix } : null;
+}
+
+// A sample's view prepared as the window prepares it: its stored derived columns ([{ name,
+// column, version }]), the workspace's computed channels and the sample's compensation (an error
+// is kept as compensationError, and the sample left uncompensated).
+export function workspaceView(ws, record, dataset, columns = []) {
+  const view = new SampleView(record, dataset);
+  for (const { name, column, version } of columns) if (column.length === view.eventCount) view.setDerived(name, column, version);
+  view.syncWorkspace(ws);
+  try {
+    view.setCompensation(compensationOf(ws, record, view));
+    view.compensationError = null;
+  } catch (error) {
+    view.compensationError = error.message;
+    view.setCompensation(null);
+  }
+  return view;
+}
+
 export function gateSignature(ws, gate, sampleId, depth = 0) {
   if (depth > 256) throw new Error('The gate hierarchy has a cycle.');
   const geometry = effectiveGeometry(gate, sampleId);

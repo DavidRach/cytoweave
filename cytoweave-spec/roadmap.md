@@ -673,6 +673,23 @@ Planned beside wave 7, not started there; they continue beside wave 8.
    the audit trail (R6).
    - Validation: certificates of every example re-run bit for bit; a changed file, gate or log
      entry detected.
+   - Done (slice 1): Report → Certificate writes an ACS archive (workspace, FCS files or only
+     their checksums, stored channels, Gating-ML, methods, README) with certificate.json: the
+     version and JavaScript engine, inputs' SHA-256, analyses and seeds, the change log's head,
+     MIFlowCyt filled in, and every count, table cell and saved comparison of one measure;
+     opening it verifies it (every number computed again from the files, sample by sample, with
+     the window's code). The change log is hash-chained. `cytoweave verify` (exit status as the
+     verdict), `cytoweave run --certificate`, and agents' `export_certificate` and
+     `verify_certificate`. Compare's statistics moved to lib/compare.js. Validated by the
+     `certificates` suite (14 examples, 2,413 numbers identical; six kinds of tampering caught),
+     headless-run (Chrome and Node in both directions) and the agent session.
+   - Found by slice 1: browsers' and Node's logarithms and exponentials differ in the last bit
+     (Chrome 152 and 154 against Node 22), so numbers through them, such as confidence limits,
+     are bit for bit only within one engine; across engines they are confirmed when equal to 12
+     significant digits, and the certificate names its engine. Deterministic math of our own
+     would make them identical everywhere: an idea, not planned.
+   - Not yet: re-running derived analyses (clustering, embeddings, unmixing, QC, curve fits) and
+     comparison screens from their seeds; the certificate lists them.
 2. **A review report (R9):** one self-contained HTML file of an analysis (plots, gates, tables,
    every number traced to its source) that a PI, collaborator or reviewer opens without
    CytoWeave.
@@ -747,6 +764,8 @@ Decided but deferred, outside the planned waves (and releases) until what they w
 - Real-time co-annotation of one workspace by several people.
 - An optional on-device assistant (M6), if local models become good enough to add to the
   external agents.
+- Deterministic math (CytoWeave's own exp, log and pow) so that every number is identical in
+  every browser and in Node, not only equal to 12 digits (found by wave 8, slice 1).
 
 ## Risks
 

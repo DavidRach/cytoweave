@@ -6,7 +6,7 @@
 // The reference library is one derived record, { id: SETUP_ID, kind: 'spectral-setup', … }.
 
 import { population } from '../lib/engine.js';
-import { ROOT, gatePath } from '../lib/workspace.js';
+import { ROOT, appendLog, gatePath } from '../lib/workspace.js';
 import { complexityIndex } from '../lib/spectral.js';
 import { spectrumOn } from '../lib/spectral-library.js';
 import {
@@ -377,7 +377,7 @@ export async function unmixSamples(app, samples, options = {}) {
 export function withChannelSettings(ws, channelSettings, count) {
   if (!channelSettings) return ws;
   const time = new Date().toISOString();
-  return { ...ws, channelSettings, modified: time, provenance: [...ws.provenance, { time, action: 'scale', detail: `unmixed channels: ${count}` }] };
+  return { ...ws, channelSettings, modified: time, ...appendLog(ws, 'scale', `unmixed channels: ${count}`, time) };
 }
 
 // The scatter of a sample's events (FSC-A and SSC-A, or the first forward and side scatter areas),

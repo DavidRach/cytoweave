@@ -15,7 +15,7 @@
 // Exits with status 1 when a check fails.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,9 @@ import { writeRunInputs } from './run-cases.mjs';
 import { countsOf, loadSamples } from './template-cases.mjs';
 import { applyTemplate } from '../web/lib/templates.js';
 import { gatePath } from '../web/lib/workspace.js';
+import { buildCertificate, readCertificate, shortFingerprint, verifyCertificate } from '../web/lib/certificate.js';
+import { createZip, readZip } from '../web/lib/zip.js';
+import { certifiableExample } from './certificate-cases.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 8797;
@@ -196,6 +199,40 @@ try {
     }
   }
   check('every population\'s count in run.json equal to Node\'s from the same files and template', `${compared - differing} of ${compared}`, compared === 12 * 19 && differing === 0, 'all');
+
+  // 4. Certificates: a run's certificate verified in Node and by cytoweave verify; a certificate
+  // made in Node verified by cytoweave verify, without its files and with them; one edited, refused.
+  const verify = (...args) => {
+    const result = spawnSync(binary, ['verify', '--chrome', findChrome(), ...args], { encoding: 'utf8' });
+    return { status: result.status, out: `${result.stdout}${result.stderr}`.trim() };
+  };
+  const c = run(join(temp, 'c'), ['--certificate']);
+  const certificatePath = join(temp, 'c', 'certificate.acs');
+  const fromRun = existsSync(certificatePath) ? await readCertificate(readFileSync(certificatePath)) : null;
+  const inNode = fromRun ? await verifyCertificate(fromRun, { version: fromRun.certificate.software.version }) : null;
+  const saved = JSON.parse(readFileSync(join(temp, 'c', 'workspace.cwz'), 'utf8'));
+  const logged = fromRun && saved.provenance.some((e) => e.action === 'certify' && e.detail.includes(shortFingerprint(fromRun.certificate.fingerprint)));
+  check('cytoweave run --certificate: the window\'s certificate confirmed in Node, bit for bit, and recorded in the workspace\'s change log', fromRun ? `exit ${c.status}; ${inNode.summary}${logged ? ' Recorded in workspace.cwz.' : ' Not in the log.'}` : `no certificate (exit ${c.status}: ${c.stderr.trim()})`, c.status === 0 && inNode?.verdict === 'confirmed' && inNode.numbers.same + inNode.numbers.close === fromRun.certificate.total && logged, 'confirmed, recorded');
+  const ofRun = verify(certificatePath);
+  check('cytoweave verify of that certificate: confirmed, exit 0', `exit ${ofRun.status}: ${ofRun.out.split('\n')[1] ?? ofRun.out}`, ofRun.status === 0 && /Confirmed/.test(ofRun.out), 'exit 0');
+  const example = await certifiableExample('pbmc-immunophenotyping');
+  const dataFolder = join(temp, 'certificate-data');
+  mkdirSync(dataFolder);
+  for (const s of example.ws.samples) writeFileSync(join(dataFolder, s.fileName), example.files.get(s.sha256));
+  const lean = await buildCertificate(example.ws, example.source, { version: 'validation', includeData: false });
+  writeFileSync(join(temp, 'lean.acs'), lean.bytes);
+  const without = verify(join(temp, 'lean.acs'));
+  const withData = verify(join(temp, 'lean.acs'), '--data', dataFolder, '--report', join(temp, 'verification.json'));
+  const written = existsSync(join(temp, 'verification.json')) ? JSON.parse(readFileSync(join(temp, 'verification.json'), 'utf8')) : null;
+  check('a certificate made in Node (stored k-means clusters and a saved comparison) verified by cytoweave verify in Chrome: without its files incomplete (exit 3), with --data confirmed (exit 0; numbers through logarithms may differ between the engines in the last digits) and the report written', `exit ${without.status}, then ${withData.status}; report: ${written ? `${written.verdict}, ${written.numbers.identical} of ${written.numbers.checked} numbers identical and ${written.numbers.equalTo12Digits} equal to 12 digits (largest relative difference ${written.numbers.largestRelativeDifference.toExponential(1)}; ${written.engines.certificate} and ${written.engines.verifier})` : 'missing'}`, without.status === 3 && withData.status === 0 && written?.verdict === 'confirmed' && written.numbers.identical + written.numbers.equalTo12Digits === lean.certificate.total, 'exit 3, then 0');
+  // certificate.json edited inside the archive (a count raised by one).
+  const entries = await readZip(lean.bytes);
+  const edited = JSON.parse(new TextDecoder().decode(entries.get('certificate.json')));
+  edited.numbers.counts.samples[0].values[0] += 1;
+  entries.set('certificate.json', new TextEncoder().encode(JSON.stringify(edited)));
+  writeFileSync(join(temp, 'edited.acs'), await createZip([...entries].map(([name, data]) => ({ name, data }))));
+  const editedRun = verify(join(temp, 'edited.acs'), '--data', dataFolder);
+  check('an edited certificate.json refused: not confirmed, exit 1', `exit ${editedRun.status}: ${editedRun.out.split('\n')[1] ?? editedRun.out}`, editedRun.status === 1 && /fingerprint does not match/.test(editedRun.out), 'exit 1');
 } catch (error) {
   check('the session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

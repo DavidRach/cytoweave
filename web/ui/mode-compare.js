@@ -10,61 +10,25 @@ import { h, icon, clear } from './dom.js';
 import { toast, progressToast } from './overlays.js';
 import { mountChart, leftAxis, bottomAxis, valueScale, withAlpha, downloadCSV, formatP, formatValue } from './charts.js';
 import { columnLabel, controlSampleOptions, statisticContext } from './mode-tables.js';
-import { computeStatistic, countOf, population } from '../lib/engine.js';
+import { countOf, population } from '../lib/engine.js';
 import { STATISTICS } from '../lib/stats.js';
 import { ROOT, META_FIELDS, channelCatalog, channelLabel, gateById, gatePath, setCollection } from '../lib/workspace.js';
 import { newId } from '../lib/gates.js';
 import { categoricalColor, shownColor } from '../lib/colormaps.js';
-import { quantileSorted } from '../lib/stats.js';
 import { denominatorOf, methodsSentence, pathGates, qcGateOf } from '../lib/multiverse.js';
 import { QC_CHANNEL } from './qc-run.js';
 import { STATE_CITATIONS, buildDesign, clusterChannels as findClusterChannels, clusterCounts as countClusters, clusterNameOf, defaultCofactor, differentialState, stateMarkerCandidates, stateMedians, stateMethods } from '../lib/differential.js';
 import { checkRobustness } from './robustness.js';
 import {
   adjustPValues,
-  blockAnova,
-  bootstrap,
   cohensD,
   designMatrix,
   differentialAbundance,
-  foldChange,
-  friedmanTest,
-  hodgesLehmann,
-  kruskalWallis,
-  mannWhitneyU,
-  oneSampleTTest,
-  oneWayAnova,
-  pairedTTest,
-  studentTQuantile,
-  studentTTest,
-  welchAnova,
-  welchTTest,
-  wilcoxonSignedRank,
 } from '../lib/hypothesis.js';
+import { analyzeLevels, attempt, measureValue, DESIGN_LABEL, designOf, matchPairs, meanOf, median, posthoc, runTest, TESTS, testsFor } from '../lib/compare.js';
 
 // --- Tests ---------------------------------------------------------------------------------------
 
-// Each test runs on groups (arrays of values, reference first) or on matched pairs/blocks.
-const TESTS = {
-  welch: { label: "Welch's t-test", short: 'Welch t', cite: 'Welch 1947, Biometrika 34:28', describe: "Welch's two-sample t-test (unequal variances)", run: ({ groups }) => welchTTest(groups[1], groups[0]) },
-  student: { label: "Student's t-test (equal variances)", short: 'Student t', cite: 'Student 1908', describe: "Student's two-sample t-test (pooled variance)", run: ({ groups }) => studentTTest(groups[1], groups[0]) },
-  mannwhitney: { label: 'Mann–Whitney U', short: 'Mann–Whitney', cite: 'Mann & Whitney 1947, Ann Math Stat 18:50', describe: 'the Mann–Whitney U (Wilcoxon rank-sum) test', run: ({ groups }) => mannWhitneyU(groups[1], groups[0]) },
-  pairedt: { label: 'Paired t-test', short: 'paired t', cite: 'Student 1908', describe: 'the paired t-test', run: ({ pairs }) => pairedTTest(pairs.b, pairs.a) },
-  wilcoxon: { label: 'Wilcoxon signed-rank', short: 'Wilcoxon', cite: 'Wilcoxon 1945, Biometrics 1:80', describe: 'the Wilcoxon signed-rank test', run: ({ pairs }) => wilcoxonSignedRank(pairs.b, pairs.a) },
-  welchanova: { label: "Welch's ANOVA", short: 'Welch ANOVA', cite: 'Welch 1951, Biometrika 38:330', describe: "Welch's one-way ANOVA (unequal variances)", run: ({ groups }) => welchAnova(groups) },
-  anova: { label: 'One-way ANOVA', short: 'ANOVA', cite: 'Fisher 1925', describe: 'one-way ANOVA', run: ({ groups }) => oneWayAnova(groups) },
-  kruskal: { label: 'Kruskal–Wallis', short: 'Kruskal–Wallis', cite: 'Kruskal & Wallis 1952, JASA 47:583', describe: 'the Kruskal–Wallis rank-sum test', run: ({ groups }) => kruskalWallis(groups) },
-  rmanova: { label: 'Repeated-measures ANOVA', short: 'RM ANOVA', cite: 'Fisher 1935 (randomized blocks)', describe: 'a repeated-measures ANOVA with subjects as blocks', run: ({ pairs }) => blockAnova(pairs.blocks) },
-  friedman: { label: 'Friedman', short: 'Friedman', cite: 'Friedman 1937, JASA 32:675', describe: 'the Friedman rank-sum test', run: ({ pairs }) => friedmanTest(pairs.blocks) },
-};
-const AUTO = { two: ['welch', 'mannwhitney'], 'paired-two': ['pairedt', 'wilcoxon'], multi: ['welchanova', 'kruskal'], 'paired-multi': ['rmanova', 'friedman'] };
-const AVAILABLE = {
-  two: ['welch', 'student', 'mannwhitney'],
-  'paired-two': ['pairedt', 'wilcoxon', 'welch', 'mannwhitney'],
-  multi: ['welchanova', 'anova', 'kruskal'],
-  'paired-multi': ['rmanova', 'friedman', 'welchanova', 'kruskal'],
-};
-const DESIGN_LABEL = { two: 'two independent groups', 'paired-two': 'two paired groups', multi: 'more than two independent groups', 'paired-multi': 'more than two groups, repeated in each subject' };
 const ADJUST = [
   { id: 'BH', label: 'Benjamini–Hochberg (FDR)', cite: 'Benjamini & Hochberg 1995, JRSS B 57:289' },
   { id: 'BY', label: 'Benjamini–Yekutieli (FDR, any dependence)', cite: 'Benjamini & Yekutieli 2001, Ann Stat 29:1165' },
@@ -72,13 +36,6 @@ const ADJUST = [
   { id: 'bonferroni', label: 'Bonferroni (family-wise)', cite: 'Bonferroni 1936' },
 ];
 
-const median = (values) => quantileSorted(Float64Array.from(values).sort(), 0.5);
-const meanOf = (values) => values.reduce((a, b) => a + b, 0) / values.length;
-const sdOf = (values) => {
-  if (values.length < 2) return Number.NaN;
-  const m = meanOf(values);
-  return Math.sqrt(values.reduce((a, b) => a + (b - m) ** 2, 0) / (values.length - 1));
-};
 const natural = (a, b) => String(a).localeCompare(String(b), 'en', { numeric: true });
 
 function hashUnit(text) {
@@ -297,17 +254,7 @@ export function mountCompareMode(app, container) {
   }
 
   function valueOf(view, spec) {
-    const ws = store.ws;
-    try {
-      if (spec.kind === 'cluster') {
-        const result = clusterCounts(view, ws, spec.channel, spec.parentId);
-        if (!result || !result.total) return Number.NaN;
-        return (100 * (result.counts.get(spec.cluster) ?? 0)) / result.total;
-      }
-      return computeStatistic(view, ws, { stat: spec.stat, gateId: spec.gateId, channel: spec.channel, ancestorId: spec.ancestorId, value: spec.value, control: spec.control, counting: spec.counting, dilution: spec.dilution }, statisticContext(app));
-    } catch {
-      return Number.NaN;
-    }
+    return measureValue(view, store.ws, spec, statisticContext(app), clusterCounts);
   }
 
   // Samples arranged by level, with values: { levels: [{ ...level, points }], excluded, unloaded }.
@@ -336,151 +283,13 @@ export function mountCompareMode(app, container) {
     return { levels, excluded, unloaded };
   }
 
-  // Matched pairs (two levels) or complete blocks (all levels) by the pairing field.
-  function matchPairs(levels) {
-    const byKey = new Map();
-    const duplicates = new Set();
-    levels.forEach((level, j) => {
-      for (const point of level.points) {
-        if (point.pair === null) continue;
-        if (!byKey.has(point.pair)) byKey.set(point.pair, levels.map(() => []));
-        const slot = byKey.get(point.pair)[j];
-        if (slot.length) duplicates.add(point.pair);
-        slot.push(point.value);
-      }
-    });
-    const blocks = [];
-    const keys = [];
-    for (const [key, slots] of byKey) {
-      if (slots.every((s) => s.length)) {
-        blocks.push(slots.map((s) => meanOf(s)));
-        keys.push(key);
-      }
-    }
-    const unmatched = levels.reduce((n, level) => n + level.points.filter((p) => p.pair === null || !keys.includes(p.pair)).length, 0);
-    return { blocks, keys, a: blocks.map((b) => b[0]), b: blocks.map((b) => b[1]), duplicates: [...duplicates], unmatched };
-  }
-
-  function designOf(levels, pairs) {
-    const k = levels.filter((l) => l.points.length).length;
-    const paired = Boolean(cfg().pairBy) && pairs.blocks.length >= 2;
-    if (k < 2) return null;
-    if (k === 2) return paired ? 'paired-two' : 'two';
-    return paired ? 'paired-multi' : 'multi';
-  }
-
-  function testsFor(design) {
-    const c = cfg();
-    const auto = AUTO[design];
-    if (c.test === 'auto' || !AVAILABLE[design].includes(c.test)) return { primary: auto[0], secondary: auto[1], overridden: false };
-    const counterpart = { welch: 'mannwhitney', student: 'mannwhitney', mannwhitney: 'welch', pairedt: 'wilcoxon', wilcoxon: 'pairedt', welchanova: 'kruskal', anova: 'kruskal', kruskal: 'welchanova', rmanova: 'friedman', friedman: 'rmanova' }[c.test];
-    return { primary: c.test, secondary: AVAILABLE[design].includes(counterpart) ? counterpart : null, overridden: true };
-  }
-
-  function runTest(id, groups, pairs) {
-    try {
-      return { id, ...TESTS[id], result: TESTS[id].run({ groups, pairs }) };
-    } catch (error) {
-      return { id, ...TESTS[id], error: error.message };
-    }
-  }
-
   // The full analysis of one measure.
   function analyze(spec) {
     const collected = collect(spec);
-    const levels = collected.levels.filter((l) => l.points.length);
-    const pairs = matchPairs(levels);
-    const design = designOf(levels, pairs);
-    const analysis = { spec, ...collected, levels, allLevels: collected.levels, pairs, design };
-    if (!design) return analysis;
-    const groups = levels.map((l) => l.points.map((p) => p.value));
-    const choice = testsFor(design);
-    analysis.choice = choice;
-    analysis.primary = runTest(choice.primary, groups, pairs);
-    analysis.secondary = choice.secondary ? runTest(choice.secondary, groups, pairs) : null;
-    analysis.summaries = levels.map((level) => summarize(level.points.map((p) => p.value)));
-    if (design === 'two') analysis.effects = independentEffects(groups[0], groups[1]);
-    else if (design === 'paired-two') analysis.effects = pairedEffects(pairs.a, pairs.b);
-    else analysis.posthoc = posthoc(levels, groups, pairs, design, choice.primary);
+    const analysis = { spec, ...collected, allLevels: collected.levels, ...analyzeLevels(collected.levels, { pairBy: cfg().pairBy, test: cfg().test }) };
+    if (!analysis.design) return analysis;
     analysis.notes = assumptionNotes(analysis);
     return analysis;
-  }
-
-  function summarize(values) {
-    const n = values.length;
-    const m = meanOf(values);
-    const sd = sdOf(values);
-    const sorted = Float64Array.from(values).sort();
-    const out = { n, mean: m, sd, median: quantileSorted(sorted, 0.5), q1: quantileSorted(sorted, 0.25), q3: quantileSorted(sorted, 0.75) };
-    if (n >= 2) {
-      const half = studentTQuantile(0.975, n - 1) * (sd / Math.sqrt(n));
-      out.ciMean = [m - half, m + half];
-      out.ciMedian = n >= 3 ? bootstrap([values], (v) => quantileSorted(Float64Array.from(v).sort(), 0.5), { iterations: 1000, seed: 1 }).ci : [sorted[0], sorted[n - 1]];
-    }
-    return out;
-  }
-
-  const attempt = (fn) => {
-    try {
-      return fn();
-    } catch {
-      return null;
-    }
-  };
-
-  function independentEffects(a, b) {
-    const effects = [];
-    const welch = attempt(() => welchTTest(b, a));
-    if (welch) effects.push({ label: 'Difference of means (B − A)', estimate: welch.estimate, ci: welch.ci, note: 'Welch t interval' });
-    if (meanOf(a) > 0 && meanOf(b) > 0) {
-      const fc = attempt(() => foldChange(b, a));
-      if (fc) effects.push({ label: 'Ratio of means (B / A)', estimate: fc.foldChange, ci: fc.ci, log2: fc.log2FoldChange, note: 'delta method on log means' });
-    }
-    const d = attempt(() => cohensD(b, a));
-    if (d) effects.push({ label: "Hedges' g", estimate: d.g, ci: d.ciG, note: 'standardized; |g| ≈ 0.2 small, 0.5 medium, 0.8 large' });
-    const hl = attempt(() => hodgesLehmann(b, a));
-    if (hl) effects.push({ label: 'Hodges–Lehmann shift', estimate: hl.estimate, ci: hl.ci, note: 'median of all B − A differences; distribution-free interval' });
-    return effects;
-  }
-
-  function pairedEffects(a, b) {
-    const effects = [];
-    const d = b.map((v, i) => v - a[i]);
-    const t = attempt(() => pairedTTest(b, a));
-    if (t) effects.push({ label: 'Mean paired difference (B − A)', estimate: t.estimate, ci: t.ci, note: 'paired t interval' });
-    if (a.every((v) => v > 0) && b.every((v) => v > 0)) {
-      const r = attempt(() => oneSampleTTest(b.map((v, i) => Math.log2(v / a[i]))));
-      if (r) effects.push({ label: 'Geometric mean ratio (B / A)', estimate: 2 ** r.estimate, ci: r.ci.map((x) => 2 ** x), log2: r.estimate, note: 't interval on log2 ratios' });
-    }
-    if (d.length >= 2 && sdOf(d) > 0) {
-      const n = d.length;
-      const dz = meanOf(d) / sdOf(d);
-      const se = Math.sqrt(1 / n + (dz * dz) / (2 * n));
-      effects.push({ label: "Cohen's d_z (paired)", estimate: dz, ci: [dz - 1.96 * se, dz + 1.96 * se], note: 'mean difference / SD of differences' });
-    }
-    effects.push({ label: 'Median paired difference', estimate: median(d), ci: null, note: `${d.filter((x) => x > 0).length} of ${d.length} pairs increase` });
-    return effects;
-  }
-
-  // Each level against the reference, Holm-adjusted.
-  function posthoc(levels, groups, pairs, design, primary) {
-    const rank = ['kruskal', 'friedman'].includes(primary);
-    const paired = design === 'paired-multi';
-    const rows = [];
-    for (let j = 1; j < levels.length; j += 1) {
-      let test;
-      if (paired) {
-        const a = pairs.blocks.map((b) => b[0]);
-        const b = pairs.blocks.map((row) => row[j]);
-        test = attempt(() => (rank ? wilcoxonSignedRank(b, a) : pairedTTest(b, a)));
-      } else test = attempt(() => (rank ? mannWhitneyU(groups[j], groups[0]) : welchTTest(groups[j], groups[0])));
-      const ma = meanOf(groups[0]);
-      const mb = meanOf(groups[j]);
-      rows.push({ level: levels[j], difference: mb - ma, ratio: ma > 0 && mb > 0 ? mb / ma : Number.NaN, p: test?.p ?? Number.NaN });
-    }
-    const adjusted = adjustPValues(rows.map((r) => r.p), 'holm');
-    rows.forEach((r, i) => { r.q = adjusted[i]; });
-    return { rows, test: paired ? (rank ? 'Wilcoxon signed-rank' : 'paired t') : (rank ? 'Mann–Whitney' : 'Welch t'), adjust: 'Holm' };
   }
 
   function assumptionNotes(analysis) {
@@ -1428,11 +1237,11 @@ export function mountCompareMode(app, container) {
     const collected = collect(spec);
     const levels = collected.levels.filter((l) => l.points.length);
     const pairs = matchPairs(levels);
-    const design = designOf(levels, pairs);
+    const design = designOf(levels, pairs, cfg().pairBy);
     const out = { levels, pairs, design };
     if (!design) return out;
     const groups = levels.map((l) => l.points.map((p) => p.value));
-    out.choice = testsFor(design);
+    out.choice = testsFor(design, cfg().test);
     out.primary = runTest(out.choice.primary, groups, pairs);
     return out;
   }

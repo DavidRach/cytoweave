@@ -2,8 +2,7 @@
 // worker), keeping recently used samples in memory within a budget, and keeping each loaded
 // sample's compensation in step with the workspace.
 
-import { readSpillover } from '../lib/fcs.js';
-import { SampleView } from '../lib/engine.js';
+import { SampleView, compensationOf } from '../lib/engine.js';
 import { sampleFromDataset } from '../lib/workspace.js';
 import { WorkerClient } from './workers.js';
 import { plainCopy } from '../lib/memory.js';
@@ -195,15 +194,7 @@ export class DataStore {
 
   // The compensation a sample should use, as { id, channels, matrix } or null.
   compensationFor(record, view) {
-    const ws = this.getWorkspace();
-    const id = record?.compensationId ?? 'none';
-    if (id === 'none') return null;
-    if (id === 'file') {
-      const spill = view ? readSpillover(view.dataset.keywords, view.parameters) : null;
-      return spill && !spill.identity ? { id: 'file', channels: spill.channels, matrix: Array.from(spill.matrix) } : null;
-    }
-    const comp = ws.compensations.find((c) => c.id === id);
-    return comp ? { id: comp.id, channels: comp.channels, matrix: comp.matrix } : null;
+    return compensationOf(this.getWorkspace(), record, view);
   }
 
   syncCompensation(view, recordOverride) {

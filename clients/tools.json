@@ -2036,6 +2036,73 @@
     }
   },
   {
+    "name": "export_certificate",
+    "title": "Make a reproducibility certificate",
+    "description": "Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry Standard archive): the workspace, the FCS files (unless includeData is false: then only their SHA-256), the channels the analysis stored, the gates as Gating-ML, the methods, and certificate.json, which records the CytoWeave version, every input's SHA-256, the analyses and their seeds, the head of the hash-chained change log, MIFlowCyt and every number reported: each population's count in each sample, every table cell, and every saved comparison of one measure. Every number is computed from the files to make it; verify_certificate computes them again. Returns the fingerprint (SHA-256 of certificate.json) to quote with the analysis, and warnings (a saved comparison that no longer matches the analysis). The file must not exist unless overwrite is true.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "includeData": {
+          "description": "Include the FCS files (default true); without them, verifying needs the files",
+          "type": "boolean"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.acs)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "verify_certificate",
+    "title": "Verify a reproducibility certificate",
+    "description": "Verify a CytoWeave reproducibility certificate (absolute path of the .acs file): check every file's SHA-256, the workspace, the change log's chain and certificate.json's fingerprint, compute every number again from the files and compare them bit for bit. A certificate written without its data needs data (a folder, or FCS file paths; files are recognized by their checksums). Returns the verdict (confirmed, incomplete or differs), a summary, and the numbers that differ. The analysis in the window is not changed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "A folder with the FCS files, or a list of FCS file paths, for a certificate without its data"
+        },
+        "path": {
+          "description": "Absolute path of the certificate (.acs)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "export_gating_ml",
     "title": "Export gates as Gating-ML",
     "description": "The gating strategy as ISAC Gating-ML 2.0 XML text.",

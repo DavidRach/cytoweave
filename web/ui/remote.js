@@ -1274,6 +1274,72 @@ export function installRemote(app) {
       return { file: serializeWorkspace(w), message: `The workspace ${w.name}: ${w.samples.length} samples, ${w.gates.length} populations, ${w.tables.length} tables, ${w.figures.length} figures${open.length ? `; ${open.length} proposal${open.length === 1 ? '' : 's'} still open (saved as proposals)` : ''}.` };
     },
 
+    // A reproducibility certificate of the analysis (lib/certificate.js), and its verification.
+    async export_certificate(args) {
+      requireExtension(args.path, ['.acs'], 'a certificate');
+      const { makeCertificate } = await import('./certificates.js');
+      const { shortFingerprint } = await import('../lib/certificate.js');
+      const includeData = args.includeData !== false;
+      let out;
+      try {
+        out = await makeCertificate(app, { includeData });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const c = out.certificate;
+      return {
+        file: out.bytes,
+        message: `A certificate of ${c.workspace.name}: ${c.total.toLocaleString('en-US')} numbers from ${c.inputs.length} files${includeData ? ' (included)' : ' (not included: verifying needs them)'}; fingerprint ${c.fingerprint} (short ${shortFingerprint(c.fingerprint)}).${c.notChecked.length ? ` Not computed again: ${c.notChecked.map((n) => n.what).join('; ')}.` : ''}${out.warnings.length ? ` Warnings: ${out.warnings.join(' ')}` : ''}`,
+        data: { fingerprint: c.fingerprint, numbers: c.total, files: c.inputs.length, includeData, warnings: out.warnings, notChecked: c.notChecked, log: c.log },
+      };
+    },
+
+    async verify_certificate(args, event) {
+      const { readCertificate, verifyCertificate } = await import('../lib/certificate.js');
+      const { sha256 } = await import('../lib/sha256.js');
+      const [first, ...rest] = event.files ?? [];
+      if (!first) throw new ActionError('verify_certificate needs the path of the certificate.');
+      const fetchBytes = async (file) => {
+        const response = await fetch(file.url);
+        if (!response.ok) throw new ActionError(`${file.name} could not be read.`);
+        return new Uint8Array(await response.arrayBuffer());
+      };
+      let read;
+      try {
+        read = await readCertificate(await fetchBytes(first));
+      } catch (error) {
+        throw new ActionError(`${first.name}: ${error.message}`);
+      }
+      // Supplied files, by checksum, read only when the certificate asks for one.
+      const wanted = new Set(read.certificate.inputs.filter((i) => !i.path).map((i) => i.sha256));
+      const data = new Map();
+      for (const file of rest) {
+        if (!wanted.size) break;
+        const bytes = await fetchBytes(file);
+        const digest = sha256(bytes);
+        if (wanted.has(digest)) data.set(digest, bytes);
+      }
+      const report = await verifyCertificate(read, { version: app.version, data });
+      const c = read.certificate;
+      return {
+        message: report.summary,
+        data: {
+          verdict: report.verdict,
+          analysis: c.workspace.name,
+          certified: { created: c.created, version: c.software.version, fingerprint: c.fingerprint },
+          verifiedWith: app.version,
+          fingerprintOK: report.fingerprint.ok,
+          workspaceOK: report.workspace.ok && report.inputsMatch,
+          files: { total: report.inputs.length, ok: report.inputs.filter((i) => i.status === 'ok').length, missing: report.inputs.filter((i) => i.status === 'missing').map((i) => i.fileName), changed: report.inputs.filter((i) => i.status === 'changed').map((i) => i.fileName) },
+          storedChannels: { total: report.derived.length, ok: report.derived.filter((d) => d.status === 'ok').length },
+          log: report.log,
+          engines: report.engine,
+          numbers: { checked: report.numbers.checked, identical: report.numbers.same, equalTo12Digits: report.numbers.close, largestRelativeDifference: report.numbers.largestRelative, differ: report.numbers.differ.length, notComputed: report.numbers.missing, firstDifferences: report.numbers.differ.slice(0, 50) },
+          notChecked: report.notChecked,
+        },
+      };
+    },
+
     async export_events(args) {
       const extension = requireExtension(args.path, ['.fcs', '.zip', '.h5ad'], 'events (.fcs: the samples concatenated; .zip: an FCS file per sample; .h5ad: AnnData)');
       const w = ws();

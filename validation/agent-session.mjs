@@ -9,7 +9,7 @@
 // Exits with status 1 when a check fails.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -578,6 +578,16 @@ try {
   const wrote = await tool('export_workspace', { path: cwzPath }, 'Plates agent');
   const cwz = JSON.parse(readFileSync(cwzPath, 'utf8'));
   check('export_workspace: the workspace written as a .cwz file, its samples, annotations and gates as the app holds them', `${wrote.message.split('.')[0]}; ${cwz.samples.length} samples, ${cwz.gates.length} gates, ${cwz.samples.filter((x) => x.meta?.standard).length} standards annotated`, cwz.format === 'cytoweave-workspace' && cwz.samples.length === 56 && cwz.gates.length === 2 && cwz.samples.filter((x) => x.meta?.standard).length === 16, '56 samples, 2 gates, 16 standards');
+  // A reproducibility certificate, and its verification (with and without the FCS files).
+  const certificatePath = join(temp, 'beads.certificate.acs');
+  const certified = await tool('export_certificate', { path: certificatePath }, 'Plates agent');
+  const verified = await tool('verify_certificate', { path: certificatePath }, 'Plates agent');
+  check('export_certificate and verify_certificate: the analysis certified (its files included) and every number computed again from the archive', `${certified.data.numbers} numbers, fingerprint ${certified.data.fingerprint.slice(0, 16)}…; ${verified.data.verdict}: ${verified.data.numbers.identical} identical of ${verified.data.numbers.checked}`, existsSync(certificatePath) && certified.data.files === 56 && verified.data.verdict === 'confirmed' && verified.data.numbers.identical === certified.data.numbers && verified.data.certified.fingerprint === certified.data.fingerprint, 'confirmed');
+  const leanPath = join(temp, 'beads.lean.acs');
+  await tool('export_certificate', { path: leanPath, includeData: false }, 'Plates agent');
+  const lean = await tool('verify_certificate', { path: leanPath }, 'Plates agent');
+  const logged = (await page(`return app.store.ws.provenance.filter((e) => e.action === 'certify').length;`));
+  check('a certificate without its files: incomplete until they are supplied, the missing files named; both certificates recorded in the change log', `${lean.data.verdict}: ${lean.data.files.missing.length} files missing (${lean.data.files.missing[0]}, …); ${logged} certificates in the log`, statSync(leanPath).size < statSync(certificatePath).size / 10 && lean.data.verdict === 'incomplete' && lean.data.files.missing.length === 56 && logged === 2, 'incomplete; 2 in the log');
 } catch (error) {
   check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

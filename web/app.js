@@ -385,9 +385,32 @@ async function start() {
   async function importArchive(item) {
     try {
       const { readACS } = await import('./lib/acs.js');
-      const archive = await readACS(await readBytes(item));
+      const bytes = await readBytes(item);
+      const archive = await readACS(bytes);
+      // A certificate is verified first; its analysis opens on request.
+      const { isCertificateArchive } = await import('./lib/certificate.js');
+      if (isCertificateArchive(archive)) {
+        const { showVerification } = await import('./ui/certificates.js');
+        await showVerification(app, bytes, item.name, { open: () => openArchive(archive, item.name) });
+        return;
+      }
+      await openArchive(archive, item.name);
+    } catch (error) {
+      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  async function openArchive(archive, name) {
+    try {
       const fcsFiles = archive.files.filter((f) => /\.(fcs|lmd)$/i.test(f.name)).map((f, order) => ({ name: f.name.split('/').pop(), bytes: f.bytes, order }));
-      const workspaceFile = archive.files.find((f) => /\.(cwz|json)$/i.test(f.name));
+      const workspaceFile = archive.files.find((f) => f.name === 'cytoweave-workspace.json') ?? archive.files.find((f) => /\.(cwz|json)$/i.test(f.name) && f.name !== 'certificate.json');
+      // Channels a certificate stored (derived/<sha256>.f32), where the workspace looks for them.
+      for (const f of archive.files) {
+        const sha = /^derived\/([0-9a-f]{64})\.f32$/.exec(f.name)?.[1];
+        if (!sha) continue;
+        data.session.set(sha, f.bytes);
+        await library.putFile(sha, f.bytes).catch(() => {});
+      }
       if (workspaceFile) {
         await openWorkspaceFile({ name: workspaceFile.name, bytes: workspaceFile.bytes });
         if (fcsFiles.length) {
@@ -400,7 +423,7 @@ async function start() {
         await importFCSItems(fcsFiles);
       }
     } catch (error) {
-      toast(`${item.name}: ${error.message}`, { kind: 'error' });
+      toast(`${name}: ${error.message}`, { kind: 'error' });
     }
   }
 

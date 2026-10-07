@@ -779,6 +779,15 @@ const scenes = {
     await compensateFromControls();
     await mode('report');
   },
+  // A reproducibility certificate of the PBMC analysis, opened and verified.
+  async certificate() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await mode('report');
+    await app(`const ui = await import('./ui/certificates.js'); const lib = await import('./lib/certificate.js'); const built = await lib.buildCertificate(app.store.ws, ui.certificateSource(app), { version: app.version }); ui.showVerification(app, built.bytes, 'PBMC immunophenotyping.certificate.acs', { open: () => {} });`);
+    await waitFor(`/Confirmed/.test(document.querySelector('.dialog')?.innerText ?? '')`, 180000);
+    await sleep(800);
+  },
 };
 
 // --- Run ------------------------------------------------------------------------------------------

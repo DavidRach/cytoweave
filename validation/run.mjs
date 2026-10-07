@@ -58,6 +58,8 @@ import { beadRun, runFlags, seriesRun } from '../web/lib/instrument-record.js';
 import { compareWithLibrary, latestEntries, libraryEntry, spectrumOn, withEntries as withSpectra } from '../web/lib/spectral-library.js';
 import { textPairs, themeTokens } from './accessibility-cases.mjs';
 import { VISIONS, lab as labOf, paletteReport, simulate } from '../web/lib/colorvision.js';
+import { buildCertificate, readCertificate, verifyCertificate } from '../web/lib/certificate.js';
+import { CERTIFICATE_EXAMPLES, certifiableExample } from './certificate-cases.mjs';
 import { CATEGORICAL, CATEGORICAL_CVD, colormapColor } from '../web/lib/colormaps.js';
 import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositive, withQCGate } from './multiverse-cases.mjs';
 import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
@@ -3296,6 +3298,83 @@ const suites = {
     let worst = 0;
     for (const x of [-1000, 0, 10, 1000, 100000]) worst = Math.max(worst, Math.abs(logicle.forward(x) - fasinh.forward(x)));
     check('reference', 'logicle with W = 0 equals Gating-ML fasinh (Moore & Parks 2012)', `max difference ${worst.toExponential(1)}`, worst < 1e-12, '< 1e-12');
+  },
+  async certificates() {
+    // Reproducibility certificates (R8): every example certified (its suggested gates, a table of
+    // every population and of k-means clusters stored as a channel, a saved comparison where it has
+    // conditions), read back from its archive and verified: every number computed again from the
+    // files must be identical, bit for bit. Then what verification must catch.
+    const started = performance.now();
+    const rows = [];
+    let pbmc = null;
+    for (const id of CERTIFICATE_EXAMPLES) {
+      const example = await certifiableExample(id);
+      const date = new Date('2026-10-07T00:00:00Z');
+      const built = await buildCertificate(example.ws, example.source, { version: 'validation', date });
+      const again = await buildCertificate(example.ws, example.source, { version: 'validation', date });
+      const report = await verifyCertificate(await readCertificate(built.bytes), { version: 'validation' });
+      const sameBytes = built.bytes.length === again.bytes.length && built.bytes.every((b, i) => b === again.bytes[i]);
+      rows.push({ id, verdict: report.verdict, numbers: built.certificate.total, same: report.numbers.same, comparisons: built.certificate.numbers.comparisons.length, warnings: built.warnings.length, sameBytes, fingerprint: built.certificate.fingerprint === again.certificate.fingerprint });
+      if (id === 'pbmc-immunophenotyping') pbmc = { example, built };
+    }
+    const total = rows.reduce((n, r) => n + r.numbers, 0);
+    check('certificates', `the ${rows.length} examples certified (suggested gates; a table of each population's % of parent and of clusters stored as a channel; a saved comparison where there are conditions), read back and verified: every number computed again from the files`, `${rows.filter((r) => r.verdict === 'confirmed').length} of ${rows.length} confirmed; ${total.toLocaleString('en-US')} numbers identical bit for bit (${rows.reduce((n, r) => n + r.comparisons, 0)} comparisons)`, rows.every((r) => r.verdict === 'confirmed' && r.same === r.numbers && r.warnings === 0), 'all confirmed');
+    check('certificates', 'the same analysis certified twice at the same time: the same archive, byte for byte, and the same fingerprint', `${rows.filter((r) => r.sameBytes && r.fingerprint).length} of ${rows.length}`, rows.every((r) => r.sameBytes && r.fingerprint), 'all');
+    // What verification must catch, on the PBMC example.
+    const { example, built } = pbmc;
+    const tampered = async (change) => {
+      const read = await readCertificate(built.bytes);
+      change(read);
+      return verifyCertificate(read, { version: 'validation' });
+    };
+    const flipped = await tampered((read) => {
+      const input = read.certificate.inputs.find((i) => /D03_Stim/.test(i.fileName));
+      const copy = read.files.get(input.path).slice();
+      copy[copy.length - 7] ^= 0x10;
+      read.files.set(input.path, copy);
+    });
+    // A gate's geometry moved by a fraction of its values (a polygon's x, a range's limits).
+    const nudge = (geometry, f) => (geometry.vertices ? { ...geometry, vertices: geometry.vertices.map(([a, b]) => [a * (1 + f), b]) } : { ...geometry, min: geometry.min * (1 + f), max: geometry.max * (1 + f) });
+    const gate = await tampered((read) => {
+      const g = read.ws.gates.find((x) => x.geometry?.vertices);
+      read.ws = { ...read.ws, gates: read.ws.gates.map((x) => (x === g ? { ...x, geometry: nudge(g.geometry, 0.01) } : x)) };
+    });
+    const log = await tampered((read) => {
+      read.ws = { ...read.ws, provenance: read.ws.provenance.map((e, i) => (i === 2 ? { ...e, time: '2026-01-01T00:00:00.000Z' } : e)) };
+    });
+    const dropped = await tampered((read) => {
+      read.ws = { ...read.ws, provenance: read.ws.provenance.filter((_, i) => i !== 1) };
+    });
+    const channel = await tampered((read) => {
+      const path = read.certificate.derivedInputs[0].path;
+      const copy = read.files.get(path).slice();
+      copy[3] ^= 0x40;
+      read.files.set(path, copy);
+    });
+    const number = await tampered((read) => {
+      read.certificate.numbers.tables[0].samples[4].values[1] = 12.5;
+    });
+    const caught = [
+      ['a bit of one FCS file', flipped.verdict === 'differs' && flipped.inputs.filter((i) => i.status === 'changed').length === 1],
+      ['a gate moved by 1%', gate.verdict === 'differs' && gate.numbers.differ.length > 0],
+      ['a log entry\'s time', log.verdict === 'differs' && log.log.broken[0]?.index === 2],
+      ['a log entry removed', dropped.verdict === 'differs' && !dropped.log.ok],
+      ['a bit of a stored channel', channel.verdict === 'differs' && channel.derived.some((d) => d.status === 'changed')],
+      ['a certified number', number.verdict === 'differs' && !number.fingerprint.ok],
+    ];
+    check('certificates', 'changes verification must catch: a bit of an FCS file, a gate moved by 1%, a log entry\'s time changed or an entry removed, a bit of a stored channel, a number edited in certificate.json', `${caught.filter(([, ok]) => ok).length} of ${caught.length} caught; the moved gate changes ${gate.numbers.differ.length} numbers${caught.some(([, ok]) => !ok) ? `; missed: ${caught.filter(([, ok]) => !ok).map(([what]) => what).join(', ')}` : ''}`, caught.every(([, ok]) => ok), 'all caught');
+    // Without the data: incomplete until the files are supplied (recognized by checksum).
+    const fullSize = built.bytes.length;
+    const withoutData = await buildCertificate(example.ws, example.source, { version: 'validation', includeData: false });
+    const missing = await verifyCertificate(await readCertificate(withoutData.bytes), { version: 'validation' });
+    const supplied = await verifyCertificate(await readCertificate(withoutData.bytes), { version: 'validation', data: example.files });
+    check('certificates', 'a certificate without its FCS files: incomplete, then confirmed once the files are supplied', `${(withoutData.bytes.length / 1024).toFixed(0)} kB instead of ${(fullSize / 1e6).toFixed(1)} MB; ${missing.verdict}, then ${supplied.verdict}`, missing.verdict === 'incomplete' && supplied.verdict === 'confirmed', 'incomplete, then confirmed');
+    // A saved comparison the analysis no longer gives is reported when certifying.
+    const moved = example.ws.gates.at(-1);
+    const changed = { ...example.ws, gates: example.ws.gates.map((g) => (g.id === moved.id ? { ...g, geometry: nudge(g.geometry, 0.05) } : g)) };
+    const stale = await buildCertificate(changed, example.source, { version: 'validation' });
+    check('certificates', 'a saved comparison the analysis no longer gives (its gate moved after saving) is reported when certifying', stale.warnings[0] ?? 'no warning', stale.warnings.length === 1 && /no longer matches/.test(stale.warnings[0]), 'reported');
+    check('certificates', 'time: 14 examples certified twice and verified, and the checks above', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
   },
 };
 

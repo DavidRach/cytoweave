@@ -13,7 +13,7 @@
 
 import { channelTransform, countOf, population } from './engine.js';
 import { transformKey } from './transforms.js';
-import { createWorkspace, effectiveGeometry, gateAncestors, gateById, gatePath, ROOT } from './workspace.js';
+import { appendLog, createWorkspace, effectiveGeometry, gateAncestors, gateById, gatePath, ROOT } from './workspace.js';
 import { crc32 } from './zip.js';
 
 export const PROVENANCE_FORMAT = 'cytoweave-figure-provenance';
@@ -336,7 +336,7 @@ export function rebuildWorkspace(record, options = {}) {
     gates: record.gates.map((g) => ({ ...g, meta: { ...(g.meta ?? {}), rebuiltFrom: record.figure.name } })),
     channelSettings: record.channelSettings,
     figures: [{ ...record.figure, id: record.figure.id ?? 'f-rebuilt' }],
-    provenance: [{ time, action: 'rebuild-figure', detail: `Rebuilt from the figure "${record.figure.name}" exported by ${record.software} on ${record.created}` }],
+    ...appendLog({ provenance: [] }, 'rebuild-figure', `Rebuilt from the figure "${record.figure.name}" exported by ${record.software} on ${record.created}`, time),
   };
 }
 

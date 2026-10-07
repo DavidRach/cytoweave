@@ -1175,6 +1175,51 @@ class Tools:
         """
         return self.call("export_workspace", **{"path": path, "overwrite": overwrite})
 
+    def export_certificate(self, path, *, include_data=None, overwrite=None):
+        """Make a reproducibility certificate.
+
+        Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry
+        Standard archive): the workspace, the FCS files (unless includeData is false: then only
+        their SHA-256), the channels the analysis stored, the gates as Gating-ML, the methods, and
+        certificate.json, which records the CytoWeave version, every input's SHA-256, the analyses
+        and their seeds, the head of the hash-chained change log, MIFlowCyt and every number
+        reported: each population's count in each sample, every table cell, and every saved
+        comparison of one measure. Every number is computed from the files to make it;
+        verify_certificate computes them again. Returns the fingerprint (SHA-256 of
+        certificate.json) to quote with the analysis, and warnings (a saved comparison that no
+        longer matches the analysis). The file must not exist unless overwrite is true.
+
+        Args:
+            path: Absolute path of the file to write (.acs). Required; a string.
+            include_data: Include the FCS files (default true); without them, verifying needs the
+                files. Optional; TRUE or FALSE (Python: True or False).
+            overwrite: Optional; TRUE or FALSE (Python: True or False).
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("export_certificate", **{"path": path, "includeData": include_data, "overwrite": overwrite})
+
+    def verify_certificate(self, path, *, data=None):
+        """Verify a reproducibility certificate.
+
+        Verify a CytoWeave reproducibility certificate (absolute path of the .acs file): check every
+        file's SHA-256, the workspace, the change log's chain and certificate.json's fingerprint,
+        compute every number again from the files and compare them bit for bit. A certificate
+        written without its data needs data (a folder, or FCS file paths; files are recognized by
+        their checksums). Returns the verdict (confirmed, incomplete or differs), a summary, and the
+        numbers that differ. The analysis in the window is not changed.
+
+        Args:
+            path: Absolute path of the certificate (.acs). Required; a string.
+            data: A folder with the FCS files, or a list of FCS file paths, for a certificate
+                without its data. Optional; any value.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("verify_certificate", **{"path": path, "data": data})
+
     def export_gating_ml(self):
         """Export gates as Gating-ML.
 
