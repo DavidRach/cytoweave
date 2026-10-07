@@ -777,6 +777,12 @@ Planned beside wave 7, not started there; they continue beside wave 8.
      bubble" and a bubble as "possible clog" with a burst: in the pilot, Haiku swapped them.
      Example annotations named planted faults ("anomaly"). Faults do not move with the seed, and the
      examples are public.
+   - First results (2026-10-07, version 2, Claude Code, 3 runs per task): Claude Sonnet 5.5 100%,
+     Claude Opus 5.5 99.7%, Claude Haiku 4.5 95.1%; no run replaced the data, no harness failure.
+     Version 1's prompts that echoed an example's description sent Haiku and Sonnet to open that
+     example (fixed by OPEN_DATA); a headless Chrome that froze once stalled the run (fixed by
+     deadlines, a close that cannot hang, and retries). Haiku still swaps the QC example's clog and
+     bubble in every run, from the QC findings' wording: a product fix for a later slice.
 6. **WebMCP (M7):** the same tools exposed to agents in the browser through WebMCP (Chrome origin
    trial, 2026), beside the MCP server; it replaces the on-device assistant (M6, now an idea).
 7. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.

@@ -7,7 +7,13 @@ import { join } from 'node:path';
 import { TASKS } from './tasks.mjs';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const pct = (v) => (Number.isFinite(v) ? `${Math.round(100 * v)}%` : '—');
+// One decimal (99.7% is not 100%), none when whole.
+const pct = (v) => (Number.isFinite(v) ? `${+(100 * v).toFixed(1)}%` : '—');
+// "claude-opus-5-5" → "Claude Opus 5.5", "claude-haiku-4-5-20251001" → "Claude Haiku 4.5".
+const modelName = (id) => {
+  const m = /^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?$/.exec(String(id ?? ''));
+  return m ? `Claude ${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : String(id ?? '');
+};
 const AGENT_LABELS = { 'claude-code': 'Claude Code' };
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : Number.NaN);
 
@@ -19,7 +25,7 @@ export function readResults(folder) {
 function label(r) {
   if (r.agent.id === 'expert') return 'Reference solution (scripted, no model)';
   if (r.agent.id === 'none') return 'No answer (lower bound)';
-  return `${AGENT_LABELS[r.agent.id] ?? r.agent.id}, ${r.agent.model ?? r.agent.requestedModel}${r.agent.effort ? ` (${r.agent.effort} effort)` : ''}`;
+  return `${AGENT_LABELS[r.agent.id] ?? r.agent.id}, ${modelName(r.agent.model ?? r.agent.requestedModel)}${r.agent.effort ? ` (${r.agent.effort} effort)` : ''}`;
 }
 
 export function benchmarkHTML(folder) {
