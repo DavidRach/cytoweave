@@ -9,7 +9,7 @@
 // Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, kinetics, plates, beadplexr, clustering,
 // normalization, debarcode, transforms, flowjo, migration, acquisition, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
-// fortessa, bioconductor, autospectral
+// fortessa, bioconductor, autospectral, certificates, reviews, fmo, panel
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -63,6 +63,8 @@ import { CERTIFICATE_EXAMPLES, certifiableExample } from './certificate-cases.mj
 import { buildReviewReport } from '../web/lib/review-report.js';
 import { fmoThreshold, virtualFMO } from '../web/lib/virtual-fmo.js';
 import { axisDistance, omip, simulatedConventional, simulatedSpectral, skull } from './fmo-cases.mjs';
+import { PBMC_25, T_PANEL, instrumentInputs, measureAssignment, omipControls, simulatedControls } from './panel-cases.mjs';
+import { assignmentCost, assignmentFrom, compareWithRun, designPanel, levelValue, panelProblem, searchPanel, spreadOfSet } from '../web/lib/panel-optimizer.js';
 import { gatingStrategyFigure } from '../web/lib/figures.js';
 import { exportScene } from '../web/lib/scene.js';
 import { CATEGORICAL, CATEGORICAL_CVD, colormapColor } from '../web/lib/colormaps.js';
@@ -86,8 +88,8 @@ import { ROOT, createWorkspace, addGates, addCompensation, addDerived, addSample
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
 import { autoGateControl, referenceSpectrum, extractAutofluorescence, spectralSpreading, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
-import { agreement, crossValidate, fitNoise, predictedSpreading, spreadModel } from '../web/lib/spread.js';
-import { INSTRUMENTS } from '../web/lib/simulate.js';
+import { agreement, crossValidate, fitNoise, noiseRecord, predictedSpreading, spreadModel } from '../web/lib/spread.js';
+import { FLUOROCHROMES, INSTRUMENTS } from '../web/lib/simulate.js';
 import { dnaHistogram, fitDeanJettFox, fitWatsonPragmatic } from '../web/lib/cellcycle.js';
 import { fitProliferation } from '../web/lib/proliferation.js';
 import { flowsom, mapToSOM, hclust, cutTree, distanceMatrix } from '../web/lib/flowsom.js';
@@ -3520,6 +3522,125 @@ const suites = {
     const auroraRows = evaluate(aurora);
     check('fmo', `${aurora.name}: ${aurora.fmos.length} pooled FMO tubes, each predicting its own channel (live cells; unmixed with autofluorescence signatures; spread fitted to the 25 bead references); left out: ${aurora.excluded.join('; ')}`, `${describe(auroraRows)}; mean |distance| ${fmt(mean(auroraRows), 2)}%, worst ${fmt(worst(auroraRows), 2)}%`, aurora.fmos.length >= 4 && mean(auroraRows) <= 10 && worst(auroraRows) <= 20, 'mean within 10%, worst 20% of the axis');
     check('fmo', 'time: two simulated panels and two public ones, every virtual FMO and real threshold', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+
+  // The panel optimizer (S9). Small panels have a known optimum under the model (every assignment
+  // tried); the simulator stains any assignment, so the best assignment is also known by
+  // measurement: each marker's resolution on cells carrying its co-expressed markers, unmixed or
+  // compensated as the panel would be (panel-cases.mjs). The model's cost is compared with the
+  // measured one across assignments, the optimum's spread with its own controls, and on the public
+  // Aurora panel (Zenodo 20644656) the spread a design predicts with noise fitted to other dyes'
+  // controls against the controls of the dyes it uses.
+  async panel() {
+    const started = performance.now();
+    const problemOf = (inputs, markers, groups) => ({ markers, groups, dyes: inputs.dyes, detectors: inputs.detectors, noise: inputs.noise, background: inputs.background, signalScale: inputs.signalScale, square: inputs.square });
+    const random = createRandom(17);
+
+    // 1. The search: local search (as for large panels) against every assignment.
+    const searches = [];
+    for (const conventional of [false, false, false, false, true, true]) {
+      const pool = conventional ? T_PANEL.conventional : T_PANEL.spectral;
+      const dyes = pool.filter(() => random() < 0.9).slice(0, 8);
+      const inputs = instrumentInputs({ conventional, dyes });
+      const markers = Array.from({ length: 6 }, (_, k) => ({ name: `M${k + 1}`, level: ['high', 'medium', 'low'][Math.floor(random() * 3)] }));
+      const names = markers.map((m) => m.name);
+      const groups = [{ name: 'A', markers: names.filter(() => random() < 0.7) }, { name: 'B', markers: names.filter(() => random() < 0.7) }];
+      const input = problemOf(inputs, markers, groups);
+      const exact = searchPanel(panelProblem(input), { exhaustiveLimit: 1e6 });
+      const local = searchPanel(panelProblem(input), { exhaustiveLimit: 0 });
+      searches.push({ conventional, exact, local, same: Math.abs(local.cost - exact.cost) <= 1e-9 * exact.cost });
+    }
+    check('panel', `search: local search (swaps, unused dyes, seeded restarts) against every assignment of 6 markers to 8 dyes (${searches.length} random panels, ${searches.filter((x) => x.conventional).length} conventional)`, `${searches.filter((x) => x.same).length} of ${searches.length} found the optimum (${searches.map((x) => x.exact.assignments).join(', ')} assignments)`, searches.every((x) => x.same), 'all');
+
+    // 2. The model against the measured resolution: the optimum, the classical rule (the dimmest
+    // marker on the brightest dye) and 24 random assignments, stained in the simulator.
+    const markers = T_PANEL.markers.map((m) => ({ ...m, value: levelValue(m.level) }));
+    const ranking = {};
+    for (const conventional of [false, true]) {
+      const kind = conventional ? 'conventional (LSRFortessa, compensated)' : 'spectral (Aurora, unmixed)';
+      const inputs = instrumentInputs({ conventional, dyes: conventional ? T_PANEL.conventional : T_PANEL.spectral });
+      const input = problemOf(inputs, T_PANEL.markers, T_PANEL.groups);
+      const p = panelProblem(input);
+      const exact = searchPanel(p, { exhaustiveLimit: 3e6, keep: 10 });
+      const local = searchPanel(panelProblem(input), { exhaustiveLimit: 0 });
+      const byMarker = (a) => Object.fromEntries(Array.from(a, (i, b) => [p.markers[b].name, p.names[i]]));
+      const design = designPanel(input);
+      const candidates = [['optimum', exact.assignment], ['rule', assignmentFrom(p, design.rule.byMarker)]];
+      for (let k = 0; k < 24; k += 1) {
+        const order = [...p.names.keys()];
+        for (let i = order.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(random() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        candidates.push([`random ${k + 1}`, Int32Array.from(order.slice(0, markers.length))]);
+      }
+      const rows = candidates.map(([name, a]) => ({ name, predicted: assignmentCost(p, a), measured: measureAssignment({ markers, groups: T_PANEL.groups, assignment: byMarker(a), conventional }) }));
+      const r = pearson(rows.map((x) => Math.log(x.predicted)), rows.map((x) => Math.log(x.measured.cost)));
+      const errors = rows.map((x) => Math.abs(x.measured.cost / x.predicted - 1)).sort((a, b) => a - b);
+      const best = [...rows].sort((a, b) => a.measured.cost - b.measured.cost)[0];
+      const optimum = rows[0];
+      const rule = rows[1];
+      check('panel', `${kind}: the model's cost (Σ σ²/ΔF² of 8 markers, 3 of them dim, on CD4 and CD8 T cells) against the cost measured on stained, ${conventional ? 'compensated' : 'unmixed'} cells, for the optimum, the classical rule and 24 random assignments of 10 dyes`, `r = ${fmt(r, 4)} (log), median error ${fmt(100 * errors[Math.floor(errors.length / 2)], 1)}%, largest ${fmt(100 * errors[errors.length - 1], 1)}%`, r > 0.98 && errors[Math.floor(errors.length / 2)] < 0.1, 'r > 0.98, median error < 10%');
+      check('panel', `${kind}: the optimum (${exact.assignments} assignments tried; local search ${Math.abs(local.cost - exact.cost) <= 1e-9 * exact.cost ? 'finds it too' : 'misses it'}) measures best of the 26`, `measured best: ${best.name}; optimum ${optimum.measured.cost.toExponential(3)}, rule ${rule.measured.cost.toExponential(3)} (×${fmt(rule.measured.cost / optimum.measured.cost, 2)}), best random ×${fmt(Math.min(...rows.slice(2).map((x) => x.measured.cost)) / optimum.measured.cost, 2)}`, best.name === 'optimum' && Math.abs(local.cost - exact.cost) <= 1e-9 * exact.cost, 'the optimum, found by local search too');
+      const dim = optimum.measured.markers.filter((x) => levelValue(T_PANEL.markers.find((m) => m.name === x.marker).level) <= 1e3);
+      check('panel', `${kind}: the dim markers' measured stain index, optimum vs the classical rule`, dim.map((x) => `${x.marker} ${x.dye} ${fmt(x.stainIndex, 1)} vs ${rule.measured.markers.find((y) => y.marker === x.marker).dye} ${fmt(rule.measured.markers.find((y) => y.marker === x.marker).stainIndex, 1)}`).join('; '), true, 'reported');
+      // The model's 10 best, measured with more cells: are they told apart?
+      const top = exact.top.map((t) => ({ predicted: t.cost, measured: measureAssignment({ markers, groups: T_PANEL.groups, assignment: byMarker(t.dyeOf), conventional, events: 6000, seed: 23 }).cost }));
+      const measuredBest = Math.min(...top.map((x) => x.measured));
+      check('panel', `${kind}: the model's 10 best assignments (predicted within ${fmt(100 * (top[top.length - 1].predicted / top[0].predicted - 1), 1)}% of each other) measured: the optimum against the best of them`, `optimum ${fmt(100 * (top[0].measured / measuredBest - 1), 2)}% above the measured best`, top[0].measured <= measuredBest * 1.03, 'within 3% (measurement noise)');
+      ranking[conventional ? 'conventional' : 'spectral'] = { design, p };
+    }
+
+    // 3. The design against its run: the optimum's dyes as single-stain controls, unmixed with
+    // their spectra; their spreading matrix against the spread the design predicted.
+    {
+      const { design } = ranking.spectral;
+      const run = simulatedControls(design.spread.names);
+      const c = compareWithRun(design.spread, run);
+      check('panel', `spectral: the design's predicted spread against its own simulated controls (${c.measurable} entries measured to 4 SE)`, `×${fmt(c.medianRatio, 3)}, ${fmt(100 * c.within2x, 0)}% within 2×, r = ${fmt(c.correlation, 3)}`, c.within2x > 0.9, '> 90% within 2×');
+    }
+
+    // 4. A 25-color panel on the simulator's 29 dyes: seeds against a search four times longer.
+    {
+      const dyes = Object.keys(FLUOROCHROMES).filter((f) => !['AF', 'AFM', 'CTV', 'PI', 'Indo-1 (Ca-bound)', 'Indo-1 (free)'].includes(f));
+      const inputs = instrumentInputs({ dyes });
+      const input = problemOf(inputs, PBMC_25.markers, PBMC_25.groups);
+      const t0 = performance.now();
+      const runs = [1, 2].map((seed) => designPanel(input, { seed }));
+      const seconds = (performance.now() - t0) / 2000;
+      const long = designPanel(input, { seed: 3, restarts: 12, perturbations: 80, budget: 160000 });
+      const gaps = runs.map((x) => x.cost / long.cost - 1);
+      check('panel', `25 markers on ${dyes.length} dyes (the spectral example's markers on PBMC, 4 groups): two seeds against a search 4× longer`, `${gaps.map((g) => `${fmt(100 * g, 2)}%`).join(', ')} above it; ${fmt(seconds, 1)} s per design; the classical rule ×${fmt(runs[0].rule.cost / runs[0].cost, 1)}`, gaps.every((g) => g < 0.02), 'within 2%');
+    }
+    check('panel', 'time: simulated designs, rankings and runs', `${fmt((performance.now() - started) / 1000, 1)} s`, true, 'reported');
+
+    // 5. A real instrument: the 25 bead reference controls of the public Aurora panel. Controls the
+    // reference check flags as mixtures (dim and bright positives of different spectra, as a
+    // degraded tandem gives) are left out: their spread is not noise.
+    const { detectors, controls: all } = omipControls(dataset('omip-tdln'));
+    const flagged = [];
+    const controls = all.filter((c) => {
+      const q = referenceSpectrum(c.cols, detectors, c.gate.positive, c.gate.negative, {}).quality;
+      if (q.heterogeneity >= 0.98) return true;
+      flagged.push(`${c.name} (similarity ${fmt(q.heterogeneity, 2)})`);
+      return false;
+    });
+    const observe = (list) => spectralSpreading(list.map((c, i) => ({ fluorochrome: i, abundances: unmixOLS(c.cols, list.map((x) => ({ name: x.name, spectrum: x.spectrum })), { residuals: false }), positive: c.gate.positive, negative: c.gate.negative })), list.map((c) => c.name));
+    const modelOf = (list) => spreadModel({ names: list.map((c) => c.name), detectors, spectra: list.map((c) => c.spectrum) });
+    const loo = crossValidate(modelOf(controls), observe(controls).observations);
+    check('panel', `Cytek Aurora (Zenodo 20644656): each of ${controls.length} bead controls' spread predicted from the others (${loo.measurable} entries measured to 4 SE; left out as mixtures: ${flagged.join(', ') || 'none'})`, `×${fmt(loo.medianRatio, 3)}, ${fmt(100 * loo.within2x, 0)}% within 2×, r = ${fmt(loo.correlation, 3)}`, true, 'reported');
+    const splits = [['even', 0], ['odd', 1]].map(([label, parity]) => {
+      const fitted = controls.filter((_, k) => k % 2 === parity);
+      const panel = controls.filter((_, k) => k % 2 !== parity);
+      const model = modelOf(fitted);
+      const noise = noiseRecord(model, fitNoise(model, observe(fitted).observations));
+      const p = panelProblem({ markers: [{ name: 'any', level: 'high' }], dyes: panel.map((c) => ({ name: c.name, spectrum: c.spectrum })), detectors, noise });
+      const all = Int32Array.from(panel.keys());
+      const spread = spreadOfSet(p, all.slice(0, p.N));
+      const c = compareWithRun(spread ?? { names: [], photon: [], laser: [] }, observe(panel));
+      return { label, fitted: fitted.length, panel: panel.length, ...c };
+    });
+    check('panel', `Cytek Aurora: a ${splits[0].panel}-dye panel's spread predicted with noise fitted to the other ${splits[0].fitted} dyes' controls, against its own controls unmixed with only its spectra (and the other way round)`, splits.map((x) => `${x.measurable} entries: ×${fmt(x.medianRatio, 2)}, ${fmt(100 * x.within2x, 0)}% within 2×, r = ${fmt(x.correlation, 2)}`).join('; '), splits.every((x) => x.within2x > 0.6 && x.correlation > 0.7), '> 60% within 2× and r > 0.7 each way');
   },
 };
 

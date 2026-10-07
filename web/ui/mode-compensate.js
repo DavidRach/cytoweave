@@ -3,7 +3,8 @@
 
 import { h, icon, clear, formatCount } from './dom.js';
 import { shownColor } from '../lib/colormaps.js';
-import { showMenu, toast, progressToast, promptDialog, confirmDialog } from './overlays.js';
+import { showMenu, showDialog, toast, progressToast, promptDialog, confirmDialog } from './overlays.js';
+import { compensationInputs, optimizerPane } from './panel-design.js';
 import { conditionNumber, compensate, controlResiduals, leanCheck, identityMatrix } from '../lib/compensation.js';
 import { isDetectorOf, spectralWorkspace, spilloverFromControls } from './controls.js';
 import { readSpillover } from '../lib/fcs.js';
@@ -265,13 +266,26 @@ export function mountCompensateMode(app, container) {
 
   // --- Diagnostics -------------------------------------------------------------------------------
 
+  // The panel optimizer on this compensation's dyes (panel-design.js).
+  function openOptimizer(compensation) {
+    const inputs = compensationInputs(store.ws, compensation);
+    const body = h('div');
+    const draw = () => {
+      clear(body);
+      body.append(optimizerPane(app, { key: `compensation:${compensation.id}`, inputs, rerender: draw }));
+    };
+    draw();
+    showDialog({ title: `Optimize the panel · ${compensation.name}`, content: body, width: 'wide' });
+  }
+
   function renderDiagnostics() {
     clear(diagnosticsHost);
     const item = selected();
     const ws = store.ws;
     diagnosticsHost.append(h('h3', 'Diagnostics', h('span.spacer'),
       h('button.btn.small.primary', { type: 'button', disabled: !item, onclick: () => runControlCheck(item), title: item ? 'Compensate each single-stain control with this matrix and measure what is left in the other detectors: the definitive check.' : 'Compute or create a matrix first: these check a matrix.' }, icon('check'), 'Check against the controls'),
-      h('button.btn.small', { type: 'button', disabled: !item, onclick: () => runLeanCheck(item), title: item ? 'A hint only: compares bright and dim events of each channel in the current sample, where biology also differs.' : 'Compute or create a matrix first: these check a matrix.' }, icon('target'), 'Hint from the current sample')));
+      h('button.btn.small', { type: 'button', disabled: !item, onclick: () => runLeanCheck(item), title: item ? 'A hint only: compares bright and dim events of each channel in the current sample, where biology also differs.' : 'Compute or create a matrix first: these check a matrix.' }, icon('target'), 'Hint from the current sample'),
+      h('button.btn.small', { type: 'button', disabled: !item?.record?.spread?.noise, onclick: () => openOptimizer(item.record), title: item?.record?.spread?.noise ? 'Which dye each marker should carry, from these controls\' spillover and spread' : 'Compute the matrix from single-stain controls first: the optimizer uses the spread fitted to them.' }, icon('sparkles'), 'Optimize the panel…')));
     if (ssm) diagnosticsHost.append(spreadingHeatmap(ssm));
     else if (!item) diagnosticsHost.append(h('p.muted', 'With a matrix, check it against the single-stain controls (what each leaves in the other detectors once compensated) or, as a hint, against the current sample. The spillover spreading matrix appears after computing from controls: it shows how much each fluorochrome spreads the negative population in other detectors (Nguyen et al. 2013), the price paid for compensation.'));
     else diagnosticsHost.append(h('p.muted', 'The spillover spreading matrix appears after computing from controls: it shows how much each fluorochrome spreads the negative population in other detectors (Nguyen et al. 2013), the price paid for compensation.'));

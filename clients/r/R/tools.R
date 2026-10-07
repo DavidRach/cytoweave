@@ -1173,6 +1173,48 @@ cw_virtual_fmo <- function(sample, channel, add_gate = NULL, name = NULL, popula
   cw_call("virtual_fmo", sample = sample, channel = channel, addGate = add_gate, name = name, population = population, quantile = quantile, versus = versus, cw = cw)
 }
 
+#' Design a panel
+#'
+#' Which dye each marker of a panel should carry: the panel optimizer predicts every marker's
+#' resolution (stain index) from the dyes' spectra, the instrument's noise (photon noise per
+#' detector and laser fluctuations, fitted to the controls, kept for the instrument or from
+#' bead runs) and the unstained control's background, with the spread every co-expressed marker
+#' adds at its own brightness, and searches the assignments for the one with the least noise
+#' relative to signal (every assignment for small panels, local search for large ones). It
+#' designs from this experiment's spectral reference controls and the instrument's spectral
+#' library (from spectral), from a compensation computed from single-stain controls (from
+#' compensation: each dye in its own detector), or from an instrument's spectral library alone
+#' (from library, instrument). Give each marker its expression (high ≈ 10^5 molecules per cell,
+#' medium 10^4, low 10^3, or a number) and optionally a fixed dye; groups lists the markers
+#' found on the same cells (without groups every marker is taken to be on the same cells). dyes
+#' limits the candidates, brightness overrides a dye's relative brightness (PE 0.5, FITC 0.12;
+#' built in for common dyes). Returns each marker's dye, predicted stain index, what limits it
+#' and the next-best dyes, the comparison with this experiment's panel, pairs of dyes prone to
+#' energy transfer, and warnings. Nothing in the workspace changes.
+#'
+#' @param markers The markers: { name, level (high, medium, low or molecules per cell; default
+#' medium), dye (optional: fixed) }. Required; a list of strings.
+#' @param brightness Relative brightness of dyes, by name. Optional; a named list (Python: a
+#' dict).
+#' @param compensation With from compensation: the compensation's name (default: the first
+#' computed from controls). Optional; a string.
+#' @param dyes Only these candidate dyes. Optional; a list of strings.
+#' @param from What to design from (default: the first available, in this order). Optional; one
+#' of "spectral", "compensation", "library".
+#' @param groups Groups of markers found on the same cells: { name, markers }. Optional; a list
+#' of strings.
+#' @param instrument With from library: the instrument's library (name or id; default the
+#' first). Optional; a string.
+#' @param noise The noise model (default: this experiment's controls, else the one kept for the
+#' instrument, else bead runs). Optional; one of "controls", "library", "beads".
+#' @param seed Seed of the search (default 1). Optional; any value.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_design_panel <- function(markers, brightness = NULL, compensation = NULL, dyes = NULL, from = NULL, groups = NULL, instrument = NULL, noise = NULL, seed = NULL, cw = cw_default()) {
+  cw_call("design_panel", markers = .cw_array(markers), brightness = brightness, compensation = compensation, dyes = .cw_array(dyes), from = from, groups = .cw_array(groups), instrument = instrument, noise = noise, seed = seed, cw = cw)
+}
+
 #' Make a reproducibility certificate
 #'
 #' Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry

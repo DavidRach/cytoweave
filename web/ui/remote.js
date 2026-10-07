@@ -1135,6 +1135,87 @@ export function installRemote(app) {
       };
     },
 
+    // The panel optimizer (lib/panel-optimizer.js through ui/panel-design.js): which dye each
+    // marker should carry, from the experiment's reference or compensation controls, or from an
+    // instrument's spectral library. Nothing in the workspace changes.
+    async design_panel(args) {
+      const design = await import('./panel-design.js');
+      const run = await import('./spectral-run.js');
+      const { SPECTRA_RECORDS } = await import('../lib/spectral-library.js');
+      const { INSTRUMENT_RECORDS, instrumentOf } = await import('../lib/instrument-record.js');
+      const { levelLabel } = await import('../lib/panel-optimizer.js');
+      const w = ws();
+      if (!Array.isArray(args.markers) || !args.markers.length) throw new ActionError('markers: a list of { name, level (high, medium, low or molecules per cell), dye (optional: fixed) }.');
+      const markers = args.markers.map((m) => (typeof m === 'string' ? { name: m, level: 'medium' } : { name: String(m.name ?? '').trim(), level: m.level ?? 'medium', dye: m.dye ?? null }));
+      if (markers.some((m) => !m.name)) throw new ActionError('Every marker needs a name.');
+      const names = markers.map((m) => m.name);
+      const groups = args.groups === undefined ? [{ name: 'All markers', markers: names }] : (args.groups ?? []).map((g, k) => (Array.isArray(g) ? { name: `Group ${k + 1}`, markers: g } : { name: g.name ?? `Group ${k + 1}`, markers: g.markers ?? [] }));
+      for (const g of groups) for (const m of g.markers) if (!names.includes(m)) throw new ActionError(`The group ${g.name} names ${m}, which is not among the markers.`);
+      const library = async (id) => (app.library?.getRecord ? (await app.library.getRecord(SPECTRA_RECORDS, id).catch(() => null)) ?? null : null);
+      const runsOf = async (id) => (app.library?.getRecord ? ((await app.library.getRecord(INSTRUMENT_RECORDS, id).catch(() => null))?.runs ?? []) : []);
+      const state = run.spectralState(w);
+      const want = args.from ?? null;
+      let inputs = null;
+      let from;
+      if ((!want || want === 'spectral') && state.activeRefs().length >= 2) {
+        const inst = instrumentOf((state.controls[0] ?? w.samples[0])?.keywords ?? {});
+        inputs = design.spectralInputs(w, { library: inst ? await library(inst.id) : null, runs: inst ? await runsOf(inst.id) : [], instrumentName: inst?.name });
+        from = 'the reference controls of this experiment and the instrument\'s spectral library';
+      } else if ((!want || want === 'compensation') && w.compensations.some((c) => c.spread?.noise)) {
+        const comp = args.compensation ? w.compensations.find((c) => c.name === args.compensation || c.id === args.compensation) : w.compensations.find((c) => c.spread?.noise);
+        if (!comp?.spread?.noise) throw new ActionError(`No compensation named ${args.compensation} has a spread model (compute it from single-stain controls).`);
+        inputs = design.compensationInputs(w, comp);
+        from = `the single-stain controls of the compensation "${comp.name}"`;
+      } else if (!want || want === 'library') {
+        const records = app.library?.listRecords ? (await app.library.listRecords(SPECTRA_RECORDS).catch(() => [])) ?? [] : [];
+        const pick = args.instrument ? records.find((r) => r.id === args.instrument || r.name === args.instrument) : records[0];
+        if (!pick) throw new ActionError(records.length ? `No spectral library is kept for ${args.instrument}; there are: ${records.map((r) => r.name || r.id).join(', ')}.` : 'There is nothing to design from: no reference controls with spectra, no compensation computed from single-stain controls, and no spectral library of an instrument.');
+        const record = await library(pick.id);
+        inputs = design.libraryInputs(record, design.libraryDetectors(record), await runsOf(pick.id));
+        from = `the spectral library of ${record?.name ?? pick.id}`;
+      } else throw new ActionError(`Nothing to design from ${want}: from is spectral (reference controls), compensation (a compensation computed from single-stain controls) or library.`);
+      const exclude = Array.isArray(args.dyes) ? inputs.candidates.map((c) => c.name).filter((n) => !args.dyes.some((d) => String(d).toLowerCase() === n.toLowerCase())) : [];
+      const unknown = Array.isArray(args.dyes) ? args.dyes.filter((d) => !inputs.candidates.some((c) => c.name.toLowerCase() === String(d).toLowerCase())) : [];
+      if (unknown.length) throw new ActionError(`${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not among the dyes: ${inputs.candidates.map((c) => c.name).join(', ')}.`);
+      let result;
+      try {
+        result = await design.runDesign(app, inputs, { markers, groups, exclude, brightness: args.brightness ?? {}, source: args.noise ?? null, seed: args.seed ?? 1 });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const r = result.result;
+      const compared = r.compared.find((c) => c.rows);
+      const data = {
+        from,
+        kind: inputs.kind,
+        noise: result.noise,
+        background: result.background,
+        method: r.method,
+        assignmentsTried: r.assignmentsTried ?? undefined,
+        dyeSetsTried: r.method === 'local search' ? r.evaluations : undefined,
+        cost: round(r.cost, 6),
+        assignments: r.assignments.map((a) => ({
+          marker: a.marker,
+          expression: levelLabel(a.level),
+          dye: a.dye,
+          fixed: a.fixed || undefined,
+          stainIndex: round(a.stainIndex, 4),
+          group: a.group ?? undefined,
+          background: round(a.background, 3),
+          spreadFrom: a.from.slice(0, 3).map((f) => ({ marker: f.marker, dye: f.dye, share: round(f.share, 3) })),
+          alternatives: a.alternatives.map((x) => ({ dye: x.dye, swapWith: x.swapWith ?? undefined, stainIndex: round(x.stainIndex, 4), costIncrease: round(x.increase, 6) })),
+        })),
+        comparedWithThisPanel: compared ? { costRatio: round(r.cost / compared.cost, 4), assignments: compared.rows.map((x) => ({ marker: x.marker, dye: x.dye, stainIndex: round(x.stainIndex, 4) })) } : undefined,
+        dimmestOnBrightestCostRatio: r.rule ? round(r.cost / r.rule.cost, 4) : undefined,
+        energyTransfer: r.energyTransfer.map((e) => ({ markers: e.markers, kind: e.kind, donor: e.donor, acceptor: e.acceptor, note: e.note })),
+        warnings: r.warnings,
+        settings: r.settings,
+      };
+      const worst = [...r.assignments].sort((a, b) => a.stainIndex - b.stainIndex)[0];
+      const message = `Designed ${r.assignments.length} markers from ${from} (${r.method === 'exhaustive' ? `best of all ${r.assignmentsTried} assignments` : `local search, ${r.evaluations} dye sets tried`}; noise: ${result.noise}; background: ${result.background}): ${r.assignments.map((a) => `${a.marker} ${a.dye}`).join(', ')}. The least resolved marker is ${worst.marker} on ${worst.dye} (predicted stain index ${round(worst.stainIndex, 3)}).${compared ? ` Its noise-to-signal is ${Math.round((100 * r.cost) / compared.cost)}% of this experiment's panel.` : ''}${args.groups === undefined ? ' No groups were given, so every marker was taken to be on the same cells (the most conservative assumption).' : ''}${r.energyTransfer.length ? ` ${r.energyTransfer.length} pair(s) of dyes on the same cells can pass energy (see energyTransfer).` : ''} A prediction from the spread model: it assumes the expression levels given and does not predict degraded tandems.`;
+      return { message, data };
+    },
+
     async diagnose_unmixing(args) {
       const run = await import('./spectral-run.js');
       const { SPECTRA_RECORDS } = await import('../lib/spectral-library.js');

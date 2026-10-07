@@ -2084,6 +2084,121 @@
     }
   },
   {
+    "name": "design_panel",
+    "title": "Design a panel",
+    "description": "Which dye each marker of a panel should carry: the panel optimizer predicts every marker's resolution (stain index) from the dyes' spectra, the instrument's noise (photon noise per detector and laser fluctuations, fitted to the controls, kept for the instrument or from bead runs) and the unstained control's background, with the spread every co-expressed marker adds at its own brightness, and searches the assignments for the one with the least noise relative to signal (every assignment for small panels, local search for large ones). It designs from this experiment's spectral reference controls and the instrument's spectral library (from spectral), from a compensation computed from single-stain controls (from compensation: each dye in its own detector), or from an instrument's spectral library alone (from library, instrument). Give each marker its expression (high ≈ 10^5 molecules per cell, medium 10^4, low 10^3, or a number) and optionally a fixed dye; groups lists the markers found on the same cells (without groups every marker is taken to be on the same cells). dyes limits the candidates, brightness overrides a dye's relative brightness (PE 0.5, FITC 0.12; built in for common dyes). Returns each marker's dye, predicted stain index, what limits it and the next-best dyes, the comparison with this experiment's panel, pairs of dyes prone to energy transfer, and warnings. Nothing in the workspace changes.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "brightness": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "Relative brightness of dyes, by name",
+          "type": "object"
+        },
+        "compensation": {
+          "description": "With from compensation: the compensation's name (default: the first computed from controls)",
+          "type": "string"
+        },
+        "dyes": {
+          "description": "Only these candidate dyes",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "from": {
+          "description": "What to design from (default: the first available, in this order)",
+          "enum": [
+            "spectral",
+            "compensation",
+            "library"
+          ],
+          "type": "string"
+        },
+        "groups": {
+          "description": "Groups of markers found on the same cells: { name, markers }",
+          "items": {
+            "properties": {
+              "markers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "description": "Group (a cell type)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "markers"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "instrument": {
+          "description": "With from library: the instrument's library (name or id; default the first)",
+          "type": "string"
+        },
+        "markers": {
+          "description": "The markers: { name, level (high, medium, low or molecules per cell; default medium), dye (optional: fixed) }",
+          "items": {
+            "properties": {
+              "dye": {
+                "description": "A fixed dye",
+                "type": "string"
+              },
+              "level": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "description": "high, medium, low or molecules per cell"
+              },
+              "name": {
+                "description": "Marker",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "noise": {
+          "description": "The noise model (default: this experiment's controls, else the one kept for the instrument, else bead runs)",
+          "enum": [
+            "controls",
+            "library",
+            "beads"
+          ],
+          "type": "string"
+        },
+        "seed": {
+          "description": "Seed of the search (default 1)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "markers"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "export_certificate",
     "title": "Make a reproducibility certificate",
     "description": "Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry Standard archive): the workspace, the FCS files (unless includeData is false: then only their SHA-256), the channels the analysis stored, the gates as Gating-ML, the methods, and certificate.json, which records the CytoWeave version, every input's SHA-256, the analyses and their seeds, the head of the hash-chained change log, MIFlowCyt and every number reported: each population's count in each sample, every table cell, and every saved comparison of one measure. Every number is computed from the files to make it; verify_certificate computes them again. Returns the fingerprint (SHA-256 of certificate.json) to quote with the analysis, and warnings (a saved comparison that no longer matches the analysis). The file must not exist unless overwrite is true.",

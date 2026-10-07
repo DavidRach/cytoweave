@@ -719,7 +719,7 @@ Planned beside wave 7, not started there; they continue beside wave 8.
      comes from and Gate above it; agents' `virtual_fmo`. The examples can generate FMO tubes
      (`fmos`). Validated by the `fmo` suite: simulated panels within 1% of the axis (the unstained
      control 12–13%); real FMOs, each tube predicting its own channel, 5.8% (LSRFortessa, 7 tubes)
-     and 5.5% (Aurora, 4 tubes) of the axis on average, worst 11.6% and 14.9%. The FMO tubes
+     and 5.5% (Aurora, 4 tubes) of the axis on average, worst 11.6% and 14.8%. The FMO tubes
      that do not omit their named dye cleanly (6 of 13; 2 of 6) are found from the data and left
      out. fetch.mjs reads the first events of large ZIP entries (fcs-subset.mjs).
    - Found by slice 3: the bead-fitted model overestimates some spread on cells (up to 3× in
@@ -732,6 +732,30 @@ Planned beside wave 7, not started there; they continue beside wave 8.
    energy transfer, and is checked against the panel's result once run.
    - Validation: simulated panels with known best assignments; the predicted spread against the
      run's unmixed controls.
+   - Done (slice 4): lib/panel-optimizer.js predicts each marker's stain index on the cells of
+     each group of co-expressed markers (expression × the dye's relative brightness, against the
+     unstained control's background carried through the unmixing plus the photon and laser
+     spread of every other marker of the group at its brightness) and minimizes Σ σ²/ΔF². The
+     unmixing operator, so every term, is computed for each dye set tried (OLS over all
+     detectors; for a compensation, the inverse on the dyes' own detectors). Every assignment up
+     to 50,000, else a seeded local search (swaps, unused dyes, restarts, perturbations).
+     lib/dyes.js keeps 50 dyes' brightness, absorption and emission maxima and tandem donors
+     for the energy-transfer warnings (a tandem with its donor; emission within 75 nm bluer to
+     20 nm redder than another dye's absorption). The Spectral view's Panel design tab
+     (Optimize the assignment, also from the library alone) and Compensate's Optimize the
+     panel…; a design kept in the instrument's spectral library is checked against the run's
+     spreading matrix; the unstained control's background is kept with the noise. Agents'
+     `design_panel`. Validated by the `panel` suite: simulated 8-marker panels stained for every
+     assignment and measured (predicted against measured cost r = 0.996 spectral, 0.999
+     conventional; the optimum measured best of 26, 4× and 29× less noisy than
+     dimmest-on-brightest; local search finds every exhaustive optimum; a 25-color design in
+     about 8 s); on the public Aurora panel's 25 bead references, a 12-dye panel's spread
+     predicted from the noise of the other 12 dyes' controls within 2× for 65% and 73% of pairs.
+   - Found by slice 4: on real Aurora controls, 244 of BV711's 464 positive events were off scale
+     in a detector other than its peak, which corrupted its spectrum and spread; positives off
+     scale in any detector are now left out (the spreading matrix now gets the data range too).
+     The real Aurora's spread runs above prediction (median ×1.6, mostly into BV421 and
+     BUV661), more than the LSRFortessa's (×1.3).
 5. **A public agent benchmark (V6):** graded tasks on the examples (gate a population, find a
    compensation error, test a difference, export a report), each scored against the simulated
    truth, with published results per agent and model. It extends the validation suite to

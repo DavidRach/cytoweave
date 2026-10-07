@@ -29,6 +29,10 @@
 //                           check (crossValidate summary and rows) } (spread.js)
 //   'diagnoseUnmixing'      { columns, model, context, options } → diagnoseUnmixing() (the unmixing
 //                           doctor, spectral-doctor.js)
+//   'designPanel'           { input, options, unstained? (detector columns) } → designPanel() (the
+//                           panel optimizer, panel-optimizer.js), the background from the unstained
+//                           control's detector covariance when given
+//   'backgroundCovariance'  { columns } → backgroundCovariance() (panel-optimizer.js)
 //   'cancel'                                { id }                     → cancels a waiting job
 // A running job can be stopped through payload.abort, an Int32Array on a SharedArrayBuffer whose
 // first element the page sets to 1 (needs cross-origin isolation), or by terminating the worker.
@@ -52,6 +56,7 @@ import {
 } from '../lib/spectral.js';
 import { crossValidate, fitNoise, noiseRecord, spreadModel } from '../lib/spread.js';
 import { diagnoseUnmixing } from '../lib/spectral-doctor.js';
+import { backgroundCovariance, designPanel } from '../lib/panel-optimizer.js';
 
 const canceledIds = new Set();
 
@@ -112,6 +117,11 @@ const handlers = {
   },
   spreadingFromControls: spreadingFromControls,
   diagnoseUnmixing: ({ columns, model, context = {}, options = {} }, common) => diagnoseUnmixing(columns, model, context, { ...options, ...common }),
+  backgroundCovariance: ({ columns }) => backgroundCovariance(columns),
+  designPanel: ({ input, options = {}, unstained = null }, common) => {
+    const background = unstained ? backgroundCovariance(unstained) : input.background;
+    return designPanel({ ...input, background }, { ...options, ...common });
+  },
   spreadNoise: ({ names, detectors, spectra, observations }) => {
     const model = spreadModel({ names, detectors, spectra });
     const noise = fitNoise(model, observations);

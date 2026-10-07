@@ -302,6 +302,22 @@ test('referenceSpectrum flags a dye mixture whose composition changes with brigh
   assert.ok(ref.quality.warnings.some((w) => /mixture/.test(w)));
 });
 
+test('autoGateControl leaves out positives off scale in any detector, not only the peak', () => {
+  const target = SPECTRA[6].spectrum;
+  const { columns } = control({ target, positiveFraction: 0.3, seed: 12 });
+  const range = 4194304;
+  const before = autoGateControl(columns, DETECTORS, { range });
+  // A third of the positives clipped in a detector other than the peak.
+  const other = DETECTORS.indexOf(before.peakDetector) === 0 ? 1 : 0;
+  const clipped = new Set(Array.from(before.positive).filter((_, k) => k % 3 === 0));
+  for (const e of clipped) columns[other][e] = range - 1;
+  const after = autoGateControl(columns, DETECTORS, { range });
+  assert.ok(Array.from(after.positive).every((e) => !clipped.has(e)));
+  assert.ok(after.warnings.some((w) => /off scale in at least one detector/.test(w)));
+  // Without the range, nothing is known to be off scale.
+  assert.ok(Array.from(autoGateControl(columns, DETECTORS).positive).some((e) => clipped.has(e)));
+});
+
 test('autoGateControl finds the peak detector, positives and autofluorescence-matched negatives', () => {
   const target = SPECTRA[6].spectrum;
   const { columns, truthPositive } = control({ target, positiveFraction: 0.3, seed: 12 });

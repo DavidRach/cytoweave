@@ -81,7 +81,7 @@ export function simulatedSpectral(scale = 0.5) {
   const datasets = new Map(r.files.map((f) => [f.name, parseFCS(f.bytes).datasets[0]]));
   const controls = r.files.filter((f) => meta[f.name].role === 'single-stain').map((f) => {
     const cols = columnsOf(datasets.get(f.name));
-    const gate = autoGateControl(cols, detectors, {});
+    const gate = autoGateControl(cols, detectors, { range: 4194304 });
     return { name: meta[f.name].stain, marker: meta[f.name].marker, cols, gate, spectrum: referenceSpectrum(cols, detectors, gate.positive, gate.negative, {}).spectrum };
   });
   return spectralCase({
@@ -190,7 +190,8 @@ export function omip(data) {
   const refs = data.files.filter((f) => f.startsWith('reference/') && /\((Beads|Cells)\)\.fcs$/.test(f) && !/Negative|Unstained/.test(f));
   const controls = refs.map((f) => {
     const cols = columnsOf(read(f));
-    const gate = autoGateControl(cols, detectors, {});
+    // Positive events off scale in any detector are left out, as the app does.
+    const gate = autoGateControl(cols, detectors, { range: 4194304 });
     return { name: f.replace('reference/OMIP-Reference Group-', '').replace(/ \((Beads|Cells)\)\.fcs$/, ''), cols, gate, spectrum: referenceSpectrum(cols, detectors, gate.positive, gate.negative, {}).spectrum };
   });
   const named = { CD4: 'CD4 BUV805', CD8: 'CD8 BV480', CD11b: 'CD11b PerCP-Cy5.5', Ly6C: 'Ly6C PE-CF594', MHCII: 'MHCII Pacific Blue', CX3CR1: 'CX3CR1 APC-Fire 750' };

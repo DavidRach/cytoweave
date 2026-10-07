@@ -1204,6 +1204,49 @@ class Tools:
         """
         return self.call("virtual_fmo", **{"sample": sample, "channel": channel, "addGate": add_gate, "name": name, "population": population, "quantile": quantile, "versus": versus})
 
+    def design_panel(self, markers, *, brightness=None, compensation=None, dyes=None, from_=None, groups=None, instrument=None, noise=None, seed=None):
+        """Design a panel.
+
+        Which dye each marker of a panel should carry: the panel optimizer predicts every marker's
+        resolution (stain index) from the dyes' spectra, the instrument's noise (photon noise per
+        detector and laser fluctuations, fitted to the controls, kept for the instrument or from
+        bead runs) and the unstained control's background, with the spread every co-expressed marker
+        adds at its own brightness, and searches the assignments for the one with the least noise
+        relative to signal (every assignment for small panels, local search for large ones). It
+        designs from this experiment's spectral reference controls and the instrument's spectral
+        library (from spectral), from a compensation computed from single-stain controls (from
+        compensation: each dye in its own detector), or from an instrument's spectral library alone
+        (from library, instrument). Give each marker its expression (high ≈ 10^5 molecules per cell,
+        medium 10^4, low 10^3, or a number) and optionally a fixed dye; groups lists the markers
+        found on the same cells (without groups every marker is taken to be on the same cells). dyes
+        limits the candidates, brightness overrides a dye's relative brightness (PE 0.5, FITC 0.12;
+        built in for common dyes). Returns each marker's dye, predicted stain index, what limits it
+        and the next-best dyes, the comparison with this experiment's panel, pairs of dyes prone to
+        energy transfer, and warnings. Nothing in the workspace changes.
+
+        Args:
+            markers: The markers: { name, level (high, medium, low or molecules per cell; default
+                medium), dye (optional: fixed) }. Required; a list of strings.
+            brightness: Relative brightness of dyes, by name. Optional; a named list (Python: a
+                dict).
+            compensation: With from compensation: the compensation's name (default: the first
+                computed from controls). Optional; a string.
+            dyes: Only these candidate dyes. Optional; a list of strings.
+            from_: What to design from (default: the first available, in this order). Optional; one
+                of "spectral", "compensation", "library".
+            groups: Groups of markers found on the same cells: { name, markers }. Optional; a list
+                of strings.
+            instrument: With from library: the instrument's library (name or id; default the first).
+                Optional; a string.
+            noise: The noise model (default: this experiment's controls, else the one kept for the
+                instrument, else bead runs). Optional; one of "controls", "library", "beads".
+            seed: Seed of the search (default 1). Optional; any value.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("design_panel", **{"markers": markers, "brightness": brightness, "compensation": compensation, "dyes": dyes, "from": from_, "groups": groups, "instrument": instrument, "noise": noise, "seed": seed})
+
     def export_certificate(self, path, *, include_data=None, overwrite=None):
         """Make a reproducibility certificate.
 

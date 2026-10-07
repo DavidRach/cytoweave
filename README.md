@@ -183,6 +183,13 @@ guides to every view, with screenshots.
   FMOs on a BD LSRFortessa and a Cytek Aurora panel (within about 6% of the
   axis on average); a real FMO still shows compensation or unmixing errors a
   prediction cannot.
+- **Panel optimizer.** Which dye each marker of a panel should carry, from the
+  dyes' spectra (this experiment's controls or the instrument's spectral
+  library), the instrument's noise and the unstained background: every
+  marker's stain index predicted with the spread of its co-expressed markers
+  at their brightness, and the best assignment searched (every assignment
+  for small panels). Warns of tandems and dyes on the same cells that can
+  pass energy, and checks a kept design against the panel's run.
 - **Figures and reports.**
   - Gating-strategy and across-samples figures that stay live until you
     export them, as SVG, PNG or vector PDF, with statistics tables on the page.
@@ -1289,7 +1296,8 @@ pipelines, as the app does, against answers known in advance:
 | Events in and out | Concatenated, downsampled and per-sample FCS files against their sources; CSV files from CytoWeave, FlowJo and European locales, and a damaged one; AnnData files read by anndata 0.10 and 0.13, h5py, pyfive, fcsparser and FlowIO | Every event its source's; every population counted alike per SampleID; seeded downsampling exact and uniform; CSV values back exactly, every fault reported; X, obs and maps read exactly by every reader |
 | Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
 | Headless runs | The PBMC example's 12 samples and a template run twice with `cytoweave run`, and analyzed in the window with its own buttons; Node on the same files | The same outputs both times and as the window exports them (CSV bytes, workbook values, report text, workspace, methods); all 228 counts equal to Node's |
-| Virtual FMO controls | Simulated LSRFortessa- and Aurora-like panels with same-donor FMO tubes (15 markers); public FMO controls of a BD LSRFortessa (7 tubes) and a Cytek Aurora panel (4 tubes) | Simulated: within 1% of the display axis on average, against 12–13% for the unstained control; real: 5.8% and 5.5% of the axis on average (worst 11.6% and 14.9%) |
+| Virtual FMO controls | Simulated LSRFortessa- and Aurora-like panels with same-donor FMO tubes (15 markers); public FMO controls of a BD LSRFortessa (7 tubes) and a Cytek Aurora panel (4 tubes) | Simulated: within 1% of the display axis on average, against 12–13% for the unstained control; real: 5.8% and 5.5% of the axis on average (worst 11.6% and 14.8%) |
+| Panel optimizer | Simulated 8-marker T-cell panels on 10 dyes (Aurora, unmixed; LSRFortessa, compensated), each assignment stained and every marker's resolution measured; random small panels solved exhaustively; a 25-color design on 29 dyes | Predicted cost against measured: r = 0.996 and 0.999 (log) across 26 assignments; the optimum measured best, 4× and 29× less noisy than dimmest-on-brightest; local search found every exhaustive optimum; 25 colors in about 8 s |
 | Review reports | Every example's report, every sample's gates drawn; a run's report opened in Chrome | All 2,892 counts, table cells and plot percentages equal to the window's own and shown as it shows them; nothing loaded from outside the file; no accessibility violations (WCAG 2.1 AA, both themes) |
 | Reproducibility certificates | Every example certified with its gates, a table, k-means clusters stored as a channel and a saved comparison, read back and verified; six kinds of tampering; certificates made in Chrome verified in Node and the reverse | All 2,413 numbers identical, bit for bit; the same archive byte for byte when made twice; every change caught; across engines, confidence limits equal to 12 digits |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |
@@ -1304,7 +1312,7 @@ pipelines, as the app does, against answers known in advance:
 | flowQB | flowQB on its own LSR II data: an LED series, 8-peak and 6-peak beads | The same peaks, Q, B and standard errors in all 36 detectors (within 6e-9) |
 | FlowJo | FlowJo's saved counts in 14 workspaces, and FlowKit's | The bundled example and FlowKit's synthetic workspaces exact; real 8-color workspaces at least as close to FlowJo as FlowKit |
 | FlowJo export | The workspace imported back, FlowKit and CytoML reading the export, and FlowJo 11.2.0 (build 11.2.0.210156) opening three exports | Every count unchanged in 12 workspaces; FlowKit counts what CytoWeave counts (ellipse boundaries aside), CytoML 306 of 313 counts equal; in FlowJo 11 every population within 0.6 percentage points, most within 0.1 |
-| Predicted spread, real controls | A BD LSRFortessa's 15 bead controls, each predicted from the other 14 | Within 2× of the observed spread for 79% of well-measured pairs (median ×1.32) |
+| Predicted spread, real controls | A BD LSRFortessa's 15 bead controls, each predicted from the other 14; a Cytek Aurora's 25 bead references, a 12-dye panel predicted from the noise of the other 12 dyes | Within 2× of the observed spread for 79% of well-measured pairs (median ×1.32); on the Aurora, 65% and 73% each way (r 0.76 and 0.80) |
 | Robustness, real study | 4 donors of an intracellular cytokine study | Every PMA comparison holds in all analyses; one small IL-4 peptide response fragile |
 | De-identification | Every example and corpus FCS file | The same events, bit for bit |
 | Reference tools | FlowKit 1.3.2 and FlowIO | FCS decoding, compensation, spectral unmixing and transforms agree |
@@ -1352,11 +1360,14 @@ used for diagnosis.
   values lie within 2 SE), as in flowQB. The spectral library's threshold for
   a changed spectrum (0.03) was calibrated on simulated controls; real
   controls vary more, and a laboratory may need its own.
-- Predicted spread was checked on real controls of a conventional cytometer
-  (LSRFortessa) only; no public spectral data set with single-stain controls
-  was found. It does not predict spread from a heterogeneous dye (a degraded
-  tandem) or from autofluorescence that differs between positive and negative
-  cells.
+- Predicted spread was checked on the real controls of one conventional
+  cytometer (LSRFortessa) and one spectral cytometer (Aurora), where it runs
+  low by a median factor of 1.3 to 1.6. It does not predict spread from a
+  heterogeneous dye (a degraded tandem) or from autofluorescence that differs
+  between positive and negative cells.
+- The panel optimizer was validated on simulated panels, where every
+  assignment can be stained and measured; on real cells, its design rests on
+  the dyes' approximate brightness and the expression levels given.
 - Robustness to analysis choices covers two-group comparisons of a
   population; designs of more than two groups and cluster abundances are not
   checked, and scales are not varied.

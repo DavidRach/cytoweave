@@ -306,8 +306,8 @@ export function referenceSpectrum(columns, detectors, positiveIdx, negativeIdx, 
 //    negative found as the histogram mode of the dimmest `negativeFraction` (0.3) of events on the
 //    peak detector, with its spread estimated from the left half only (stained cells never fall
 //    below the unstained mode), keeping events within ±2 spreads of the mode.
-// 3. Positive: events above mode + `sigmas` (4) × spread, minus off-scale events (with
-//    options.range) and the brightest `trimFraction` (0.1%, likely aggregates); of these the
+// 3. Positive: events above mode + `sigmas` (4) × spread, minus events off scale in any detector
+//    (with options.range) and the brightest `trimFraction` (0.1%, likely aggregates); of these the
 //    brightest `positiveFraction` (0.5) are kept, but at least `minEvents` (200) when available.
 // 4. Autofluorescence matching (options.matchNegatives, default true): from the negative pool,
 //    keep the `matchFraction` (0.5) of events whose signal in detectors where the dye is dark
@@ -371,11 +371,19 @@ export function autoGateControl(columns, detectors, options = {}) {
   const threshold = center + (options.sigmas ?? 4) * spread;
   const ceiling = options.range ? 0.98 * options.range : Infinity;
   const candidates = [];
+  let offScale = 0;
   for (let i = 0; i < poolSize; i += 1) {
     const e = pool ? pool[i] : i;
     const v = peak[e];
-    if (v > threshold && v < ceiling) candidates.push(e);
+    if (!(v > threshold)) continue;
+    // Off scale in any detector: the clipped detector no longer holds the dye's light, so the
+    // event's spectrum (and its unmixed values) are wrong.
+    let clipped = v >= ceiling;
+    for (let d = 0; d < D && !clipped && ceiling < Infinity; d += 1) if (cols[d][e] >= ceiling) clipped = true;
+    if (clipped) offScale += 1;
+    else candidates.push(e);
   }
+  if (offScale > 0.05 * (candidates.length + offScale)) warnings.push(`${offScale} of the ${candidates.length + offScale} positive events are off scale in at least one detector and are left out; a dimmer control (less antibody, lower gain) keeps them.`);
   candidates.sort((x, y) => peak[y] - peak[x]);
   const trimmed = candidates.slice(Math.floor(candidates.length * (options.trimFraction ?? 0.001)));
   const minEvents = options.minEvents ?? 200;

@@ -23,6 +23,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from './cdp.mjs';
 import { generateExample } from '../../web/lib/examples.js';
+import { PBMC_25 } from '../../validation/panel-cases.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const IMAGES = join(ROOT, 'docs/images');
@@ -583,6 +584,46 @@ const scenes = {
     await sleep(1000);
     await click('BV711', '.spectral-legend .chip');
     await sleep(2500);
+  },
+  // Spectral: Panel design → Optimize the assignment, the example's 25 markers with their
+  // expression and four groups of co-expressed markers, reassigned among its 25 dyes.
+  async 'panel-optimizer'() {
+    await scenes.spectral();
+    await click('Panel quality');
+    await sleep(1000);
+    await click('Compute');
+    await waitFor(`window.cytoweave.store.ws.derived.some((d) => d.kind === 'spectral-setup' && d.spreading?.noise) && !document.querySelector('.progress-toast')`, 400000);
+    await click('Panel design');
+    await sleep(1000);
+    await click('Optimize the assignment');
+    await sleep(1000);
+    const { markers, groups } = PBMC_25;
+    await js(`(async () => {
+      const levels = ${JSON.stringify(Object.fromEntries(markers.map((m) => [m.name, m.level])))};
+      const groups = ${JSON.stringify(groups)};
+      const rows = () => [...document.querySelectorAll('main input[aria-label^="Marker "]')];
+      for (const input of rows()) {
+        const select = document.querySelector('main select[aria-label="Expression of ' + input.getAttribute('aria-label').replace('Marker', 'marker') + '"]');
+        select.value = levels[input.value];
+        select.dispatchEvent(new Event('change'));
+      }
+      for (let k = 1; k < groups.length; k += 1) {
+        [...document.querySelectorAll('main button')].find((b) => b.textContent.trim() === 'Group').click();
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      [...document.querySelectorAll('main input[aria-label^="Name of group"]')].forEach((input, k) => { input.value = groups[k].name; input.dispatchEvent(new Event('change')); });
+      for (const input of rows()) {
+        groups.forEach((g, k) => {
+          const box = [...document.querySelectorAll('main input[type=checkbox]')].find((b) => b.getAttribute('aria-label') === input.value + ' in Group ' + (k + 1) || b.getAttribute('aria-label') === input.value + ' in ' + g.name);
+          const want = g.markers.includes(input.value);
+          if (box && box.checked !== want) { box.checked = want; box.dispatchEvent(new Event('change')); }
+        });
+      }
+    })()`);
+    await js(`[...document.querySelectorAll('main button.btn.primary')].find((e) => e.textContent.trim() === 'Optimize').click()`);
+    await waitFor(`/Dimmest resolution/.test(${mainText})`, 120000);
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /^Design/.test(e.textContent.trim()))?.scrollIntoView({ block: 'start' })`);
+    await sleep(1500);
   },
   // Explore: the cluster heatmap with marker-enrichment names.
   async 'explore-clusters'() {

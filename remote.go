@@ -85,7 +85,7 @@ type remoteResult struct {
 }
 
 // Actions that can run for a long time (analyses over many samples).
-var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "differential_analysis": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "diagnose_unmixing": true, "kinetics": true, "plate": true, "dose_response": true, "bead_assay": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true, "export_report": true, "export_events": true, "apply_template": true, "export_certificate": true, "verify_certificate": true, "export_review_report": true, "virtual_fmo": true}
+var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "differential_analysis": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "diagnose_unmixing": true, "kinetics": true, "plate": true, "dose_response": true, "bead_assay": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true, "export_report": true, "export_events": true, "apply_template": true, "export_certificate": true, "verify_certificate": true, "export_review_report": true, "virtual_fmo": true, "design_panel": true}
 
 func newRemoteHub() *remoteHub {
 	return &remoteHub{

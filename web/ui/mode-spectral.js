@@ -21,7 +21,8 @@ import { ROOT, addDerived, gatePath, updateSample } from '../lib/workspace.js';
 import { complexityIndex, similarityMatrix } from '../lib/spectral.js';
 import { LIBRARY_TOLERANCE, SPECTRA_RECORDS, compareWithLibrary, latestEntries, libraryEntry, missingFromPanel, spectrumOn, withEntries } from '../lib/spectral-library.js';
 import { INSTRUMENT_RECORDS, acquisitionDate, instrumentOf } from '../lib/instrument-record.js';
-import { c1FromRuns, noiseOn, predictedSpreading, spreadModel, spreadReceived, spreadRecord } from '../lib/spread.js';
+import { predictedSpreading, spreadModel, spreadReceived, spreadRecord } from '../lib/spread.js';
+import { keptDesign, keptDesignsPane, libraryInputs, noiseSources, optimizerPane, spectralInputs } from './panel-design.js';
 import { applyTransform, axisTicks, createTransform, defaultTransform } from '../lib/transforms.js';
 import { categoricalColor, colormapLUT, luminance } from '../lib/colormaps.js';
 import {
@@ -331,6 +332,7 @@ export function mountSpectralMode(app, container) {
       const names = refs.map((r) => r.name);
       const F = names.length;
       const spectra = panelSpectra();
+      const range = detectorRange(detectors);
       const matrix = new Array(F * F).fill(null);
       const observations = [];
       for (let i = 0; i < F && !canceled; i += 1) {
@@ -346,7 +348,7 @@ export function mountSpectralMode(app, container) {
           unstained: negative === 'unstained' ? unstained : null,
           detectors,
           spectra,
-          options: { seed: SEED },
+          options: { seed: SEED, range },
         }, { transfer: columns.map((c) => c.buffer) });
         jobs.add(current);
         let result;
@@ -948,45 +950,68 @@ export function mountSpectralMode(app, container) {
       .filter((d) => d.spectrum.length === detectors.length);
   }
 
-  // The noise sources available for a model: [{ id, label, noise, note }]. ctx.fitted: the noise
-  // fitted to this experiment's controls ({ record, check, computed }), ctx.library: the
-  // instrument's spectral library record (its kept noise), ctx.runs: its bead runs.
-  function noiseSources(model, ctx) {
-    const out = [];
-    const fromControls = noiseOn(model, ctx.fitted?.record);
-    if (fromControls) {
-      const c = ctx.fitted.check;
-      out.push({
-        id: 'controls',
-        label: 'This experiment\'s controls',
-        noise: fromControls,
-        note: `Fitted to the spread of ${ctx.fitted.record.controls ?? '?'} controls (${new Date(ctx.fitted.computed).toLocaleDateString()}).${c && c.measurable ? ` Check: each control's spread predicted from the others is within a factor ${c.medianRatio.toFixed(2)} of the observed (median), and within 2× for ${Math.round(100 * c.within2x)}% of ${c.measurable} clearly measured pairs.` : ''}`,
-      });
-    }
-    const kept = ctx.library?.noise;
-    const saved = noiseOn(model, kept);
-    if (saved) out.push({ id: 'library', label: `Kept for ${ctx.instrumentName ?? 'the instrument'}`, noise: saved, note: `Fitted ${new Date(kept.fitted).toLocaleDateString()}${kept.workspace ? ` in ${kept.workspace}` : ''} and kept in the library for this instrument.` });
-    const beads = c1FromRuns(model, ctx.runs ?? []);
-    if (beads) {
-      const lasers = (fromControls ?? saved)?.laserCV ?? new Float64Array(model.lasers.length);
-      const found = beads.found.reduce((a, b) => a + b, 0);
-      out.push({ id: 'beads', label: 'Bead runs', noise: { c1: beads.c1, laserCV: lasers, source: 'beads' }, note: `Photon noise (1/Q) of ${found} of ${model.D} detectors from the instrument's bead runs (median of ${(ctx.runs ?? []).length}); the others take the median. ${fromControls || saved ? 'Laser fluctuations from the controls.' : 'Without controls, laser fluctuations are left out, so dyes excited by several lasers are predicted to spread less than they will.'} Q depends on detector gains: use runs at this experiment's settings.` });
-    }
-    return out;
-  }
-
+  // The noise model kept for the instrument, with the unstained control's background (its
+  // detector covariance) for panels designed later without one.
   async function keepNoise(record) {
     const inst = instrument();
     try {
+      const detectors = record.detectors;
+      let background = null;
+      const columns = unstainedSample() ? await unstainedColumns(detectors) : null;
+      if (columns) {
+        const job = worker.run('backgroundCovariance', { columns });
+        const b = await job.promise;
+        background = { detectors: [...detectors], covariance: Array.from(b.covariance, (v) => +v.toPrecision(5)), events: b.events, source: unstainedSample().name };
+      }
       let doc = (await app.library.getRecord(SPECTRA_RECORDS, inst.id)) ?? { name: inst.name, instrument: inst, entries: [] };
-      doc = { ...doc, noise: { ...record, workspace: ws().name, kept: new Date().toISOString() }, modified: new Date().toISOString() };
+      doc = { ...doc, noise: { ...record, workspace: ws().name, kept: new Date().toISOString() }, ...(background ? { background } : {}), modified: new Date().toISOString() };
       await app.library.putRecord(SPECTRA_RECORDS, inst.id, doc);
       ui.library = doc;
-      toast(`Kept the noise model for ${inst.name}: panels designed later on this instrument can use it without controls.`, { kind: 'ok' });
+      toast(`Kept the noise model${background ? ' and the unstained control\'s background' : ''} for ${inst.name}: panels designed later on this instrument can use ${background ? 'them' : 'it'} without controls.`, { kind: 'ok' });
       renderTab();
     } catch (error) {
       toast(`The noise model could not be kept: ${error.message}`, { kind: 'error' });
     }
+  }
+
+  // A design kept in the instrument's spectral library (doc.designs, the 20 latest), to check
+  // against the panel's run.
+  async function keepDesign(run, instrumentId, instrumentName, onKept) {
+    const name = await promptDialog({ title: 'Keep the design', label: 'Name', value: `${run.result.assignments.length}-color design ${new Date().toLocaleDateString()}`, hint: `Kept in the spectral library of ${instrumentName}. When the panel's controls are run, Panel design checks the spread it predicted against them.` });
+    if (!name) return;
+    try {
+      let doc = (await app.library.getRecord(SPECTRA_RECORDS, instrumentId)) ?? { name: instrumentName, entries: [] };
+      doc = { ...doc, designs: [...(doc.designs ?? []), keptDesign(run, name)].slice(-20), modified: new Date().toISOString() };
+      await app.library.putRecord(SPECTRA_RECORDS, instrumentId, doc);
+      onKept(doc);
+      toast(`Kept "${name}" for ${instrumentName}.`, { kind: 'ok' });
+    } catch (error) {
+      toast(`The design could not be kept: ${error.message}`, { kind: 'error' });
+    }
+  }
+
+  async function removeDesign(design, instrumentId, onRemoved) {
+    const doc = await app.library.getRecord(SPECTRA_RECORDS, instrumentId);
+    if (!doc) return;
+    const next = { ...doc, designs: (doc.designs ?? []).filter((d) => d.id !== design.id), modified: new Date().toISOString() };
+    await app.library.putRecord(SPECTRA_RECORDS, instrumentId, next);
+    onRemoved(next);
+  }
+
+  // Predicted spread or the optimizer, at the top of Panel design.
+  function designSwitch(rerender) {
+    ui.designView ??= 'spread';
+    return h('div.segmented', { role: 'group', 'aria-label': 'Panel design view', style: { marginBottom: '12px' } },
+      [['spread', 'Predicted spread'], ['optimize', 'Optimize the assignment']].map(([id, label]) => h(`button${ui.designView === id ? '.active' : ''}`, { type: 'button', 'aria-pressed': String(ui.designView === id), onclick: () => { ui.designView = id; rerender(); } }, label)));
+  }
+
+  // The design view shows a run's dyes: the others left out, library spectra added.
+  function useDesign(run, state, current, library, detectors) {
+    const dyes = new Set(run.result.assignments.map((a) => a.dye));
+    state.drop = new Set(current.map((d) => d.name).filter((n) => !dyes.has(n)));
+    const entries = latestEntries(library, detectors);
+    state.add = [...dyes].filter((n) => !current.some((d) => d.name === n)).map((n) => [...entries.values()].find((e) => e.fluorochrome === n)?.id).filter(Boolean);
+    ui.designView = 'spread';
   }
 
   function renderDesignTab() {
@@ -1007,6 +1032,21 @@ export function mountSpectralMode(app, container) {
       brightness: observed.get(r.name) ?? r.ref.brightness ?? null,
       source: r.sample.library ? 'library' : 'control',
     }));
+    tabHost.append(designSwitch(() => renderTab()));
+    if (ui.designView === 'optimize') {
+      const inputs = spectralInputs(ws(), { library: ui.library, runs: ui.instrumentRuns ?? [], instrumentName: inst?.name });
+      const canKeep = app.library?.putRecord && inst;
+      tabHost.append(optimizerPane(app, {
+        key: `spectral:${ws().id ?? ''}`,
+        inputs,
+        rerender: () => renderTab(),
+        onUse: (run) => { useDesign(run, designState(), current, ui.library, detectors); renderTab(); },
+        onKeep: canKeep ? (run) => keepDesign(run, inst.id, inst.name, (doc) => { ui.library = doc; renderTab(); }) : null,
+      }));
+      const kept = keptDesignsPane(ui.library?.designs, spreading, canKeep ? (design) => removeDesign(design, inst.id, (doc) => { ui.library = doc; renderTab(); }) : null);
+      if (kept) tabHost.append(kept);
+      return;
+    }
     renderDesign(tabHost, {
       detectors,
       current,
@@ -1068,6 +1108,18 @@ export function mountSpectralMode(app, container) {
     if (lib.record === undefined) return;
     const entries = [...latestEntries(lib.record, null).values()];
     const detectors = commonDetectorsOf(entries);
+    host.append(designSwitch(() => renderBody()));
+    if (ui.designView === 'optimize') {
+      const inputs = libraryInputs(lib.record, detectors, ui.instrumentRuns ?? []);
+      host.append(optimizerPane(app, {
+        key: `library:${lib.id}`,
+        inputs,
+        rerender: () => renderBody(),
+        onUse: (run) => { useDesign(run, lib.state, libraryDyes(entries, detectors), lib.record, detectors); renderBody(); },
+        onKeep: (run) => keepDesign(run, lib.id, lib.record?.name ?? lib.id, (doc) => { lib.record = doc; renderBody(); }),
+      }));
+      return;
+    }
     renderDesign(host, {
       detectors,
       current: libraryDyes(entries, detectors),
