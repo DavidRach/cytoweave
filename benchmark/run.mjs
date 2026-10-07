@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { generateExample } from '../web/lib/examples.js';
 import { ROOT, buildCytoWeave, mcpClient, prepareExample, runAgent, startCytoWeave } from './harness.mjs';
-import { BENCHMARK_VERSION, TASKS, parseAnswer } from './tasks.mjs';
+import { BENCHMARK_VERSION, OPEN_DATA, TASKS, parseAnswer } from './tasks.mjs';
 
 const argv = process.argv.slice(2);
 const option = (name, fallback = null) => {
@@ -31,6 +31,7 @@ const repeat = Number(option('repeat', '1'));
 const maxTurns = Number(option('max-turns', '60'));
 const timeoutMs = Number(option('timeout-min', '20')) * 60000;
 const check = argv.includes('--check');
+const transcripts = option('transcripts');
 const only = option('tasks')?.split(',');
 const tasks = only ? TASKS.filter((t) => only.includes(t.id)) : TASKS;
 if (only && tasks.length !== only.length) {
@@ -73,7 +74,7 @@ async function runTask(binary, task, rep) {
     await prepareExample(session, task.example);
     await sanitize(session);
     const context = { task, outputs: session.outputs };
-    const prompt = task.prompt(context);
+    const prompt = `${OPEN_DATA}\n\n${task.prompt(context)}`;
     let outcome;
     if (agent === 'claude-code') {
       outcome = await runAgent(session, { agent, prompt, model, effort, maxTurns, timeoutMs });
@@ -99,7 +100,14 @@ async function runTask(binary, task, rep) {
       }
       outcome = { answer: text, toolCalls, turns: null, usage: null, costUSD: null, error };
     }
+    // The agent's whole session (each message and tool call), for reading what it did.
+    if (transcripts && outcome.events) {
+      mkdirSync(transcripts, { recursive: true });
+      writeFileSync(join(transcripts, `${task.id}-${rep}.jsonl`), `${outcome.events.map((e) => JSON.stringify(e)).join('\n')}\n`);
+    }
     const answer = parseAnswer(outcome.answer);
+    // An agent that opened an example or other files analyzed another experiment than the task's.
+    const replacedWorkspace = await session.page(`return app.store.ws.name !== 'Experiment';`);
     const graded = await task.grade({ answer, text: outcome.answer, page: session.page, truth, outputs: session.outputs, toolCalls: outcome.toolCalls });
     const score = graded.parts.reduce((a, p) => a + p.weight * p.score, 0);
     return {
@@ -110,6 +118,7 @@ async function runTask(binary, task, rep) {
       parts: graded.parts.map((p) => ({ ...p, score: +p.score.toFixed(4) })),
       answer: answer ?? null,
       answered: Boolean(answer),
+      replacedWorkspace,
       toolCalls: outcome.toolCalls.length,
       failedToolCalls: outcome.toolCalls.filter((c) => c.ok === false).length,
       tools: [...new Set(outcome.toolCalls.map((c) => c.name))],

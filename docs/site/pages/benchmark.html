@@ -17,7 +17,7 @@ lede: AI agents can now drive cytometry software. This benchmark measures whethe
       <ol>
         <li>The harness starts CytoWeave (built from the benchmark's commit) with an empty library, opens its window, generates the task's example with the task's seed, and prepares it as the task says (for some tasks, the example's suggested gates). The example's title, the simulator's per-cell truth and any annotation naming a planted fault are removed.</li>
         <li>The agent is started as a program of its own, in an empty folder, with CytoWeave's MCP server as its only tools: no files, shell or web. Claude Code runs with <code>--tools ""</code>, <code>--strict-mcp-config</code>, the settings of that empty folder only (not the user's hooks, plugins or defaults) and the model and effort given; each run is a fresh session.</li>
-        <li>The agent gets the task's prompt, works through CytoWeave's tools in the window the harness watches, and ends its reply with the answer line the prompt asks for. A run stops after 60 turns or 20 minutes.</li>
+        <li>The agent gets the task's prompt, which starts as every one does: the data are already open in CytoWeave, in the workspace "Experiment". It works through CytoWeave's tools in the window the harness watches and ends its reply with the answer line the prompt asks for. A run stops after 60 turns or 20 minutes.</li>
         <li>The harness grades the window's state, the files in the task's output folder and the answer, and records the score, the tool calls, the tokens and the time.</li>
       </ol>
 
@@ -47,6 +47,7 @@ lede: AI agents can now drive cytometry software. This benchmark measures whethe
         <li><strong>Simulated data.</strong> The truth is the simulator's. Real data are messier, and an agent good here may still be wrong on a real panel; CytoWeave's own analyses are validated on real data separately (<a href="science.html#validation">Science</a>).</li>
         <li><strong>The examples are public.</strong> Their code is on GitHub, so a model trained on it could know where faults were planted. Seeds change every task's data, but not which fault an example carries; later versions of the benchmark will move the faults with the seed.</li>
         <li><strong>CytoWeave's tools.</strong> The benchmark measures agents through CytoWeave. Analyses without an agent tool yet (cell-cycle and proliferation fits, index sorting, bead Q and B) are not among the tasks, and a tool's wording can mislead an agent: in the first runs, QC findings that called a clog "possibly a bubble" and a bubble "possibly a clog" led an agent to swap them.</li>
+        <li><strong>Prompts matter.</strong> In version 1, two prompts described their experiment in the words of an example's description, and agents opened that example, replacing the task's data with another copy of it, then answered about that. Version 2 starts every prompt by saying where the data are; a run that still analyzes another experiment is scored 0 and counted as such in the results.</li>
         <li><strong>Few runs.</strong> Agents vary from run to run; results give the number of runs per task, and differences of a few points between models are within that variation.</li>
       </ul>
 

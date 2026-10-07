@@ -18,7 +18,12 @@ import { INSTRUMENTS, buildPanel } from '../web/lib/simulate.js';
 import { createTransform } from '../web/lib/transforms.js';
 import { readPDF } from '../validation/document-readers.mjs';
 
-export const BENCHMARK_VERSION = '1';
+// 2: every prompt starts with OPEN_DATA (in version 1, prompts that echoed an example's description
+// led agents to open that example, replacing the task's experiment with another copy of it).
+export const BENCHMARK_VERSION = '2';
+
+// What every request starts with: where the data are, as a user would say it.
+export const OPEN_DATA = 'The data for this are already open in CytoWeave, in the workspace "Experiment": analyze them there.';
 
 // --- Answers and scores ---------------------------------------------------------------------------
 

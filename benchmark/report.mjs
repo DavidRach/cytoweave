@@ -32,7 +32,8 @@ export function benchmarkHTML(folder) {
     const calls = mean(runs.filter((x) => Number.isFinite(x.toolCalls)).map((x) => x.toolCalls));
     const cost = runs.some((x) => Number.isFinite(x.costUSD)) ? mean(runs.map((x) => x.costUSD ?? 0)) : null;
     const answered = runs.filter((x) => x.answered).length;
-    return `<tr><td>${esc(label(r))}</td><td class="r"><strong>${pct(r.score)}</strong></td><td class="r">${r.benchmark.tasks.length} × ${r.repeat}</td><td class="r">${answered} of ${runs.length}</td><td class="r">${Number.isFinite(calls) ? calls.toFixed(1) : '—'}</td><td class="r">${cost === null ? '—' : `$${cost.toFixed(2)}`}</td><td>${esc(r.date.slice(0, 10))}</td><td>${esc(`${r.cytoweave.version}${r.cytoweave.commit ? ` (${r.cytoweave.commit}${r.cytoweave.dirty ? '+' : ''})` : ''}`)}</td></tr>`;
+    const replaced = runs.filter((x) => x.replacedWorkspace).length;
+    return `<tr><td>${esc(label(r))}</td><td class="r"><strong>${pct(r.score)}</strong></td><td class="r">${r.benchmark.tasks.length} × ${r.repeat}</td><td class="r">${answered} of ${runs.length}${replaced ? ` (${replaced} on another experiment)` : ''}</td><td class="r">${Number.isFinite(calls) ? calls.toFixed(1) : '—'}</td><td class="r">${cost === null ? '—' : `$${cost.toFixed(2)}`}</td><td>${esc(r.date.slice(0, 10))}</td><td>${esc(`${r.cytoweave.version}${r.cytoweave.commit ? ` (${r.cytoweave.commit}${r.cytoweave.dirty ? '+' : ''})` : ''}`)}</td></tr>`;
   }).join('\n');
   const columns = ordered.filter((r) => r.agent.id !== 'none');
   const taskRows = TASKS.map((t) => `<tr><td><strong>${esc(t.title)}</strong><br><span class="muted">${esc(t.category)}</span></td>${columns.map((r) => `<td class="r">${r.byTask?.[t.id] === undefined ? '—' : pct(r.byTask[t.id])}</td>`).join('')}</tr>`).join('\n');

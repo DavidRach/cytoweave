@@ -22,6 +22,7 @@ node benchmark/run.mjs --agent claude-code --model sonnet --repeat 3
 | `--tasks` | Only these task ids, comma-separated |
 | `--max-turns`, `--timeout-min` | Limits of one run (default 60 turns, 20 minutes) |
 | `--out` | The results file (default `benchmark/results/<date>-<agent>-<model>.json`) |
+| `--transcripts` | A folder for each run's whole session (every message and tool call, JSON lines) |
 | `--check` | With `expert`: fail unless every task scores at least 0.9; with `none`: unless every task scores 0 |
 
 Runs go one at a time; each takes from seconds to a few minutes. With a Claude subscription, each
@@ -38,6 +39,9 @@ estimate of the API cost.
   harness's CytoWeave. Claude Code runs in an empty folder with `--tools ""` (no files, shell or
   web), `--strict-mcp-config`, `--setting-sources project` (not the user's hooks, plugins or
   defaults), `--disable-slash-commands` and `--no-session-persistence`.
+- Every prompt starts with the same sentence (`OPEN_DATA`): the data are already open in CytoWeave,
+  in the workspace "Experiment". A run that opens other data anyway (an example, files) is
+  recorded as `replacedWorkspace` and scores what its answer about the task's data is worth.
 - Grading reads the window's state, the task's output folder and the reply's `ANSWER:` line.
   It is code (`tasks.mjs`), not a model.
 
