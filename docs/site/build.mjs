@@ -1,7 +1,11 @@
 // Builds the CytoWeave website (published on GitHub Pages from the gh-pages branch) from the
 // page fragments in pages/. Usage:
 //
-//   node docs/site/build.mjs [output folder]     (default: ../cytoweave-site beside the repository)
+//   node docs/site/build.mjs FOLDER        build into a folder, to check and preview the site
+//   node docs/site/build.mjs --publish     build into ../cytoweave-site, the gh-pages checkout
+//
+// Committing the gh-pages checkout publishes the site, so the build writes into it (or any
+// checkout of gh-pages) only with --publish: when a release is out. Otherwise give a folder.
 //
 // Each page starts with a front-matter block (title, description, and lede for documentation
 // pages) and holds only its own content: the header, documentation menu, pager and footer are
@@ -16,7 +20,26 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
-const out = resolve(process.argv[2] ?? join(repo, '..', 'cytoweave-site'));
+const args = process.argv.slice(2);
+const publish = args.includes('--publish');
+const folder = args.find((a) => !a.startsWith('--'));
+if (!folder && !publish) {
+  console.error('Give a folder to build into (node docs/site/build.mjs FOLDER), or --publish to build into ../cytoweave-site, the gh-pages checkout, for a release.');
+  process.exit(2);
+}
+const out = resolve(folder ?? join(repo, '..', 'cytoweave-site'));
+// A checkout of the gh-pages branch publishes what is committed in it.
+const pagesCheckout = (() => {
+  try {
+    return /ref: refs\/heads\/gh-pages\s*$/.test(readFileSync(join(out, '.git', 'HEAD'), 'utf8'));
+  } catch {
+    return false;
+  }
+})();
+if (pagesCheckout && !publish) {
+  console.error(`${out} is a checkout of gh-pages, which publishes the website: add --publish to build into it (when a release is out), or give another folder.`);
+  process.exit(2);
+}
 const SITE = 'https://robert-mcdermott.github.io/cytoweave/';
 const GITHUB = 'https://github.com/robert-mcdermott/cytoweave';
 const VERSION = /var version = "([^"]+)"/.exec(readFileSync(join(repo, 'main.go'), 'utf8'))[1];

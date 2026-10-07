@@ -13,6 +13,7 @@
 
 - The Compare view's statistics (design, test, summaries, effect sizes, post-hoc tests) moved to `web/lib/compare.js`, so a saved comparison can be computed again from its values; the results are unchanged.
 - The guide's "Figures, methods and checkpoints" page is now "Figures, methods and certificates".
+- Documentation tooling: the screenshot script refuses two scenes with the same name (a scene's name is its pictures' name), `--audit` keeps every scene's latest result in `docs/capture/audit.json` instead of only the scenes just captured, and headless Chrome gets a free debugging port, so a Chrome left by an earlier run cannot be reached by mistake. The site build writes into the `gh-pages` checkout only with `--publish`; otherwise it takes a folder to check the site in.
 - Figures are composed as SVG in `web/lib/figure-svg.js` (from the Figures view's export code), so review reports draw them in the window and in Node; the exported SVG is unchanged.
 
 ### Validation

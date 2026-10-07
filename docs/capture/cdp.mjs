@@ -3,7 +3,7 @@
 // color scheme and captures the page. No dependencies beyond Node 22.
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -26,18 +26,24 @@ export function findChrome() {
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// width × height CSS pixels, captured at `scale` device pixels per CSS pixel.
-export async function launch({ width = 1600, height = 1000, scale = 1.25, port = 9333 } = {}) {
+// width × height CSS pixels, captured at `scale` device pixels per CSS pixel. Chrome picks a free
+// debugging port (its profile's DevToolsActivePort file names it), so a Chrome left running by
+// an earlier run cannot be connected to by mistake; give `port` only to fix one.
+export async function launch({ width = 1600, height = 1000, scale = 1.25, port = 0 } = {}) {
   const profile = mkdtempSync(join(tmpdir(), 'cytoweave-capture-'));
   const chrome = spawn(findChrome(), ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb', `--window-size=${width},${height}`, 'about:blank'], { stdio: 'ignore' });
   let page = null;
   for (let i = 0; i < 100 && !page; i += 1) {
     try {
-      page = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === 'page');
+      const active = port || Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]);
+      if (active) page = (await (await fetch(`http://127.0.0.1:${active}/json`)).json()).find((t) => t.type === 'page');
     } catch { /* not up yet */ }
     if (!page) await sleep(200);
   }
-  if (!page) throw new Error('Chrome did not start.');
+  if (!page) {
+    chrome.kill();
+    throw new Error('Chrome did not start.');
+  }
   const socket = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));
   let next = 1;

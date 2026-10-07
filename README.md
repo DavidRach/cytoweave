@@ -1445,10 +1445,13 @@ node docs/capture/capture.mjs gate compensate --theme dark
 
 The [website](https://robert-mcdermott.github.io/cytoweave/) is built from
 `docs/site` into a checkout of the `gh-pages` branch. The build checks every
-link, anchor and screenshot:
+link, anchor and screenshot. Build into any folder to check it, and into the
+`gh-pages` checkout only for a release (`--publish`), as committing that
+checkout publishes the site:
 
 ```sh
-node docs/site/build.mjs ../cytoweave-site
+node docs/site/build.mjs /tmp/cytoweave-site-check
+node docs/site/build.mjs --publish
 ```
 
 [docs/site/README.md](docs/site/README.md) describes how to set up the

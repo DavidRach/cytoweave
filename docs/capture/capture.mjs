@@ -7,7 +7,12 @@
 //
 // --audit runs axe-core (fetched by node validation/fetch.mjs axe-core) in every scene, with the
 // WCAG 2.1 A and AA rules, and writes the violations to docs/capture/audit.json (one entry per
-// scene and theme) and a summary to the console; with --no-shots, no picture is written.
+// scene and theme) and a summary to the console; with --no-shots, no picture is written. The
+// file keeps every scene's last audit: a run of some scenes replaces only theirs, and scenes no
+// longer here are dropped.
+//
+// A scene's name is the name of its pictures, so two scenes may not share one: the run stops
+// before it starts if they do (a second definition would silently replace the first).
 //
 // Needs Go (to run CytoWeave from source) and Chrome, Chromium, Edge or Brave (CHROME=path).
 
@@ -813,6 +818,18 @@ async function runAxe() {
   })()`);
 }
 const audits = [];
+const AUDIT_FILE = join(ROOT, 'docs/capture/audit.json');
+
+// Scene names, from the definitions in this file: in an object literal a repeated name silently
+// replaces the scene before it, and its pictures overwrite the other's.
+{
+  const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const block = source.slice(source.indexOf('const scenes = {'), source.indexOf('\n};\n', source.indexOf('const scenes = {')));
+  const defined = [...block.matchAll(/^  (?:async )?'?([\w-]+)'?\(\) \{/gm)].map((m) => m[1]);
+  const repeated = defined.filter((name, i) => defined.indexOf(name) !== i);
+  if (repeated.length) throw new Error(`Scenes defined twice: ${[...new Set(repeated)].join(', ')}. Rename one: a scene's name is the name of its pictures.`);
+  if (defined.length !== Object.keys(scenes).length) throw new Error(`Found ${defined.length} scene definitions but ${Object.keys(scenes).length} scenes; keep each scene as "  async name() {" so they can be checked.`);
+}
 
 const names = wanted.length ? wanted : Object.keys(scenes);
 for (const name of names) if (!scenes[name]) throw new Error(`Unknown scene ${name}. Scenes: ${Object.keys(scenes).join(', ')}`);
@@ -851,9 +868,20 @@ try {
 } finally {
   cytoweave.stop();
   if (audit) {
-    writeFileSync(join(ROOT, 'docs/capture/audit.json'), `${JSON.stringify(audits, null, 1)}\n`);
+    // Merged with the audits of the scenes not run now; scenes that no longer exist are dropped.
+    let previous = [];
+    try {
+      previous = JSON.parse(readFileSync(AUDIT_FILE, 'utf8'));
+    } catch { /* none yet */ }
+    const key = (a) => `${a.scene}|${a.theme}`;
+    const fresh = new Map(audits.map((a) => [key(a), a]));
+    const order = Object.keys(scenes);
+    const merged = [...previous.filter((a) => !fresh.has(key(a)) && scenes[a.scene]), ...audits]
+      .sort((a, b) => order.indexOf(a.scene) - order.indexOf(b.scene) || a.theme.localeCompare(b.theme));
+    writeFileSync(AUDIT_FILE, `${JSON.stringify(merged, null, 1)}\n`);
     const byRule = new Map();
     for (const a of audits) for (const v of a.violations) byRule.set(v.id, { ...v, scenes: [...(byRule.get(v.id)?.scenes ?? []), `${a.scene} (${a.theme})`] });
-    console.log(`\naxe-core: ${audits.length} scene captures, ${byRule.size} rules violated${byRule.size ? `: ${[...byRule.values()].map((v) => `${v.id} (${v.impact}) in ${v.scenes.length}`).join('; ')}` : ''}. Details: docs/capture/audit.json`);
+    const failing = merged.filter((a) => a.violations.length);
+    console.log(`\naxe-core: ${audits.length} scene captures, ${byRule.size} rules violated${byRule.size ? `: ${[...byRule.values()].map((v) => `${v.id} (${v.impact}) in ${v.scenes.length}`).join('; ')}` : ''}. docs/capture/audit.json: ${merged.length} captures of ${order.length} scenes, ${failing.length} with violations${failing.length ? ` (${failing.slice(0, 6).map((a) => `${a.scene} ${a.theme}`).join(', ')})` : ''}.`);
   }
 }

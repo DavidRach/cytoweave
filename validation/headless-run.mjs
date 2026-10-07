@@ -138,7 +138,7 @@ try {
   });
   for (let i = 0; i < 100 && !url; i += 1) await sleep(200);
   if (!url) throw new Error('CytoWeave did not start');
-  b = await launch({ port: 9341 });
+  b = await launch();
   const downloads = join(temp, 'window');
   mkdirSync(downloads);
   await b.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads, eventsEnabled: true });
@@ -230,7 +230,7 @@ try {
   const reviewPath = join(temp, 'c', 'review.html');
   const requests = [];
   const errors = [];
-  b ??= await launch({ port: PORT + 1 });
+  b ??= await launch();
   await b.send('Network.enable');
   b.on('Network.requestWillBeSent', (event) => requests.push(event.request.url));
   b.on('Runtime.exceptionThrown', (event) => errors.push(event.exceptionDetails?.exception?.description ?? event.exceptionDetails?.text));
