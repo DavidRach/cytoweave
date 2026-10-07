@@ -92,9 +92,10 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
     },
     async close() {
       const exited = new Promise((resolve) => chrome.once('exit', resolve));
-      try { await send('Browser.close'); } catch { /* closing */ }
+      // A Chrome that hangs answers nothing: ask it to close, wait a little, then end it.
+      send('Browser.close').catch(() => { /* closing */ });
       await Promise.race([exited, sleep(5000)]);
-      chrome.kill();
+      if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill('SIGKILL');
       try { rmSync(profile, { recursive: true, force: true, maxRetries: 5 }); } catch { /* a temporary folder */ }
     },
   };

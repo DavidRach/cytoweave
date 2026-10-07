@@ -141,11 +141,17 @@ const runs = [];
 for (const task of tasks) {
   for (let rep = 1; rep <= repeat; rep += 1) {
     process.stdout.write(`${task.id}${repeat > 1 ? ` #${rep}` : ''} … `);
+    // A run the harness failed (a browser that hung, CytoWeave that did not start) is not the
+    // agent's: it is run again, up to twice, and the attempts are recorded.
     let row;
-    try {
-      row = await runTask(binary, task, rep);
-    } catch (error) {
-      row = { task: task.id, category: task.category, repeat: rep, score: 0, parts: [], error: `harness: ${error.message}` };
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        row = { ...(await runTask(binary, task, rep)), attempts: attempt };
+        break;
+      } catch (error) {
+        row = { task: task.id, category: task.category, repeat: rep, score: 0, parts: [], attempts: attempt, error: `harness: ${error.message}` };
+        if (attempt < 3) console.log(`(harness: ${error.message}; running it again)`);
+      }
     }
     runs.push(row);
     console.log(`${row.score.toFixed(2)}${row.error ? ` (${row.error})` : ''}${row.toolCalls !== undefined ? `, ${row.toolCalls} tool calls` : ''}${row.seconds ? `, ${row.seconds} s` : ''}`);
