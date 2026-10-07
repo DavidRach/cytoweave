@@ -707,6 +707,46 @@ export function installRemote(app) {
       return { message: `Proposed a ${n}×${n} matrix from ${result.controls.length} single-stain controls for ${targets.length} sample${targets.length === 1 ? '' : 's'}; it applies when the user accepts your proposal.${warnings.length ? ` Warnings: ${warnings.slice(0, 4).join(' ')}` : ''}`, data: { detectors: result.detectors, largest: largest.slice(0, 12), warnings, proposal: proposalSummary() } };
     },
 
+    // A compensation checked against the single-stain controls (lib/compensation.js
+    // controlResiduals, as Compensate → Check against the controls): each control compensated
+    // with the matrix, and what remains of its dye in every other detector is that entry's error.
+    async check_compensation(args) {
+      const { compensationOf } = await import('../lib/engine.js');
+      const { controlResiduals } = await import('../lib/compensation.js');
+      const w = ws();
+      const sample = args.sample ? resolveSample(args.sample) : w.samples.find((s) => s.role === 'sample') ?? w.samples[0];
+      if (!sample) throw new ActionError('The workspace has no samples.');
+      let spill;
+      let source;
+      if (args.compensation) {
+        const comp = w.compensations.find((c) => c.name === args.compensation || c.id === args.compensation);
+        if (!comp) throw new ActionError(`No compensation named ${args.compensation}. Compensations: ${w.compensations.map((c) => c.name).join(', ') || 'none'}.`);
+        spill = { channels: comp.channels, matrix: comp.matrix };
+        source = `the compensation "${comp.name}"`;
+      } else {
+        const view = await loadedView(sample);
+        spill = compensationOf(w, sample, view);
+        if (!spill) throw new ActionError(`${sample.name} is not compensated; name a compensation to check.`);
+        source = sample.compensationId === 'file' ? `the matrix in ${sample.name}'s file ($SPILLOVER)` : `the compensation "${w.compensations.find((c) => c.id === sample.compensationId)?.name ?? sample.compensationId}"`;
+      }
+      const controls = w.samples.filter((s) => s.role === 'single-stain' && s.stain && spill.channels.includes(s.stain));
+      if (!controls.length) throw new ActionError('No single-stain controls with a stained channel of the matrix: mark them with annotate_samples (role "single-stain", stain the channel).');
+      const inputs = [];
+      for (const control of controls) {
+        const view = await loadedView(control);
+        inputs.push({ channel: control.stain, columns: Object.fromEntries(spill.channels.filter((c) => view.raw.has(c)).map((c) => [c, view.raw.get(c)])) });
+      }
+      const rows = controlResiduals(inputs, { channels: spill.channels, matrix: spill.matrix }, { threshold: 0.002 });
+      const percent = (v) => round(100 * v, 4);
+      const errors = rows.filter((r) => !r.broad).slice(0, 12).map((r) => ({ from: r.from, into: r.to, current: percent(r.current), suggested: percent(r.suggested), residual: percent(r.residual) }));
+      const broad = [...new Set(rows.filter((r) => r.broad).map((r) => r.from))];
+      const top = errors[0];
+      return {
+        message: `Checked ${source} against ${inputs.length} single-stain controls. ${top ? `The largest error: ${top.from} into ${top.into} is ${top.current}% and the controls say ${top.suggested}% (${top.residual > 0 ? 'under' : 'over'}-compensated by ${Math.abs(top.residual)} points).` : 'No entry is off by 0.2 points or more.'}${broad.length ? ` The positives of ${broad.join(', ')} are brighter than their negatives in several detectors at once, which spillover does not explain (more autofluorescent positive cells, as in a viability control).` : ''} Values are percent spillover (row dye into column detector); a fix is a new matrix (propose_compensation computes one from the controls).`,
+        data: { checked: source, controls: inputs.length, errors, broad },
+      };
+    },
+
     async annotate_samples(args) {
       const list = Array.isArray(args.samples) ? args.samples : [];
       if (!list.length) throw new ActionError('Give samples: [{ "sample": "name", "meta": { "condition": "stim" }, "role": "single-stain", "stain": "FITC-A" }, ...].');

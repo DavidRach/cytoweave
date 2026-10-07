@@ -363,7 +363,7 @@ function simulateBeads(ctx, sample, instrument, panel, marker, targetSignal, rat
 
 // --- 1. PBMC immunophenotyping (conventional, BD LSRFortessa-like) ------------------------------
 
-const PBMC_PANEL = [
+export const PBMC_PANEL = [
   { marker: 'CD45RA', fluor: 'BUV395', detector: 'BUV395-A' },
   { marker: 'CD56', fluor: 'BUV737', detector: 'BUV737-A' },
   { marker: 'CCR7', fluor: 'BV421', detector: 'BV421-A' },

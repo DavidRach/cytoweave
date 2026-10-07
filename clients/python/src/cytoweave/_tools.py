@@ -475,6 +475,28 @@ class Tools:
         """
         return self.call("check_robustness", **{"population": population, "groupBy": group_by, "channel": channel, "groups": groups, "pairBy": pair_by, "rerunQC": rerun_qc, "statistic": statistic})
 
+    def check_compensation(self, *, compensation=None, sample=None):
+        """Check a compensation against the controls.
+
+        Check a compensation matrix against the single-stain controls: each control is compensated
+        with the matrix, and what remains of its dye in every other detector is that matrix entry's
+        error. Checks the matrix a sample uses (sample; default the first stained sample: often the
+        one in its FCS file, $SPILLOVER) or a compensation of the workspace by name (compensation).
+        Returns the entries that are off, largest first, each with its current and suggested percent
+        spillover, and controls whose positives are brighter in several detectors at once
+        (autofluorescence, not spillover). Changes nothing; propose_compensation computes a new
+        matrix.
+
+        Args:
+            compensation: A compensation of the workspace to check, by name. Optional; a string.
+            sample: Sample whose matrix to check (default: the first stained sample). Optional; a
+                string.
+
+        Returns:
+            A Result: the message and the data CytoWeave answered with.
+        """
+        return self.call("check_compensation", **{"compensation": compensation, "sample": sample})
+
     def propose_compensation(self, *, method=None, population=None, samples=None, unstained=None):
         """Propose a compensation matrix from the controls.
 

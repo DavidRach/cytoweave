@@ -79,6 +79,16 @@ jobs:
         run: node validation/headless-run.mjs --verbose
         env:
           CHROME: /usr/bin/google-chrome
+      - name: Agent benchmark graders (partial credit on wrong answers)
+        run: node --test benchmark/tasks.test.mjs
+      - name: Agent benchmark, reference solutions through the MCP tools score at least 0.9
+        run: node benchmark/run.mjs --agent expert --check
+        env:
+          CHROME: /usr/bin/google-chrome
+      - name: Agent benchmark, an agent that answers nothing scores 0
+        run: node benchmark/run.mjs --agent none --check
+        env:
+          CHROME: /usr/bin/google-chrome
 
   clients:
     name: R and Python clients

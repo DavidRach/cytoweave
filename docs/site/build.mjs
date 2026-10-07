@@ -116,6 +116,7 @@ function header(root, current) {
         ${link('docs/', 'Documentation', 'docs')}
         ${link('install.html', 'Install', 'install')}
         ${link('science.html', 'Science', 'science')}
+        ${link('benchmark.html', 'Agent benchmark', 'benchmark')}
       </nav>
       <div class="header-actions">
         <a class="icon-button" href="${GITHUB}" aria-label="CytoWeave on GitHub">
@@ -226,7 +227,10 @@ function shots(html, root) {
   });
 }
 
-const fill = (html) => html.replaceAll('{{version}}', VERSION).replaceAll('{{github}}', GITHUB);
+// The agent benchmark's results (benchmark/results/), as the benchmark page shows them.
+const { benchmarkHTML } = await import('../../benchmark/report.mjs');
+const BENCHMARK = benchmarkHTML(join(repo, 'benchmark', 'results'));
+const fill = (html) => html.replaceAll('{{version}}', VERSION).replaceAll('{{github}}', GITHUB).replace('<benchmark-results></benchmark-results>', BENCHMARK);
 
 function write(path, html) {
   const file = join(out, path);
@@ -237,7 +241,7 @@ function write(path, html) {
 const written = [];
 
 // Top-level pages.
-for (const [slug, key] of [['index', 'home'], ['install', 'install'], ['science', 'science'], ['404', '404']]) {
+for (const [slug, key] of [['index', 'home'], ['install', 'install'], ['science', 'science'], ['benchmark', 'benchmark'], ['404', '404']]) {
   const { meta, body } = parse(join(here, 'pages', `${slug}.html`));
   const root = slug === '404' ? '/cytoweave/' : '';
   const path = slug === 'index' ? '' : `${slug}.html`;

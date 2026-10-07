@@ -457,6 +457,27 @@ cw_check_robustness <- function(population, group_by, channel = NULL, groups = N
   cw_call("check_robustness", population = population, groupBy = group_by, channel = channel, groups = .cw_array(groups), pairBy = pair_by, rerunQC = rerun_qc, statistic = statistic, cw = cw)
 }
 
+#' Check a compensation against the controls
+#'
+#' Check a compensation matrix against the single-stain controls: each control is compensated
+#' with the matrix, and what remains of its dye in every other detector is that matrix entry's
+#' error. Checks the matrix a sample uses (sample; default the first stained sample: often the
+#' one in its FCS file, $SPILLOVER) or a compensation of the workspace by name (compensation).
+#' Returns the entries that are off, largest first, each with its current and suggested percent
+#' spillover, and controls whose positives are brighter in several detectors at once
+#' (autofluorescence, not spillover). Changes nothing; propose_compensation computes a new
+#' matrix.
+#'
+#' @param compensation A compensation of the workspace to check, by name. Optional; a string.
+#' @param sample Sample whose matrix to check (default: the first stained sample). Optional; a
+#' string.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_check_compensation <- function(compensation = NULL, sample = NULL, cw = cw_default()) {
+  cw_call("check_compensation", compensation = compensation, sample = sample, cw = cw)
+}
+
 #' Propose a compensation matrix from the controls
 #'
 #' Compute a spillover matrix from the workspace's single-stain controls (samples with the role

@@ -123,8 +123,22 @@ examples, or against the files the exports write, read back:
 | `export_review_report` | One self-contained HTML file of the analysis, every number traced, nothing referenced outside it; a path that is not .html refused |
 | `virtual_fmo` | CD25 in T cells of the PBMC example predicted from the spread model the accepted compensation carries, within ×1.33 of the FMO tube's threshold and well above the unstained control's; a curve along CD127; with `addGate`, a range gate from the threshold proposed |
 | `design_panel` | A 7-marker T-cell panel chosen from the accepted compensation's 14 dyes: every dye different, its noise below the example's own panel, the background from the unstained control; a fixed dye and a subset of dyes honored; an unknown expression level refused; the workspace unchanged |
+| `check_compensation` | The PBMC example's files' matrix against its 14 controls: the planted error (APC into Alexa Fluor 700) named first, its suggested value within 0.5 points of the true spillover |
 
 Continuous integration runs it on each pull request and push to `main`.
+
+### The agent benchmark's checks
+
+```bash
+node --test benchmark/tasks.test.mjs
+node benchmark/run.mjs --agent expert --check
+node benchmark/run.mjs --agent none --check
+```
+
+check the [agent benchmark](../benchmark/README.md) itself, with no model: every task's reference
+solution, scripted through the same MCP tools an agent uses, must score at least 0.9 (all score
+1.0); an agent that answers nothing must score 0 on every task; and each grader gives plausible
+wrong answers the partial credit its rubric says. Continuous integration runs them.
 
 ### Headless runs
 

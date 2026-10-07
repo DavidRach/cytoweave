@@ -1234,8 +1234,9 @@ renames, deletions, compensation matrices and sample annotations wait. A strip a
 population tree lets you review the proposal, then accept or reject it as a
 whole. The change log records which agent proposed what and what you decided,
 and any change can be undone. See
-[Using CytoWeave with AI agents](docs/MCP.md) for the 48 tools, other clients
-and how it works.
+[Using CytoWeave with AI agents](docs/MCP.md) for the 54 tools, other clients
+and how it works. The [agent benchmark](benchmark/README.md) grades agents on
+analysis tasks against the simulated truth, through these tools.
 
 The same actions are available to your own programs with `--remote-control`.
 The R and Python clients in [`clients/`](clients/) make each one a function

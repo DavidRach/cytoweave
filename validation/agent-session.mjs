@@ -14,12 +14,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from '../docs/capture/cdp.mjs';
-import { generateExample } from '../web/lib/examples.js';
+import { PBMC_PANEL, generateExample } from '../web/lib/examples.js';
 import { parseFCS } from '../web/lib/fcs.js';
 import { readZip } from '../web/lib/zip.js';
 import { readFigureProvenance } from '../web/lib/figure-provenance.js';
 import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
-import { encodeFCS } from '../web/lib/simulate.js';
+import { INSTRUMENTS, buildPanel, encodeFCS } from '../web/lib/simulate.js';
 import { BEAD_MEF, BEAD_TRUTH, simulatedBeads } from './calibration-cases.mjs';
 import { BEAD_SPEC, beadWells, exampleWorkspace, screenInput, screenWells } from './curve-cases.mjs';
 import { fitLogLogistic } from '../web/lib/curves.js';
@@ -601,6 +601,16 @@ try {
   {
     const gates = generateExample('pbmc-immunophenotyping', { samples: ['Unstained.fcs'] }).workspaceHints.suggestedGates;
     await page(`const { addGates } = await import('/lib/workspace.js'); app.store.commit(addGates(app.store.ws, ${JSON.stringify(gates)}.map((g) => ({ ...g, overrides: {} })), 'add-suggested-gates').ws, 'Add the suggested gates'); return true;`);
+  }
+  // The files' matrix checked against the controls: the example's planted error (APC under-
+  // compensated into Alexa Fluor 700) named first, with a value near the true spillover.
+  {
+    const checked = (await tool('check_compensation', {}, 'FMO agent')).data;
+    const panel = buildPanel(INSTRUMENTS.fortessa, PBMC_PANEL).spill;
+    const n = panel.channels.length;
+    const truth = 100 * panel.matrix[panel.channels.indexOf('APC-A') * n + panel.channels.indexOf('Alexa Fluor 700-A')];
+    const top = checked.errors[0];
+    check('check_compensation: the files\' matrix checked against the 14 controls, the planted error named first with its value from the controls', `${checked.checked}; ${top.from} into ${top.into}: ${top.current}% → ${top.suggested}% (true ${truth.toFixed(2)}%); next ${checked.errors[1] ? `${checked.errors[1].from} into ${checked.errors[1].into} by ${checked.errors[1].residual} points` : 'none'}`, top.from === 'APC-A' && top.into === 'Alexa Fluor 700-A' && Math.abs(top.suggested - truth) < 0.5 && checked.controls === 14, 'APC-A into Alexa Fluor 700-A first, within 0.5 points');
   }
   await tool('propose_compensation', {}, 'FMO agent');
   await decide('FMO agent', true);

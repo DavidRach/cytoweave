@@ -68,6 +68,7 @@ between stimulated and unstimulated samples.</code></pre></div>
             <tr><td><code>create_gate</code></td><td>Proposes a rectangle, polygon, ellipse, range, quadrant or split gate from data coordinates</td></tr>
             <tr><td><code>auto_gate</code></td><td>Proposes a gate found from the data: a density basin around a point, singlets, or the valley between two modes</td></tr>
             <tr><td><code>edit_gate</code></td><td>Renames, recolors or deletes a population (held for review unless the agent proposed it)</td></tr>
+            <tr><td><code>check_compensation</code></td><td>Check a compensation matrix against the single-stain controls, as <a href="compensation.html#check">Check against the controls</a> does: the entries that are off, each with its suggested value</td></tr>
             <tr><td><code>propose_compensation</code></td><td>Computes a spillover matrix from the single-stain controls and proposes it for the samples</td></tr>
             <tr><td><code>proposals</code></td><td>The agent's open proposal and your recent decisions</td></tr>
             <tr><td><code>review_gate</code></td><td>A gate's frequency on every sample with a robust z-score and boundary robustness, outliers first</td></tr>
@@ -105,6 +106,9 @@ between stimulated and unstimulated samples.</code></pre></div>
         </table>
       </div>
       <p>Populations are named by name (when unique), by path (<code>Cells/Single cells/CD3+</code>) or by id; channels by detector (<code>FITC-A</code>) or marker (<code>CD3</code>). Gate coordinates are data values, as on the plot axes, on each channel's scale: a range gate on CD3 above 1,000 is <code>{"min": 1000}</code>.</p>
+
+      <h2 id="benchmark">How well agents do</h2>
+      <p>The <a href="../benchmark.html">agent benchmark</a> gives agents analysis tasks on simulated experiments whose answers are known (gate a population, find a compensation error, test a difference, name an acquisition problem, find a degraded tandem, read a dose-response plate, write a report) and grades their results against the truth. Its page shows each model's score, by task. An agent's work is still a proposal: review it as you would a colleague's.</p>
 
       <h2 id="privacy">Privacy and how it works</h2>
       <p><code>cytoweave mcp</code> starts CytoWeave with remote control on and speaks JSON-RPC on standard input and output. A tool call becomes an action that the server forwards to the open window, which performs it with the same code as the user interface and posts the result back, one action at a time. Everything stays on your computer: the server accepts requests only from this computer, and opening and writing files by path is limited to the agent connected over MCP or to scripts holding the token CytoWeave prints at startup. What the agent's model sees of your data is what the tools return: counts, statistics, gating trees and plot images.</p>

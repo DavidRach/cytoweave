@@ -760,6 +760,23 @@ Planned beside wave 7, not started there; they continue beside wave 8.
    compensation error, test a difference, export a report), each scored against the simulated
    truth, with published results per agent and model. It extends the validation suite to
    agents, where users' distrust is greatest.
+   - Done (slice 5): benchmark/. The harness runs "cytoweave mcp" itself, prepares the task's
+     example (its own seed) in its own headless window, removes what would give answers away (the
+     title, the per-cell truth channel, "anomaly" annotations), then starts the agent as a program
+     of its own whose only MCP server relays to that CytoWeave. Claude Code runs with no built-in
+     tools, only this folder's settings, no persistence. 11 tasks (gating, compensation,
+     statistics, QC ×2, spectral, titration, plates, bead assay, kinetics, reporting), each graded
+     by code from the window's state, the files written and an ANSWER line, with partial credit;
+     each has a reference solution through the same MCP tools. CI checks that the references score
+     ≥ 0.9 (all 1.0), that answering nothing scores 0, and the graders' partial credit. The website's
+     Agent benchmark page is built from benchmark/results/. New tool: check_compensation (the
+     controls check of the Compensate view), without which the compensation task could only be
+     solved by reading plots.
+   - Found by slice 5: analyses without an agent tool (cell-cycle and proliferation fits, index
+     sorting, bead Q and B) cannot be benchmarked yet. QC findings word a clog as "possible clog or
+     bubble" and a bubble as "possible clog" with a burst: in the pilot, Haiku swapped them.
+     Example annotations named planted faults ("anomaly"). Faults do not move with the seed, and the
+     examples are public.
 6. **WebMCP (M7):** the same tools exposed to agents in the browser through WebMCP (Chrome origin
    trial, 2026), beside the MCP server; it replaces the on-device assistant (M6, now an idea).
 7. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.

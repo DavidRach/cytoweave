@@ -47,7 +47,7 @@ with `proposals`.
 
 ## Requirements
 
-- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0, and `compare_distributions`, `rare_events`, `add_formula_channel`, `calibrate_beads`, `export_report`, `export_events` and `differential_analysis` 0.6.0 (as do Excel and Prism files from `export_table` and CSV files of events in `open_files`), and `diagnose_unmixing`, `kinetics`, `plate`, `plate_layout`, `dose_response`, `bead_assay` and `export_workspace` 0.7.0, and `export_certificate`, `verify_certificate`, `export_review_report`, `virtual_fmo` and `design_panel` 0.8.0.
+- CytoWeave 0.1.0 or later (`cytoweave --version`); proposals and the `propose_compensation` and `proposals` tools need 0.2.0, `adapt_gate` 0.3.0, `check_robustness` 0.4.0, and `annotate_samples`, `run_qc`, `unmix`, `explore`, `build_figure`, `watch_folder`, the export tools, the template tools, `suggest_cell_types` and `titration` 0.5.0, and `compare_distributions`, `rare_events`, `add_formula_channel`, `calibrate_beads`, `export_report`, `export_events` and `differential_analysis` 0.6.0 (as do Excel and Prism files from `export_table` and CSV files of events in `open_files`), and `diagnose_unmixing`, `kinetics`, `plate`, `plate_layout`, `dose_response`, `bead_assay` and `export_workspace` 0.7.0, and `export_certificate`, `verify_certificate`, `export_review_report`, `virtual_fmo`, `design_panel` and `check_compensation` 0.8.0.
 - Chrome, Edge, Brave or Chromium for the window (any modern browser works if you open the
   printed address yourself).
 - The full path to the program. Agents often start programs without your shell's `PATH`; the
@@ -99,6 +99,7 @@ workspace library), `--window app|browser|none` (how the window opens when a too
 | `create_gate` | Proposes a rectangle, polygon, ellipse, range, quadrant or split gate from data coordinates. |
 | `auto_gate` | Proposes a gate found from the data: the density basin around a point ("magic wand"), singlets on area versus height, or the valley between two modes. |
 | `edit_gate` | Renames, recolors or deletes a population (held for review unless the agent proposed it). |
+| `check_compensation` | Checks a compensation matrix (a sample's, often the one in its FCS file, or one of the workspace's) against the single-stain controls: the entries that are off, largest first, each with its current and suggested percent spillover. Changes nothing. |
 | `propose_compensation` | Computes a spillover matrix from the workspace's single-stain controls and proposes it for the samples. |
 | `proposals` | The agent's open proposal and your recent decisions. |
 | `review_gate` | A gate's frequency on every sample with a robust z-score and its boundary robustness, outliers first. |

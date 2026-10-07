@@ -826,6 +826,29 @@
     }
   },
   {
+    "name": "check_compensation",
+    "title": "Check a compensation against the controls",
+    "description": "Check a compensation matrix against the single-stain controls: each control is compensated with the matrix, and what remains of its dye in every other detector is that matrix entry's error. Checks the matrix a sample uses (sample; default the first stained sample: often the one in its FCS file, $SPILLOVER) or a compensation of the workspace by name (compensation). Returns the entries that are off, largest first, each with its current and suggested percent spillover, and controls whose positives are brighter in several detectors at once (autofluorescence, not spillover). Changes nothing; propose_compensation computes a new matrix.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "compensation": {
+          "description": "A compensation of the workspace to check, by name",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample whose matrix to check (default: the first stained sample)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "propose_compensation",
     "title": "Propose a compensation matrix from the controls",
     "description": "Compute a spillover matrix from the workspace's single-stain controls (samples with the role single-stain and a stained channel), optionally within a population of each control (e.g. its singlets) and with an unstained sample as the negative reference, and propose it for the samples. The user reviews it with your other changes; the result lists the largest spillover values and any warnings about the controls.",
