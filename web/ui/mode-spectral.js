@@ -21,7 +21,7 @@ import { ROOT, addDerived, gatePath, updateSample } from '../lib/workspace.js';
 import { complexityIndex, similarityMatrix } from '../lib/spectral.js';
 import { LIBRARY_TOLERANCE, SPECTRA_RECORDS, compareWithLibrary, latestEntries, libraryEntry, missingFromPanel, spectrumOn, withEntries } from '../lib/spectral-library.js';
 import { INSTRUMENT_RECORDS, acquisitionDate, instrumentOf } from '../lib/instrument-record.js';
-import { c1FromRuns, noiseOn, predictedSpreading, spreadModel, spreadReceived } from '../lib/spread.js';
+import { c1FromRuns, noiseOn, predictedSpreading, spreadModel, spreadReceived, spreadRecord } from '../lib/spread.js';
 import { applyTransform, axisTicks, createTransform, defaultTransform } from '../lib/transforms.js';
 import { categoricalColor, colormapLUT, luminance } from '../lib/colormaps.js';
 import {
@@ -38,6 +38,7 @@ import {
   similarPairs,
   similarityLevel,
   thinIndices,
+  unmixedChannel,
 } from '../lib/spectral-ui.js';
 import {
   LIMITS,
@@ -398,6 +399,8 @@ export function mountSpectralMode(app, container) {
           observations,
           noise,
           check,
+          // The spread model with the channel each dye is unmixed into, for virtual FMOs.
+          model: noise ? spreadRecord({ names, detectors, spectra: spectra.map((sp) => Array.from(sp.spectrum)), channels: names.map((name) => unmixedChannel(name)), noise, source: 'reference controls' }) : null,
         },
       }, 'Spectral spreading matrix');
       progress.done('Spreading matrix computed.', 'ok');

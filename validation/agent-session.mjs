@@ -594,6 +594,20 @@ try {
   const traced = (reviewText.match(/<button type="button" class="n/g) ?? []).length;
   const wrongPath = await refused('export_review_report', { path: join(temp, 'beads.review.pdf') });
   check('export_review_report: one self-contained HTML file of the analysis, every number traced; a path that is not .html refused', `${reviewed.data.numbers} numbers (${traced} in the file), ${(reviewed.data.bytes / 1e3).toFixed(0)} kB; ${wrongPath ? 'refused .pdf' : 'accepted .pdf'}`, reviewText.startsWith('<!doctype html>') && traced === reviewed.data.numbers && traced > 56 * 3 && !/<script[^>]+src=|<link\b/i.test(reviewText) && Boolean(wrongPath), 'traced; .pdf refused');
+  // Virtual FMO: the PBMC example with a CD25 FMO tube, compensation proposed from the controls
+  // (with the spread fitted to them) and accepted, then CD25's negative in T cells predicted.
+  await page(`await app.openExample('pbmc-immunophenotyping', { scale: 0.3, fmos: ['CD25'] }); return true;`);
+  await waitFor(`window.cytoweave.store.ws.samples.length === 28 && !document.querySelector('.progress-toast')`);
+  {
+    const gates = generateExample('pbmc-immunophenotyping', { samples: ['Unstained.fcs'] }).workspaceHints.suggestedGates;
+    await page(`const { addGates } = await import('/lib/workspace.js'); app.store.commit(addGates(app.store.ws, ${JSON.stringify(gates)}.map((g) => ({ ...g, overrides: {} })), 'add-suggested-gates').ws, 'Add the suggested gates'); return true;`);
+  }
+  await tool('propose_compensation', {}, 'FMO agent');
+  await decide('FMO agent', true);
+  const fmoResult = (await tool('virtual_fmo', { sample: 'D01_Unstim', population: 'T cells', channel: 'CD25', versus: 'CD127' }, 'FMO agent')).data;
+  const gated = await tool('virtual_fmo', { sample: 'D01_Unstim', population: 'T cells', channel: 'CD25', addGate: true, name: 'CD25+ (virtual FMO)' }, 'FMO agent');
+  const fmoRatio = fmoResult.realFMO ? fmoResult.threshold / fmoResult.realFMO.threshold : Number.NaN;
+  check('virtual_fmo: CD25 in T cells predicted from the spread model the accepted compensation carries, beside the FMO control and the unstained control; with addGate, a range gate from the threshold proposed', `threshold ${fmoResult.threshold} (FMO control ${fmoResult.realFMO?.threshold}, unstained alone ${fmoResult.unstainedOnly}); spread from ${fmoResult.spreadFrom.slice(0, 2).map((c) => c.channel).join(', ')}; curve along CD127 in ${fmoResult.curve?.length} bins; ${gated.data.proposal ? 'gate proposed' : 'no gate'}`, fmoRatio > 0.75 && fmoRatio < 1.33 && fmoResult.unstainedOnly < fmoResult.realFMO.threshold / 1.5 && fmoResult.curve?.length >= 5 && Boolean(gated.data.proposal?.created?.length), 'within ×1.33 of the FMO; gate proposed');
 } catch (error) {
   check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

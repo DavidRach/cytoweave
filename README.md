@@ -176,6 +176,13 @@ guides to every view, with screenshots.
     outliers, boundaries drawn through dense regions, low counts.
   - **Boundary robustness** shows how much a frequency depends on exactly
     where a gate was drawn.
+- **Virtual FMO controls.** Where a population's negative for a marker ends
+  without its dye, predicted from the spread model fitted to the controls and
+  drawn on the plot beside any real FMO control, with the dyes the spread
+  comes from and a gate above it on request. A guide, validated against real
+  FMOs on a BD LSRFortessa and a Cytek Aurora panel (within about 6% of the
+  axis on average); a real FMO still shows compensation or unmixing errors a
+  prediction cannot.
 - **Figures and reports.**
   - Gating-strategy and across-samples figures that stay live until you
     export them, as SVG, PNG or vector PDF, with statistics tables on the page.
@@ -1282,6 +1289,7 @@ pipelines, as the app does, against answers known in advance:
 | Events in and out | Concatenated, downsampled and per-sample FCS files against their sources; CSV files from CytoWeave, FlowJo and European locales, and a damaged one; AnnData files read by anndata 0.10 and 0.13, h5py, pyfive, fcsparser and FlowIO | Every event its source's; every population counted alike per SampleID; seeded downsampling exact and uniform; CSV values back exactly, every fault reported; X, obs and maps read exactly by every reader |
 | Batch reports and spreadsheets | A figure repeated by sample and by subject; every number recomputed; the files read by openpyxl, python-pptx, pypdf and R pzfx | Every plot where the rules put it; all 171 numbers equal to their table column or gate; workbook, deck and Prism values exact in every reader |
 | Headless runs | The PBMC example's 12 samples and a template run twice with `cytoweave run`, and analyzed in the window with its own buttons; Node on the same files | The same outputs both times and as the window exports them (CSV bytes, workbook values, report text, workspace, methods); all 228 counts equal to Node's |
+| Virtual FMO controls | Simulated LSRFortessa- and Aurora-like panels with same-donor FMO tubes (15 markers); public FMO controls of a BD LSRFortessa (7 tubes) and a Cytek Aurora panel (4 tubes) | Simulated: within 1% of the display axis on average, against 12–13% for the unstained control; real: 5.8% and 5.5% of the axis on average (worst 11.6% and 14.9%) |
 | Review reports | Every example's report, every sample's gates drawn; a run's report opened in Chrome | All 2,892 counts, table cells and plot percentages equal to the window's own and shown as it shows them; nothing loaded from outside the file; no accessibility violations (WCAG 2.1 AA, both themes) |
 | Reproducibility certificates | Every example certified with its gates, a table, k-means clusters stored as a channel and a saved comparison, read back and verified; six kinds of tampering; certificates made in Chrome verified in Node and the reverse | All 2,413 numbers identical, bit for bit; the same archive byte for byte when made twice; every change caught; across engines, confidence limits equal to 12 digits |
 | Rare events | R's exact intervals; simulated blanks and low-level samples | Intervals equal to poisson.test and binom.test, covering ≥ 95%; EP17 limits flagging 4% of new blanks and detecting 98% at the limit of detection |

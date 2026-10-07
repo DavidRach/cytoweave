@@ -67,7 +67,7 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | C1 | Spillover from single-stain controls (median difference, robust regression); manual editing with undo | done |
 | C2 | Check a matrix against its controls and suggest corrections; recognize autofluorescent positives | done |
 | C3 | Spillover spreading matrix; N×N pair plots | done |
-| C4 | Virtual FMO: each population's negative without a dye, predicted from the spread model | planned (wave 8) |
+| C4 | Virtual FMO: each population's negative without a dye, predicted from the spread model | done (wave 8): each event's value without the dye drawn from its own brightness of every other dye and the unstained control (scatter gates applied), from the spread model kept with a compensation computed from controls or the spectral spreading matrix; threshold and curve drawn on plots beside the real FMO, a gate above it, agents' `virtual_fmo`; within 1% of the axis on simulated panels, about 6% (worst 15%) on real LSRFortessa and Aurora FMOs |
 | S1 | Reference spectra from controls with automatic gating; control quality metrics | done |
 | S2 | Several autofluorescence signatures; per-event autofluorescence | done |
 | S3 | OLS, WLS (fixed and per-event weights) and NNLS unmixing; residual channel | done |

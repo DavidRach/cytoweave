@@ -263,6 +263,9 @@ function createContext(entry, options) {
     laserCV: options.laserCV ?? null,
     // The files with a clog (PBMC example; default: D05_Unstim only).
     clogs: options.clogs ?? null,
+    // FMO controls (PBMC and spectral examples): markers, each giving FMO_<marker>.fcs, the first
+    // donor's cells stained with every dye of the panel but that marker's.
+    fmos: options.fmos ?? null,
     random: (...parts) => createRandom(deriveSeed(seed, entry.id, ...parts)),
     // Acquisition start times follow the file's place in the full design, so a file generated
     // on its own is byte-identical to the same file generated with the whole example.
@@ -388,7 +391,7 @@ function bdChannels(assignments, withWidth = true) {
   return [...scatter.map((name) => ({ name, label: '' })), ...assignments.map((a) => ({ name: a.detector, label: a.label ?? a.marker })), { name: 'Time', label: '' }];
 }
 
-function pbmcDesign(scale) {
+function pbmcDesign(scale, ctx = {}) {
   const samples = [{ name: 'Unstained.fcs', events: eventsFor(20000, scale), role: 'unstained', condition: 'Control', subject: 'D01', carrier: 'cells' }];
   for (const a of PBMC_PANEL) {
     if (a.marker === 'Viability') samples.push({ name: `Comp_${a.fluor}.fcs`, events: eventsFor(10000, scale), role: 'single-stain', stain: a.detector, marker: a.marker, carrier: 'cells (50 % heat-killed)', condition: 'Control', subject: 'D01' });
@@ -399,6 +402,11 @@ function pbmcDesign(scale) {
       const clog = donor === 'D05' && condition === 'Unstimulated';
       samples.push({ name: `${donor}_${condition === 'Unstimulated' ? 'Unstim' : 'Stim'}.fcs`, events: eventsFor(100000, scale), role: 'sample', condition, subject: donor, batch: 'B1', anomaly: clog ? 'clog' : null });
     }
+  }
+  for (const marker of ctx.fmos ?? []) {
+    const a = PBMC_PANEL.find((x) => x.marker === marker);
+    if (!a) throw new Error(`The PBMC panel has no ${marker}.`);
+    samples.push({ name: `FMO_${marker}.fcs`, events: eventsFor(100000, scale), role: 'fmo', stain: a.detector, marker, condition: 'Unstimulated', subject: PBMC_DONORS[0], batch: 'B1' });
   }
   return samples;
 }
@@ -466,6 +474,12 @@ function* generatePBMC(ctx, samples, all) {
     let fileSetup = setup;
     if (sample.role === 'single-stain' && sample.carrier === 'beads') {
       sim = simulateBeads(ctx, sample, instrument, panel, sample.marker, 70000, 1500);
+    } else if (sample.role === 'fmo') {
+      // The donor's unstimulated cells with every dye but one.
+      const { specs, weights } = pbmcComposition(ctx, sample.subject, { stimulated: false });
+      const populations = compilePopulations(specs, panel.markers, { stained: new Set(panel.markers.filter((m) => m !== sample.marker)) });
+      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: PBMC_MIX, viability: sample.marker === 'Viability' ? null : 'Viability', rate, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers) }, ctx.random(sample.name), { signal: ctx.signal });
+      fileSetup = { ...setup, spill: written };
     } else if (sample.role === 'single-stain' || sample.role === 'unstained') {
       const { specs, weights } = pbmcComposition(ctx, sample.subject);
       const stained = new Set(sample.role === 'unstained' ? [] : [sample.marker]);
@@ -726,13 +740,18 @@ const SPECTRAL_PANEL = [
   ['CD11c', 'PE-Cy5'], ['CD45', 'PE-Cy7'], ['CD11b', 'APC'], ['CD3', 'Alexa Fluor 700'], ['CD4', 'APC-Cy7'],
 ].map(([marker, fluor]) => ({ marker, fluor, detector: null }));
 
-function spectralDesign(scale) {
+function spectralDesign(scale, ctx = {}) {
   const samples = [{ name: 'Unstained.fcs', events: eventsFor(20000, scale), role: 'unstained', condition: 'Control', subject: 'S1', carrier: 'cells' }];
   for (const a of SPECTRAL_PANEL) {
     const cells = a.marker === 'Viability';
     samples.push({ name: `Ref_${a.fluor}.fcs`, events: eventsFor(cells ? 8000 : 4000, scale), role: 'single-stain', stain: a.fluor, marker: a.marker, carrier: cells ? 'cells (50 % heat-killed)' : 'beads', condition: 'Control', subject: cells ? 'S1' : undefined });
   }
   for (const subject of ['S1', 'S2', 'S3']) samples.push({ name: `Donor_${subject}.fcs`, events: eventsFor(40000, scale), role: 'sample', condition: 'Healthy', subject, batch: 'B1' });
+  for (const marker of ctx.fmos ?? []) {
+    const a = SPECTRAL_PANEL.find((x) => x.marker === marker);
+    if (!a) throw new Error(`The spectral panel has no ${marker}.`);
+    samples.push({ name: `FMO_${marker}.fcs`, events: eventsFor(40000, scale), role: 'fmo', stain: a.fluor, marker, condition: 'Healthy', subject: 'S1', batch: 'B1' });
+  }
   return samples;
 }
 
@@ -797,7 +816,12 @@ function* generateSpectral(ctx, samples, all) {
     // What the control's tube really holds (another dye when it was substituted).
     const held = ctx.substitutes?.[sample.stain] ?? sample.stain;
     const heldSignature = () => signatures[held] ?? Array.from(spectralSignature(held, instrument.detectors), (v) => +v.toFixed(5));
-    if (sample.role === 'single-stain' && sample.carrier === 'beads') {
+    if (sample.role === 'fmo') {
+      // Donor S1's cells with every dye but one.
+      const { specs, weights } = pbmcComposition(ctx, sample.subject);
+      const populations = compilePopulations(specs, filePanel.markers, { stained: new Set(filePanel.markers.filter((m) => m !== sample.marker)) });
+      sim = simulateEvents({ count: sample.events, instrument, panel: filePanel, populations, weights, mix: PBMC_MIX, viability: sample.marker === 'Viability' ? null : 'Viability', rate, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers), laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
+    } else if (sample.role === 'single-stain' && sample.carrier === 'beads') {
       sim = simulateBeads(ctx, sample, instrument, filePanel, sample.marker, 1.2e6, 3000, { laserCV: ctx.laserCV });
       const shift = ctx.beadShift?.[sample.stain];
       truth = { signature: shift && held === sample.stain ? Array.from(spectralSignature(shiftedFluorochrome(held, shift), instrument.detectors), (v) => +v.toFixed(5)) : heldSignature(), fluorochrome: held };
@@ -2397,7 +2421,7 @@ function startGeneration(id, options) {
   const def = DEFINITIONS.find((d) => d.id === id);
   if (!def) throw new Error(`There is no example called "${id}".`);
   const ctx = createContext(def, options);
-  const all = def.design(ctx.scale);
+  const all = def.design(ctx.scale, ctx);
   all.forEach((sample, index) => { sample.index = index; });
   const samples = ctx.only ? all.filter((s) => ctx.only.has(s.name)) : all;
   if (ctx.only && !samples.length) throw new Error(`None of the requested files belong to the example "${id}".`);

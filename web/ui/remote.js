@@ -497,6 +497,67 @@ export function installRemote(app) {
       return commitGates(gates, { parentId, dims, name: args.name, view, origin: 'agent' });
     },
 
+    // A virtual FMO (lib/virtual-fmo.js): where the population's negative for a channel's dye
+    // would end without that dye, predicted from the spread model.
+    async virtual_fmo(args) {
+      const { DEFAULT_QUANTILE, fmoControlFor, fmoThreshold, spreadFor, virtualFMO } = await import('../lib/virtual-fmo.js');
+      const { unstainedFor } = await import('./virtual-fmo-view.js');
+      const sample = resolveSample(args.sample);
+      const view = await loadedView(sample);
+      const populationId = resolvePopulation(args.population);
+      const channel = resolveChannel(view, args.channel);
+      const versus = args.versus ? resolveChannel(view, args.versus) : null;
+      const quantile = args.quantile === undefined ? DEFAULT_QUANTILE : Number(args.quantile);
+      if (!(quantile > 0.5 && quantile < 1)) throw new ActionError('quantile is between 0.5 and 1 (default 0.995).');
+      const w = ws();
+      const found = spreadFor(w, sample, channel);
+      if (!found) throw new ActionError(`No spread model covers ${channel} in ${sample.name}: compute the compensation from the single-stain controls (propose_compensation, accepted) or the spectral spreading matrix in the Spectral view first.`);
+      const unstainedSample = unstainedFor(w);
+      if (!unstainedSample) throw new ActionError('A virtual FMO needs an unstained control (a sample with the role "unstained").');
+      const unstained = await loadedView(unstainedSample);
+      let result;
+      try {
+        result = virtualFMO({ ws: w, view, unstained, populationId, channel, record: found.record, quantile, yChannel: versus });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const marker = view.channelInfo(channel)?.marker || null;
+      const fmoSample = fmoControlFor(w, channel, marker);
+      let real = null;
+      if (fmoSample) {
+        try {
+          real = fmoThreshold({ ws: w, view: await loadedView(fmoSample), populationId, channel, quantile, yChannel: versus });
+        } catch {
+          real = null;
+        }
+      }
+      const population = populationId === ROOT ? 'All events' : gatePath(w, populationId);
+      const data = {
+        sample: sample.name,
+        population,
+        channel,
+        marker,
+        quantile,
+        threshold: round(result.threshold, 6),
+        unstainedOnly: round(result.unstainedThreshold, 6),
+        realFMO: real ? { sample: fmoSample.name, threshold: round(real.threshold, 6) } : null,
+        events: result.events,
+        spreadFrom: result.contributions.slice(0, 6).map((c) => ({ channel: c.channel, dye: c.dye, share: round(c.share, 4) })),
+        curve: result.curve ? result.curve.map((c) => ({ [versus]: round(c.y, 6), threshold: round(c.threshold, 6), events: c.n })) : null,
+        spreadModel: found.source.label,
+        unstained: unstainedSample.name,
+        method: result.method,
+      };
+      let proposed = null;
+      if (args.addGate) {
+        const tx = channelTransform(w, view, channel);
+        const fx = createTransform(tx).forward;
+        proposed = commitGates([{ type: 'range', geometry: { min: fx(result.threshold), max: null } }], { parentId: populationId === ROOT ? null : populationId, dims: [{ channel, transform: { ...tx } }], name: args.name ?? `${marker || channel}+`, view, origin: 'agent', method: 'virtual FMO', explanation: `From the virtual FMO's ${(100 * quantile).toFixed(1)}th percentile.` });
+      }
+      const message = `Virtual FMO of ${marker ? `${marker} (${channel})` : channel} in ${population} of ${sample.name}: the negative ends at ${round(result.threshold, 4)} (${(100 * quantile).toFixed(1)}th percentile of the predicted values without the dye; the unstained control alone would say ${round(result.unstainedThreshold, 4)}${real ? `; the FMO control ${fmoSample.name} says ${round(real.threshold, 4)}` : ''}). The spread comes mostly from ${data.spreadFrom.slice(0, 3).map((c) => `${c.channel} (${Math.round(100 * c.share)}%)`).join(', ') || 'no other dye'}. It is a prediction of spread, a guide for gating, not a replacement for a real FMO on dim or critical markers.${proposed ? ` ${proposed.message}` : ''}`;
+      return { message, data: { ...data, ...(proposed ? { proposal: proposed.data } : {}) } };
+    },
+
     async auto_gate(args) {
       const sample = resolveSample(args.sample);
       const view = await loadedView(sample);
@@ -634,7 +695,7 @@ export function installRemote(app) {
       const targets = args.samples?.length ? args.samples.map((s) => resolveSample(s)) : ws().samples.filter((s) => s.role !== 'single-stain' && s.role !== 'unstained');
       if (!targets.length) throw new ActionError('No samples to apply the matrix to.');
       const name = `Proposed by ${author} (${method}, ${new Date().toLocaleDateString()})`;
-      const proposed = proposeCompensation(ws(), author, { name, channels: result.detectors, matrix: result.matrix, source: 'computed', method, report: result.report }, targets.map((s) => s.id));
+      const proposed = proposeCompensation(ws(), author, { name, channels: result.detectors, matrix: result.matrix, source: 'computed', method, report: result.report, ...(result.spread ? { spread: result.spread } : {}) }, targets.map((s) => s.id));
       store.commit(proposed.ws, `${author} proposed a compensation matrix`);
       toast(`${author} proposes a compensation matrix from ${result.controls.length} controls. Review the proposal to accept or reject it.`);
       const n = result.detectors.length;

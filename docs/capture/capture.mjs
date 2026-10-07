@@ -796,6 +796,22 @@ const scenes = {
     await js(`(() => { const section = document.getElementById('plots'); window.scrollTo(0, section.getBoundingClientRect().top + window.scrollY - 12); [...section.querySelectorAll('button.n')][1].click(); return true; })()`);
     await sleep(600);
   },
+  // A virtual FMO of CD25 in T cells, beside the example's CD25 FMO control.
+  async 'virtual-fmo'() {
+    await example('pbmc-immunophenotyping', { options: { fmos: ['CD25'] } });
+    await compensateFromControls();
+    await mode('gate');
+    await selectSample('D01_Unstim');
+    await app(`app.selectGate(${gateId('T cells')});`);
+    await sleep(1200);
+    await app(`
+      const { addPlot } = await import('/lib/workspace.js');
+      app.store.commit(addPlot(app.store.ws, { populationId: ${gateId('T cells')}, x: 'PE-A', y: 'PE-Cy7-A', type: 'pseudocolor', options: { virtualFMO: ['PE-A'] } }).ws, 'Add plot', ['plots']);
+    `);
+    await waitFor(`[...document.querySelectorAll('.plot-compare')].some((e) => !e.hidden && /Virtual FMO of CD25: 99/.test(e.textContent) && /FMO control/.test(e.textContent))`, 180000);
+    await js(`[...document.querySelectorAll('.plot-compare')].find((e) => !e.hidden && /Virtual FMO/.test(e.textContent)).closest('.plot-card').scrollIntoView({ block: 'center' })`);
+    await sleep(800);
+  },
   // A reproducibility certificate of the PBMC analysis, opened and verified.
   async certificate() {
     await example('pbmc-immunophenotyping');

@@ -61,6 +61,8 @@ import { VISIONS, lab as labOf, paletteReport, simulate } from '../web/lib/color
 import { buildCertificate, readCertificate, verifyCertificate } from '../web/lib/certificate.js';
 import { CERTIFICATE_EXAMPLES, certifiableExample } from './certificate-cases.mjs';
 import { buildReviewReport } from '../web/lib/review-report.js';
+import { fmoThreshold, virtualFMO } from '../web/lib/virtual-fmo.js';
+import { axisDistance, omip, simulatedConventional, simulatedSpectral, skull } from './fmo-cases.mjs';
 import { gatingStrategyFigure } from '../web/lib/figures.js';
 import { exportScene } from '../web/lib/scene.js';
 import { CATEGORICAL, CATEGORICAL_CVD, colormapColor } from '../web/lib/colormaps.js';
@@ -3448,6 +3450,76 @@ const suites = {
     check('reviews', `the ${rows.length} examples' review reports: every count, table cell and plot percentage they print equal to the window's own (populationSize, tableCells, exportScene on views prepared as the window prepares them), and shown as the window shows it`, `${all.toLocaleString('en-US')} numbers: ${rows.reduce((n, r) => n + r.wrong, 0)} differ, ${rows.reduce((n, r) => n + r.shownWrong, 0)} shown otherwise; and ${rows.reduce((n, r) => n + r.comparisons, 0)} numbers of comparisons`, rows.every((r) => r.wrong === 0 && r.shownWrong === 0 && r.checked > 0), 'all equal');
     check('reviews', 'each report self-contained: no stylesheet, script, frame, font or image from outside (only data: URIs and in-page references; DOI links are followed only when clicked)', `${rows.filter((r) => !r.loads).length} of ${rows.length}; ${(rows.reduce((n, r) => n + r.bytes, 0) / rows.length / 1e6).toFixed(1)} MB on average`, rows.every((r) => !r.loads), 'all');
     check('reviews', 'time: 14 examples reported (every sample\'s gates drawn) and checked', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+  async fmo() {
+    // Virtual FMOs (C4) against real FMO controls. In the simulations the FMO tubes hold the same
+    // donor's cells, so the prediction from the donor's stained sample is compared with them. In
+    // the public data the FMO tubes hold other cells than the stained samples (a pool, another
+    // tissue), so each tube predicts its own omitted channel from its own events: the comparison
+    // is then of the model alone. Distances are on the channel's display scale (logicle), in % of
+    // the axis; the unstained control's 99.5th percentile, the usual stand-in, is shown beside.
+    const started = performance.now();
+    const evaluate = (c) => {
+      const axis = axisDistance(c.range);
+      const rows = [];
+      for (const [label, populationId] of c.populations) {
+        for (const f of c.fmos) {
+          const fmoView = c.view(f.file);
+          const real = fmoThreshold({ ws: c.ws, view: fmoView, populationId, channel: f.channel });
+          const v = virtualFMO({ ws: c.ws, view: c.view(c.self ? f.file : c.stained), unstained: c.view(c.unstained), populationId, channel: f.channel, record: c.record });
+          const indices = population(fmoView, c.ws, populationId);
+          const x = fmoView.column(f.channel);
+          let above = 0;
+          for (const e of indices ?? x.keys()) if (x[e] > v.threshold) above += 1;
+          const share = (100 * above) / (indices ? indices.length : x.length);
+          // Where many of the FMO's events pass the threshold: how much the channel leans with
+          // another (compensation or unmixing error, which spread does not predict).
+          let lean = null;
+          if (share > 1.5) {
+            const ids = indices ?? Array.from(x.keys());
+            const corr = (a, b) => {
+              let ma = 0;
+              let mb = 0;
+              for (const e of ids) {
+                ma += a[e];
+                mb += b[e];
+              }
+              ma /= ids.length;
+              mb /= ids.length;
+              let ab = 0;
+              let aa = 0;
+              let bb = 0;
+              for (const e of ids) {
+                ab += (a[e] - ma) * (b[e] - mb);
+                aa += (a[e] - ma) ** 2;
+                bb += (b[e] - mb) ** 2;
+              }
+              return ab / Math.sqrt(aa * bb);
+            };
+            lean = c.record.channels.filter((ch) => ch !== f.channel && fmoView.hasChannel(ch)).map((ch) => ({ channel: ch, r: corr(x, fmoView.column(ch)) })).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)).slice(0, 3);
+          }
+          rows.push({ label, marker: f.marker, channel: f.channel, virtual: v.threshold, real: real.threshold, unstained: v.unstainedThreshold, error: axis(v.threshold, real.threshold), unstainedError: axis(v.unstainedThreshold, real.threshold), above: share, lean, top: v.contributions[0] });
+        }
+      }
+      return rows;
+    };
+    const describe = (rows) => rows.map((r) => `${r.marker}${r.label !== 'Cells' && r.label !== 'Live cells' ? ` (${r.label})` : ''} ${r.error >= 0 ? '+' : ''}${fmt(r.error, 2)}% [unstained ${r.unstainedError >= 0 ? '+' : ''}${fmt(r.unstainedError, 2)}%], ${fmt(r.above, 2)}% above`).join('; ');
+    const mean = (rows) => rows.reduce((a, r) => a + Math.abs(r.error), 0) / rows.length;
+    const worst = (rows) => Math.max(...rows.map((r) => Math.abs(r.error)));
+    for (const [c, tolerance] of [[simulatedConventional(), 3], [simulatedSpectral(), 3]]) {
+      const rows = evaluate(c);
+      check('fmo', `${c.name}: ${c.fmos.length} markers' virtual FMO from the donor's stained sample against the same donor's FMO tube, ${c.populations.map(([l]) => l).join(' and ')} (99.5th percentile; distance on the display scale, % of the axis; and the share of the FMO's events above the predicted threshold, 0.5% if exact)`, `${describe(rows)}; mean |distance| ${fmt(mean(rows), 2)}%`, worst(rows) <= tolerance, `within ${tolerance}% of the axis`);
+      const leaning = rows.filter((r) => r.lean);
+      if (leaning.length) check('fmo', `${c.name}: where more than 1.5% of the FMO's events pass the threshold, the FMO's channel leans with others (compensation error from the controls' matrix, which a spread model does not predict and a real FMO shows)`, leaning.map((r) => `${r.marker} (${r.label}, ${fmt(r.above, 2)}% above): r = ${r.lean.map((l) => `${fmt(l.r, 2)} with ${l.channel}`).join(', ')}`).join('; '), leaning.every((r) => Math.abs(r.lean[0].r) > 0.08), '|r| > 0.08 with another channel');
+      check('fmo', `${c.name}: the unstained control alone as the threshold, for comparison`, `mean |distance| ${fmt(rows.reduce((a, r) => a + Math.abs(r.unstainedError), 0) / rows.length, 2)}%, worst ${fmt(Math.max(...rows.map((r) => Math.abs(r.unstainedError))), 2)}%; the virtual FMO closer in ${rows.filter((r) => Math.abs(r.error) < Math.abs(r.unstainedError)).length} of ${rows.length}`, true, 'reported');
+    }
+    const fortessa = skull(dataset('zenodo-skull'), dataset('zenodo-skull-fmo'));
+    const fortessaRows = evaluate(fortessa);
+    check('fmo', `${fortessa.name}: ${fortessa.fmos.length} FMO tubes with one dye clearly omitted, each predicting its own channel from its own events (cells; spread fitted to the 15 bead controls); left out: ${fortessa.excluded.join('; ')}`, `${describe(fortessaRows)}; mean |distance| ${fmt(mean(fortessaRows), 2)}%, worst ${fmt(worst(fortessaRows), 2)}%`, fortessa.fmos.length >= 6 && mean(fortessaRows) <= 8 && worst(fortessaRows) <= 15, 'mean within 8%, worst 15% of the axis');
+    const aurora = omip(dataset('omip-tdln'));
+    const auroraRows = evaluate(aurora);
+    check('fmo', `${aurora.name}: ${aurora.fmos.length} pooled FMO tubes, each predicting its own channel (live cells; unmixed with autofluorescence signatures; spread fitted to the 25 bead references); left out: ${aurora.excluded.join('; ')}`, `${describe(auroraRows)}; mean |distance| ${fmt(mean(auroraRows), 2)}%, worst ${fmt(worst(auroraRows), 2)}%`, aurora.fmos.length >= 4 && mean(auroraRows) <= 10 && worst(auroraRows) <= 20, 'mean within 10%, worst 20% of the axis');
+    check('fmo', 'time: two simulated panels and two public ones, every virtual FMO and real threshold', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
   },
 };
 

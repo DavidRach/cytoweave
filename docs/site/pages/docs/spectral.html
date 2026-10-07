@@ -23,7 +23,7 @@ lede: Turn raw detector data from a spectral cytometer into one channel per dye,
       <ul>
         <li><strong>Complexity index:</strong> the condition number of the reference matrix (Cytek's definition), how much unmixing can amplify measurement noise. It grows as spectra overlap, and autofluorescence signatures added to the model raise it further.</li>
         <li><strong>Similarity matrix:</strong> the cosine similarity of every pair of spectra. Pairs at 0.90 or above are hard to separate; avoid putting co-expressed markers on them.</li>
-        <li><strong>Spectral spreading matrix:</strong> computed by unmixing the controls; how much each dye widens the negatives of every other.</li>
+        <li><strong>Spectral spreading matrix:</strong> computed by unmixing the controls; how much each dye widens the negatives of every other. The noise fitted to it is kept, with the spectra, for <a href="gating.html#virtual-fmo">virtual FMO controls</a> of the unmixed channels.</li>
       </ul>
 
       <h2 id="methods">Unmixing methods</h2>

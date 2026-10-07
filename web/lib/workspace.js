@@ -302,6 +302,8 @@ export function addCompensation(ws, compensation) {
     created: now(),
     report: compensation.report ?? null,
     method: compensation.method ?? null,
+    // The spread model fitted to the controls it was computed from (virtual FMOs).
+    ...(compensation.spread ? { spread: compensation.spread } : {}),
   };
   return { ws: touch(ws, { compensations: [...ws.compensations, record] }, 'add-compensation', record.name), compensation: record };
 }

@@ -139,8 +139,8 @@ export function mountCompensateMode(app, container) {
     }
     const progress = progressToast('Computing spillover from controls…');
     try {
-      const { detectors, matrix, report, spreading } = await spilloverFromControls(data, store.ws, { gateId, unstainedId, method, onProgress: (f, m) => progress.update(f, m) });
-      const added = addCompensation(store.ws, { name: `Computed ${new Date().toLocaleDateString()} (${method})`, channels: detectors, matrix, source: 'computed', method, report });
+      const { detectors, matrix, report, spreading, spread } = await spilloverFromControls(data, store.ws, { gateId, unstainedId, method, onProgress: (f, m) => progress.update(f, m) });
+      const added = addCompensation(store.ws, { name: `Computed ${new Date().toLocaleDateString()} (${method})`, channels: detectors, matrix, source: 'computed', method, report, ...(spread ? { spread } : {}) });
       store.commit(added.ws, 'Compute compensation');
       selectedId = added.compensation.id;
       ssm = { channels: detectors, matrix: spreading.matrix };

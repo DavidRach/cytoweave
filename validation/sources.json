@@ -2556,6 +2556,506 @@
      "sha256": "7a5bfd31cb3d292951bbcb5939008a08147ad7e7e079adbef10deacdd1f33c62"
     }
    ]
+  },
+  "zenodo-skull-fmo": {
+   "title": "Skull bone marrow chimera: FMO controls and the unstained control (Zenodo 22808501)",
+   "description": "The FMO controls, live/dead control and unstained control of the BD LSRFortessa panel in \"Example of skull bone marrow chimera using congenic mice\"; with the compensation controls and samples of zenodo-skull, they check virtual FMOs against real ones.",
+   "source": "https://zenodo.org/records/22808501 (doi:10.5281/zenodo.22808501)",
+   "license": "CC BY 4.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "FMO broad panel_Live dead.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Live%20dead.fcs/content",
+     "size": 8892495,
+     "sha256": "18b3e7abec310330020aa33b8031d21f3fd3517d078cebc19bd95ff89ff1a0bc"
+    },
+    {
+     "path": "FMO broad panel_Tube_001.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_001.fcs/content",
+     "size": 8999677,
+     "sha256": "47b5d4d8859868bc9c437ac6b771992d96a59bb2b492661003eaabbec67e8a67"
+    },
+    {
+     "path": "FMO broad panel_Tube_002.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_002.fcs/content",
+     "size": 14557141,
+     "sha256": "3de3e12dda066e6c018abb77d949f7fc917936ad74690265804eb291596218ef"
+    },
+    {
+     "path": "FMO broad panel_Tube_003.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_003.fcs/content",
+     "size": 11256613,
+     "sha256": "6da2433e4d89c75bf818c703ef336252d1460208a6c7a1ce130e321dc71594fb"
+    },
+    {
+     "path": "FMO broad panel_Tube_004.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_004.fcs/content",
+     "size": 6948397,
+     "sha256": "ccd9ec5ab2f85a95bdba0c2136c5a872c2cd6aa4fb44c07bf8a80776213d237b"
+    },
+    {
+     "path": "FMO broad panel_Tube_005.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_005.fcs/content",
+     "size": 6004597,
+     "sha256": "3b403fc1b1b0adff7032474c68cfdbc09a80951e6bf7946e680055a85a7cc352"
+    },
+    {
+     "path": "FMO broad panel_Tube_006.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_006.fcs/content",
+     "size": 4048269,
+     "sha256": "701b6be9bdc5af9a951faeab5c851a9397019a37995c7be27105119ba6067aec"
+    },
+    {
+     "path": "FMO broad panel_Tube_007.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_007.fcs/content",
+     "size": 3011453,
+     "sha256": "fe73ad98c0eeee97b5fdf562759d27f0cccf8b630a34db6af6e5b87a6c3a65ad"
+    },
+    {
+     "path": "FMO broad panel_Tube_008.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_008.fcs/content",
+     "size": 4692253,
+     "sha256": "c4f28ef0d328a3c360cbe62df311cec232f1a171376ca4a9b0460efa60b4b7b7"
+    },
+    {
+     "path": "FMO broad panel_Tube_009.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_009.fcs/content",
+     "size": 17339173,
+     "sha256": "be858c917a0b633bee57f39709ada8516422e9e8223e8a0e3e0f83bc5b427575"
+    },
+    {
+     "path": "FMO broad panel_Tube_010.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_010.fcs/content",
+     "size": 8286261,
+     "sha256": "a21246fecdf3d79811393b63fce43a4d8fe621b0773ddab38992dcba98d28d15"
+    },
+    {
+     "path": "FMO broad panel_Tube_011.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_011.fcs/content",
+     "size": 5267157,
+     "sha256": "3d754345facbc0dca025437e99328656abeb9559fea907c4723cc52a79e6a5e5"
+    },
+    {
+     "path": "FMO broad panel_Tube_012.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_012.fcs/content",
+     "size": 6720389,
+     "sha256": "328dd0d8ff77d0d814241129fbc1922b6207b72fd48fc965669db190600a3334"
+    },
+    {
+     "path": "FMO broad panel_Tube_013.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Tube_013.fcs/content",
+     "size": 7745961,
+     "sha256": "a5f353b855f1dfd211f4fc98a6d8357f3f4e1f7b3ae768a938807c4806579703"
+    },
+    {
+     "path": "FMO broad panel_Unstained.fcs",
+     "url": "https://zenodo.org/api/records/22808501/files/FMO%20broad%20panel_Unstained.fcs/content",
+     "size": 5906039,
+     "sha256": "802bb96951473cc275914a969bc28d4a64bdea0dd151b269464193ba24cbf827"
+    }
+   ]
+  },
+  "omip-tdln": {
+   "title": "Mouse tumor-draining lymph node, 25-color spectral panel: reference controls, a full stain and FMO controls (Zenodo 20644656)",
+   "description": "From \"Flow cytometry dataset for OMIP publication_Petti\" (Cytek Aurora, 5 lasers): the 25 bead reference controls, the negative beads, the unstained and viability (FVS440UV) cell references, a fully stained lymph node (TDLN 4) and six pooled FMO controls (CD4, CD8, CD11b, Ly6C, MHCII, CX3CR1). Each is one entry of the record's 7.2 GB ZIP archive, read by byte range; of the large files only the first 100,000 events are kept (validation/fcs-subset.mjs), the rest of the archive is not downloaded.",
+   "source": "https://zenodo.org/records/20644656 (doi:10.5281/zenodo.20644656)",
+   "license": "CC BY 4.0. CytoWeave downloads the files for testing and does not redistribute them.",
+   "files": [
+    {
+     "path": "reference/OMIP-Reference Group-B220 BV510 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2440371130,
+      2441712726
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "71929c0efa73277940b70c455aa796e6e47f40b45891fa1fddb2adc80a0b9dfe"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD103 BUV661 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2441712743,
+      2443048111
+     ],
+     "zipEntry": true,
+     "size": 1438832,
+     "sha256": "2bc271d66b768148165acaf339c08eb48c8a03ae669512de6ba1433ff2adc9a4"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD11b PerCP-Cy5.5 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2443048128,
+      2444387254
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "f5c6a3d6281260f30f44efe3924b53a644b57afd5451ca1989052ddd4f512a8b"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD11c BUV737 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2444387271,
+      2445727115
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "c5cf3c18209a0f2a1b456182d3bb2db67aa7a14e05261f50ba01777888df8d31"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD169 PE-Cy7 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2445727132,
+      2447061860
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "8f0ad9a9f7e132c0ba8b1266b0b2b09330c9042e482fcb7261c17c9a871c8411"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD172a BUV395 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2447061877,
+      2448395187
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "49684974b0c054e067e5aab26d006e8a07578c4bf528a71d620fc0164e4ed1c8"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD206 BV650 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2448395204,
+      2449732467
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "4ec842f04d899f3f4dda4cbc0ae9b1e5e4890b7a6e6c52354e8c2cf923de089d"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD24 BV605 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2449732484,
+      2451074096
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "006d7c2e1dc834be93c9f337fbb40fda29a46a759522be051c65a4af0597bb34"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD26 BUV563 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2451074113,
+      2452418099
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "9cd8d5728fd2dd22ba25bbda6a70a04e9bf9b6251bd5cac1a1519042b5b09db7"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD3 BV786 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2452418116,
+      2453757048
+     ],
+     "zipEntry": true,
+     "size": 1438832,
+     "sha256": "35c4f18bc6c9a11e067015d1d5a2d9fff3ca7f8c4254dba10c85c02b342ddb31"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD4 BUV805 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2453757065,
+      2455092694
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "68289454029f64de2f46789207456ada6f523d244c29b61d599bc4b8474a1902"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD45 PerCP (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2455092711,
+      2456426528
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "a4f8c23c91b937c017426604670ef0272cf9081c8131dc220cb0873b6e441073"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD64 BV711 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2456426545,
+      2457749893
+     ],
+     "zipEntry": true,
+     "size": 1438832,
+     "sha256": "f021b460f4bb98f1e110b21a58a8954a1630de7207b402b12a6a4f9d967a3b64"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CD8 BV480 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2457749910,
+      2459092045
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "249f90264374aebdfc2fcb346f8993a09bdc61dd6ce3375cb3e30fe2e576cad2"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-CX3CR1 APC-Fire 750 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2459092062,
+      2460424527
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "6d62491d6feb78491600d3c68f10ee43edb6c0214ea884a8555c0011674b2cce"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-EpCAM BB515 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2460424544,
+      2461765648
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "91359f6b1151b74fd7a0a00ff57669d1fdc57771a7412c9b9c11c38c66ca53a0"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-F4-80 PE-Cy5 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2461765665,
+      2463111045
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "e1aaecd543cb20d52c23f5e98809cddb0d25579e90e7cfa9344c1bff7d76298b"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-gdTCR APC (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2622415176,
+      2623749730
+     ],
+     "zipEntry": true,
+     "size": 1438832,
+     "sha256": "5bd8dbc85cb90eb0d9063f376c4caff9d7036e458c598124e29fff5eba4f3b8c"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-Ly6C PE-CF594 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2623749747,
+      2625094342
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "39f342288f13613e7308db288e7682ba4f402057975fe7ae56d09683b1f4e2cf"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-Ly6G Alexa Fluor 700 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2625094359,
+      2626434503
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "526849ac5ad75307db4bc6a40251b14b4cbf72a2798012b8c96c4c342bdea7ca"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-MHCII Pacific Blue (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2626434520,
+      2627773439
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "27915114a988ef229315cc47720991c1caa8fcb5b32301519f31e0f927d2fcfc"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-Negative_1 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2627773456,
+      2630421147
+     ],
+     "zipEntry": true,
+     "size": 2858824,
+     "sha256": "0ae633d6f35887f61ce616c81ec351032af487bf31ed52e1c55a29b73889e2d4"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-NKp46 PerCP-eFluor 710 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2630421164,
+      2631760829
+     ],
+     "zipEntry": true,
+     "size": 1438832,
+     "sha256": "9c25b5141425d24f9fef80473d733cc9485a4cab1da67ee20e5734829bd07a55"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-Siglec F BV750 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2631760846,
+      2633099096
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "b1a1240e647fe6bd4288512e5a1ff76518bfb707a3949e566e194326e70089e1"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-TIM4 PE (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2633099113,
+      2634443478
+     ],
+     "zipEntry": true,
+     "size": 1438828,
+     "sha256": "f34cfd8d871d949b5c09671e1b0f2ec1d3912f491e81f28feba5c3d29447c21f"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-XCR1 BV421 (Beads).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2778221403,
+      2779560811
+     ],
+     "zipEntry": true,
+     "size": 1438832,
+     "sha256": "f22b8a96a06fce383b2a5b9d7355358a8244bb0477f384d58d25a2fd45e3da6a"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-Unstained (Cells).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2634443495,
+      2665084430
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416487,
+     "sha256": "4faa1ba0a5029838311538be2fa9a7296de25b61290b378deec8ecd6c2aa82af"
+    },
+    {
+     "path": "reference/OMIP-Reference Group-FVS440UV FVS440UV (Cells).fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      2463111062,
+      2493752005
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416503,
+     "sha256": "bc11fa52a1a232688cbfd6ad8e90080255b6084f94620c14aa2ee05f51965d38"
+    },
+    {
+     "path": "OMIP-TDLN 4-Mix.fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      824044,
+      31464930
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416441,
+     "sha256": "241fb5488a389d976b61f55361a83034515501251ea561924e785234606dc3c3"
+    },
+    {
+     "path": "OMIP-TDLN pool-FMO CD4.fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      1180842994,
+      1211483887
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416455,
+     "sha256": "bee79bad04b83bc1fea692d10c7b4621926d3fd4f2d064d31d3bc477dd8ab11d"
+    },
+    {
+     "path": "OMIP-TDLN pool-FMO CD8.fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      1393978587,
+      1424619480
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416455,
+     "sha256": "db5c89a9d6011f8ae95707012f3df26d6b4412fbc718f138f1cca3e051b90452"
+    },
+    {
+     "path": "OMIP-TDLN pool-FMO CD11b.fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      626463685,
+      657104580
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416459,
+     "sha256": "6c3e51a6a57057fab4a87f7adf3469bd269ccd2ad577a5bec9982eb504afc6d5"
+    },
+    {
+     "path": "OMIP-TDLN pool-FMO Ly6C.fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      1820019373,
+      1850660267
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416457,
+     "sha256": "99bc02d86cef0f53b7763930685e3b917ad7719c50620eebc7363c79ad6964cc"
+    },
+    {
+     "path": "OMIP-TDLN pool-FMO MHCII.fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      1983421561,
+      2014062456
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416459,
+     "sha256": "d43f09ce62bde180b0f96bb0768cd698abdca4716574e9e76bc535760b7d914c"
+    },
+    {
+     "path": "OMIP-TDLN pool-FMO CX3CR1.fcs",
+     "url": "https://zenodo.org/records/20644656/files/OMIP%20-%20Raw%20Datas.zip?download=1",
+     "range": [
+      1467910904,
+      1498551800
+     ],
+     "zipEntry": true,
+     "events": 100000,
+     "size": 28416461,
+     "sha256": "2b4be09df46d864b5fcb3838687e4df0d120aa52770b00b30fb8f21c338a792c"
+    }
+   ]
   }
  }
 }

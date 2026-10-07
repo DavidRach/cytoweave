@@ -1145,6 +1145,34 @@ cw_export_workspace <- function(path, overwrite = NULL, cw = cw_default()) {
   cw_call("export_workspace", path = path, overwrite = overwrite, cw = cw)
 }
 
+#' Predict a virtual FMO
+#'
+#' Where a population's negative for a channel's dye would end without that dye: a virtual FMO
+#' control, predicted from the panel's spread model (fitted to the single-stain or reference
+#' controls when the compensation or the spectral spreading matrix was computed) and the
+#' unstained control's autofluorescence. Each event's value without the dye is drawn from its
+#' own brightness of every other dye; the threshold is the given percentile (quantile, default
+#' 0.995). Returns the threshold in the channel's data units, the unstained control's alone,
+#' the real FMO control's when the workspace has one (role fmo), the dyes the spread comes
+#' from, and with versus (another channel) the threshold binned along it, as an FMO shows on a
+#' plot. It is a guide, not a replacement for a real FMO on dim or critical markers. addGate
+#' proposes a range gate from the threshold up (named name).
+#'
+#' @param sample Sample name. Required; a string.
+#' @param channel The channel (or its marker) whose dye is left out. Required; a string.
+#' @param add_gate Propose a range gate from the threshold up. Optional; TRUE or FALSE (Python:
+#' True or False).
+#' @param name Name of the proposed gate. Optional; a string.
+#' @param population Population (path or name; default all events). Optional; a string.
+#' @param quantile Percentile of the predicted negative (default 0.995). Optional; a number.
+#' @param versus Optional: another channel to bin the threshold along. Optional; a string.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_virtual_fmo <- function(sample, channel, add_gate = NULL, name = NULL, population = NULL, quantile = NULL, versus = NULL, cw = cw_default()) {
+  cw_call("virtual_fmo", sample = sample, channel = channel, addGate = add_gate, name = name, population = population, quantile = quantile, versus = versus, cw = cw)
+}
+
 #' Make a reproducibility certificate
 #'
 #' Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry

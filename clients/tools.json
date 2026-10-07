@@ -2036,6 +2036,54 @@
     }
   },
   {
+    "name": "virtual_fmo",
+    "title": "Predict a virtual FMO",
+    "description": "Where a population's negative for a channel's dye would end without that dye: a virtual FMO control, predicted from the panel's spread model (fitted to the single-stain or reference controls when the compensation or the spectral spreading matrix was computed) and the unstained control's autofluorescence. Each event's value without the dye is drawn from its own brightness of every other dye; the threshold is the given percentile (quantile, default 0.995). Returns the threshold in the channel's data units, the unstained control's alone, the real FMO control's when the workspace has one (role fmo), the dyes the spread comes from, and with versus (another channel) the threshold binned along it, as an FMO shows on a plot. It is a guide, not a replacement for a real FMO on dim or critical markers. addGate proposes a range gate from the threshold up (named name).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "addGate": {
+          "description": "Propose a range gate from the threshold up",
+          "type": "boolean"
+        },
+        "channel": {
+          "description": "The channel (or its marker) whose dye is left out",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the proposed gate",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population (path or name; default all events)",
+          "type": "string"
+        },
+        "quantile": {
+          "description": "Percentile of the predicted negative (default 0.995)",
+          "type": "number"
+        },
+        "sample": {
+          "description": "Sample name",
+          "type": "string"
+        },
+        "versus": {
+          "description": "Optional: another channel to bin the threshold along",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sample",
+        "channel"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
     "name": "export_certificate",
     "title": "Make a reproducibility certificate",
     "description": "Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry Standard archive): the workspace, the FCS files (unless includeData is false: then only their SHA-256), the channels the analysis stored, the gates as Gating-ML, the methods, and certificate.json, which records the CytoWeave version, every input's SHA-256, the analyses and their seeds, the head of the hash-chained change log, MIFlowCyt and every number reported: each population's count in each sample, every table cell, and every saved comparison of one measure. Every number is computed from the files to make it; verify_certificate computes them again. Returns the fingerprint (SHA-256 of certificate.json) to quote with the analysis, and warnings (a saved comparison that no longer matches the analysis). The file must not exist unless overwrite is true.",

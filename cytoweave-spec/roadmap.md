@@ -710,6 +710,23 @@ Planned beside wave 7, not started there; they continue beside wave 8.
    predicted from the spread model of wave 4, drawn on the plot as a guide for gating. No tool
    offers it.
    - Validation: two public data sets with real FMO controls (Zenodo 22808501 and 20644656).
+   - Done (slice 3): lib/virtual-fmo.js predicts each event's value without the dye (an unstained
+     event of the population's scatter gates plus the spread of every other dye at the event's
+     brightness, photon and laser terms), seeded, with the 99.5th percentile and a curve along
+     another channel. The spread model is kept where it is fitted (compensation.spread when a
+     matrix is computed from controls; spreading.model in the spectral setup). Plots draw it
+     (guides in plot scenes: canvas, SVG, PDF) beside a real FMO control, with the dyes the spread
+     comes from and Gate above it; agents' `virtual_fmo`. The examples can generate FMO tubes
+     (`fmos`). Validated by the `fmo` suite: simulated panels within 1% of the axis (the unstained
+     control 12–13%); real FMOs, each tube predicting its own channel, 5.8% (LSRFortessa, 7 tubes)
+     and 5.5% (Aurora, 4 tubes) of the axis on average, worst 11.6% and 14.9%. The FMO tubes
+     that do not omit their named dye cleanly (6 of 13; 2 of 6) are found from the data and left
+     out. fetch.mjs reads the first events of large ZIP entries (fcs-subset.mjs).
+   - Found by slice 3: the bead-fitted model overestimates some spread on cells (up to 3× in
+     threshold on the Fortessa) and does not see compensation or unmixing errors, which real FMOs
+     show (a CCR7 FMO leaning against three channels). Calibrating the spread on a sample's own
+     lower tail made it worse (real negatives' lower tails are not their upper tails' mirror) and
+     was dropped. A real FMO stays the reference for dim or critical markers.
 4. **A panel optimizer (S9):** assigns fluorochromes to markers by expression level and
    co-expression, using the user's own instrument model and library, warns of pairs prone to
    energy transfer, and is checked against the panel's result once run.
