@@ -53,6 +53,10 @@ export function createStore(initialWorkspace) {
     generation: 0,
   };
 
+  // An exercise's progress (answers, hints, checks: ws.exercise, exercises.js) is the learner's,
+  // not an edit of the analysis: undo and redo keep it as it is now.
+  const keepExercise = (restored) => (state.ws.exercise === restored.exercise ? restored : { ...restored, exercise: state.ws.exercise });
+
   let pending = new Set();
   let scheduled = false;
   const notify = (topics) => {
@@ -131,7 +135,7 @@ export function createStore(initialWorkspace) {
       state.future.push(state.ws);
       const label = state.labels.past.pop();
       state.labels.future.push(label);
-      state.ws = state.past.pop();
+      state.ws = keepExercise(state.past.pop());
       notify(['ws', 'history']);
       return label;
     },
@@ -140,7 +144,7 @@ export function createStore(initialWorkspace) {
       state.past.push(state.ws);
       const label = state.labels.future.pop();
       state.labels.past.push(label);
-      state.ws = state.future.pop();
+      state.ws = keepExercise(state.future.pop());
       notify(['ws', 'history']);
       return label;
     },

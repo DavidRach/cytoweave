@@ -15,6 +15,7 @@ import { installChannelDialogs } from './ui/channel-dialogs.js';
 import { installFigureProvenance } from './ui/figure-provenance-dialog.js';
 import { installAutogating } from './ui/autogate-dialog.js';
 import { installLiveQC } from './ui/live-qc.js';
+import { installExercises } from './ui/exercises.js';
 import { colorVisionFriendly, setColorVisionFriendly } from './lib/colormaps.js';
 import { openPalette } from './ui/palette.js';
 import { GATE_TOOL_KEYS } from './ui/mode-gate.js';
@@ -22,6 +23,7 @@ import { WorkerClient } from './ui/workers.js';
 import { defaultTransform } from './lib/transforms.js';
 import {
   ROOT,
+  addGates,
   addGroup,
   addPlot,
   updateGate,
@@ -527,14 +529,50 @@ async function start() {
   app.showExamples = async () => {
     const { EXAMPLES } = await import('./lib/examples.js');
     const list = h('div.welcome-grid');
-    const dialog = showDialog({ title: 'Example experiments', width: 'wide', content: [h('p', 'Simulated experiments that behave like real data. Each opens as a new workspace.'), list] });
+    // A larger copy of an example (ten times the events of every file) tries CytoWeave at scale.
+    const size = h('select', { 'aria-label': 'Example size' },
+      h('option', { value: '1' }, 'As designed'),
+      h('option', { value: '10' }, 'Ten times the events (to try large files)'));
+    const dialog = showDialog({ title: 'Example experiments', width: 'wide', content: [
+      h('div.row', { style: { gap: '10px', alignItems: 'center', flexWrap: 'wrap' } }, h('p', { style: { margin: 0, flex: 1 } }, 'Simulated experiments that behave like real data. Each opens as a new workspace.'), h('label.field.inline', h('span', 'Size'), size)),
+      list] });
     for (const example of EXAMPLES) {
-      list.append(h('div.card.clickable', { onclick: () => { dialog.close(); app.openExample(example.id); } }, h('h4', example.title), h('p', example.description), h('div.tags', ...(example.tags ?? []).map((t) => h('span.badge', t)))));
+      list.append(h('div.card.clickable', { onclick: () => { dialog.close(); app.openExample(example.id, size.value === '1' ? {} : { scale: Number(size.value) }); } }, h('h4', example.title), h('p', example.description), h('div.tags', ...(example.tags ?? []).map((t) => h('span.badge', t)))));
     }
   };
 
+  // Files that come with an example besides its FCS files (a CSV table, another program's
+  // experiment or workspace), for the workspace it opened, until another is opened: imported on
+  // request, as if the user had dropped them.
+  const exampleFiles = new Map();
+  app.exampleFiles = () => exampleFiles.get(store.ws.id) ?? [];
+  // A file of the example as the program saves it (a FlowJo 11 workbench is zipped when needed).
+  const attachmentFile = async (a) => {
+    if (a.zip) {
+      const { createZip } = await import('./lib/zip.js');
+      return new File([await createZip(a.zip.map((entry) => ({ name: entry.name, data: entry.text })))], a.name, { type: 'application/zip' });
+    }
+    return new File([a.bytes ?? a.text], a.name, { type: a.text !== undefined ? 'text/plain' : 'application/octet-stream' });
+  };
+  app.showExampleFiles = () => {
+    const files = app.exampleFiles();
+    if (!files.length) return;
+    const dialog = showDialog({ title: 'Files that came with this example', content: [
+      h('p.muted', 'Import a file as if you had dropped it on the window, or save a copy to try it elsewhere.'),
+      h('div.stack', ...files.map((a) => h('div.card',
+        h('h4', icon('file'), a.name),
+        a.about ? h('p', a.about) : null,
+        h('div.btn-row',
+          h('button.btn.small.primary', { type: 'button', onclick: async () => { dialog.close(); await app.importFiles([await attachmentFile(a)]); } }, icon('upload'), 'Import'),
+          h('button.btn.small', { type: 'button', onclick: async () => downloadBlob(await attachmentFile(a), a.name) }, icon('download'), 'Save a copy'))))),
+    ], buttons: [{ label: 'Close' }] });
+  };
+
   // options: generation options (seed, scale, tandemDegradation; see examples.js), for scripts.
-  app.openExample = async (id, options = {}) => {
+  // setup (exercises.js): { name, hideTruth, gates (add the suggested gates), onOpened(result,
+  // records) }; an exercise's example opens without its truth, fault annotations or the files
+  // and suggestions that come with it.
+  app.openExample = async (id, options = {}, setup = null) => {
     const { EXAMPLES } = await import('./lib/examples.js');
     const example = EXAMPLES.find((e) => e.id === id);
     if (!example) return;
@@ -545,18 +583,29 @@ async function start() {
     try {
       const worker = app.worker('simulate');
       const result = await worker.call('generateExample', { id, options }, { onProgress: (f, message) => progress.update(f * 0.6, message) });
-      await loadWorkspace(createWorkspace(example.title));
+      await loadWorkspace(createWorkspace(setup?.name ?? example.title));
       const items = result.files.map((file, order) => ({ name: file.name, bytes: new Uint8Array(file.bytes), order, folder: null }));
       progress.update(0.65, 'Reading the generated files…');
       const records = await importFCSItems(items, { noGroups: true, select: false });
       progress.done();
       // Another example (or workspace) opened meanwhile: this one's annotations are not its.
       if (!records.length) return;
-      applyExampleHints(records, result);
+      applyExampleHints(records, result, setup);
+      if (setup) {
+        await setup.onOpened?.(result, records);
+        return;
+      }
       // Workspaces that come with an example (a FlowJo .wsp) open in their import dialog; not
-      // awaited, so a script or agent that opened the example is not held by the dialog.
+      // awaited, so a script or agent that opened the example is not held by the dialog. Other
+      // files are offered.
+      const others = [];
       for (const attachment of result.attachments ?? []) {
-        if (attachment.kind === 'flowjo') importFlowJo({ name: attachment.name, bytes: new TextEncoder().encode(attachment.text) });
+        if (attachment.kind === 'flowjo') importFlowJo({ name: attachment.name, bytes: attachment.bytes ?? new TextEncoder().encode(attachment.text) });
+        else others.push(attachment);
+      }
+      if (others.length) {
+        exampleFiles.set(store.ws.id, others);
+        toast(`This example comes with ${others.length === 1 ? 'a file' : `${others.length} files`} to import: ${others.map((a) => a.name).join(', ')}.`, { timeout: 15000, action: { label: 'Show', onClick: () => app.showExampleFiles() } });
       }
     } catch (error) {
       progress.fail(`The example could not be generated: ${error.message}`);
@@ -566,7 +615,7 @@ async function start() {
   // Applies an example's annotations: roles, stains and metadata per file, groups, channel scales
   // and (on request) its suggested gating strategy. Ground-truth labels, when the simulator gives
   // them, are attached for this session as a derived channel for checking clustering.
-  function applyExampleHints(records, result) {
+  function applyExampleHints(records, result, setup = null) {
     const hints = result.workspaceHints ?? {};
     let next = store.ws;
     const byFile = new Map(records.map((r) => [r.fileName, r]));
@@ -578,24 +627,31 @@ async function start() {
       if (meta.role) patch.role = meta.role;
       if (meta.stain) patch.stain = meta.stain;
       if (hints.barcodeKeys?.[file.name]) patch.barcodeKey = hints.barcodeKeys[file.name];
-      const fields = Object.fromEntries(Object.entries(meta).filter(([k, v]) => !['role', 'stain', 'truth', 'channels', 'eventCount', 'truthNames'].includes(k) && v !== undefined && v !== null && v !== '' && typeof v !== 'object'));
+      // A bead lot's datasheet values (QC → Calibration fills them in).
+      if (hints.beadDatasheets?.[file.name]) patch.beadDatasheet = hints.beadDatasheets[file.name];
+      // An exercise does not say which file holds a planted fault.
+      const hidden = ['role', 'stain', 'truth', 'channels', 'eventCount', 'truthNames', ...(setup?.hideTruth ? ['anomaly'] : [])];
+      const fields = Object.fromEntries(Object.entries(meta).filter(([k, v]) => !hidden.includes(k) && v !== undefined && v !== null && v !== '' && typeof v !== 'object'));
       if (Object.keys(fields).length) patch.meta = { ...record.meta, ...fields };
       if (Object.keys(patch).length) next = updateSample(next, record.id, patch);
       // The simulator's per-event population index (meta.truth.labels; −1 for events outside any).
       const truth = meta.truth?.labels;
-      if (truth && truth.length === record.eventCount) data.setDerived(record.id, 'Truth (simulated)', Float32Array.from(truth));
+      if (truth && truth.length === record.eventCount && !setup?.hideTruth) data.setDerived(record.id, 'Truth (simulated)', Float32Array.from(truth));
     }
     for (const group of hints.groups ?? []) {
       const ids = (group.files ?? group.samples ?? []).map((name) => byFile.get(name)?.id).filter(Boolean);
       if (ids.length) next = addGroup(next, group.name, ids, { color: group.color }).ws;
     }
     if (hints.channelSettings) next = { ...next, channelSettings: { ...next.channelSettings, ...hints.channelSettings } };
+    const suggested = hints.suggestedGates ?? [];
+    if (setup?.gates && suggested.length) {
+      next = addGates(next, suggested.map((g) => ({ ...g, overrides: g.overrides ?? {} })), 'add-suggested-gates').ws;
+    }
     store.commit(next, 'Annotate example');
     const first = next.samples.find((s) => s.role === 'sample') ?? next.samples[0];
     if (first) app.selectSample(first.id);
     app.setMode('gate');
-    const suggested = hints.suggestedGates ?? [];
-    if (suggested.length) {
+    if (suggested.length && !setup) {
       // The suggestion is this example's: not another workspace opened while the toast shows.
       const offered = store.sameWorkspace();
       toast(`This example comes with a suggested gating strategy (${suggested.length} gates). Gate it yourself, or add the suggestion.`, {
@@ -792,6 +848,8 @@ async function start() {
       { label: 'Events or sample annotations (CSV)…', icon: 'tag', onSelect: () => app.pickFiles('.csv,.tsv,.txt') },
       '-',
       { label: 'Example experiments…', icon: 'flask', onSelect: () => app.showExamples() },
+      { label: 'Exercises…', icon: 'school', onSelect: () => app.showExercises() },
+      ...(app.exampleFiles().length ? [{ label: 'Files that came with this example…', icon: 'file', onSelect: () => app.showExampleFiles() }] : []),
       { label: 'Start page', icon: 'grid', onSelect: () => app.setMode('welcome') },
     ]);
   });
@@ -803,6 +861,8 @@ async function start() {
     { label: 'Add FCS files', icon: 'file', hint: `${modKey}O`, run: () => app.pickFiles() },
     { label: 'Open a folder of FCS files', icon: 'folder', run: () => app.pickFolder() },
     { label: 'Open an example experiment', icon: 'flask', run: () => app.showExamples() },
+    { label: 'Start an exercise', icon: 'school', run: () => app.showExercises(), keywords: 'teaching learn practice tutorial training exercise class course' },
+    ...(app.exampleFiles().length ? [{ label: 'Files that came with this example', icon: 'file', run: () => app.showExampleFiles(), keywords: 'attachment csv diva spectroflo flowjo import' }] : []),
     { label: 'New workspace', icon: 'plus', run: () => app.newWorkspace() },
     { label: 'Open a saved workspace', icon: 'library', run: openLibraryDialog },
     { label: 'Save workspace now', icon: 'save', hint: `${modKey}S`, run: saveNow },
@@ -1172,6 +1232,7 @@ async function start() {
     else await app.setMode('qc');
   };
   installLiveQC(app, info);
+  installExercises(app);
   if (info?.remoteControl) {
     const { installRemote } = await import('./ui/remote.js');
     app.remote = installRemote(app);

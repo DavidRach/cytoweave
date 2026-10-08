@@ -34,6 +34,10 @@ export function mountWelcome(app, container) {
     recent,
     h('div.section-title', { style: { marginTop: '22px' } }, 'Example experiments'),
     examples,
+    h('div.welcome-learn',
+      h('span.glyph', icon('school')),
+      h('div', h('b', 'Learning flow cytometry analysis?'), h('span', ' Exercises on the examples ask a question, let you answer it with CytoWeave\'s views, then check your answer against the simulator\'s truth.')),
+      h('button.btn', { type: 'button', onclick: () => app.showExercises?.() }, 'Exercises')),
     h('div.section-title', { style: { marginTop: '22px' } }, 'What CytoWeave does'),
     h('div.feature-list', ...FEATURES.map(([glyph, title, text]) => h('div.feature', h('span.glyph', icon(glyph)), h('div', h('b', title), h('span', text)))))));
   container.append(root);

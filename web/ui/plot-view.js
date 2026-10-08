@@ -8,7 +8,7 @@ import { buildPlotScene, drawScene, drawGates, fromPixel, toPixel, withAlpha, PL
 import { gateOutline, plotPointToGate, simplifyPolyline, pointTest, translateGeometry, quadrantGates, quadrantNames, splitGates, newId } from '../lib/gates.js';
 import { channelTransform, computeStatistic, countOf, evaluateGate, populationSet } from '../lib/engine.js';
 import { formatStatistic } from '../lib/stats.js';
-import { EventSet } from '../lib/eventset.js';
+import { EventSet, intersectSets, sizeOf } from '../lib/eventset.js';
 import { interactionEnded, interactionStarted } from './activity.js';
 import { proposalOfGate } from '../lib/proposals.js';
 import { markedEvents } from './plate-view.js';
@@ -247,6 +247,15 @@ export function createPlotView(app, initial) {
       if (otherIndices === undefined || !other.hasChannel(spec.x)) continue;
       overlays.push({ xs: other.scaled(spec.x, dims[0].transform), ys: dims[1] && other.hasChannel(spec.y) ? other.scaled(spec.y, dims[1].transform) : null, indices: otherIndices, color: extra.color, label: extra.label });
     }
+    // An exercise whose truth is revealed (exercises.js): the events its gates missed or took in.
+    let exerciseOverlays = 0;
+    for (const extra of app.exerciseOverlays?.(sampleId) ?? []) {
+      const within = indices === null ? extra.indices : intersectSets(extra.indices, indices, view.eventCount);
+      if (within && sizeOf(within, view.eventCount)) {
+        overlays.push({ xs, ys, indices: within, color: extra.color, label: extra.label });
+        exerciseOverlays += 1;
+      }
+    }
     const options = {
       ...(spec.options ?? {}),
       theme: theme(),
@@ -279,7 +288,7 @@ export function createPlotView(app, initial) {
       indices,
       overlays: is1D() ? overlays.map((o) => ({ ...o, ys: null })) : overlays,
       // With other samples overlaid, the legend names this one too.
-      label: is1D() && spec.overlays?.length ? ws().samples.find((s) => s.id === sampleId)?.name : undefined,
+      label: is1D() && spec.overlays?.length ? ws().samples.find((s) => s.id === sampleId)?.name : is1D() && exerciseOverlays ? (gateById(ws(), spec.populationId)?.name ?? 'All events') : undefined,
       guides: fmo.guides,
       options: { ...options, color: spec.options?.color ?? populationColor() },
     });

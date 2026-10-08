@@ -597,7 +597,7 @@ try {
   // Virtual FMO: the PBMC example with a CD25 FMO tube, compensation proposed from the controls
   // (with the spread fitted to them) and accepted, then CD25's negative in T cells predicted.
   await page(`await app.openExample('pbmc-immunophenotyping', { scale: 0.3, fmos: ['CD25'] }); return true;`);
-  await waitFor(`window.cytoweave.store.ws.samples.length === 28 && !document.querySelector('.progress-toast')`);
+  await waitFor(`window.cytoweave.store.ws.samples.length === 29 && !document.querySelector('.progress-toast')`);
   {
     const gates = generateExample('pbmc-immunophenotyping', { samples: ['Unstained.fcs'] }).workspaceHints.suggestedGates;
     await page(`const { addGates } = await import('/lib/workspace.js'); app.store.commit(addGates(app.store.ws, ${JSON.stringify(gates)}.map((g) => ({ ...g, overrides: {} })), 'add-suggested-gates').ws, 'Add the suggested gates'); return true;`);

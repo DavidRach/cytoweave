@@ -43,6 +43,7 @@ lede: Turn populations into numbers for every sample, and compare groups of samp
         <li>the <strong>dilution factor</strong>, the same for every sample or read from a sample annotation (<code>4</code> or <code>1:4</code>).</li>
       </ul>
       <p>Cells per µL = cell events ÷ bead events × beads in the tube ÷ µL of sample × dilution (Brando et al. 2000). Its precision is set by both counts: the CV is about √(1/cell events + 1/bead events), so 1,000 beads already limit it to 3%. Instruments that record the volume they acquired (<code>$VOL</code>) give <strong>Concentration (/µL)</strong> without beads, which takes the same dilution factor.</p>
+      <p>The absolute-count example is whole blood from three patients in tubes of 50,000 counting beads, 50 µL of blood each; its suggested gates include the beads and the CD4 T cells, and every patient's true count is known.</p>
 
       <h2 id="control">Comparing with a control sample</h2>
       <shot name="compare-control" alt="A histogram of CD25 on T cells in a stimulated sample with the unstimulated sample of the same donor overlaid; below it, the stimulated sample against the unstimulated one: 31.0% positive by SED, 27.4% by Overton subtraction, probability binning T(χ) 577">CD25 on T cells, stimulated, with the same donor's unstimulated sample overlaid: the comparison appears under the histogram.</shot>

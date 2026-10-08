@@ -1,0 +1,66 @@
+---
+title: Exercises
+description: Practice flow cytometry analysis in CytoWeave with exercises on simulated data - gating, compensation, QC, spectral unmixing, statistics, plates and assays - checked against the simulator's truth, with hints, partial credit and class codes.
+lede: Exercises on the example experiments ask a question, let you answer it with CytoWeave's views, check your answer against the simulator's truth, and then show what was planted. They stay out of the way until you open one.
+---
+      <h2 id="start">Starting an exercise</h2>
+      <p>Open the list of exercises from the start page (<strong>Exercises</strong>, below the example experiments), with <strong>Exercises…</strong> in the workspace menu, or by searching for "exercise" (⌘K). Each one opens its example as a new workspace named after the exercise, with new data every time: a different seed gives other cells, and for many exercises another planted problem (another sample with the clog, another degraded tandem, another population that differs between groups).</p>
+      <p>To give a class the same data, type a <strong>Class code</strong> (any number) before choosing the exercise. Everyone who enters the same code gets the same data and the same planted problems, so answers can be compared. The panel shows the code of every attempt.</p>
+      <shot name="exercise" alt="An exercise in the Gate view: the T-cell gating path on the left and in the plots, and on the right the exercise panel with its question, two hints, the answers (the T cells population and 39.1%) and the check: 100%, with each part's score and the true values">The T-cell exercise checked: each part of the answer scored against the truth, with what was measured.</shot>
+
+      <h2 id="panel">Working through it</h2>
+      <p>The exercise panel takes a column at the right of the window. It holds the question, the answers and the checks; the analysis itself is done in the usual views, so an exercise teaches CytoWeave as it is used. Fold the panel away with its arrow and bring it back from the tab at the bottom right.</p>
+      <ul>
+        <li><strong>Hints</strong> open one at a time, from where to start to the step that gives the answer.</li>
+        <li><strong>Answers</strong> are chosen or typed in the panel: one of your populations (the gate you drew), a sample, a channel, a choice from a list, or a number. Answers are saved with the workspace as you give them.</li>
+        <li><strong>Check my answers</strong> scores each part against the truth, with partial credit: a gate by how well it holds the true events (its F1 score, from the share of the true cells it holds and the share of its events that are true), a number by how close it is, a planted problem by naming the right sample and then the right cause. Check as often as you like; every check is kept with the workspace.</li>
+      </ul>
+
+      <h2 id="truth">Revealing the truth</h2>
+      <p><strong>Reveal the truth</strong> shows what the simulator planted and why, and the true values of every part. The <strong>Truth (simulated)</strong> channel then holds every event's true population, to plot or to color by in Explore. For a gate, the plots color the events it missed and those it took in wrongly. You can still change your answers and check them; those checks say they came after the truth was revealed.</p>
+      <shot name="exercise-truth" alt="An exercise with its truth revealed: a CD3 threshold set too low, with the CD3-negative events it took in colored on the plots of lymphocytes, and the panel explaining what was planted and where gates lose or gain T cells">A CD3 threshold set too low: after the truth is revealed, the events it took in that are not T cells are colored on the plots.</shot>
+
+      <h2 id="exercises">The exercises</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Exercise</th><th>Level</th><th>Done in</th><th>What it asks</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Gate the T cells</strong></td><td>Beginner</td><td><a href="gating.html">Gate</a></td><td>Single, live, CD3+ lymphocytes of a PBMC sample, and their share of all events.</td></tr>
+            <tr><td><strong>Find the sample with an acquisition problem</strong></td><td>Beginner</td><td><a href="qc.html">QC</a></td><td>Which of twelve samples had a clog.</td></tr>
+            <tr><td><strong>Name each acquisition's problem</strong></td><td>Beginner</td><td><a href="qc.html">QC</a></td><td>Four wells: clean, a clog, drift or an air bubble, in an order that changes.</td></tr>
+            <tr><td><strong>Choose an antibody amount</strong></td><td>Beginner</td><td><a href="qc.html#titration">QC → Titration</a></td><td>The amount per test from a titration series.</td></tr>
+            <tr><td><strong>Measure cell-cycle phases</strong></td><td>Beginner</td><td><a href="assays.html#cell-cycle">Cell cycle</a></td><td>S phase and G2/M, after gating out doublets.</td></tr>
+            <tr><td><strong>Count CD4 T cells per microliter</strong></td><td>Beginner</td><td><a href="statistics.html#absolute-counts">Tables</a></td><td>A patient's CD4 count from counting beads.</td></tr>
+            <tr><td><strong>Find the regulatory T cells</strong></td><td>Intermediate</td><td><a href="gating.html">Gate</a></td><td>CD25+ CD127-low CD4 T cells, and their share of CD4 T cells.</td></tr>
+            <tr><td><strong>Find the wrong spillover value</strong></td><td>Intermediate</td><td><a href="compensation.html#check">Compensate</a></td><td>The entry of the file's matrix that is wrong, and its value.</td></tr>
+            <tr><td><strong>Test a stimulation effect</strong></td><td>Intermediate</td><td><a href="statistics.html#compare">Compare</a></td><td>The direction, a test that fits a paired design, and its p-value.</td></tr>
+            <tr><td><strong>Find the most potent compound</strong></td><td>Intermediate</td><td><a href="plates.html#dose-response">Plates</a></td><td>The most potent inhibitor, its IC50, and the inactive compounds.</td></tr>
+            <tr><td><strong>Read a cytokine concentration</strong></td><td>Intermediate</td><td><a href="plates.html#bead-assays">Bead assay</a></td><td>A serum's concentration of one cytokine, corrected for its dilution.</td></tr>
+            <tr><td><strong>Compare calcium responses</strong></td><td>Intermediate</td><td><a href="assays.html#kinetics">Kinetics</a></td><td>The strongest stimulus and the share of cells it makes respond.</td></tr>
+            <tr><td><strong>Measure T-cell proliferation</strong></td><td>Intermediate</td><td><a href="assays.html#proliferation">Proliferation</a></td><td>The percentage of the starting CD4 T cells that divided.</td></tr>
+            <tr><td><strong>Follow an instrument with daily beads</strong></td><td>Intermediate</td><td><a href="qc.html#instrument">QC → Instrument</a></td><td>Which detector is aging, from which run, and what failed on another day.</td></tr>
+            <tr><td><strong>Adjust gates for a second day</strong></td><td>Intermediate</td><td><a href="gating.html#adapt">Gate</a></td><td>A day-2 sample's T cells, without moving the day-1 samples' gates.</td></tr>
+            <tr><td><strong>Diagnose a problem in a spectral panel</strong></td><td>Advanced</td><td><a href="spectral.html#doctor">Spectral</a></td><td>The dye that is wrong in the samples, and why.</td></tr>
+            <tr><td><strong>Find what is wrong with the day-2 controls</strong></td><td>Advanced</td><td><a href="spectral.html#library">Spectral</a></td><td>Two faulty reference controls, each faulty in its own way.</td></tr>
+            <tr><td><strong>Find a population that differs between groups</strong></td><td>Advanced</td><td><a href="explore.html">Explore</a>, <a href="statistics.html#screens">Compare</a></td><td>Cleanup, normalization of two batches, clustering and differential abundance in a mass cytometry cohort.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="teachers">For teachers</h2>
+      <ul>
+        <li><strong>Every learner works in their own library</strong>, on their own computer: nothing is sent anywhere. To see a learner's work, have them export the workspace (<strong>Workspace file (.cwz)</strong>) or open it on their computer: the panel shows their answers and their last check, and the workspace keeps every check with its score and time.</li>
+        <li><strong>The truth is not in the workspace.</strong> The workspace keeps the exercise and its seed; the answer key is computed again from them when answers are checked, and only if the workspace's files are the ones that seed makes (their SHA-256), so a replaced file is not checked against another attempt's answers. Opening a workspace file in a text editor shows no answer.</li>
+        <li><strong>The examples outside an exercise</strong> are the same experiments with their truth in view: a demonstration can open one from the start page and color the plots by the truth channel at once.</li>
+      </ul>
+      <p>Exercises check what the simulator knows: the true population of every cell and every planted fault. Real data are messier; the exercises teach the moves and the reasons, not every judgment a real panel needs.</p>
+
+      <h2 id="out-of-the-way">Out of the way</h2>
+      <p>Nothing about exercises shows in your own analyses: the panel appears only in a workspace an exercise made, the examples open from the start page exactly as before, and the only reminder elsewhere is one line on the start page.</p>
+
+      <h2 id="next">Where to go next</h2>
+      <div class="card-grid">
+        <a class="card" href="getting-started.html#examples"><h3>Example experiments</h3><p>Every example, and what it shows.</p></a>
+        <a class="card" href="gating.html"><h3>Gating</h3><p>Where most exercises start.</p></a>
+        <a class="card" href="../benchmark.html"><h3>Agent benchmark</h3><p>Similar tasks, given to AI agents.</p></a>
+      </div>

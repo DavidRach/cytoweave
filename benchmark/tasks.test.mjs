@@ -55,3 +55,13 @@ test('partial credit: statistics, QC, unmixing and plates', async () => {
   assert.equal(await score('antibody-titration', { amountNg: 250 }), 0.4);
   assert.equal(await score('antibody-titration', { amountNg: 1000 }), 0);
 });
+
+test('the PBMC tasks keep the example as version 2 had it (no FMO tube, beads or second day)', async () => {
+  const { generateExample } = await import('../web/lib/examples.js');
+  for (const t of TASKS.filter((x) => x.example.id === 'pbmc-immunophenotyping')) {
+    const g = generateExample(t.example.id, { ...t.example.options, scale: 0.01 });
+    assert.equal(g.files.length, 27, t.id);
+    assert.ok(g.files.every((f) => f.meta.role !== 'fmo' && f.meta.role !== 'bead' && (f.meta.batch ?? 'B1') === 'B1'), t.id);
+    assert.ok(g.files.every((f) => !f.meta.truth?.gains), t.id);
+  }
+});

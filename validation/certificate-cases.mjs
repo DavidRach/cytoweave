@@ -3,13 +3,13 @@
 // k-means clusters stored as a channel in the first samples (as Explore stores them) and a table
 // column computed from it, and, where the example has conditions, a saved comparison.
 import { computeNumbers } from '../web/lib/certificate.js';
-import { generateExample } from '../web/lib/examples.js';
+import { EXAMPLES, generateExample } from '../web/lib/examples.js';
 import { parseFCS } from '../web/lib/fcs.js';
 import { kmeans } from '../web/lib/kmeans.js';
 import { sha256 } from '../web/lib/sha256.js';
 import { ROOT, addDerived, addGates, annotateSamples, createWorkspace, sampleFromDataset, setCollection } from '../web/lib/workspace.js';
 
-export const CERTIFICATE_EXAMPLES = ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'plate-screen', 'bead-immunoassay', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage'];
+export const CERTIFICATE_EXAMPLES = EXAMPLES.map((e) => e.id);
 
 // k-means labels (k = 4, seed 7) on the first two scatter or, failing those, the first two
 // channels: a Float32 column, as Explore stores clusters.

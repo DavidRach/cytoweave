@@ -32,8 +32,10 @@ export function loadSamples(files, name) {
   return { ws, views };
 }
 
+// The PBMC example's stained samples, all acquired on one day (as these cases were built on, before
+// the example's donors D04–D06 moved to a second day with other detector settings).
 export function pbmcFiles(scale = 0.1) {
-  const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', { scale });
+  const { files, workspaceHints } = generateExample('pbmc-immunophenotyping', { scale, secondBatch: null });
   return { files: files.filter((f) => /^D0/.test(f.name)), suggested: workspaceHints.suggestedGates };
 }
 

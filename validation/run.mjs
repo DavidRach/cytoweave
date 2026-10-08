@@ -75,6 +75,7 @@ import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows, migrationGates } from '../web/lib/flowjo-match.js';
 import { FLOWJO11_WORKBENCHES, flowJo11Case } from './flowjo11-cases.mjs';
 import { divaCase } from './diva-cases.mjs';
+import { absoluteCounts, attachments as exampleAttachments, pbmcAdditions, spectralDayTwo } from './example-cases.mjs';
 import { chorusGates, importChorus } from '../web/lib/chorus.js';
 import { cytekDetectors, importSpectroFlo, planSpectroFloControls } from '../web/lib/spectroflo.js';
 import { diagnoseControls, diagnoseUnmixing } from '../web/lib/spectral-doctor.js';
@@ -411,7 +412,7 @@ function deidentifyChecks(suite, label, files) {
 const suites = {
   fcs() {
     const all = [];
-    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'plate-screen', 'bead-immunoassay', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
+    for (const id of CERTIFICATE_EXAMPLES) {
       const { files } = generateExample(id, { scale: 0.05 });
       all.push(...files);
       let problems = 0;
@@ -3641,6 +3642,29 @@ const suites = {
       return { label, fitted: fitted.length, panel: panel.length, ...c };
     });
     check('panel', `Cytek Aurora: a ${splits[0].panel}-dye panel's spread predicted with noise fitted to the other ${splits[0].fitted} dyes' controls, against its own controls unmixed with only its spectra (and the other way round)`, splits.map((x) => `${x.measurable} entries: ×${fmt(x.medianRatio, 2)}, ${fmt(100 * x.within2x, 0)}% within 2×, r = ${fmt(x.correlation, 2)}`).join('; '), splits.every((x) => x.within2x > 0.6 && x.correlation > 0.7), '> 60% within 2× and r > 0.7 each way');
+  },
+  // The examples as demonstrations (example-cases.mjs): what each was given so that, together, they
+  // show every analysis, checked against the simulator's truth or the program whose file it carries.
+  async examples() {
+    const pbmc = pbmcAdditions(0.3);
+    check('examples', 'PBMC: an FMO tube without CD25-PE (99th percentile of lymphocytes in PE-A after compensation, FMO against the stained sample)', `${pbmc.fmo.role}; ${fmt(pbmc.fmo.p99, 0)} vs ${fmt(pbmc.fmo.stainedP99, 0)}`, pbmc.fmo.role === 'fmo' && pbmc.fmo.p99 < 0.25 * pbmc.fmo.stainedP99, 'role fmo; below a quarter of the stained');
+    check('examples', 'PBMC: rainbow beads calibrated with their datasheet (lib/calibration.js), against each detector\'s true response: slope and the MEF of a signal of 20 000', pbmc.calibration.map((c) => `${c.channel} slope ${fmt(c.slope, 4)}, ${fmt(100 * c.error, 2)}%`).join('; '), pbmc.beads.role === 'bead' && pbmc.calibration.length === 5 && pbmc.calibration.every((c) => Math.abs(c.slope - 1) < 0.02 && Math.abs(c.error) < 0.02), 'slope within 0.02 of 1, MEF within 2%');
+    const day2 = Object.values(pbmc.batches).filter((b) => b.batch === 'B2');
+    const largest = Math.max(...Object.entries(day2[0]?.gains ?? {}).map(([, g]) => Math.abs(Math.log(g))));
+    check('examples', 'PBMC: donors D04–D06 on a second day, every detector\'s gain changed once for the batch (D01 unchanged)', `D01 ${pbmc.batches['D01_Unstim.fcs'].batch}; D04 and D06 ${day2.map((b) => b.batch).join(', ')}, the same gains: ${JSON.stringify(day2[0]?.gains) === JSON.stringify(day2[1]?.gains)}; largest change ×${fmt(Math.exp(largest), 2)}`, pbmc.batches['D01_Unstim.fcs'].batch === 'B1' && !pbmc.batches['D01_Unstim.fcs'].gains && day2.length === 2 && JSON.stringify(day2[0].gains) === JSON.stringify(day2[1].gains) && largest > 0.1, 'B2 with shared gains, at least one ×1.1');
+    const counts = absoluteCounts();
+    check('examples', 'absolute counts: CD4 T cells per µL from the example\'s gates and its counting beads, against each patient\'s truth', counts.map((c) => `${c.patient} ${fmt(c.perUL, 0)} vs ${c.truth} (${c.beads} beads)`).join('; '), counts.length === 3 && counts.every((c) => Math.abs(c.perUL / c.truth - 1) < 0.06 && c.beads > 5000), 'within 6%, over 5000 beads each');
+    const a = await exampleAttachments(0.3);
+    const divaWorst = Math.max(...a.diva.rows.map((r) => Math.abs(r.relative ?? 0)));
+    check('examples', 'index sort: its FACSDiva experiment (XML) imported, every population counted in the window against Diva\'s count (on its 256-step grid)', `${a.diva.matched} of ${a.diva.total} tubes matched; ${a.diva.rows.filter((r) => r.agree).length} of ${a.diva.rows.length} counts agree, worst ${fmt(100 * divaWorst, 2)}%`, a.diva.matched === 2 && a.diva.rows.length >= 16 && a.diva.rows.every((r) => r.agree) && divaWorst < 0.02 && !a.diva.warnings.length, 'both tubes, all agree, within 2%');
+    check('examples', 'index sort: the presort file\'s DATA end offset, one byte past the data, corrected and reported', a.repair.join(', ') || 'nothing reported', a.repair.includes('end-offset'), 'end-offset reported');
+    check('examples', 'FlowJo example: its FlowJo 11 workbench (.flowjo) imported, every population counted against the count in the workbench', `${a.flowjo11.matched} of ${a.flowjo11.total} samples; ${a.flowjo11.rows.filter((r) => r.difference === 0).length} of ${a.flowjo11.rows.length} counts equal`, a.flowjo11.matched === 4 && a.flowjo11.rows.length >= 50 && a.flowjo11.rows.every((r) => r.difference === 0) && !a.flowjo11.warnings.length, 'all 4 samples, every count equal');
+    check('examples', 'spectral example: its SpectroFlo experiment (.Expt) read, each control matched to its file and gated on its dye\'s peak detector', `${a.spectroflo.references} references; ${a.spectroflo.matched} of ${a.spectroflo.rows} controls matched; ${a.spectroflo.gatedOnPeak} gated on the peak`, a.spectroflo.references === 25 && a.spectroflo.matched === a.spectroflo.rows && a.spectroflo.rows === 26 && a.spectroflo.gatedOnPeak === 25, '25 references, 26 of 26 matched, all on the peak');
+    check('examples', 'cell cycle: the third culture\'s CSV events read as events', `${a.csv.datasets} data set, ${a.csv.eventCount} of ${a.csv.expected} rows, channels ${a.csv.channels.join(', ')}`, a.csv.events && a.csv.datasets === 1 && a.csv.eventCount === a.csv.expected && a.csv.channels.length === 5, 'one data set, every row, 5 channels');
+    check('examples', 'PBMC: the donors\' annotation table (CSV) covers every stained sample', `${a.annotations.rows} rows, columns ${a.annotations.header.join(', ')}`, a.annotations.covers && a.annotations.header.join() === 'sample,age,sex,cmv', 'every stained sample and the FMO');
+    const doctor = spectralDayTwo(0.5);
+    check('examples', 'spectral day 2: the unmixing doctor names both planted faults on each donor, with day 1\'s references as the library (and nothing else)', doctor.donors.map((d) => `${d.donor}: ${d.findings.join(', ')}`).join('; '), doctor.donors.length === 2 && doctor.donors.every((d) => d.findings.length === 2 && d.findings.includes('degraded-tandem:PE-Cy7') && d.findings.includes('wrong-reference:APC')), 'degraded-tandem:PE-Cy7 and wrong-reference:APC');
+    check('examples', 'spectral day 2: today\'s controls compared with day 1\'s library flag exactly the two faulty ones', doctor.changed.join(', ') || 'none', doctor.changed.length === 2 && doctor.changed.includes('PE-Cy7') && doctor.changed.includes('APC'), 'PE-Cy7 and APC');
   },
 };
 

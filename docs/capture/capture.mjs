@@ -174,6 +174,36 @@ async function compensateFromControls() {
   await sleep(1200);
 }
 
+// An exercise started with a fixed class code, its example's gating strategy drawn (as a learner
+// would gate it).
+async function startExercise(id) {
+  await app(`await app.startExercise(${JSON.stringify(id)}, { seed: 314159 });`);
+  await waitFor(`window.cytoweave.store.ws.exercise?.id === ${JSON.stringify(id)} && !document.querySelector('.progress-toast')`, 240000);
+  await app(`
+    const { generateExample } = await import('/lib/examples.js');
+    const { exerciseAttempt, exerciseById } = await import('/lib/exercises.js');
+    const ex = exerciseById(${JSON.stringify(id)});
+    const gates = generateExample(ex.example.id, { ...exerciseAttempt(ex, 314159).options, scale: 0.01 }).workspaceHints.suggestedGates;
+    const { addGates } = await import('/lib/workspace.js');
+    app.store.commit(addGates(app.store.ws, gates.map((g) => ({ ...g, overrides: {} })), 'capture').ws, 'Add gates');`);
+  await sleep(1500);
+}
+
+// Answers an exercise through its panel (a population by its gate's name) and checks them.
+async function answerExercise(answers) {
+  await app(`
+    for (const [id, value] of Object.entries(${JSON.stringify(answers)})) {
+      const control = document.querySelector('#exercise-panel [data-question="' + id + '"]');
+      const gate = control.tagName === 'SELECT' ? app.store.ws.gates.find((g) => g.name === value) : null;
+      control.value = gate ? gate.id : value;
+      control.dispatchEvent(new Event('change'));
+    }
+    const before = app.store.ws.exercise.checks.length;
+    document.querySelector('#exercise-panel [data-action="check"]').click();
+    while (app.store.ws.exercise.checks.length === before) await new Promise((r) => setTimeout(r, 200));`);
+  await sleep(1200);
+}
+
 // --- Scenes ---------------------------------------------------------------------------------------
 //
 // Each scene starts from a fresh page and leaves the window as it should be captured.
@@ -572,6 +602,26 @@ const scenes = {
     writeFileSync(join(folder, 'A05.fcs'), files[0].bytes.subarray(0, files[0].bytes.length >> 1));
     await waitFor(`window.cytoweave.live.queue.length === ${files.length} && window.cytoweave.live.queue.every((q) => q.state === 'checked') && (window.cytoweave.live.status?.pending ?? []).length === 1`, 180000);
     await sleep(1500);
+  },
+  // Teaching mode: the T-cell exercise gated, a hint shown and the answers checked.
+  async exercise() {
+    await startExercise('gate-t-cells');
+    await app(`app.store.replace({ ...app.store.ws, exercise: { ...app.store.ws.exercise, hints: 2 } });`);
+    await answerExercise({ tCells: 'T cells', percent: '39.1' });
+    await selectGate('T cells');
+  },
+  // Teaching mode: the truth revealed for a CD3 threshold set too low, the CD3− events it took in
+  // colored on the plots.
+  async 'exercise-truth'() {
+    await startExercise('gate-t-cells');
+    await app(`const { setGateGeometry } = await import('/lib/workspace.js'); const { createTransform } = await import('/lib/transforms.js'); const g = app.store.ws.gates.find((x) => x.name === 'T cells'); app.store.commit(setGateGeometry(app.store.ws, g.id, { ...g.geometry, min: createTransform(g.dims[0].transform).forward(400) }), 'Lower the CD3 threshold');`);
+    await selectGate('Lymphocytes');
+    await addPlot('Lymphocytes', 'CD3', 'CD19');
+    await answerExercise({ tCells: 'T cells', percent: '48' });
+    await click('Reveal the truth');
+    await click('Reveal', '.dialog button');
+    await waitFor(`Boolean(document.querySelector('#exercise-panel .exercise-truth'))`);
+    await scrollTo('#exercise-panel .exercise-truth');
   },
   // Spectral: Panel design, with the noise fitted to the controls and BV711 left out.
   async 'spectral-design'() {

@@ -25,6 +25,10 @@ export const BENCHMARK_VERSION = '2';
 // What every request starts with: where the data are, as a user would say it.
 export const OPEN_DATA = 'The data for this are already open in CytoWeave, in the workspace "Experiment": analyze them there.';
 
+// The PBMC example as benchmark version 2 used it: without the FMO tube, the rainbow beads and the
+// second day's detector settings it gained later (examples change; a version's data do not).
+const PBMC_V2 = { fmos: [], calibrationBeads: false, secondBatch: null };
+
 // --- Answers and scores ---------------------------------------------------------------------------
 
 const answerLine = (shape) => `When you are done, end your reply with one line that starts with ANSWER: followed by JSON of this form: ${shape}`;
@@ -113,7 +117,7 @@ export const TASKS = [
     id: 'pbmc-t-cells',
     category: 'gating',
     title: 'Gate T cells and report their frequency',
-    example: { id: 'pbmc-immunophenotyping', options: { seed: 41001, scale: 0.3 } },
+    example: { id: 'pbmc-immunophenotyping', options: { seed: 41001, scale: 0.3, ...PBMC_V2 } },
     prompt: () => `This workspace holds PBMC samples stained with a 14-color panel. Gate the T cells (single, live lymphocytes that are CD3+) and name that population "T cells". What percentage of all events in D01_Unstim are T cells?\n\n${answerLine('{"percent": <number>}')}`,
     truth(generated) {
       const file = generated.files.find((f) => f.name === 'D01_Unstim.fcs');
@@ -142,7 +146,7 @@ export const TASKS = [
     id: 'pbmc-compensation-error',
     category: 'compensation',
     title: 'Find the wrong value in a spillover matrix',
-    example: { id: 'pbmc-immunophenotyping', options: { seed: 41002, scale: 0.3 } },
+    example: { id: 'pbmc-immunophenotyping', options: { seed: 41002, scale: 0.3, ...PBMC_V2 } },
     prompt: () => `These PBMC files came off the cytometer with its spillover matrix, and the stained samples use it. I suspect one value in it is wrong. Check the compensation, and tell me which spillover value is wrong and what it should be, in percent.\n\n${answerLine('{"from": "<channel the dye is read in>", "into": "<channel it spills into>", "correctPercent": <number>}')}`,
     truth() {
       const panel = buildPanel(INSTRUMENTS.fortessa, PBMC_PANEL);
@@ -170,7 +174,7 @@ export const TASKS = [
     id: 'pbmc-stimulation-cd25',
     category: 'statistics',
     title: 'Test whether stimulation changes CD25+ CD4 T cells',
-    example: { id: 'pbmc-immunophenotyping', options: { seed: 41003, scale: 0.3 }, gates: true },
+    example: { id: 'pbmc-immunophenotyping', options: { seed: 41003, scale: 0.3, ...PBMC_V2 }, gates: true },
     prompt: () => `Six donors' PBMC were acquired unstimulated and stimulated. Does stimulation change the percentage of CD25+ cells among CD4 T cells? Gate what you need, use an appropriate test for this design, and report the direction of the change and the p-value.\n\n${answerLine('{"direction": "up" | "down" | "no change", "p": <number>}')}`,
     truth: () => ({ direction: 'up' }),
     async grade({ answer, toolCalls }) {
@@ -225,7 +229,7 @@ export const TASKS = [
     id: 'pbmc-acquisition-problem',
     category: 'quality control',
     title: 'Find the sample with an acquisition problem',
-    example: { id: 'pbmc-immunophenotyping', options: { seed: 41005, scale: 0.3 } },
+    example: { id: 'pbmc-immunophenotyping', options: { seed: 41005, scale: 0.3, ...PBMC_V2 } },
     prompt: () => `One of the twelve stained PBMC samples had a problem while it was acquired. Which one, and what kind of problem was it?\n\n${answerLine('{"sample": "<name>", "problem": "<what happened>"}')}`,
     truth: () => ({ sample: 'D05_Unstim', problem: 'clog' }),
     async grade({ answer, truth }) {
@@ -356,7 +360,7 @@ export const TASKS = [
     id: 'gating-report',
     category: 'reporting',
     title: 'Write a gating report as a PDF',
-    example: { id: 'pbmc-immunophenotyping', options: { seed: 41011, scale: 0.2 }, gates: true },
+    example: { id: 'pbmc-immunophenotyping', options: { seed: 41011, scale: 0.2, ...PBMC_V2 }, gates: true },
     prompt: ({ outputs }) => `Make a PDF report of the gating strategy down to the T cells, one page for each of the twelve stained samples, and save it as ${join(outputs, 'gating-report.pdf')}.\n\n${answerLine('{"path": "<file>", "pages": <number>}')}`,
     truth: () => ({ pages: 12, gates: ['Cells', 'Single cells', 'Live', 'Lymphocytes', 'T cells'] }),
     async grade({ outputs, truth }) {

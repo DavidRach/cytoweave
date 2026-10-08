@@ -1811,9 +1811,21 @@ export function qcSummary(results = {}) {
   const percentRemoved = n ? (100 * removed) / n : 0;
   const findings = [];
   const peaco = results.peacoQC ?? results.peacoqc;
+  const flow = results.flowRate;
+  // A problem's likely cause, from what the flow rate did at the same time: a clog slows the flow
+  // (and the events that pile up behind it surge through when it clears); an air bubble throws a
+  // burst of junk events. Signals fall in both, so a signal drop alone does not tell them apart.
+  const flowWindows = (flow?.episodes ?? []).filter((e) => Number.isFinite(e.startTime) && Number.isFinite(e.endTime));
+  const duration = flow?.duration ?? Math.max(1, ...flowWindows.map((e) => e.endTime));
+  const near = Math.max(1, 0.03 * duration);
+  const overlapping = (a, direction) => flowWindows.find((e) => e.direction === direction && a.startTime !== null && e.startTime <= a.endTime + near && e.endTime >= a.startTime - near);
+  const afterSlowFlow = (episode) => flowWindows.some((e) => e.direction === 'low' && episode.startTime >= e.startTime && episode.startTime - e.endTime <= near);
   if (peaco?.episodes) {
     for (const episode of peaco.episodes) {
-      const what = episode.direction === 'drop' ? 'A signal drop (possible clog)' : episode.direction === 'rise' ? 'A signal surge' : 'Unstable signal';
+      let what = episode.direction === 'rise' ? 'A signal surge' : episode.direction === 'drop' ? 'A signal drop' : 'Unstable signal';
+      const burst = overlapping(episode, 'high');
+      if (overlapping(episode, 'low')) what += ' while the flow slowed (a clog)';
+      else if (burst && !afterSlowFlow(burst)) what += ' with a burst of events (an air bubble)';
       const where = episode.startTime !== null
         ? `at ${formatTimeRange(episode.startTime, episode.endTime)}`
         : `in events ${episode.startEvent.toLocaleString('en-US')}–${episode.endEvent.toLocaleString('en-US')}`;
@@ -1821,14 +1833,15 @@ export function qcSummary(results = {}) {
       findings.push({ method: 'peacoQC', severity: 'warning', text: `${what}${channel} ${where} removed ${formatPercent((100 * episode.removed) / (n || 1))}% of events.` });
     }
   }
-  const flow = results.flowRate;
   if (flow?.episodes) {
     for (const episode of flow.episodes) {
       const where = formatTimeRange(episode.startTime, episode.endTime);
+      const share = `${formatPercent((100 * episode.events) / (n || 1))}% of events removed`;
       let text;
       if (episode.direction === 'gap') text = `No events were acquired at ${where} (a gap in the flow).`;
-      else if (episode.direction === 'low') text = `The flow rate dropped at ${where} (possible clog or bubble); ${formatPercent((100 * episode.events) / (n || 1))}% of events removed.`;
-      else text = `A burst of events at ${where}; ${formatPercent((100 * episode.events) / (n || 1))}% of events removed.`;
+      else if (episode.direction === 'low') text = `The flow rate dropped at ${where} (a clog slows the flow); ${share}.`;
+      else if (afterSlowFlow(episode)) text = `A surge of events at ${where}, right after the flow slowed (the clog clearing); ${share}.`;
+      else text = `A burst of events at ${where} (an air bubble, or debris, passing through); ${share}.`;
       findings.push({ method: 'flowRate', severity: 'warning', text });
     }
     if (flow.timestepAssumed) findings.push({ method: 'flowRate', severity: 'info', text: 'The file has no $TIMESTEP; 0.01 s per time unit was assumed.' });

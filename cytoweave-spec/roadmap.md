@@ -784,6 +784,35 @@ Planned beside wave 7, not started there; they continue beside wave 8.
      deadlines, a close that cannot hang, and retries). Haiku still swaps the QC example's clog and
      bubble in every run, from the QC findings' wording: a product fix for a later slice.
 6. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
+   - Done (slice 6): lib/exercises.js and ui/exercises.js. Eighteen exercises (6 beginner, 9
+     intermediate, 3 advanced) across gating, compensation, QC, spectral, statistics, plates,
+     assays, instrument QC and a CyTOF cohort. Each opens its example without the truth, with a
+     seed of the attempt's own (a class code shares it) that varies the planted problem where the
+     example allows. A panel in a column at the right holds hints, answers (gates, samples,
+     channels, choices, numbers) and checks with partial credit (gates by F1 against the true
+     events); Reveal adds the truth channel and colors missed and extra events. The workspace
+     keeps the id, seed, answers and checks; the answer key is regenerated from the seed and
+     refused for files that are not the seed's (SHA-256). Undo keeps the progress. Validated by
+     unit tests (every exercise's true answers score 100%) and `validation/exercise-session.mjs`
+     (41 checks, in CI: every exercise solved in the window with the tools or from the truth,
+     scored 100%).
+   - Done with it: the examples, together, now demonstrate every analysis from the window (an
+     audit of every requirement against the examples found these only scripts could reach: a
+     real FMO, MEF calibration and counting beads, per-sample gate adjustment, the unmixing
+     doctor's faults and the library's flag, folder-watch QC, CSV events and annotations, and
+     the FlowJo 11, FACSDiva and SpectroFlo imports). The PBMC example gained an FMO tube,
+     rainbow beads with their datasheet, a second day and an annotations table; two examples
+     were added (absolute counts, spectral day 2); examples carry other programs' files
+     (attachments, written by lib/example-files.js); QC → Live replays an example; the
+     examples dialog makes ten-times-larger copies. Validation suite `examples` (12 checks).
+   - Found by slice 6: the QC findings' wording (a clog "possibly a bubble", a bubble's signal
+     drop "possibly a clog") misled agents and would mislead learners: findings now name the
+     cause from the flow rate at the same time. An FMO tube annotated with its donor's condition
+     joined that condition's comparisons in code that did not filter by role: FMO tubes are now
+     annotated as controls.
+   - Not covered by the examples: FACSChorus gates (no example comes from a FACSChorus
+     instrument; one would need a FACSMelody- or FACSDiscover-like example of its own) and image
+     cytometry (not built, wave 10).
 
 ## Toward 1.0 (0.9–1.0)
 
