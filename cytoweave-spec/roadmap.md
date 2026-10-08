@@ -640,8 +640,8 @@ single tool combines. Wave 8 is a plan, to be revised as it lands.
 Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-05,
 `product_research/feature-comparison.html`):
 - **Agents are no longer distinctive; agents proven right are.** Dotmatics' Luma Agent, Ozette,
-  Conspecta and flow-atlas now offer agents or MCP servers, so wave 8 adds a public agent benchmark
-  and WebMCP in place of the on-device assistant.
+  Conspecta and flow-atlas now offer agents or MCP servers, so wave 8 adds a public agent benchmark.
+  WebMCP, planned here in place of the on-device assistant, is parked (see the parking lot below).
 - **Users before features.** CytoWeave's gaps come down to adoption: no institutional users yet,
   and validation mostly on simulated truth. Core-facility studies move from Later to run beside
   wave 7, with validation on real expert-gated data.
@@ -783,9 +783,7 @@ Planned beside wave 7, not started there; they continue beside wave 8.
      example (fixed by OPEN_DATA); a headless Chrome that froze once stalled the run (fixed by
      deadlines, a close that cannot hang, and retries). Haiku still swaps the QC example's clog and
      bubble in every run, from the QC findings' wording: a product fix for a later slice.
-6. **WebMCP (M7):** the same tools exposed to agents in the browser through WebMCP (Chrome origin
-   trial, 2026), beside the MCP server; it replaces the on-device assistant (M6, now an idea).
-7. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
+6. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
 
 ## Toward 1.0 (0.9–1.0)
 
@@ -829,6 +827,13 @@ Decided but deferred, outside the planned waves (and releases) until what they w
   clients install from the GitHub repository (`remotes::install_github(...,
   subdir = "clients/r")`, `pip install "git+...#subdirectory=clients/python"`), as `clients/README.md`,
   the clients' READMEs and the scripting documentation describe, and that is enough for now.
+- **WebMCP (M7):** the same tools exposed to agents in the browser through WebMCP, beside the MCP
+  server, from the same tool definitions and actions (exports as downloads; no tools that take file
+  paths). Planned as wave 8, slice 6, and parked on 2026-10-07 until browser agents use it: in
+  October 2026 it is a Chrome origin trial (Chrome 149–156) whose API is still being renamed
+  (`navigator.modelContext` to `document.modelContext`), few agents call it, and origin-trial
+  tokens are tied to a website's address, while CytoWeave runs on the user's own computer. Agents
+  reach CytoWeave through `cytoweave mcp` meanwhile.
 
 ## Ideas (unscheduled)
 
