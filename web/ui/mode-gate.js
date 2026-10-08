@@ -315,7 +315,7 @@ export function mountGateMode(app, container) {
         for (const view of lineageViews) view.refreshOverlay();
       }
       renderedFor = key;
-      if (!structural && (topics.has('ws') || topics.has('data') || topics.has('theme') || topics.has('backgate') || topics.has('gate'))) {
+      if (!structural && (topics.has('ws') || topics.has('data') || topics.has('theme') || topics.has('backgate') || topics.has('gate') || topics.has('overlays'))) {
         // Same population and sample: refresh gates and data in place.
         for (const plot of plotsOf(store.ws, populationId())) views.get(plot.id)?.update({ spec: plot });
         for (const view of lineageViews) view.render();

@@ -315,9 +315,29 @@ test('qcSummary combines masks, counts unique removals and explains the findings
   const expectedScore = Math.round(100 - Math.min(60, 2 * summary.percentRemoved) - Math.min(15, 3 * FLOW.episodes.length) - Math.min(20, 5 * drift.drifted.length));
   assert.equal(summary.score, expectedScore);
   const text = summary.findings.map((f) => f.text).join('\n');
-  assert.match(text, /signal drop \(possible clog\) in [\w-]+ at 41–44 s removed \d\.\d% of events/);
+  // A signal drop with no change in the flow names no cause; a burst of events, an air bubble.
+  assert.match(text, /A signal drop in [\w-]+ at 41–44 s removed \d\.\d% of events/);
   assert.match(text, /No events were acquired at 30–32 s/);
-  assert.match(text, /A burst of events at 70\.0–70\.2 s/);
+  assert.match(text, /A burst of events at 70\.0–70\.2 s \(an air bubble/);
+});
+
+// The cause of a signal drop, from the flow at the same time: a clog slows it (and its clearing
+// surges), an air bubble throws a burst of events.
+test('qcSummary names a clog and an air bubble from the flow rate', () => {
+  const drop = (start, end) => ({ startTime: start, endTime: end, startEvent: 0, endEvent: 1, removed: 10, channel: 'FITC-A', direction: 'drop' });
+  const mask = new Uint8Array(1000).fill(1);
+  const flowRate = { mask, episodes: [
+    { startTime: 20, endTime: 26, events: 30, direction: 'low' },
+    { startTime: 26, endTime: 27, events: 80, direction: 'high' },
+    { startTime: 60, endTime: 62, events: 300, direction: 'high' },
+  ] };
+  const text = qcSummary({ peacoQC: { mask, episodes: [drop(20, 26), drop(60, 62)] }, flowRate }).findings.map((f) => f.text).join('\n');
+  assert.match(text, /A signal drop while the flow slowed \(a clog\) in FITC-A at 20–26 s/);
+  assert.match(text, /A signal drop with a burst of events \(an air bubble\) in FITC-A at 60–62 s/);
+  assert.match(text, /The flow rate dropped at 20–26 s \(a clog slows the flow\)/);
+  assert.match(text, /A surge of events at 26–27 s, right after the flow slowed \(the clog clearing\)/);
+  assert.match(text, /A burst of events at 60–62 s \(an air bubble/);
+  assert.doesNotMatch(text, /clog.*bubble|bubble.*clog/);
 });
 
 // CytoWeave's refinements (peak-tracking tolerance, localized MAD, time-coherent isolation-tree

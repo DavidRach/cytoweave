@@ -143,6 +143,17 @@ export function createCalibrationSection(ctx) {
     pane.append(h('h3', icon('gauge'), 'Calibrated units from beads'),
       h('p.qc-explain', 'Beads with several levels of known brightness, acquired with the same settings as the samples, turn a channel\'s arbitrary units into MEF (molecules of equivalent fluorochrome) or ERF, so results compare across instruments and days. Give each level\'s value from the beads\' datasheet for this lot, dimmest first; the levels are found in the bead sample, a standard curve is fitted as FlowCal does, and the calibrated channels are added to the samples acquired with the same settings.'));
     if (!beads) return pane;
+    // A datasheet kept with the bead sample (an example's beads carry theirs) fills in its values once.
+    const sheet = beads.beadDatasheet;
+    if (sheet && S.sheetFor !== beads.id) {
+      S.sheetFor = beads.id;
+      S.levels = sheet.levels ?? S.levels;
+      for (const [channel, values] of Object.entries(sheet.values ?? {})) {
+        S.values[channel] = values.map((v) => (v === null ? '-' : String(v))).join(', ');
+        if (sheet.units?.[channel]) S.units[channel] = sheet.units[channel];
+      }
+    }
+    if (sheet) pane.append(h('div.callout.accent', icon('file'), h('span', `Values from the datasheet that came with these beads: ${sheet.product ?? 'beads'}${sheet.lot ? `, lot ${sheet.lot}` : ''}.`)));
     const channels = fluorescence(beads);
     if (!S.populationId || (S.populationId !== ROOT && !gateById(ws, S.populationId))) S.populationId = ROOT;
     pane.append(h('div.qc-toolbar',

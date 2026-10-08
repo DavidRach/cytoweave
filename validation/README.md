@@ -119,8 +119,26 @@ examples, or against the files the exports write, read back:
 | `kinetics` | The calcium-flux example: the Indo-1 ratio found by name, every tube measured, the pause found in the four paused tubes, responding events rising with the stimulus |
 | `plate`, `plate_layout`, `dose_response`, `bead_assay` | The drug screen's wells from their keywords and its Z′ as in Node; a layout held until accepted, then applied; each compound's EC50 as in Node; every serum's concentrations as in Node |
 | `export_workspace` | The bead assay's workspace written as a .cwz file with its 56 samples, annotations and gates |
+| `export_certificate`, `verify_certificate` | The bead assay's analysis certified with its files and every number computed again from the archive (all identical); a certificate without its files incomplete until they are given |
+| `export_review_report` | One self-contained HTML file of the analysis, every number traced, nothing referenced outside it; a path that is not .html refused |
+| `virtual_fmo` | CD25 in T cells of the PBMC example predicted from the spread model the accepted compensation carries, within ×1.33 of the FMO tube's threshold and well above the unstained control's; a curve along CD127; with `addGate`, a range gate from the threshold proposed |
+| `design_panel` | A 7-marker T-cell panel chosen from the accepted compensation's 14 dyes: every dye different, its noise below the example's own panel, the background from the unstained control; a fixed dye and a subset of dyes honored; an unknown expression level refused; the workspace unchanged |
+| `check_compensation` | The PBMC example's files' matrix against its 14 controls: the planted error (APC into Alexa Fluor 700) named first, its suggested value within 0.5 points of the true spillover |
 
 Continuous integration runs it on each pull request and push to `main`.
+
+### The agent benchmark's checks
+
+```bash
+node --test benchmark/tasks.test.mjs
+node benchmark/run.mjs --agent expert --check
+node benchmark/run.mjs --agent none --check
+```
+
+check the [agent benchmark](../benchmark/README.md) itself, with no model: every task's reference
+solution, scripted through the same MCP tools an agent uses, must score at least 0.9 (all score
+1.0); an agent that answers nothing must score 0 on every task; and each grader gives plausible
+wrong answers the partial credit its rubric says. Continuous integration runs them.
 
 ### Headless runs
 
@@ -130,7 +148,9 @@ node validation/headless-run.mjs
 
 checks `cytoweave run` (built from source with Go, in headless Chrome) on the PBMC example's
 twelve samples, an annotations table and the templates suite's analysis saved as a template file
-(`run-cases.mjs`). It takes about 20 seconds:
+(`run-cases.mjs`), then the window across workspaces: what only views do, which the suites above
+cannot reach (state kept while another workspace is opened, work that finishes after it was). It
+takes about two minutes:
 
 | Check | Required | Result |
 | --- | --- | --- |
@@ -139,6 +159,40 @@ twelve samples, an annotations table and the templates suite's analysis saved as
 | A second run of the same files | The same CSV and methods bytes, workbook values, report text and workspace | The same |
 | The same analysis in the window, with the files on CytoWeave's command line, the template applied in its Apply dialog and every output exported with the window's own buttons and menus (Tables CSV, Excel workbook, batch report dialog, workspace file, Report → Markdown) | The same CSV bytes, workbook values (the About sheet's date aside), report pages and text, workspace (samples, annotations, gates, tables, figures, scales; no open proposal) and methods | The same; 12 pages |
 | Every population's count in `run.json` against Node's, from the same files and template | All equal | 228 of 228 |
+| A reload of the window | The start page, a new empty workspace, the last one marked among the recent workspaces | As required |
+| Explore, Compare and QC opened on one example, shown again after another was opened while they were closed | The new workspace's markers, grouping and results only; QC keeps its settings | 13 → 2 markers, none foreign; grouping changed; no old result |
+| An Explore run (UMAP of 96 samples) still going when another workspace is opened | Refused with a message; nothing added to the new workspace | Refused |
+| A fast Explore run (k-means and PCA) whose result is being stored when another workspace opens, after 0, 150 and 400 ms | Nothing added to the new workspace, whatever the timing | Clean each time |
+| Two examples opened in quick succession | The second holds only its own files | 96 of 96 |
+| The inspector's boundary robustness on samples sharing a view version (one compensation, no simulated truth channel) | Not shown for another sample | Its own check offered |
+
+Continuous integration runs it on each pull request and push to `main`.
+
+### Exercises in the window
+
+```bash
+node validation/exercise-session.mjs
+```
+
+starts every exercise (`web/lib/exercises.js`) in the real program and headless Chrome, as a
+learner would, and checks teaching mode end to end. Each exercise is solved with CytoWeave's tools
+through remote control where an agent tool does the analysis (gates drawn with `create_gate` or the
+example's own, `check_compensation`, `run_qc`, `compare`, `unmix` and `diagnose_unmixing`,
+`titration`, `dose_response`, `bead_assay`, `kinetics`, `statistics_table`, `adapt_gate`), and from
+the truth computed in Node where the analysis is a dialog without a tool (cell cycle, proliferation,
+Q and B, the CyTOF cohort: their accuracy is checked by the suites `cellcycle`, `proliferation`,
+`flowqb` and `clustering`). The answers go in through the panel's own controls and its Check
+button. It takes about five minutes:
+
+| Check | Required | Result |
+| --- | --- | --- |
+| Each exercise's workspace: no truth channel, no annotation naming a fault, the exercise's name, no files offered, only the exercise's id, seed and progress in the workspace | None | None, for all 18 |
+| Each exercise solved and checked | Full marks (gates a script drew: at least 80%) | 100% for all 18 |
+| The truth revealed for a lymphocyte gate drawn too wide | The truth channel, the explanation, the events taken in wrongly colored; less than full marks | All three; 90.5% |
+| Undo of an analysis edit | The exercise's answers, checks and revealed state kept | Kept |
+| After a reload | The answer key made again from the seed, checksums verified, the same score | The same |
+| The seed changed to another one | The answer key refused (the files are not that seed's), no check recorded | Refused |
+| An example opened as usual | No exercise panel | None |
 
 Continuous integration runs it on each pull request and push to `main`.
 
@@ -321,7 +375,7 @@ line):
 
 | Suite | CytoWeave | Against | Required | Current |
 | --- | --- | --- | --- | --- |
-| `fcs` | `parseFCS`, `writeFCS` (`fcs.js`); `deidentifyFCS` (`deidentify.js`) | All 290 files of the fourteen examples | Parse without warnings; write and read back bit-exact; de-identified copies hold the same events | 290 of 290; all bit-exact; 290 of 290 |
+| `fcs` | `parseFCS`, `writeFCS` (`fcs.js`); `deidentifyFCS` (`deidentify.js`) | All 323 files of the sixteen examples | Parse without warnings; write and read back bit-exact; de-identified copies hold the same events | 323 of 323; all bit-exact; 323 of 323 |
 | `fuzz` | `parseFCS`, `parseFCSAsync` (`fcs.js`) as the app reads a file, then `sampleFromDataset` (`workspace.js`) and `deidentifyFCS` | 21 generated files in every layout (float and double; 8-, 16-, 24-, 32- and 64-bit integers in little, big and mixed byte order; packed 10-bit; fixed and free ASCII; mixed `$PnDATATYPE`; log amplification and gain; supplemental TEXT; offsets in keywords only; no events; a `$NEXTDATA` chain), and 20,000 seeded mutations of them: HEADER offsets, keyword values (boundary numbers, nonsense, long and empty text), deleted and duplicated keywords, delimiters, flipped bytes, the version line, truncation and junk appended (`fuzz-cases.mjs`) | The generated files hold exactly the values written. Each mutated file is read with every column as long as its event count, or refused with an `FCSError` whose own words are a sentence (no "undefined" or "NaN"); never another exception, a hang (5 s), a column larger than the file could hold, or a disagreement between the two readers; none over 1 s | 21 of 21 exact; 0 of 20,000 failed (about 62% read, 38% refused); slowest 3 ms. Longer runs (`fuzz.mjs`): 0 of 200,000 |
 | `compensation` | `computeSpillover`, `controlResiduals` (`compensation.js`) | The true spillover of the 14-color PBMC example. The file's `$SPILLOVER` has one planted error: APC → Alexa Fluor 700 written as 0.110, truly 0.157 | Matrix from the 14 single-stain controls within 0.02 of the truth (median and regression methods). The control check ranks the planted error first, suggests a value within 0.01, and leaves every correct entry below 0.02. Autofluorescent positives (heat-killed cells in the viability control) are flagged as such, not as a spillover error | Largest error 0.018 (median) and 0.013 (regression); planted error found first, suggested 0.158 vs 0.157; correct entries ≤ 0.014; only the viability control flagged |
 | `gating` | The example's suggested gates through `SampleView` (`engine.js`) | True cell types of two PBMC samples (one unstimulated, one stimulated) | Precision > 90%, recall > 85% for lymphocytes, monocytes and T cells | Precision 91–100%, recall 96.5–100% |
@@ -370,6 +424,11 @@ line):
 | `reference` | `hypothesis.js`, `transforms.js` | R 4.x: `t.test` (Welch, Student, paired), `wilcox.test` with ties, `p.adjust` (BH), `qt` | Within 1e-5 (tests), 1e-4 (Wilcoxon p), 1e-9 (`qt`) | All agree |
 | `experts` | `adaptAcrossSamples` (`autogating.js`) on imported FlowJo workspaces (`flowjo.js`, `flowjo-match.js`) | An expert's per-donor gates in four FlowJo workspaces of a cytokine study (`als-ics`): each version of each scatter, singlet, live, CD3, CD4 and CD8 gate the expert drew is the template in turn, adapted to the other wells, and F1 with the expert's own gate for each well measured | FlowJo's counts of the adapted populations within 1.5%, none missing; with one gate per donor (the assay's design): mean F1 no worse, no adjustment lowering it by more than 0.02, and wells the expert gated differently (F1 < 0.99) sent to review more often than the others; each well alone: worst adjustment ≥ −0.15 and mean no worse than −0.002 | Within 1.13%, 0 of 768 missing; 0.9876 → 0.9877, 0 of 3, 45% vs 14%; −0.111, 0.9876 → 0.9874 |
 | `flowqb` | `characterize`, `findBeadPeaks` (`qb.js`) | flowQB 2.13 (Parks et al. 2017's fit, R) on its own LSR II data (`flowqbdata`): an LED pulser series of 19 files and Spherotech 8-peak and Thermo Fisher 6-peak bead files, 36 detectors each (`reference/flowqb.json`, written by `reference/generate_flowqb.R`) | The same peaks (event counts, those left out), and every peak's mean and SD, the iterated fit's coefficients and their standard errors within 1e-6 | Identical peaks; largest differences 5.7e-9 (LED), 4e-11 and 2.2e-10 (beads) |
+| `certificates` | `buildCertificate`, `readCertificate`, `verifyCertificate` (`certificate.js`); the hash-chained change log (`workspace.js`) | All sixteen examples (suggested gates, a table of every population and of k-means clusters stored as a channel, a saved comparison where there are conditions), certified and read back | Every number identical when computed again; the same archive byte for byte when made twice; six kinds of change caught; without its files incomplete, then confirmed when supplied; a saved comparison whose gate moved reported | 2,533 numbers identical; 16 of 16 rebuilt byte for byte; 6 of 6 changes caught |
+| `reviews` | `buildReviewReport` (`review-report.js`) | The sixteen examples' reports (every sample's gates drawn, a figure, a table, a saved comparison), against the window's own `populationSize`, `tableCells` and `exportScene` on views prepared as the window prepares them | Every traced number equal and shown alike; nothing referenced outside the file | 3,033 numbers equal, 0 shown otherwise; 16 of 16 self-contained |
+| `fmo` | `virtualFMO`, `fmoThreshold` (`virtual-fmo.js`), the spread fitted by `fitNoise` (`spread.js`) | Real FMO controls: simulated LSRFortessa- and Aurora-like panels with same-donor FMO tubes (15 markers); a BD LSRFortessa panel (`zenodo-skull`, `zenodo-skull-fmo`; 7 tubes that cleanly omit one dye) and a 25-color Cytek Aurora panel (`omip-tdln`; 4 FMOs), each tube predicting its own channel | Simulated: within 3% of the display axis; real: mean within 8% (LSRFortessa) and 10% (Aurora) of the axis, worst 15% and 20% | Simulated 0.94% and 0.45% mean (worst 2.4%; the unstained control 12–13%); real 5.8% (worst 11.6%) and 5.5% (worst 14.8%) |
+| `examples` | The examples as demonstrations (`example-cases.mjs`): `generateExample` (`examples.js`), the files other programs would have written (`example-files.js`) read by `importDiva`, `importFlowJo11`, `importSpectroFlo`, `analyzeCSV`; `calibrateBeads`; `diagnoseUnmixing`, `compareWithLibrary` | The PBMC example's FMO tube, rainbow beads with their datasheet and second day; the absolute-count example's counting beads and gates; the index sort's FACSDiva experiment and repaired presort file; the FlowJo example's FlowJo 11 workbench; the spectral example's SpectroFlo experiment; the cell-cycle CSV culture; the spectral day 2's planted faults, with day 1's references as the library | The FMO below a quarter of the stained sample's CD25 signal; MEF within 2% of the true response, slope within 0.02 of 1; CD4 T cells per µL within 6% of the truth; every Diva count within 2% of Diva's (display grid), every FlowJo 11 count equal; all controls matched; both faults named on each donor, and only those two flagged by the library | 202 vs 4,162; within 0.19%, slopes 0.998–1.000; −2.7%, −4.2%, −4.4%; worst 1.6%, 56 of 56; 26 of 26; as required |
+| `panel` | `designPanel`, `searchPanel`, `assignmentCost`, `compareWithRun`, `backgroundCovariance` (`panel-optimizer.js`), the dye table (`dyes.js`), the spread model (`spread.js`) | Simulated panels (`panel-cases.mjs`): any assignment stained in the simulator and unmixed (OLS, Aurora-like) or compensated (LSRFortessa-like), each marker's resolution measured on cells with all of its group's markers against cells without it; an 8-marker T-cell panel (3 dim markers) on 10 dyes: the optimum, dimmest-on-brightest and 24 random assignments, and the model's 10 best measured with more cells; 6 random 6-marker panels on 8 dyes searched both ways; a 25-color design on 29 dyes; the optimum's own controls. The public Aurora panel's 25 bead references (`omip-tdln`): leave-one-out, and a 12-dye panel predicted from the noise of the other 12 dyes' controls, each way | Local search finds every exhaustive optimum; predicted against measured cost r > 0.98 (log), median error < 10%; the optimum measured best of 26; the model's 10 best within 3%; its own controls > 90% within 2×; two seeds within 2% of a search 4× longer; real: > 60% within 2× and r > 0.7 each way | 6 of 6; spectral r = 0.996 (median 6.6%), conventional 0.999 (4.7%); the optimum best, 4× and 29× below dimmest-on-brightest; 0.06% and 0.9%; 100% (×1.05); 0% and 0%, 7.5 s per design; leave-one-out 72% (r 0.82), the halves 65% and 73% (r 0.76 and 0.80), PE-Cy7 left out as a mixture (similarity 0.49) |
 
 ## Notes
 

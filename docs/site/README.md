@@ -18,23 +18,30 @@ docs/capture/        the script that takes the screenshots
 ## Updating the site
 
 1. Edit the pages in `pages/` (see [Writing pages](#writing-pages)).
-2. Build into your checkout of the `gh-pages` branch. The default output is
-   `../cytoweave-site`, beside this repository:
+2. While you work, build into any folder to check the pages:
 
    ```sh
-   node docs/site/build.mjs
+   node docs/site/build.mjs /tmp/cytoweave-site-check
    ```
 
    The build checks every local link, anchor and screenshot. It exits with
    an error and lists the problems if any are broken.
-3. Preview the site:
+3. When a release is out, build into your checkout of the `gh-pages` branch,
+   `../cytoweave-site` beside this repository. Committing that checkout
+   publishes the site, so the build writes into it only with `--publish`:
+
+   ```sh
+   node docs/site/build.mjs --publish
+   ```
+
+4. Preview the site:
 
    ```sh
    python3 -m http.server 8800 --directory ../cytoweave-site
    ```
 
    Then open <http://localhost:8800>.
-4. Publish it:
+5. Publish it:
 
    ```sh
    cd ../cytoweave-site
@@ -110,7 +117,13 @@ node docs/capture/capture.mjs gate --theme dark
 
 Each scene is a function in `docs/capture/capture.mjs`. To add one, write
 its function there, run it, and refer to it with `<shot name="…">`. The
-README uses the same images.
+README uses the same images. A scene's name is the name of its pictures
+(`<scene>-light.webp`, `<scene>-dark.webp`), so the script refuses to run
+when two scenes share a name.
+
+`--audit` also checks every captured scene with axe-core (WCAG 2.1 A and AA)
+and records the result in `docs/capture/audit.json`, which keeps every
+scene's latest audit: capturing some scenes updates only theirs.
 
 ## For each release
 

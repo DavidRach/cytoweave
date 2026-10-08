@@ -33,9 +33,10 @@ lede: Compute spillover from single-stain controls, apply it to your samples, an
 
       <h2 id="diagnose">Spreading and pair plots</h2>
       <ul>
-        <li><strong>Spillover spreading matrix</strong> (Nguyen et al. 2013), after computing from controls: how much each fluorochrome widens the negative population in every other detector, the price paid for compensation. Large values in a column mean that detector will have wide negatives when those fluorochromes are bright; pair dim markers with detectors that receive little spreading.</li>
+        <li><strong>Spillover spreading matrix</strong> (Nguyen et al. 2013), after computing from controls: how much each fluorochrome widens the negative population in every other detector, the price paid for compensation. Large values in a column mean that detector will have wide negatives when those fluorochromes are bright; pair dim markers with detectors that receive little spreading. The instrument's noise fitted to the controls' spread is kept with the computed matrix, for <a href="gating.html#virtual-fmo">virtual FMO controls</a>.</li>
         <li><strong>Pairs:</strong> every pair of channels of the selected population, <strong>Uncompensated</strong> or <strong>Compensated</strong>. Populations should sit square to the axes after compensation; a diagonal lean means a spillover value is off.</li>
         <li>The <strong>condition number</strong> of a matrix shows how much compensation can amplify noise.</li>
+        <li><strong>Optimize the panel…</strong>, for a matrix computed from controls: which of their dyes each marker should carry, from the spillover and the spread fitted to the controls, the unstained control's background, each marker's expression and the markers found on the same cells. It works as for <a href="spectral.html#optimize">spectral panels</a>, with each dye read in its own detector.</li>
       </ul>
 
       <h2 id="edit">Editing a matrix</h2>

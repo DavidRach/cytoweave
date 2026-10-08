@@ -826,6 +826,29 @@
     }
   },
   {
+    "name": "check_compensation",
+    "title": "Check a compensation against the controls",
+    "description": "Check a compensation matrix against the single-stain controls: each control is compensated with the matrix, and what remains of its dye in every other detector is that matrix entry's error. Checks the matrix a sample uses (sample; default the first stained sample: often the one in its FCS file, $SPILLOVER) or a compensation of the workspace by name (compensation). Returns the entries that are off, largest first, each with its current and suggested percent spillover, and controls whose positives are brighter in several detectors at once (autofluorescence, not spillover). Changes nothing; propose_compensation computes a new matrix.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "compensation": {
+          "description": "A compensation of the workspace to check, by name",
+          "type": "string"
+        },
+        "sample": {
+          "description": "Sample whose matrix to check (default: the first stained sample)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "propose_compensation",
     "title": "Propose a compensation matrix from the controls",
     "description": "Compute a spillover matrix from the workspace's single-stain controls (samples with the role single-stain and a stained channel), optionally within a population of each control (e.g. its singlets) and with an unstained sample as the negative reference, and propose it for the samples. The user reviews it with your other changes; the result lists the largest spillover values and any warnings about the controls.",
@@ -2033,6 +2056,273 @@
       "idempotentHint": false,
       "openWorldHint": false,
       "readOnlyHint": false
+    }
+  },
+  {
+    "name": "virtual_fmo",
+    "title": "Predict a virtual FMO",
+    "description": "Where a population's negative for a channel's dye would end without that dye: a virtual FMO control, predicted from the panel's spread model (fitted to the single-stain or reference controls when the compensation or the spectral spreading matrix was computed) and the unstained control's autofluorescence. Each event's value without the dye is drawn from its own brightness of every other dye; the threshold is the given percentile (quantile, default 0.995). Returns the threshold in the channel's data units, the unstained control's alone, the real FMO control's when the workspace has one (role fmo), the dyes the spread comes from, and with versus (another channel) the threshold binned along it, as an FMO shows on a plot. It is a guide, not a replacement for a real FMO on dim or critical markers. addGate proposes a range gate from the threshold up (named name).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "addGate": {
+          "description": "Propose a range gate from the threshold up",
+          "type": "boolean"
+        },
+        "channel": {
+          "description": "The channel (or its marker) whose dye is left out",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the proposed gate",
+          "type": "string"
+        },
+        "population": {
+          "description": "Population (path or name; default all events)",
+          "type": "string"
+        },
+        "quantile": {
+          "description": "Percentile of the predicted negative (default 0.995)",
+          "type": "number"
+        },
+        "sample": {
+          "description": "Sample name",
+          "type": "string"
+        },
+        "versus": {
+          "description": "Optional: another channel to bin the threshold along",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sample",
+        "channel"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "design_panel",
+    "title": "Design a panel",
+    "description": "Which dye each marker of a panel should carry: the panel optimizer predicts every marker's resolution (stain index) from the dyes' spectra, the instrument's noise (photon noise per detector and laser fluctuations, fitted to the controls, kept for the instrument or from bead runs) and the unstained control's background, with the spread every co-expressed marker adds at its own brightness, and searches the assignments for the one with the least noise relative to signal (every assignment for small panels, local search for large ones). It designs from this experiment's spectral reference controls and the instrument's spectral library (from spectral), from a compensation computed from single-stain controls (from compensation: each dye in its own detector), or from an instrument's spectral library alone (from library, instrument). Give each marker its expression (high ≈ 10^5 molecules per cell, medium 10^4, low 10^3, or a number) and optionally a fixed dye; groups lists the markers found on the same cells (without groups every marker is taken to be on the same cells). dyes limits the candidates, brightness overrides a dye's relative brightness (PE 0.5, FITC 0.12; built in for common dyes). Returns each marker's dye, predicted stain index, what limits it and the next-best dyes, the comparison with this experiment's panel, pairs of dyes prone to energy transfer, and warnings. Nothing in the workspace changes.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "brightness": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "Relative brightness of dyes, by name",
+          "type": "object"
+        },
+        "compensation": {
+          "description": "With from compensation: the compensation's name (default: the first computed from controls)",
+          "type": "string"
+        },
+        "dyes": {
+          "description": "Only these candidate dyes",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "from": {
+          "description": "What to design from (default: the first available, in this order)",
+          "enum": [
+            "spectral",
+            "compensation",
+            "library"
+          ],
+          "type": "string"
+        },
+        "groups": {
+          "description": "Groups of markers found on the same cells: { name, markers }",
+          "items": {
+            "properties": {
+              "markers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "description": "Group (a cell type)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "markers"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "instrument": {
+          "description": "With from library: the instrument's library (name or id; default the first)",
+          "type": "string"
+        },
+        "markers": {
+          "description": "The markers: { name, level (high, medium, low or molecules per cell; default medium), dye (optional: fixed) }",
+          "items": {
+            "properties": {
+              "dye": {
+                "description": "A fixed dye",
+                "type": "string"
+              },
+              "level": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "description": "high, medium, low or molecules per cell"
+              },
+              "name": {
+                "description": "Marker",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "noise": {
+          "description": "The noise model (default: this experiment's controls, else the one kept for the instrument, else bead runs)",
+          "enum": [
+            "controls",
+            "library",
+            "beads"
+          ],
+          "type": "string"
+        },
+        "seed": {
+          "description": "Seed of the search (default 1)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "markers"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "export_certificate",
+    "title": "Make a reproducibility certificate",
+    "description": "Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry Standard archive): the workspace, the FCS files (unless includeData is false: then only their SHA-256), the channels the analysis stored, the gates as Gating-ML, the methods, and certificate.json, which records the CytoWeave version, every input's SHA-256, the analyses and their seeds, the head of the hash-chained change log, MIFlowCyt and every number reported: each population's count in each sample, every table cell, and every saved comparison of one measure. Every number is computed from the files to make it; verify_certificate computes them again. Returns the fingerprint (SHA-256 of certificate.json) to quote with the analysis, and warnings (a saved comparison that no longer matches the analysis). The file must not exist unless overwrite is true.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "includeData": {
+          "description": "Include the FCS files (default true); without them, verifying needs the files",
+          "type": "boolean"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.acs)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "export_review_report",
+    "title": "Write a review report",
+    "description": "Write a review report of the analysis: one self-contained HTML file (.html) for a PI, collaborator or reviewer, opened in any browser without CytoWeave: the samples with their SHA-256 checksums, the gating hierarchy and every population's count in every sample, every sample's gates drawn on its own events (plots \"all\", the default; \"none\" leaves them out; includeControls draws the controls too), the workspace's figures and tables, the saved comparisons, the methods, MIFlowCyt and the change log. Every number is traced (a click shows its sample, file checksum, gates and the counts behind it); the numbers are those a reproducibility certificate records. The file loads nothing from the network. The file must not exist unless overwrite is true.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "includeControls": {
+          "type": "boolean"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Absolute path of the file to write (.html)",
+          "type": "string"
+        },
+        "plots": {
+          "enum": [
+            "all",
+            "none"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "verify_certificate",
+    "title": "Verify a reproducibility certificate",
+    "description": "Verify a CytoWeave reproducibility certificate (absolute path of the .acs file): check every file's SHA-256, the workspace, the change log's chain and certificate.json's fingerprint, compute every number again from the files and compare them bit for bit. A certificate written without its data needs data (a folder, or FCS file paths; files are recognized by their checksums). Returns the verdict (confirmed, incomplete or differs), a summary, and the numbers that differ. The analysis in the window is not changed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "A folder with the FCS files, or a list of FCS file paths, for a certificate without its data"
+        },
+        "path": {
+          "description": "Absolute path of the certificate (.acs)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
     }
   },
   {

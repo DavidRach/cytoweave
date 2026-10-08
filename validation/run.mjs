@@ -9,7 +9,7 @@
 // Suites: fcs, fuzz, templates, strategies, titration, comparisons, calibration, flowcal, compensation, gating, qc, spectral, doctor, spread, cellcycle, proliferation, kinetics, plates, beadplexr, clustering,
 // normalization, debarcode, transforms, flowjo, migration, acquisition, figures, autogating, instrument, reference,
 // multiverse, accessibility, experts, multiverse-ics, flowqb, gatingml, flowkit, fcsparser, instruments, ontology, fuzz-corpus, diva,
-// fortessa, bioconductor, autospectral
+// fortessa, bioconductor, autospectral, certificates, reviews, fmo, panel
 // (all by default). Exits with status 1 when a check fails.
 //
 // Suites marked "external data" need files that node validation/fetch.mjs downloads into
@@ -18,7 +18,7 @@
 import { BEAD_STANDARDS, SCREEN_COMPOUNDS, SCREEN_DOSES, generateExample, screenTruth } from '../web/lib/examples.js';
 import { FCSError, parseFCS, parseTextSegment, readHeader, readSpillover, writeFCS } from '../web/lib/fcs.js';
 import { compensate, computeSpillover, controlResiduals, leanCheck, spilloverSpreading } from '../web/lib/compensation.js';
-import { SampleView, computeStatistic, countOf, population } from '../web/lib/engine.js';
+import { SampleView, computeStatistic, countOf, population, populationSize, workspaceView } from '../web/lib/engine.js';
 import { resolveFormula } from '../web/lib/formula.js';
 import { quantileSorted } from '../web/lib/stats.js';
 import { importFlowJo } from '../web/lib/flowjo.js';
@@ -46,7 +46,7 @@ import { analyzeCSV, csvDatasets, scaleFor } from '../web/lib/csv-events.js';
 import { readZip } from '../web/lib/zip.js';
 import { createHash } from 'node:crypto';
 import { fingerprint, readPDF, readPPTX, readPZFX, readXLSX } from './document-readers.mjs';
-import { columnLabel, columnValue, columnLimits, LIMIT_STATUS } from '../web/lib/tables.js';
+import { columnLabel, columnValue, columnLimits, LIMIT_STATUS, tableCells } from '../web/lib/tables.js';
 import { formatPercent, formatStatistic } from '../web/lib/stats.js';
 import { calibrateBeads, channelBounds, fitBeadModel, standardCurve } from '../web/lib/calibration.js';
 import { exportGatingML } from '../web/lib/gatingml.js';
@@ -58,6 +58,15 @@ import { beadRun, runFlags, seriesRun } from '../web/lib/instrument-record.js';
 import { compareWithLibrary, latestEntries, libraryEntry, spectrumOn, withEntries as withSpectra } from '../web/lib/spectral-library.js';
 import { textPairs, themeTokens } from './accessibility-cases.mjs';
 import { VISIONS, lab as labOf, paletteReport, simulate } from '../web/lib/colorvision.js';
+import { buildCertificate, readCertificate, verifyCertificate } from '../web/lib/certificate.js';
+import { CERTIFICATE_EXAMPLES, certifiableExample } from './certificate-cases.mjs';
+import { buildReviewReport } from '../web/lib/review-report.js';
+import { fmoThreshold, virtualFMO } from '../web/lib/virtual-fmo.js';
+import { axisDistance, omip, simulatedConventional, simulatedSpectral, skull } from './fmo-cases.mjs';
+import { PBMC_25, T_PANEL, instrumentInputs, measureAssignment, omipControls, simulatedControls } from './panel-cases.mjs';
+import { assignmentCost, assignmentFrom, compareWithRun, designPanel, levelValue, panelProblem, searchPanel, spreadOfSet } from '../web/lib/panel-optimizer.js';
+import { gatingStrategyFigure } from '../web/lib/figures.js';
+import { exportScene } from '../web/lib/scene.js';
 import { CATEGORICAL, CATEGORICAL_CVD, colormapColor } from '../web/lib/colormaps.js';
 import { byDonor, multiverseOf, qcMasks, setChannel, withCD25, withDoublePositive, withQCGate } from './multiverse-cases.mjs';
 import { adaptPath, choicesFor, pathGates as pathOf, runMultiverse, specifications, summarize as summarizeMultiverse } from '../web/lib/multiverse.js';
@@ -66,6 +75,7 @@ import { adaptAcrossSamples } from '../web/lib/autogating.js';
 import { buildFlowJoMigration, matchFlowJoSamples, migrationCountRows, migrationGates } from '../web/lib/flowjo-match.js';
 import { FLOWJO11_WORKBENCHES, flowJo11Case } from './flowjo11-cases.mjs';
 import { divaCase } from './diva-cases.mjs';
+import { absoluteCounts, attachments as exampleAttachments, pbmcAdditions, spectralDayTwo } from './example-cases.mjs';
 import { chorusGates, importChorus } from '../web/lib/chorus.js';
 import { cytekDetectors, importSpectroFlo, planSpectroFloControls } from '../web/lib/spectroflo.js';
 import { diagnoseControls, diagnoseUnmixing } from '../web/lib/spectral-doctor.js';
@@ -75,12 +85,12 @@ import { layoutCSV, layoutChanges, paddedWellName, parseLayout, platesOf, sample
 import { beadAssay, classifyBeads, findBeadLevels, mfiOf } from '../web/lib/beadassay.js';
 import { BEAD_SPEC, beadInput, beadWells, curveCases, exampleWorkspace, lplexFiles, scatterGroups, screenInput, screenWells } from './curve-cases.mjs';
 import { compareSpectra } from '../web/lib/spectral-library.js';
-import { createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setGateGeometry } from '../web/lib/workspace.js';
+import { ROOT, createWorkspace, addGates, addCompensation, addDerived, addSamples, sampleFromDataset, setCollection, setGateGeometry } from '../web/lib/workspace.js';
 import { importGatingML } from '../web/lib/gatingml.js';
 import { peacoQC, peacoQCChannel, peacoQCLayout, flowRateCheck } from '../web/lib/qc.js';
 import { autoGateControl, referenceSpectrum, extractAutofluorescence, spectralSpreading, unmixOLS, unmixWithAutofluorescence } from '../web/lib/spectral.js';
-import { agreement, crossValidate, fitNoise, predictedSpreading, spreadModel } from '../web/lib/spread.js';
-import { INSTRUMENTS } from '../web/lib/simulate.js';
+import { agreement, crossValidate, fitNoise, noiseRecord, predictedSpreading, spreadModel } from '../web/lib/spread.js';
+import { FLUOROCHROMES, INSTRUMENTS } from '../web/lib/simulate.js';
 import { dnaHistogram, fitDeanJettFox, fitWatsonPragmatic } from '../web/lib/cellcycle.js';
 import { fitProliferation } from '../web/lib/proliferation.js';
 import { flowsom, mapToSOM, hclust, cutTree, distanceMatrix } from '../web/lib/flowsom.js';
@@ -402,7 +412,7 @@ function deidentifyChecks(suite, label, files) {
 const suites = {
   fcs() {
     const all = [];
-    for (const id of ['pbmc-immunophenotyping', 'flowjo-workspace', 'spectral-25color', 'cell-cycle', 'proliferation', 'calcium-flux', 'plate-screen', 'bead-immunoassay', 'cytof-cohort', 'cytof-barcoded', 'index-sort', 'qc-showcase', 'bead-qc', 'titration-voltage']) {
+    for (const id of CERTIFICATE_EXAMPLES) {
       const { files } = generateExample(id, { scale: 0.05 });
       all.push(...files);
       let problems = 0;
@@ -3296,6 +3306,365 @@ const suites = {
     let worst = 0;
     for (const x of [-1000, 0, 10, 1000, 100000]) worst = Math.max(worst, Math.abs(logicle.forward(x) - fasinh.forward(x)));
     check('reference', 'logicle with W = 0 equals Gating-ML fasinh (Moore & Parks 2012)', `max difference ${worst.toExponential(1)}`, worst < 1e-12, '< 1e-12');
+  },
+  async certificates() {
+    // Reproducibility certificates (R8): every example certified (its suggested gates, a table of
+    // every population and of k-means clusters stored as a channel, a saved comparison where it has
+    // conditions), read back from its archive and verified: every number computed again from the
+    // files must be identical, bit for bit. Then what verification must catch.
+    const started = performance.now();
+    const rows = [];
+    let pbmc = null;
+    for (const id of CERTIFICATE_EXAMPLES) {
+      const example = await certifiableExample(id);
+      const date = new Date('2026-10-07T00:00:00Z');
+      const built = await buildCertificate(example.ws, example.source, { version: 'validation', date });
+      const again = await buildCertificate(example.ws, example.source, { version: 'validation', date });
+      const report = await verifyCertificate(await readCertificate(built.bytes), { version: 'validation' });
+      const sameBytes = built.bytes.length === again.bytes.length && built.bytes.every((b, i) => b === again.bytes[i]);
+      rows.push({ id, verdict: report.verdict, numbers: built.certificate.total, same: report.numbers.same, comparisons: built.certificate.numbers.comparisons.length, warnings: built.warnings.length, sameBytes, fingerprint: built.certificate.fingerprint === again.certificate.fingerprint });
+      if (id === 'pbmc-immunophenotyping') pbmc = { example, built };
+    }
+    const total = rows.reduce((n, r) => n + r.numbers, 0);
+    check('certificates', `the ${rows.length} examples certified (suggested gates; a table of each population's % of parent and of clusters stored as a channel; a saved comparison where there are conditions), read back and verified: every number computed again from the files`, `${rows.filter((r) => r.verdict === 'confirmed').length} of ${rows.length} confirmed; ${total.toLocaleString('en-US')} numbers identical bit for bit (${rows.reduce((n, r) => n + r.comparisons, 0)} comparisons)`, rows.every((r) => r.verdict === 'confirmed' && r.same === r.numbers && r.warnings === 0), 'all confirmed');
+    check('certificates', 'the same analysis certified twice at the same time: the same archive, byte for byte, and the same fingerprint', `${rows.filter((r) => r.sameBytes && r.fingerprint).length} of ${rows.length}`, rows.every((r) => r.sameBytes && r.fingerprint), 'all');
+    // What verification must catch, on the PBMC example.
+    const { example, built } = pbmc;
+    const tampered = async (change) => {
+      const read = await readCertificate(built.bytes);
+      change(read);
+      return verifyCertificate(read, { version: 'validation' });
+    };
+    const flipped = await tampered((read) => {
+      const input = read.certificate.inputs.find((i) => /D03_Stim/.test(i.fileName));
+      const copy = read.files.get(input.path).slice();
+      copy[copy.length - 7] ^= 0x10;
+      read.files.set(input.path, copy);
+    });
+    // A gate's geometry moved by a fraction of its values (a polygon's x, a range's limits).
+    const nudge = (geometry, f) => (geometry.vertices ? { ...geometry, vertices: geometry.vertices.map(([a, b]) => [a * (1 + f), b]) } : { ...geometry, min: geometry.min * (1 + f), max: geometry.max * (1 + f) });
+    const gate = await tampered((read) => {
+      const g = read.ws.gates.find((x) => x.geometry?.vertices);
+      read.ws = { ...read.ws, gates: read.ws.gates.map((x) => (x === g ? { ...x, geometry: nudge(g.geometry, 0.01) } : x)) };
+    });
+    const log = await tampered((read) => {
+      read.ws = { ...read.ws, provenance: read.ws.provenance.map((e, i) => (i === 2 ? { ...e, time: '2026-01-01T00:00:00.000Z' } : e)) };
+    });
+    const dropped = await tampered((read) => {
+      read.ws = { ...read.ws, provenance: read.ws.provenance.filter((_, i) => i !== 1) };
+    });
+    const channel = await tampered((read) => {
+      const path = read.certificate.derivedInputs[0].path;
+      const copy = read.files.get(path).slice();
+      copy[3] ^= 0x40;
+      read.files.set(path, copy);
+    });
+    const number = await tampered((read) => {
+      read.certificate.numbers.tables[0].samples[4].values[1] = 12.5;
+    });
+    const caught = [
+      ['a bit of one FCS file', flipped.verdict === 'differs' && flipped.inputs.filter((i) => i.status === 'changed').length === 1],
+      ['a gate moved by 1%', gate.verdict === 'differs' && gate.numbers.differ.length > 0],
+      ['a log entry\'s time', log.verdict === 'differs' && log.log.broken[0]?.index === 2],
+      ['a log entry removed', dropped.verdict === 'differs' && !dropped.log.ok],
+      ['a bit of a stored channel', channel.verdict === 'differs' && channel.derived.some((d) => d.status === 'changed')],
+      ['a certified number', number.verdict === 'differs' && !number.fingerprint.ok],
+    ];
+    check('certificates', 'changes verification must catch: a bit of an FCS file, a gate moved by 1%, a log entry\'s time changed or an entry removed, a bit of a stored channel, a number edited in certificate.json', `${caught.filter(([, ok]) => ok).length} of ${caught.length} caught; the moved gate changes ${gate.numbers.differ.length} numbers${caught.some(([, ok]) => !ok) ? `; missed: ${caught.filter(([, ok]) => !ok).map(([what]) => what).join(', ')}` : ''}`, caught.every(([, ok]) => ok), 'all caught');
+    // Without the data: incomplete until the files are supplied (recognized by checksum).
+    const fullSize = built.bytes.length;
+    const withoutData = await buildCertificate(example.ws, example.source, { version: 'validation', includeData: false });
+    const missing = await verifyCertificate(await readCertificate(withoutData.bytes), { version: 'validation' });
+    const supplied = await verifyCertificate(await readCertificate(withoutData.bytes), { version: 'validation', data: example.files });
+    check('certificates', 'a certificate without its FCS files: incomplete, then confirmed once the files are supplied', `${(withoutData.bytes.length / 1024).toFixed(0)} kB instead of ${(fullSize / 1e6).toFixed(1)} MB; ${missing.verdict}, then ${supplied.verdict}`, missing.verdict === 'incomplete' && supplied.verdict === 'confirmed', 'incomplete, then confirmed');
+    // A saved comparison the analysis no longer gives is reported when certifying.
+    const moved = example.ws.gates.at(-1);
+    const changed = { ...example.ws, gates: example.ws.gates.map((g) => (g.id === moved.id ? { ...g, geometry: nudge(g.geometry, 0.05) } : g)) };
+    const stale = await buildCertificate(changed, example.source, { version: 'validation' });
+    check('certificates', 'a saved comparison the analysis no longer gives (its gate moved after saving) is reported when certifying', stale.warnings[0] ?? 'no warning', stale.warnings.length === 1 && /no longer matches/.test(stale.warnings[0]), 'reported');
+    check('certificates', 'time: 14 examples certified twice and verified, and the checks above', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+  async reviews() {
+    // Review reports (R9): every example's report (its gates drawn in every sample, a table, a
+    // saved comparison, a gating-strategy figure). Every traced number is checked against the
+    // window's own functions on views prepared as the window prepares them (populationSize,
+    // tableCells, exportScene), not against the certificate code that made it, and as shown; and
+    // the page refers to nothing outside itself.
+    const started = performance.now();
+    const rows = [];
+    for (const id of CERTIFICATE_EXAMPLES) {
+      const example = await certifiableExample(id);
+      let ws = example.ws;
+      const donor = ws.samples.find((s) => s.role === 'sample') ?? ws.samples[0];
+      const deepest = ws.gates.filter((g) => g.type !== 'boolean' && g.type !== 'category').at(-1);
+      if (deepest) ws = setCollection(ws, 'figures', [gatingStrategyFigure(ws, deepest.id, donor.id)], 'add-figure');
+      const { html } = await buildReviewReport(ws, example.source, { version: 'validation', date: new Date('2026-10-07T00:00:00Z') });
+      // The window's numbers: every sample loaded as the window loads it.
+      const views = new Map();
+      for (const sample of ws.samples) {
+        const dataset = parseFCS(example.source.fcs(sample)).datasets[sample.datasetIndex ?? 0];
+        const columns = [];
+        for (const d of ws.derived ?? []) for (const [name, ref] of Object.entries(d.files?.[sample.id] ?? {})) {
+          const bytes = example.source.derived(ref.sha256);
+          columns.push({ name, column: new Float32Array(bytes.slice().buffer), version: ref.sha256.slice(0, 16) });
+        }
+        views.set(sample.id, workspaceView(ws, sample, dataset, columns));
+      }
+      const viewOf = (sampleId) => views.get(sampleId) ?? null;
+      const cellsOf = new Map(ws.tables.map((t) => [t.id, tableCells(ws, t, viewOf)]));
+      const traced = [...html.matchAll(/<button type="button" class="n[^"]*" data-k="([^"]+)" data-v="([^"]*)">([^<]*)<\/button>/g)].map((m) => ({ key: m[1].replace(/&amp;/g, '&'), value: JSON.parse(m[2].replace(/&quot;/g, '"').replace(/&amp;/g, '&')), text: m[3].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') }));
+      let checked = 0;
+      let wrong = 0;
+      let shownWrong = 0;
+      const scenes = new Map();
+      const sceneOf = (sampleId, gate) => {
+        const key = `${sampleId}|${gate.parentId ?? ROOT}|${gate.dims[0].channel}|${gate.dims[1]?.channel ?? ''}`;
+        if (!scenes.has(key)) scenes.set(key, exportScene(ws, viewOf(sampleId), { populationId: gate.parentId ?? ROOT, x: gate.dims[0].channel, y: gate.dims[1]?.channel ?? null, type: gate.dims[1] ? 'pseudocolor' : 'histogram', options: {} }, { width: 250, height: 230, theme: 'light' }));
+        return scenes.get(key);
+      };
+      for (const n of traced) {
+        const [kind, a, b, c] = n.key.split('|');
+        let value;
+        let shown;
+        if (kind === 'count') {
+          value = populationSize(viewOf(a), ws, b);
+          shown = value.toLocaleString('en-US');
+        } else if (kind === 'plot') {
+          const gate = ws.gates.find((g) => g.id === b);
+          const g = sceneOf(a, gate).gates.find((x) => x.id === b);
+          value = g.frequency;
+          shown = g.label;
+        } else if (kind === 'table' || kind === 'table-status') {
+          const table = ws.tables.find((t) => t.id === a);
+          const cell = cellsOf.get(a).cell(Number(c), b);
+          value = kind === 'table' ? cell.value : cell.status;
+          shown = kind === 'table' ? formatStatistic(table.columns[Number(c)].stat, cell.value) : cell.tag;
+        } else continue;
+        checked += 1;
+        if (n.value !== value) wrong += 1;
+        if (n.text !== shown) shownWrong += 1;
+      }
+      const comparisons = traced.filter((n) => n.key.startsWith('comparison|')).length;
+      const outside = [...html.matchAll(/\s(?:src|href)="([^"]*)"/g)].map((m) => m[1]).filter((u) => !u.startsWith('data:') && !u.startsWith('#') && !u.startsWith('https://doi.org/'));
+      const loads = /<link\b|<script[^>]+src=|@import|url\((?!#)|<iframe|<object|<embed/i.test(html) || outside.length > 0;
+      rows.push({ id, checked, wrong, shownWrong, comparisons, loads, bytes: html.length });
+    }
+    const all = rows.reduce((n, r) => n + r.checked, 0);
+    check('reviews', `the ${rows.length} examples' review reports: every count, table cell and plot percentage they print equal to the window's own (populationSize, tableCells, exportScene on views prepared as the window prepares them), and shown as the window shows it`, `${all.toLocaleString('en-US')} numbers: ${rows.reduce((n, r) => n + r.wrong, 0)} differ, ${rows.reduce((n, r) => n + r.shownWrong, 0)} shown otherwise; and ${rows.reduce((n, r) => n + r.comparisons, 0)} numbers of comparisons`, rows.every((r) => r.wrong === 0 && r.shownWrong === 0 && r.checked > 0), 'all equal');
+    check('reviews', 'each report self-contained: no stylesheet, script, frame, font or image from outside (only data: URIs and in-page references; DOI links are followed only when clicked)', `${rows.filter((r) => !r.loads).length} of ${rows.length}; ${(rows.reduce((n, r) => n + r.bytes, 0) / rows.length / 1e6).toFixed(1)} MB on average`, rows.every((r) => !r.loads), 'all');
+    check('reviews', 'time: 14 examples reported (every sample\'s gates drawn) and checked', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+  async fmo() {
+    // Virtual FMOs (C4) against real FMO controls. In the simulations the FMO tubes hold the same
+    // donor's cells, so the prediction from the donor's stained sample is compared with them. In
+    // the public data the FMO tubes hold other cells than the stained samples (a pool, another
+    // tissue), so each tube predicts its own omitted channel from its own events: the comparison
+    // is then of the model alone. Distances are on the channel's display scale (logicle), in % of
+    // the axis; the unstained control's 99.5th percentile, the usual stand-in, is shown beside.
+    const started = performance.now();
+    const evaluate = (c) => {
+      const axis = axisDistance(c.range);
+      const rows = [];
+      for (const [label, populationId] of c.populations) {
+        for (const f of c.fmos) {
+          const fmoView = c.view(f.file);
+          const real = fmoThreshold({ ws: c.ws, view: fmoView, populationId, channel: f.channel });
+          const v = virtualFMO({ ws: c.ws, view: c.view(c.self ? f.file : c.stained), unstained: c.view(c.unstained), populationId, channel: f.channel, record: c.record });
+          const indices = population(fmoView, c.ws, populationId);
+          const x = fmoView.column(f.channel);
+          let above = 0;
+          for (const e of indices ?? x.keys()) if (x[e] > v.threshold) above += 1;
+          const share = (100 * above) / (indices ? indices.length : x.length);
+          // Where many of the FMO's events pass the threshold: how much the channel leans with
+          // another (compensation or unmixing error, which spread does not predict).
+          let lean = null;
+          if (share > 1.5) {
+            const ids = indices ?? Array.from(x.keys());
+            const corr = (a, b) => {
+              let ma = 0;
+              let mb = 0;
+              for (const e of ids) {
+                ma += a[e];
+                mb += b[e];
+              }
+              ma /= ids.length;
+              mb /= ids.length;
+              let ab = 0;
+              let aa = 0;
+              let bb = 0;
+              for (const e of ids) {
+                ab += (a[e] - ma) * (b[e] - mb);
+                aa += (a[e] - ma) ** 2;
+                bb += (b[e] - mb) ** 2;
+              }
+              return ab / Math.sqrt(aa * bb);
+            };
+            lean = c.record.channels.filter((ch) => ch !== f.channel && fmoView.hasChannel(ch)).map((ch) => ({ channel: ch, r: corr(x, fmoView.column(ch)) })).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)).slice(0, 3);
+          }
+          rows.push({ label, marker: f.marker, channel: f.channel, virtual: v.threshold, real: real.threshold, unstained: v.unstainedThreshold, error: axis(v.threshold, real.threshold), unstainedError: axis(v.unstainedThreshold, real.threshold), above: share, lean, top: v.contributions[0] });
+        }
+      }
+      return rows;
+    };
+    const describe = (rows) => rows.map((r) => `${r.marker}${r.label !== 'Cells' && r.label !== 'Live cells' ? ` (${r.label})` : ''} ${r.error >= 0 ? '+' : ''}${fmt(r.error, 2)}% [unstained ${r.unstainedError >= 0 ? '+' : ''}${fmt(r.unstainedError, 2)}%], ${fmt(r.above, 2)}% above`).join('; ');
+    const mean = (rows) => rows.reduce((a, r) => a + Math.abs(r.error), 0) / rows.length;
+    const worst = (rows) => Math.max(...rows.map((r) => Math.abs(r.error)));
+    for (const [c, tolerance] of [[simulatedConventional(), 3], [simulatedSpectral(), 3]]) {
+      const rows = evaluate(c);
+      check('fmo', `${c.name}: ${c.fmos.length} markers' virtual FMO from the donor's stained sample against the same donor's FMO tube, ${c.populations.map(([l]) => l).join(' and ')} (99.5th percentile; distance on the display scale, % of the axis; and the share of the FMO's events above the predicted threshold, 0.5% if exact)`, `${describe(rows)}; mean |distance| ${fmt(mean(rows), 2)}%`, worst(rows) <= tolerance, `within ${tolerance}% of the axis`);
+      const leaning = rows.filter((r) => r.lean);
+      if (leaning.length) check('fmo', `${c.name}: where more than 1.5% of the FMO's events pass the threshold, the FMO's channel leans with others (compensation error from the controls' matrix, which a spread model does not predict and a real FMO shows)`, leaning.map((r) => `${r.marker} (${r.label}, ${fmt(r.above, 2)}% above): r = ${r.lean.map((l) => `${fmt(l.r, 2)} with ${l.channel}`).join(', ')}`).join('; '), leaning.every((r) => Math.abs(r.lean[0].r) > 0.08), '|r| > 0.08 with another channel');
+      check('fmo', `${c.name}: the unstained control alone as the threshold, for comparison`, `mean |distance| ${fmt(rows.reduce((a, r) => a + Math.abs(r.unstainedError), 0) / rows.length, 2)}%, worst ${fmt(Math.max(...rows.map((r) => Math.abs(r.unstainedError))), 2)}%; the virtual FMO closer in ${rows.filter((r) => Math.abs(r.error) < Math.abs(r.unstainedError)).length} of ${rows.length}`, true, 'reported');
+    }
+    const fortessa = skull(dataset('zenodo-skull'), dataset('zenodo-skull-fmo'));
+    const fortessaRows = evaluate(fortessa);
+    check('fmo', `${fortessa.name}: ${fortessa.fmos.length} FMO tubes with one dye clearly omitted, each predicting its own channel from its own events (cells; spread fitted to the 15 bead controls); left out: ${fortessa.excluded.join('; ')}`, `${describe(fortessaRows)}; mean |distance| ${fmt(mean(fortessaRows), 2)}%, worst ${fmt(worst(fortessaRows), 2)}%`, fortessa.fmos.length >= 6 && mean(fortessaRows) <= 8 && worst(fortessaRows) <= 15, 'mean within 8%, worst 15% of the axis');
+    const aurora = omip(dataset('omip-tdln'));
+    const auroraRows = evaluate(aurora);
+    check('fmo', `${aurora.name}: ${aurora.fmos.length} pooled FMO tubes, each predicting its own channel (live cells; unmixed with autofluorescence signatures; spread fitted to the 25 bead references); left out: ${aurora.excluded.join('; ')}`, `${describe(auroraRows)}; mean |distance| ${fmt(mean(auroraRows), 2)}%, worst ${fmt(worst(auroraRows), 2)}%`, aurora.fmos.length >= 4 && mean(auroraRows) <= 10 && worst(auroraRows) <= 20, 'mean within 10%, worst 20% of the axis');
+    check('fmo', 'time: two simulated panels and two public ones, every virtual FMO and real threshold', `${fmt((performance.now() - started) / 1000, 3)} s`, true, 'reported');
+  },
+
+  // The panel optimizer (S9). Small panels have a known optimum under the model (every assignment
+  // tried); the simulator stains any assignment, so the best assignment is also known by
+  // measurement: each marker's resolution on cells carrying its co-expressed markers, unmixed or
+  // compensated as the panel would be (panel-cases.mjs). The model's cost is compared with the
+  // measured one across assignments, the optimum's spread with its own controls, and on the public
+  // Aurora panel (Zenodo 20644656) the spread a design predicts with noise fitted to other dyes'
+  // controls against the controls of the dyes it uses.
+  async panel() {
+    const started = performance.now();
+    const problemOf = (inputs, markers, groups) => ({ markers, groups, dyes: inputs.dyes, detectors: inputs.detectors, noise: inputs.noise, background: inputs.background, signalScale: inputs.signalScale, square: inputs.square });
+    const random = createRandom(17);
+
+    // 1. The search: local search (as for large panels) against every assignment.
+    const searches = [];
+    for (const conventional of [false, false, false, false, true, true]) {
+      const pool = conventional ? T_PANEL.conventional : T_PANEL.spectral;
+      const dyes = pool.filter(() => random() < 0.9).slice(0, 8);
+      const inputs = instrumentInputs({ conventional, dyes });
+      const markers = Array.from({ length: 6 }, (_, k) => ({ name: `M${k + 1}`, level: ['high', 'medium', 'low'][Math.floor(random() * 3)] }));
+      const names = markers.map((m) => m.name);
+      const groups = [{ name: 'A', markers: names.filter(() => random() < 0.7) }, { name: 'B', markers: names.filter(() => random() < 0.7) }];
+      const input = problemOf(inputs, markers, groups);
+      const exact = searchPanel(panelProblem(input), { exhaustiveLimit: 1e6 });
+      const local = searchPanel(panelProblem(input), { exhaustiveLimit: 0 });
+      searches.push({ conventional, exact, local, same: Math.abs(local.cost - exact.cost) <= 1e-9 * exact.cost });
+    }
+    check('panel', `search: local search (swaps, unused dyes, seeded restarts) against every assignment of 6 markers to 8 dyes (${searches.length} random panels, ${searches.filter((x) => x.conventional).length} conventional)`, `${searches.filter((x) => x.same).length} of ${searches.length} found the optimum (${searches.map((x) => x.exact.assignments).join(', ')} assignments)`, searches.every((x) => x.same), 'all');
+
+    // 2. The model against the measured resolution: the optimum, the classical rule (the dimmest
+    // marker on the brightest dye) and 24 random assignments, stained in the simulator.
+    const markers = T_PANEL.markers.map((m) => ({ ...m, value: levelValue(m.level) }));
+    const ranking = {};
+    for (const conventional of [false, true]) {
+      const kind = conventional ? 'conventional (LSRFortessa, compensated)' : 'spectral (Aurora, unmixed)';
+      const inputs = instrumentInputs({ conventional, dyes: conventional ? T_PANEL.conventional : T_PANEL.spectral });
+      const input = problemOf(inputs, T_PANEL.markers, T_PANEL.groups);
+      const p = panelProblem(input);
+      const exact = searchPanel(p, { exhaustiveLimit: 3e6, keep: 10 });
+      const local = searchPanel(panelProblem(input), { exhaustiveLimit: 0 });
+      const byMarker = (a) => Object.fromEntries(Array.from(a, (i, b) => [p.markers[b].name, p.names[i]]));
+      const design = designPanel(input);
+      const candidates = [['optimum', exact.assignment], ['rule', assignmentFrom(p, design.rule.byMarker)]];
+      for (let k = 0; k < 24; k += 1) {
+        const order = [...p.names.keys()];
+        for (let i = order.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(random() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        candidates.push([`random ${k + 1}`, Int32Array.from(order.slice(0, markers.length))]);
+      }
+      const rows = candidates.map(([name, a]) => ({ name, predicted: assignmentCost(p, a), measured: measureAssignment({ markers, groups: T_PANEL.groups, assignment: byMarker(a), conventional }) }));
+      const r = pearson(rows.map((x) => Math.log(x.predicted)), rows.map((x) => Math.log(x.measured.cost)));
+      const errors = rows.map((x) => Math.abs(x.measured.cost / x.predicted - 1)).sort((a, b) => a - b);
+      const best = [...rows].sort((a, b) => a.measured.cost - b.measured.cost)[0];
+      const optimum = rows[0];
+      const rule = rows[1];
+      check('panel', `${kind}: the model's cost (Σ σ²/ΔF² of 8 markers, 3 of them dim, on CD4 and CD8 T cells) against the cost measured on stained, ${conventional ? 'compensated' : 'unmixed'} cells, for the optimum, the classical rule and 24 random assignments of 10 dyes`, `r = ${fmt(r, 4)} (log), median error ${fmt(100 * errors[Math.floor(errors.length / 2)], 1)}%, largest ${fmt(100 * errors[errors.length - 1], 1)}%`, r > 0.98 && errors[Math.floor(errors.length / 2)] < 0.1, 'r > 0.98, median error < 10%');
+      check('panel', `${kind}: the optimum (${exact.assignments} assignments tried; local search ${Math.abs(local.cost - exact.cost) <= 1e-9 * exact.cost ? 'finds it too' : 'misses it'}) measures best of the 26`, `measured best: ${best.name}; optimum ${optimum.measured.cost.toExponential(3)}, rule ${rule.measured.cost.toExponential(3)} (×${fmt(rule.measured.cost / optimum.measured.cost, 2)}), best random ×${fmt(Math.min(...rows.slice(2).map((x) => x.measured.cost)) / optimum.measured.cost, 2)}`, best.name === 'optimum' && Math.abs(local.cost - exact.cost) <= 1e-9 * exact.cost, 'the optimum, found by local search too');
+      const dim = optimum.measured.markers.filter((x) => levelValue(T_PANEL.markers.find((m) => m.name === x.marker).level) <= 1e3);
+      check('panel', `${kind}: the dim markers' measured stain index, optimum vs the classical rule`, dim.map((x) => `${x.marker} ${x.dye} ${fmt(x.stainIndex, 1)} vs ${rule.measured.markers.find((y) => y.marker === x.marker).dye} ${fmt(rule.measured.markers.find((y) => y.marker === x.marker).stainIndex, 1)}`).join('; '), true, 'reported');
+      // The model's 10 best, measured with more cells: are they told apart?
+      const top = exact.top.map((t) => ({ predicted: t.cost, measured: measureAssignment({ markers, groups: T_PANEL.groups, assignment: byMarker(t.dyeOf), conventional, events: 6000, seed: 23 }).cost }));
+      const measuredBest = Math.min(...top.map((x) => x.measured));
+      check('panel', `${kind}: the model's 10 best assignments (predicted within ${fmt(100 * (top[top.length - 1].predicted / top[0].predicted - 1), 1)}% of each other) measured: the optimum against the best of them`, `optimum ${fmt(100 * (top[0].measured / measuredBest - 1), 2)}% above the measured best`, top[0].measured <= measuredBest * 1.03, 'within 3% (measurement noise)');
+      ranking[conventional ? 'conventional' : 'spectral'] = { design, p };
+    }
+
+    // 3. The design against its run: the optimum's dyes as single-stain controls, unmixed with
+    // their spectra; their spreading matrix against the spread the design predicted.
+    {
+      const { design } = ranking.spectral;
+      const run = simulatedControls(design.spread.names);
+      const c = compareWithRun(design.spread, run);
+      check('panel', `spectral: the design's predicted spread against its own simulated controls (${c.measurable} entries measured to 4 SE)`, `×${fmt(c.medianRatio, 3)}, ${fmt(100 * c.within2x, 0)}% within 2×, r = ${fmt(c.correlation, 3)}`, c.within2x > 0.9, '> 90% within 2×');
+    }
+
+    // 4. A 25-color panel on the simulator's 29 dyes: seeds against a search four times longer.
+    {
+      const dyes = Object.keys(FLUOROCHROMES).filter((f) => !['AF', 'AFM', 'CTV', 'PI', 'Indo-1 (Ca-bound)', 'Indo-1 (free)'].includes(f));
+      const inputs = instrumentInputs({ dyes });
+      const input = problemOf(inputs, PBMC_25.markers, PBMC_25.groups);
+      const t0 = performance.now();
+      const runs = [1, 2].map((seed) => designPanel(input, { seed }));
+      const seconds = (performance.now() - t0) / 2000;
+      const long = designPanel(input, { seed: 3, restarts: 12, perturbations: 80, budget: 160000 });
+      const gaps = runs.map((x) => x.cost / long.cost - 1);
+      check('panel', `25 markers on ${dyes.length} dyes (the spectral example's markers on PBMC, 4 groups): two seeds against a search 4× longer`, `${gaps.map((g) => `${fmt(100 * g, 2)}%`).join(', ')} above it; ${fmt(seconds, 1)} s per design; the classical rule ×${fmt(runs[0].rule.cost / runs[0].cost, 1)}`, gaps.every((g) => g < 0.02), 'within 2%');
+    }
+    check('panel', 'time: simulated designs, rankings and runs', `${fmt((performance.now() - started) / 1000, 1)} s`, true, 'reported');
+
+    // 5. A real instrument: the 25 bead reference controls of the public Aurora panel. Controls the
+    // reference check flags as mixtures (dim and bright positives of different spectra, as a
+    // degraded tandem gives) are left out: their spread is not noise.
+    const { detectors, controls: all } = omipControls(dataset('omip-tdln'));
+    const flagged = [];
+    const controls = all.filter((c) => {
+      const q = referenceSpectrum(c.cols, detectors, c.gate.positive, c.gate.negative, {}).quality;
+      if (q.heterogeneity >= 0.98) return true;
+      flagged.push(`${c.name} (similarity ${fmt(q.heterogeneity, 2)})`);
+      return false;
+    });
+    const observe = (list) => spectralSpreading(list.map((c, i) => ({ fluorochrome: i, abundances: unmixOLS(c.cols, list.map((x) => ({ name: x.name, spectrum: x.spectrum })), { residuals: false }), positive: c.gate.positive, negative: c.gate.negative })), list.map((c) => c.name));
+    const modelOf = (list) => spreadModel({ names: list.map((c) => c.name), detectors, spectra: list.map((c) => c.spectrum) });
+    const loo = crossValidate(modelOf(controls), observe(controls).observations);
+    check('panel', `Cytek Aurora (Zenodo 20644656): each of ${controls.length} bead controls' spread predicted from the others (${loo.measurable} entries measured to 4 SE; left out as mixtures: ${flagged.join(', ') || 'none'})`, `×${fmt(loo.medianRatio, 3)}, ${fmt(100 * loo.within2x, 0)}% within 2×, r = ${fmt(loo.correlation, 3)}`, true, 'reported');
+    const splits = [['even', 0], ['odd', 1]].map(([label, parity]) => {
+      const fitted = controls.filter((_, k) => k % 2 === parity);
+      const panel = controls.filter((_, k) => k % 2 !== parity);
+      const model = modelOf(fitted);
+      const noise = noiseRecord(model, fitNoise(model, observe(fitted).observations));
+      const p = panelProblem({ markers: [{ name: 'any', level: 'high' }], dyes: panel.map((c) => ({ name: c.name, spectrum: c.spectrum })), detectors, noise });
+      const all = Int32Array.from(panel.keys());
+      const spread = spreadOfSet(p, all.slice(0, p.N));
+      const c = compareWithRun(spread ?? { names: [], photon: [], laser: [] }, observe(panel));
+      return { label, fitted: fitted.length, panel: panel.length, ...c };
+    });
+    check('panel', `Cytek Aurora: a ${splits[0].panel}-dye panel's spread predicted with noise fitted to the other ${splits[0].fitted} dyes' controls, against its own controls unmixed with only its spectra (and the other way round)`, splits.map((x) => `${x.measurable} entries: ×${fmt(x.medianRatio, 2)}, ${fmt(100 * x.within2x, 0)}% within 2×, r = ${fmt(x.correlation, 2)}`).join('; '), splits.every((x) => x.within2x > 0.6 && x.correlation > 0.7), '> 60% within 2× and r > 0.7 each way');
+  },
+  // The examples as demonstrations (example-cases.mjs): what each was given so that, together, they
+  // show every analysis, checked against the simulator's truth or the program whose file it carries.
+  async examples() {
+    const pbmc = pbmcAdditions(0.3);
+    check('examples', 'PBMC: an FMO tube without CD25-PE (99th percentile of lymphocytes in PE-A after compensation, FMO against the stained sample)', `${pbmc.fmo.role}; ${fmt(pbmc.fmo.p99, 0)} vs ${fmt(pbmc.fmo.stainedP99, 0)}`, pbmc.fmo.role === 'fmo' && pbmc.fmo.p99 < 0.25 * pbmc.fmo.stainedP99, 'role fmo; below a quarter of the stained');
+    check('examples', 'PBMC: rainbow beads calibrated with their datasheet (lib/calibration.js), against each detector\'s true response: slope and the MEF of a signal of 20 000', pbmc.calibration.map((c) => `${c.channel} slope ${fmt(c.slope, 4)}, ${fmt(100 * c.error, 2)}%`).join('; '), pbmc.beads.role === 'bead' && pbmc.calibration.length === 5 && pbmc.calibration.every((c) => Math.abs(c.slope - 1) < 0.02 && Math.abs(c.error) < 0.02), 'slope within 0.02 of 1, MEF within 2%');
+    const day2 = Object.values(pbmc.batches).filter((b) => b.batch === 'B2');
+    const largest = Math.max(...Object.entries(day2[0]?.gains ?? {}).map(([, g]) => Math.abs(Math.log(g))));
+    check('examples', 'PBMC: donors D04–D06 on a second day, every detector\'s gain changed once for the batch (D01 unchanged)', `D01 ${pbmc.batches['D01_Unstim.fcs'].batch}; D04 and D06 ${day2.map((b) => b.batch).join(', ')}, the same gains: ${JSON.stringify(day2[0]?.gains) === JSON.stringify(day2[1]?.gains)}; largest change ×${fmt(Math.exp(largest), 2)}`, pbmc.batches['D01_Unstim.fcs'].batch === 'B1' && !pbmc.batches['D01_Unstim.fcs'].gains && day2.length === 2 && JSON.stringify(day2[0].gains) === JSON.stringify(day2[1].gains) && largest > 0.1, 'B2 with shared gains, at least one ×1.1');
+    const counts = absoluteCounts();
+    check('examples', 'absolute counts: CD4 T cells per µL from the example\'s gates and its counting beads, against each patient\'s truth', counts.map((c) => `${c.patient} ${fmt(c.perUL, 0)} vs ${c.truth} (${c.beads} beads)`).join('; '), counts.length === 3 && counts.every((c) => Math.abs(c.perUL / c.truth - 1) < 0.06 && c.beads > 5000), 'within 6%, over 5000 beads each');
+    const a = await exampleAttachments(0.3);
+    const divaWorst = Math.max(...a.diva.rows.map((r) => Math.abs(r.relative ?? 0)));
+    check('examples', 'index sort: its FACSDiva experiment (XML) imported, every population counted in the window against Diva\'s count (on its 256-step grid)', `${a.diva.matched} of ${a.diva.total} tubes matched; ${a.diva.rows.filter((r) => r.agree).length} of ${a.diva.rows.length} counts agree, worst ${fmt(100 * divaWorst, 2)}%`, a.diva.matched === 2 && a.diva.rows.length >= 16 && a.diva.rows.every((r) => r.agree) && divaWorst < 0.02 && !a.diva.warnings.length, 'both tubes, all agree, within 2%');
+    check('examples', 'index sort: the presort file\'s DATA end offset, one byte past the data, corrected and reported', a.repair.join(', ') || 'nothing reported', a.repair.includes('end-offset'), 'end-offset reported');
+    check('examples', 'FlowJo example: its FlowJo 11 workbench (.flowjo) imported, every population counted against the count in the workbench', `${a.flowjo11.matched} of ${a.flowjo11.total} samples; ${a.flowjo11.rows.filter((r) => r.difference === 0).length} of ${a.flowjo11.rows.length} counts equal`, a.flowjo11.matched === 4 && a.flowjo11.rows.length >= 50 && a.flowjo11.rows.every((r) => r.difference === 0) && !a.flowjo11.warnings.length, 'all 4 samples, every count equal');
+    check('examples', 'spectral example: its SpectroFlo experiment (.Expt) read, each control matched to its file and gated on its dye\'s peak detector', `${a.spectroflo.references} references; ${a.spectroflo.matched} of ${a.spectroflo.rows} controls matched; ${a.spectroflo.gatedOnPeak} gated on the peak`, a.spectroflo.references === 25 && a.spectroflo.matched === a.spectroflo.rows && a.spectroflo.rows === 26 && a.spectroflo.gatedOnPeak === 25, '25 references, 26 of 26 matched, all on the peak');
+    check('examples', 'cell cycle: the third culture\'s CSV events read as events', `${a.csv.datasets} data set, ${a.csv.eventCount} of ${a.csv.expected} rows, channels ${a.csv.channels.join(', ')}`, a.csv.events && a.csv.datasets === 1 && a.csv.eventCount === a.csv.expected && a.csv.channels.length === 5, 'one data set, every row, 5 channels');
+    check('examples', 'PBMC: the donors\' annotation table (CSV) covers every stained sample', `${a.annotations.rows} rows, columns ${a.annotations.header.join(', ')}`, a.annotations.covers && a.annotations.header.join() === 'sample,age,sex,cmv', 'every stained sample and the FMO');
+    const doctor = spectralDayTwo(0.5);
+    check('examples', 'spectral day 2: the unmixing doctor names both planted faults on each donor, with day 1\'s references as the library (and nothing else)', doctor.donors.map((d) => `${d.donor}: ${d.findings.join(', ')}`).join('; '), doctor.donors.length === 2 && doctor.donors.every((d) => d.findings.length === 2 && d.findings.includes('degraded-tandem:PE-Cy7') && d.findings.includes('wrong-reference:APC')), 'degraded-tandem:PE-Cy7 and wrong-reference:APC');
+    check('examples', 'spectral day 2: today\'s controls compared with day 1\'s library flag exactly the two faulty ones', doctor.changed.join(', ') || 'none', doctor.changed.length === 2 && doctor.changed.includes('PE-Cy7') && doctor.changed.includes('APC'), 'PE-Cy7 and APC');
   },
 };
 

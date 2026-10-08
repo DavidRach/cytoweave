@@ -85,7 +85,7 @@ type remoteResult struct {
 }
 
 // Actions that can run for a long time (analyses over many samples).
-var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "differential_analysis": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "diagnose_unmixing": true, "kinetics": true, "plate": true, "dose_response": true, "bead_assay": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true, "export_report": true, "export_events": true, "apply_template": true}
+var longActions = map[string]bool{"open_files": true, "open_example": true, "statistics_table": true, "review_gate": true, "adapt_gate": true, "compare": true, "differential_analysis": true, "check_robustness": true, "propose_compensation": true, "run_qc": true, "unmix": true, "diagnose_unmixing": true, "kinetics": true, "plate": true, "dose_response": true, "bead_assay": true, "explore": true, "export_flowjo": true, "export_fcs": true, "export_figure": true, "export_table": true, "export_report": true, "export_events": true, "apply_template": true, "export_certificate": true, "verify_certificate": true, "export_review_report": true, "virtual_fmo": true, "design_panel": true, "check_compensation": true}
 
 func newRemoteHub() *remoteHub {
 	return &remoteHub{
@@ -261,13 +261,18 @@ func (h *remoteHub) serveAction(w http.ResponseWriter, r *http.Request) {
 		defer release()
 		event.Output = output
 	}
-	if request.Action == "open_files" {
+	if request.Action == "open_files" || request.Action == "verify_certificate" {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get(remoteTokenHeader)), []byte(h.token)) != 1 {
-			writeError(w, http.StatusUnauthorized, "Opening files needs the X-CytoWeave-Token header with the token CytoWeave printed when it started.")
+			writeError(w, http.StatusUnauthorized, "Reading files needs the X-CytoWeave-Token header with the token CytoWeave printed when it started.")
 			return
 		}
 		client := event.Client
-		if event, err = h.openEvent(request.Args); err != nil {
+		if request.Action == "open_files" {
+			event, err = h.openEvent(request.Args)
+		} else {
+			event, err = h.verifyEvent(request.Args)
+		}
+		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -295,6 +300,57 @@ func (h *remoteHub) openEvent(args json.RawMessage) (remoteEvent, error) {
 		return remoteEvent{}, errors.New(message)
 	}
 	return remoteEvent{Action: "open_files", Args: args, Files: files}, nil
+}
+
+// verifyEvent registers a certificate ({"path": "/path/to/x.certificate.acs"}) and, when it was
+// written without its data, the FCS files to verify it with ({"data": a folder or paths}); the
+// page reads the certificate as the first file and recognizes the others by their checksums.
+func (h *remoteHub) verifyEvent(args json.RawMessage) (remoteEvent, error) {
+	var params struct {
+		Path string          `json:"path"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil || strings.TrimSpace(params.Path) == "" {
+		return remoteEvent{}, errors.New(`verify_certificate needs {"path": "/path/to/analysis.certificate.acs"} and, for a certificate without its data, "data": a folder with the FCS files`)
+	}
+	if h.open == nil {
+		return remoteEvent{}, errors.New("Reading files by path is not available.")
+	}
+	files, problems := h.open([]string{params.Path})
+	if len(files) != 1 || files[0].Kind != "archive" {
+		message := params.Path + " is not a certificate (an .acs or .zip file)."
+		if len(problems) > 0 {
+			message = problems[0]
+		}
+		return remoteEvent{}, errors.New(message)
+	}
+	var data []string
+	if len(params.Data) > 0 && string(params.Data) != "null" {
+		var one string
+		if json.Unmarshal(params.Data, &one) == nil {
+			data = []string{one}
+		} else if err := json.Unmarshal(params.Data, &data); err != nil {
+			return remoteEvent{}, errors.New(`data is a folder or a list of FCS files`)
+		}
+	}
+	if len(data) > 0 {
+		found, problems := h.open(data)
+		count := 0
+		for _, file := range found {
+			if file.Kind == "fcs" {
+				files = append(files, file)
+				count++
+			}
+		}
+		if count == 0 {
+			message := "No FCS files were found in the data given."
+			if len(problems) > 0 {
+				message = problems[0]
+			}
+			return remoteEvent{}, errors.New(message)
+		}
+	}
+	return remoteEvent{Action: "verify_certificate", Args: args, Files: files}, nil
 }
 
 func (h *remoteHub) respond(w http.ResponseWriter, r *http.Request, event remoteEvent) {

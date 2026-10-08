@@ -24,7 +24,7 @@ import (
 //go:embed web/index.html web/styles.css web/app.js web/favicon.svg web/lib/*.js web/ui/*.js web/workers/*.js
 var content embed.FS
 
-var version = "0.7.0"
+var version = "0.8.0"
 
 type config struct {
 	remote      bool
@@ -68,6 +68,9 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "run" {
 		os.Exit(runHeadless(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "verify" {
+		os.Exit(runVerify(os.Args[2:], os.Stdout, os.Stderr))
 	}
 	cfg, err := parseConfig(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {

@@ -3,7 +3,7 @@
 // color scheme and captures the page. No dependencies beyond Node 22.
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -26,24 +26,44 @@ export function findChrome() {
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// width × height CSS pixels, captured at `scale` device pixels per CSS pixel.
-export async function launch({ width = 1600, height = 1000, scale = 1.25, port = 9333 } = {}) {
+// width × height CSS pixels, captured at `scale` device pixels per CSS pixel. Chrome picks a free
+// debugging port (its profile's DevToolsActivePort file names it), so a Chrome left running by
+// an earlier run cannot be connected to by mistake; give `port` only to fix one.
+export async function launch({ width = 1600, height = 1000, scale = 1.25, port = 0 } = {}) {
   const profile = mkdtempSync(join(tmpdir(), 'cytoweave-capture-'));
   const chrome = spawn(findChrome(), ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb', `--window-size=${width},${height}`, 'about:blank'], { stdio: 'ignore' });
   let page = null;
-  for (let i = 0; i < 100 && !page; i += 1) {
+  // A Chrome that hangs while starting must not hang its caller: each request has a deadline, and
+  // so has the start (a cold start on a CI runner can take tens of seconds).
+  const deadline = Date.now() + 60000;
+  while (!page && Date.now() < deadline) {
     try {
-      page = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === 'page');
+      const active = port || Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]);
+      if (active) page = (await (await fetch(`http://127.0.0.1:${active}/json`, { signal: AbortSignal.timeout(5000) })).json()).find((t) => t.type === 'page');
     } catch { /* not up yet */ }
     if (!page) await sleep(200);
   }
-  if (!page) throw new Error('Chrome did not start.');
+  if (!page) {
+    chrome.kill();
+    throw new Error('Chrome did not start.');
+  }
   const socket = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));
+  const opened = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 15000);
+    socket.addEventListener('open', () => { clearTimeout(timer); resolve(true); }, { once: true });
+    socket.addEventListener('error', () => { clearTimeout(timer); resolve(false); }, { once: true });
+  });
+  if (!opened) {
+    socket.close();
+    chrome.kill('SIGKILL');
+    throw new Error('Chrome did not open its debugging connection.');
+  }
   let next = 1;
   const pending = new Map();
+  const listeners = new Map();
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data);
+    if (message.method) for (const listener of listeners.get(message.method) ?? []) listener(message.params);
     if (!message.id || !pending.has(message.id)) return;
     const { resolve, reject } = pending.get(message.id);
     pending.delete(message.id);
@@ -60,6 +80,11 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
   await send('Runtime.enable');
   return {
     send,
+    // Events of the DevTools protocol (Network.requestWillBeSent, Runtime.exceptionThrown…).
+    on(method, listener) {
+      if (!listeners.has(method)) listeners.set(method, []);
+      listeners.get(method).push(listener);
+    },
     async goto(url, wait = 2500) {
       await send('Page.navigate', { url });
       await sleep(wait);
@@ -79,9 +104,10 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
     },
     async close() {
       const exited = new Promise((resolve) => chrome.once('exit', resolve));
-      try { await send('Browser.close'); } catch { /* closing */ }
+      // A Chrome that hangs answers nothing: ask it to close, wait a little, then end it.
+      send('Browser.close').catch(() => { /* closing */ });
       await Promise.race([exited, sleep(5000)]);
-      chrome.kill();
+      if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill('SIGKILL');
       try { rmSync(profile, { recursive: true, force: true, maxRetries: 5 }); } catch { /* a temporary folder */ }
     },
   };

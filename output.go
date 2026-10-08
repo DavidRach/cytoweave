@@ -17,7 +17,7 @@ import (
 // renamed into place when complete. Each token takes one upload and lasts as long as its action.
 // An existing file is replaced only when the call says overwrite.
 
-var outputActions = map[string]bool{"export_flowjo": true, "export_fcs": true, "export_figure": true, "export_report": true, "export_table": true, "export_events": true, "export_workspace": true}
+var outputActions = map[string]bool{"export_flowjo": true, "export_fcs": true, "export_figure": true, "export_report": true, "export_table": true, "export_events": true, "export_workspace": true, "export_certificate": true, "export_review_report": true}
 
 type remoteOutput struct {
 	path      string

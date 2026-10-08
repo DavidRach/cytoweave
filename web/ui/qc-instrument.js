@@ -7,6 +7,7 @@
 import { h, icon, clear, downloadBlob } from './dom.js';
 import { progressToast, toast } from './overlays.js';
 import { addDerived } from '../lib/workspace.js';
+import { WorkspaceChangedError } from './store.js';
 import { BEAD_PRODUCTS, REJECT_RULES } from '../lib/qb.js';
 import { INSTRUMENT_RECORDS, LJ_METRICS, beadRun, fluorescenceChannels, instrumentOf, ljSeries, mergeRuns, runFlags, seriesRun, withRun } from '../lib/instrument-record.js';
 
@@ -73,6 +74,7 @@ export function createInstrumentSection(ctx) {
     S.busy = true;
     let canceled = false;
     const progress = progressToast(`Measuring Q and B on ${samples.length} file${samples.length === 1 ? '' : 's'}…`, () => { canceled = true; });
+    const sameWorkspace = store.sameWorkspace();
     const byInstrument = new Map();
     try {
       const add = (instrument, run) => {
@@ -99,6 +101,7 @@ export function createInstrumentSection(ctx) {
           add(instrumentOf(sample.keywords), beadRun(view, sample, { peaks: S.peaks, product: product?.label ?? null, channels: fluorescenceChannels(sample, { heights: S.heights }) }));
         }
       }
+      if (!sameWorkspace()) throw new WorkspaceChangedError();
       let ws = store.ws;
       for (const { instrument, runs } of byInstrument.values()) {
         const id = `instrument-qc-${instrument.id}`;

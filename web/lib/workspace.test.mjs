@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addGates, createWorkspace, guessRole, suggestFieldsFromNames } from './workspace.js';
+import { LOG_LIMIT, addGates, appendLog, canonicalJSON, createWorkspace, guessRole, parseWorkspace, rename, serializeWorkspace, suggestFieldsFromNames, verifyLog } from './workspace.js';
 
 test('roles are guessed from file names, with underscores as separators', () => {
   assert.equal(guessRole('Beads_2026-03-27.fcs'), 'bead');
@@ -62,4 +62,53 @@ test('several samples annotated at once: values set, an empty value removing the
   assert.deepEqual(next.samples.map((s) => s.meta), [{ compound: 'CW-1' }, { compound: 'CW-1', dose: '10' }, { compound: 'Y' }]);
   assert.equal(next.samples[2], ws.samples[2]);
   assert.equal(next.provenance.at(-1).action, 'annotate');
+});
+
+test('the change log is hash-chained: an entry changed, removed or reordered breaks the chain', () => {
+  let ws = createWorkspace('Chain');
+  for (let i = 0; i < 5; i += 1) ws = rename(ws, `Chain ${i}`);
+  ws = rename(ws, 'Chained');
+  const ok = verifyLog(ws);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.entries, 7);
+  assert.equal(ok.head, ws.provenance[6].hash);
+  // Through JSON, as saved and opened.
+  assert.equal(verifyLog(parseWorkspace(serializeWorkspace(ws))).ok, true);
+  const changed = { ...ws, provenance: ws.provenance.map((e, i) => (i === 2 ? { ...e, detail: 'something else' } : e)) };
+  assert.deepEqual(verifyLog(changed).broken.map((b) => b.index), [2], "only the changed entry");
+  const removed = { ...ws, provenance: ws.provenance.filter((_, i) => i !== 3) };
+  assert.equal(verifyLog(removed).broken[0].index, 3);
+  const swapped = { ...ws, provenance: [ws.provenance[0], ws.provenance[2], ws.provenance[1], ...ws.provenance.slice(3)] };
+  assert.equal(verifyLog(swapped).broken[0].index, 1);
+  const retimed = { ...ws, provenance: ws.provenance.map((e, i) => (i === 6 ? { ...e, time: '2020-01-01T00:00:00.000Z' } : e)) };
+  assert.equal(verifyLog(retimed).ok, false);
+});
+
+test('beyond its limit the log keeps the last hash dropped as its anchor', () => {
+  let ws = createWorkspace('Long');
+  let log = { provenance: ws.provenance };
+  for (let i = 0; i < LOG_LIMIT + 3; i += 1) log = { ...log, ...appendLog(log, 'edit', `step ${i}`, '2026-10-07T00:00:00.000Z') };
+  ws = { ...ws, ...log };
+  assert.equal(ws.provenance.length, LOG_LIMIT);
+  assert.equal(typeof ws.provenanceAnchor, 'string');
+  const result = verifyLog(ws);
+  assert.equal(result.ok, true);
+  assert.equal(result.anchor, ws.provenanceAnchor);
+  assert.equal(verifyLog({ ...ws, provenanceAnchor: '0'.repeat(64) }).broken[0].index, 0);
+});
+
+test('a log written before chaining is chained at the next change, and says how many entries were sealed', () => {
+  const old = { ...createWorkspace('Old'), provenance: [{ time: '2026-01-01T00:00:00.000Z', action: 'create', detail: 'Old' }, { time: '2026-01-02T00:00:00.000Z', action: 'add-gate', detail: 'Lymphocytes' }] };
+  assert.equal(verifyLog(old).ok, false);
+  const next = rename(old, 'Now chained');
+  const result = verifyLog(next);
+  assert.equal(result.ok, true);
+  assert.equal(result.entries, 3);
+  assert.equal(next.provenanceSealed.entries, 2);
+  assert.equal(next.provenance[0].detail, 'Old');
+});
+
+test('canonical JSON sorts keys at every level and drops undefined', () => {
+  assert.equal(canonicalJSON({ b: 1, a: { d: [1, { z: 1, y: undefined }], c: 'x' } }), '{"a":{"c":"x","d":[1,{"z":1}]},"b":1}');
+  assert.equal(canonicalJSON([undefined, 2.5, null]), '[null,2.5,null]');
 });

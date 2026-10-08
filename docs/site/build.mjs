@@ -1,7 +1,11 @@
 // Builds the CytoWeave website (published on GitHub Pages from the gh-pages branch) from the
 // page fragments in pages/. Usage:
 //
-//   node docs/site/build.mjs [output folder]     (default: ../cytoweave-site beside the repository)
+//   node docs/site/build.mjs FOLDER        build into a folder, to check and preview the site
+//   node docs/site/build.mjs --publish     build into ../cytoweave-site, the gh-pages checkout
+//
+// Committing the gh-pages checkout publishes the site, so the build writes into it (or any
+// checkout of gh-pages) only with --publish: when a release is out. Otherwise give a folder.
 //
 // Each page starts with a front-matter block (title, description, and lede for documentation
 // pages) and holds only its own content: the header, documentation menu, pager and footer are
@@ -16,16 +20,35 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
-const out = resolve(process.argv[2] ?? join(repo, '..', 'cytoweave-site'));
+const args = process.argv.slice(2);
+const publish = args.includes('--publish');
+const folder = args.find((a) => !a.startsWith('--'));
+if (!folder && !publish) {
+  console.error('Give a folder to build into (node docs/site/build.mjs FOLDER), or --publish to build into ../cytoweave-site, the gh-pages checkout, for a release.');
+  process.exit(2);
+}
+const out = resolve(folder ?? join(repo, '..', 'cytoweave-site'));
+// A checkout of the gh-pages branch publishes what is committed in it.
+const pagesCheckout = (() => {
+  try {
+    return /ref: refs\/heads\/gh-pages\s*$/.test(readFileSync(join(out, '.git', 'HEAD'), 'utf8'));
+  } catch {
+    return false;
+  }
+})();
+if (pagesCheckout && !publish) {
+  console.error(`${out} is a checkout of gh-pages, which publishes the website: add --publish to build into it (when a release is out), or give another folder.`);
+  process.exit(2);
+}
 const SITE = 'https://robert-mcdermott.github.io/cytoweave/';
 const GITHUB = 'https://github.com/robert-mcdermott/cytoweave';
 const VERSION = /var version = "([^"]+)"/.exec(readFileSync(join(repo, 'main.go'), 'utf8'))[1];
 
 // The documentation, in reading order.
 const DOCS = [
-  { group: 'Start', pages: [['index', 'Overview'], ['getting-started', 'Getting started'], ['opening-data', 'Opening data']] },
+  { group: 'Start', pages: [['index', 'Overview'], ['getting-started', 'Getting started'], ['teaching', 'Exercises'], ['opening-data', 'Opening data']] },
   { group: 'Analysis', pages: [['gating', 'Gating'], ['templates', 'Templates and cell types'], ['compensation', 'Compensation'], ['spectral', 'Spectral unmixing'], ['qc', 'Acquisition QC'], ['cohorts', 'Normalization and debarcoding'], ['explore', 'Clustering and maps']] },
-  { group: 'Results', pages: [['statistics', 'Tables and comparisons'], ['assays', 'Cell cycle, proliferation, kinetics and index sorting'], ['plates', 'Plates, dose-response and bead assays'], ['figures', 'Figures, methods and checkpoints']] },
+  { group: 'Results', pages: [['statistics', 'Tables and comparisons'], ['assays', 'Cell cycle, proliferation, kinetics and index sorting'], ['plates', 'Plates, dose-response and bead assays'], ['figures', 'Figures, methods and certificates']] },
   { group: 'Share and automate', pages: [['workspaces', 'Workspaces and large files'], ['flowjo', 'FlowJo, FACSDiva and Gating-ML'], ['agents', 'AI agents (MCP)'], ['scripting', 'Scripting and command line']] },
   { group: 'Reference', pages: [['accessibility', 'Accessibility'], ['troubleshooting', 'Troubleshooting']] },
 ];
@@ -93,6 +116,7 @@ function header(root, current) {
         ${link('docs/', 'Documentation', 'docs')}
         ${link('install.html', 'Install', 'install')}
         ${link('science.html', 'Science', 'science')}
+        ${link('benchmark.html', 'Agent benchmark', 'benchmark')}
       </nav>
       <div class="header-actions">
         <a class="icon-button" href="${GITHUB}" aria-label="CytoWeave on GitHub">
@@ -203,7 +227,10 @@ function shots(html, root) {
   });
 }
 
-const fill = (html) => html.replaceAll('{{version}}', VERSION).replaceAll('{{github}}', GITHUB);
+// The agent benchmark's results (benchmark/results/), as the benchmark page shows them.
+const { benchmarkHTML } = await import('../../benchmark/report.mjs');
+const BENCHMARK = benchmarkHTML(join(repo, 'benchmark', 'results'));
+const fill = (html) => html.replaceAll('{{version}}', VERSION).replaceAll('{{github}}', GITHUB).replace('<benchmark-results></benchmark-results>', BENCHMARK);
 
 function write(path, html) {
   const file = join(out, path);
@@ -214,7 +241,7 @@ function write(path, html) {
 const written = [];
 
 // Top-level pages.
-for (const [slug, key] of [['index', 'home'], ['install', 'install'], ['science', 'science'], ['404', '404']]) {
+for (const [slug, key] of [['index', 'home'], ['install', 'install'], ['science', 'science'], ['benchmark', 'benchmark'], ['404', '404']]) {
   const { meta, body } = parse(join(here, 'pages', `${slug}.html`));
   const root = slug === '404' ? '/cytoweave/' : '';
   const path = slug === 'index' ? '' : `${slug}.html`;

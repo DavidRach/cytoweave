@@ -29,7 +29,8 @@ import (
 //
 // Default steps: open the files (and an annotations or plate-layout CSV), optionally run QC, apply
 // the template, accept, then write its tables (an Excel workbook and a CSV per table), a batch
-// report of its last figure, optionally a FlowJo workspace, the workspace (.cwz) and the methods.
+// report of its last figure, optionally a FlowJo workspace, a review report and a reproducibility
+// certificate, the workspace (.cwz) and the methods.
 // --steps replaces them with a JSON list of {action, args}: any agent action (see docs/MCP.md),
 // with "$inputs" in open_files' paths for the files named on the command line, relative paths
 // in open_files and templateFile (a template file read into templateJSON) from the steps file's
@@ -84,6 +85,8 @@ type runOptions struct {
 	reportBy    string
 	qc          bool
 	flowjo      bool
+	certificate bool
+	review      bool
 	steps       string
 	overwrite   bool
 	chrome      string
@@ -167,6 +170,8 @@ func parseRunArgs(args []string, stderr io.Writer) (runOptions, error) {
 	flags.StringVar(&opts.reportBy, "report-by", "", "the report's pages: sample, or an annotation such as subject (default: the figure's own choice)")
 	flags.BoolVar(&opts.qc, "qc", false, "run acquisition QC first, with a \"QC pass\" population above the template's")
 	flags.BoolVar(&opts.flowjo, "flowjo", false, "also write a FlowJo workspace (workspace.wsp)")
+	flags.BoolVar(&opts.certificate, "certificate", false, "also write a reproducibility certificate (certificate.acs): the analysis with its files and every number, for cytoweave verify")
+	flags.BoolVar(&opts.review, "review", false, "also write a review report (review.html): the analysis as one HTML file with every number traced, for a PI or reviewer")
 	flags.StringVar(&opts.steps, "steps", "", "a JSON file of steps ({action, args}) to run instead of the default ones")
 	flags.BoolVar(&opts.overwrite, "overwrite", false, "replace outputs that already exist")
 	flags.StringVar(&opts.chrome, "chrome", "", "the Chrome, Chromium, Edge or Brave to run in (default: CHROME, else one installed)")
@@ -288,7 +293,7 @@ func planRun(opts runOptions) ([]runStep, string, error) {
 	)
 	if len(summary.Tables) > 0 {
 		steps = append(steps, runStep{Action: "export_table", Args: map[string]any{"path": out("tables.xlsx")}})
-		used := map[string]bool{"tables": true, "run": true, "methods": true, "report": true, "workspace": true}
+		used := map[string]bool{"tables": true, "run": true, "methods": true, "report": true, "workspace": true, "certificate": true, "review": true}
 		for _, table := range summary.Tables {
 			steps = append(steps, runStep{Action: "export_table", Args: map[string]any{"table": table.Name, "path": out(fileName(table.Name, used) + ".csv")}})
 		}
@@ -302,6 +307,13 @@ func planRun(opts runOptions) ([]runStep, string, error) {
 	}
 	if opts.flowjo {
 		steps = append(steps, runStep{Action: "export_flowjo", Args: map[string]any{"path": out("workspace.wsp")}})
+	}
+	if opts.review {
+		steps = append(steps, runStep{Action: "export_review_report", Args: map[string]any{"path": out("review.html")}})
+	}
+	// Before the workspace, whose change log then records the certificate and its fingerprint.
+	if opts.certificate {
+		steps = append(steps, runStep{Action: "export_certificate", Args: map[string]any{"path": out("certificate.acs")}})
 	}
 	steps = append(steps,
 		runStep{Action: "export_workspace", Args: map[string]any{"path": out("workspace.cwz")}},
@@ -418,49 +430,12 @@ func execute(ctx context.Context, opts runOptions, steps []runStep, browser stri
 		fmt.Fprintln(stderr, "cytoweave run:", err)
 		return false
 	}
-	scratch, err := os.MkdirTemp("", "cytoweave-run-")
+	hub, stop, err := headlessPage(ctx, browser, opts.dev)
 	if err != nil {
 		fmt.Fprintln(stderr, "cytoweave run:", err)
 		return false
 	}
-	defer os.RemoveAll(scratch)
-	cfg := config{host: "127.0.0.1", port: 0, window: "none", noStore: true, remote: true, mcp: true, dev: opts.dev, dataDir: scratch}
-	running, err := start(cfg, io.Discard)
-	if err != nil {
-		fmt.Fprintln(stderr, "cytoweave run:", err)
-		return false
-	}
-	go running.serve()
-	defer running.stop(3 * time.Second)
-	hub := running.app.control
-	chrome := exec.CommandContext(ctx, browser,
-		"--headless=new",
-		"--user-data-dir="+filepath.Join(scratch, "profile"),
-		"--no-first-run",
-		"--no-default-browser-check",
-		"--disable-extensions",
-		"--disable-features=Translate,MediaRouter",
-		"--window-size=1600,1000",
-		running.url,
-	)
-	if err := chrome.Start(); err != nil {
-		fmt.Fprintf(stderr, "cytoweave run: could not start %s: %v\n", browser, err)
-		return false
-	}
-	exited := make(chan struct{})
-	go func() {
-		chrome.Wait()
-		close(exited)
-	}()
-	defer func() {
-		if chrome.Process != nil {
-			chrome.Process.Kill()
-		}
-		select {
-		case <-exited:
-		case <-time.After(5 * time.Second):
-		}
-	}()
+	defer stop()
 	fmt.Fprintf(stdout, "CytoWeave %s: running %d steps in %s\n", version, len(steps), filepath.Base(browser))
 	if !hub.waitForPage(ctx, runPageTimeout) {
 		fmt.Fprintln(stderr, "cytoweave run: the page did not start in the browser")
@@ -517,6 +492,55 @@ func execute(ctx context.Context, opts runOptions, steps []runStep, browser stri
 		}
 	}
 	return ok
+}
+
+// headlessPage starts CytoWeave on a private port with no workspace library and opens it in a
+// headless browser; stop ends both and removes their temporary folder. Wait for the page with
+// hub.waitForPage.
+func headlessPage(ctx context.Context, browser string, dev bool) (*remoteHub, func(), error) {
+	scratch, err := os.MkdirTemp("", "cytoweave-run-")
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg := config{host: "127.0.0.1", port: 0, window: "none", noStore: true, remote: true, mcp: true, dev: dev, dataDir: scratch}
+	running, err := start(cfg, io.Discard)
+	if err != nil {
+		os.RemoveAll(scratch)
+		return nil, nil, err
+	}
+	go running.serve()
+	chrome := exec.CommandContext(ctx, browser,
+		"--headless=new",
+		"--user-data-dir="+filepath.Join(scratch, "profile"),
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--disable-extensions",
+		"--disable-features=Translate,MediaRouter",
+		"--window-size=1600,1000",
+		running.url,
+	)
+	if err := chrome.Start(); err != nil {
+		running.stop(3 * time.Second)
+		os.RemoveAll(scratch)
+		return nil, nil, fmt.Errorf("could not start %s: %v", browser, err)
+	}
+	exited := make(chan struct{})
+	go func() {
+		chrome.Wait()
+		close(exited)
+	}()
+	stop := func() {
+		if chrome.Process != nil {
+			chrome.Process.Kill()
+		}
+		select {
+		case <-exited:
+		case <-time.After(5 * time.Second):
+		}
+		running.stop(3 * time.Second)
+		os.RemoveAll(scratch)
+	}
+	return running.app.control, stop, nil
 }
 
 func performStep(ctx context.Context, hub *remoteHub, step runStep, record *runRecord) (remoteResult, error) {

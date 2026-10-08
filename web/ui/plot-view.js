@@ -8,13 +8,14 @@ import { buildPlotScene, drawScene, drawGates, fromPixel, toPixel, withAlpha, PL
 import { gateOutline, plotPointToGate, simplifyPolyline, pointTest, translateGeometry, quadrantGates, quadrantNames, splitGates, newId } from '../lib/gates.js';
 import { channelTransform, computeStatistic, countOf, evaluateGate, populationSet } from '../lib/engine.js';
 import { formatStatistic } from '../lib/stats.js';
-import { EventSet } from '../lib/eventset.js';
+import { EventSet, intersectSets, sizeOf } from '../lib/eventset.js';
 import { interactionEnded, interactionStarted } from './activity.js';
 import { proposalOfGate } from '../lib/proposals.js';
 import { markedEvents } from './plate-view.js';
 import { createTransform, formatNumber } from '../lib/transforms.js';
 import { ROOT, addGates, channelLabel, effectiveGeometry, gateAncestors, gateById, gateChildren, setGateGeometry, uniqueGateName } from '../lib/workspace.js';
 import { densityGateAt, valleyThreshold } from '../lib/autogate.js';
+import { gateAbove, plotVirtualFMO, virtualFMOAvailable } from './virtual-fmo-view.js';
 
 const TWO_D_TOOLS = new Set(['rectangle', 'polygon', 'ellipse', 'quadrant', 'lasso', 'wand']);
 const ONE_D_TOOLS = new Set(['range', 'split', 'wand']);
@@ -99,7 +100,8 @@ export function createPlotView(app, initial) {
   const head = h('div.plot-card-head', titleEl, metaEl, initial.hideActions ? null : actions);
   // Under a histogram with overlaid samples: this sample's population compared with each overlay's.
   const compareEl = h('div.plot-compare', { hidden: true });
-  const el = h(`div.plot-card${compact ? '.compact' : ''}`, { tabIndex: 0, role: 'group', 'aria-label': 'Plot' }, head, wrap, compareEl);
+  const fmoEl = h('div.plot-compare', { hidden: true });
+  const el = h(`div.plot-card${compact ? '.compact' : ''}`, { tabIndex: 0, role: 'group', 'aria-label': 'Plot' }, head, wrap, compareEl, fmoEl);
   if (initial.height) wrap.style.height = `${initial.height}px`;
 
   const ws = () => store.ws;
@@ -245,12 +247,36 @@ export function createPlotView(app, initial) {
       if (otherIndices === undefined || !other.hasChannel(spec.x)) continue;
       overlays.push({ xs: other.scaled(spec.x, dims[0].transform), ys: dims[1] && other.hasChannel(spec.y) ? other.scaled(spec.y, dims[1].transform) : null, indices: otherIndices, color: extra.color, label: extra.label });
     }
+    // An exercise whose truth is revealed (exercises.js): the events its gates missed or took in.
+    let exerciseOverlays = 0;
+    for (const extra of app.exerciseOverlays?.(sampleId) ?? []) {
+      const within = indices === null ? extra.indices : intersectSets(extra.indices, indices, view.eventCount);
+      if (within && sizeOf(within, view.eventCount)) {
+        overlays.push({ xs, ys, indices: within, color: extra.color, label: extra.label });
+        exerciseOverlays += 1;
+      }
+    }
     const options = {
       ...(spec.options ?? {}),
       theme: theme(),
       colormap: spec.options?.colormap ?? ui().colormap,
       compact,
     };
+    // Virtual FMOs of the channels shown (virtual-fmo-view.js), with the real FMO when there is one.
+    const fmo = compact ? { guides: [], info: null } : plotVirtualFMO(app, {
+      spec,
+      sample: ws().samples.find((s) => s.id === sampleId),
+      view,
+      dims,
+      theme: theme(),
+      onReady: () => schedule(),
+      onGate: ({ channel, threshold, axisIndex }) => {
+        const gate = gateAbove(app, { spec, channel, threshold, transform: dims[axisIndex].transform });
+        toast(`Added ${gate.name} from the virtual FMO's threshold.`, { kind: 'ok' });
+      },
+    });
+    fmoEl.hidden = !fmo.info;
+    fmoEl.replaceChildren(...(fmo.info ?? []));
     scene = buildPlotScene({
       width,
       height,
@@ -262,7 +288,8 @@ export function createPlotView(app, initial) {
       indices,
       overlays: is1D() ? overlays.map((o) => ({ ...o, ys: null })) : overlays,
       // With other samples overlaid, the legend names this one too.
-      label: is1D() && spec.overlays?.length ? ws().samples.find((s) => s.id === sampleId)?.name : undefined,
+      label: is1D() && spec.overlays?.length ? ws().samples.find((s) => s.id === sampleId)?.name : is1D() && exerciseOverlays ? (gateById(ws(), spec.populationId)?.name ?? 'All events') : undefined,
+      guides: fmo.guides,
       options: { ...options, color: spec.options?.color ?? populationColor() },
     });
     const ctx = sizeCanvas(base, width, height);
@@ -842,6 +869,21 @@ export function createPlotView(app, initial) {
       ...['classic', 'viridis', 'magma', 'turbo', 'blues'].map((name) => ({ label: `${name[0].toUpperCase()}${name.slice(1)}${displayColormap(name) !== name ? ' (drawn as Viridis: color-vision-friendly colors)' : ''}`, checked: (spec.options?.colormap ?? ui().colormap) === name, onSelect: () => setSpec({ options: { ...(spec.options ?? {}), colormap: name } }) })),
       { section: 'Dot size' },
       ...[1, 2, 3].map((size) => ({ label: `${size} px`, checked: (spec.options?.dotSize ?? 1) === size, onSelect: () => setSpec({ options: { ...(spec.options ?? {}), dotSize: size } }) })),
+      { section: 'Virtual FMO' },
+      ...(is1D() ? [spec.x] : [spec.x, spec.y]).map((channel) => {
+        const sample = ws().samples.find((s) => s.id === sampleId);
+        const available = virtualFMOAvailable(ws(), sample, channel);
+        const on = (spec.options?.virtualFMO ?? []).includes(channel);
+        return {
+          label: `Virtual FMO of ${channelLabel(ws(), channel, { short: true })}${available.ok ? '' : ` (${available.reason})`}`,
+          checked: on,
+          disabled: !available.ok && !on,
+          onSelect: () => {
+            const list = (spec.options?.virtualFMO ?? []).filter((c) => c !== channel);
+            setSpec({ options: { ...(spec.options ?? {}), virtualFMO: on ? list : [...list, channel] } });
+          },
+        };
+      }),
       '-',
       { label: 'Duplicate plot', icon: 'copy', onSelect: () => app.duplicatePlot?.(spec) },
       { label: 'Remove plot', icon: 'trash', danger: true, onSelect: () => app.removePlot?.(spec) },

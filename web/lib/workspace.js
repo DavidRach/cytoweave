@@ -7,6 +7,7 @@ import { describeAcquisition, detectTechnology, readSpillover } from './fcs.js';
 import { newId } from './gates.js';
 import { chorusGates } from './chorus.js';
 import { categoricalColor } from './colormaps.js';
+import { sha256 } from './sha256.js';
 
 export const FORMAT = 'cytoweave-workspace';
 export const FORMAT_VERSION = 1;
@@ -40,14 +41,85 @@ export function createWorkspace(name = 'Untitled workspace') {
     // Changes from agents waiting for the user's review (proposals.js).
     proposals: [],
     notes: '',
-    provenance: [{ time, action: 'create', detail: name }],
+    provenance: [chainEntry('', { time, action: 'create', detail: name })],
   };
+}
+
+// --- The change log ------------------------------------------------------------------------------
+//
+// ws.provenance lists every change ({ time, action, detail }), oldest first. The log is
+// hash-chained: each entry's hash is the SHA-256 of the hash before it and the entry itself, so
+// an entry changed, removed, inserted or reordered afterward breaks the chain (verifyLog). Beyond
+// LOG_LIMIT entries the oldest are dropped, and the hash of the last dropped one is kept as the
+// log's anchor (ws.provenanceAnchor). Entries written before the log was chained (CytoWeave 0.7
+// and earlier) are chained when the workspace is next changed, and ws.provenanceSealed says how
+// many and when: the chain vouches for them only from then on.
+
+export const LOG_LIMIT = 5000;
+const encoder = new TextEncoder();
+
+// Keys sorted at every level, so a value has one text however it was built.
+export function canonicalJSON(value) {
+  if (Array.isArray(value)) return `[${value.map((v) => canonicalJSON(v === undefined ? null : v)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value).filter((k) => value[k] !== undefined).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJSON(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+export function logEntryHash(previous, entry) {
+  const { hash, ...content } = entry;
+  return sha256(encoder.encode(`${previous}\n${canonicalJSON(content)}`));
+}
+
+function chainEntry(previous, entry) {
+  return { ...entry, hash: logEntryHash(previous, entry) };
+}
+
+// The log with its unchained entries chained: { provenance, provenanceSealed? }.
+function sealLog(ws, time) {
+  const log = ws.provenance ?? [];
+  if (log.every((e) => e.hash)) return { provenance: log };
+  let previous = ws.provenanceAnchor ?? '';
+  let sealed = 0;
+  const provenance = log.map((e) => {
+    const entry = e.hash ? e : chainEntry(previous, e);
+    if (!e.hash) sealed += 1;
+    previous = entry.hash;
+    return entry;
+  });
+  return { provenance, provenanceSealed: { time, entries: (ws.provenanceSealed?.entries ?? 0) + sealed } };
+}
+
+// The log fields of ws with an entry appended: { provenance, provenanceAnchor?, provenanceSealed? }.
+export function appendLog(ws, action, detail, time = now()) {
+  const sealed = sealLog(ws, time);
+  const log = sealed.provenance;
+  const entry = chainEntry(log.length ? log[log.length - 1].hash : ws.provenanceAnchor ?? '', { time, action, detail });
+  const all = [...log, entry];
+  const patch = { ...sealed, provenance: all.length > LOG_LIMIT ? all.slice(-LOG_LIMIT) : all };
+  if (all.length > LOG_LIMIT) patch.provenanceAnchor = all[all.length - LOG_LIMIT - 1].hash;
+  return patch;
+}
+
+// Checks the chain: { ok, entries, head (the last hash), anchor, sealed, broken: [{ index,
+// entry, reason }] }. A broken chain names the first entry whose hash does not follow.
+export function verifyLog(ws) {
+  const log = ws.provenance ?? [];
+  let previous = ws.provenanceAnchor ?? '';
+  const broken = [];
+  log.forEach((entry, index) => {
+    if (!entry.hash) broken.push({ index, entry, reason: 'not chained' });
+    else if (entry.hash !== logEntryHash(previous, entry)) broken.push({ index, entry, reason: 'its hash does not follow from the entries before it' });
+    previous = entry.hash ?? previous;
+  });
+  return { ok: broken.length === 0, entries: log.length, head: log.length ? log[log.length - 1].hash ?? null : ws.provenanceAnchor ?? null, anchor: ws.provenanceAnchor ?? null, sealed: ws.provenanceSealed ?? null, broken };
 }
 
 function touch(ws, patch, action, detail) {
   const time = now();
-  const provenance = action ? [...ws.provenance, { time, action, detail }].slice(-5000) : ws.provenance;
-  return { ...ws, ...patch, modified: time, provenance };
+  return { ...ws, ...patch, modified: time, ...(action ? appendLog(ws, action, detail, time) : {}) };
 }
 
 // Keywords worth keeping in the workspace: everything except per-parameter keywords (kept in
@@ -230,6 +302,8 @@ export function addCompensation(ws, compensation) {
     created: now(),
     report: compensation.report ?? null,
     method: compensation.method ?? null,
+    // The spread model fitted to the controls it was computed from (virtual FMOs).
+    ...(compensation.spread ? { spread: compensation.spread } : {}),
   };
   return { ws: touch(ws, { compensations: [...ws.compensations, record] }, 'add-compensation', record.name), compensation: record };
 }
@@ -550,6 +624,11 @@ export function rename(ws, name) {
 
 export function setNotes(ws, notes) {
   return touch(ws, { notes });
+}
+
+// Records an event in the change log without changing the analysis (a certificate made).
+export function logEvent(ws, action, detail) {
+  return touch(ws, {}, action, detail);
 }
 
 // --- Serialization --------------------------------------------------------------------------

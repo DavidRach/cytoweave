@@ -177,8 +177,10 @@ export function expandReport(ws, figure, options = {}) {
 
 // The statistics of a report's pages, as shown, and the trace of every number: each statistics
 // item gets content { header, rows: [{ sampleId, name, cells: [{ value, text, tag }] }] }.
-// viewOf(sampleId) gives loaded views. Returns the trace entries of the statistics cells.
-export function fillStatistics(ws, report, viewOf) {
+// viewOf(sampleId) gives loaded views, or options.cells(table) the cells as tableCells gives them
+// (values computed beforehand). Returns the trace entries of the statistics cells.
+export function fillStatistics(ws, report, viewOf, options = {}) {
+  const cellsFor = options.cells ?? ((table) => tableCells(ws, table, viewOf));
   const trace = [];
   const cellsOf = new Map();
   const sampleById = new Map(ws.samples.map((s) => [s.id, s]));
@@ -190,7 +192,7 @@ export function fillStatistics(ws, report, viewOf) {
         item.content = { header: [], rows: [], missing: 'The table was deleted.' };
         continue;
       }
-      if (!cellsOf.has(table.id)) cellsOf.set(table.id, tableCells(ws, table, viewOf));
+      if (!cellsOf.has(table.id)) cellsOf.set(table.id, cellsFor(table));
       const { columns, cell } = cellsOf.get(table.id);
       const chosen = columns.map((c, j) => ({ ...c, j })).filter((c) => !item.columnIds?.length || item.columnIds.includes(c.column.id));
       const rows = item.rowIds.map((sampleId) => {

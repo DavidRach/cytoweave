@@ -629,19 +629,24 @@ Publishing the R and Python clients, first planned here, is parked.
 Publishing the R and Python clients (M9), first planned as item 7 of this wave, is parked until
 there is more adoption (see the parking lot below).
 
-## Next (0.8)
+## 0.8.0: designed, explained, certified (released 2026-10-08)
 
-The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0, wave 7 as 0.7.0) comes from `research.md` §8
-and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
-Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
-asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
-single tool combines. Wave 8 is a plan, to be revised as it lands.
+Wave 8 makes an analysis provable and explainable: a reproducibility certificate that computes
+every reported number again from the files, a self-contained review report with every number
+traced, virtual FMO controls from the spread model, a panel optimizer, a public agent benchmark
+graded against the simulated truth, and teaching mode with exercises on examples that, together,
+now demonstrate every analysis. WebMCP, planned here, is parked.
+
+The order of waves 5–8 came from `research.md` §8 and a parity and differentiation study (October
+2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada
+and the open-source tools, and of what users asked for in 2024–2026: within each wave, trust
+first, then the daily workbench, then what no single tool combines.
 
 Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-05,
 `product_research/feature-comparison.html`):
 - **Agents are no longer distinctive; agents proven right are.** Dotmatics' Luma Agent, Ozette,
-  Conspecta and flow-atlas now offer agents or MCP servers, so wave 8 adds a public agent benchmark
-  and WebMCP in place of the on-device assistant.
+  Conspecta and flow-atlas now offer agents or MCP servers, so wave 8 adds a public agent benchmark.
+  WebMCP, planned here in place of the on-device assistant, is parked (see the parking lot below).
 - **Users before features.** CytoWeave's gaps come down to adoption: no institutional users yet,
   and validation mostly on simulated truth. Core-facility studies move from Later to run beside
   wave 7, with validation on real expert-gated data.
@@ -654,17 +659,6 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
 - **Automation for cores:** headless runs of a template on a folder. (Publishing the clients, also
   planned here, is parked until there is more adoption.)
 
-### Beside wave 8: core-facility studies and real data
-
-Planned beside wave 7, not started there; they continue beside wave 8.
-
-- **Design studies with one or two core facilities** (moved from Later): their files, panels and
-  routines; what blocks daily use; the first institutional users. Findings reorder the waves.
-- **Validation on real expert-gated data (V7):** public studies with expert gates or published
-  counts (FlowCAP, FlowRepository studies such as the ALS cytokine workspaces already used),
-  beside the simulated truth.
-- **Tutorials** built on public FlowRepository studies.
-
 ### Wave 8: designed, explained, certified
 
 1. **Reproducibility certificate (R8):** a bundle (workspace, file checksums, versions, seeds)
@@ -673,27 +667,146 @@ Planned beside wave 7, not started there; they continue beside wave 8.
    the audit trail (R6).
    - Validation: certificates of every example re-run bit for bit; a changed file, gate or log
      entry detected.
+   - Done (slice 1): Report → Certificate writes an ACS archive (workspace, FCS files or only
+     their checksums, stored channels, Gating-ML, methods, README) with certificate.json: the
+     version and JavaScript engine, inputs' SHA-256, analyses and seeds, the change log's head,
+     MIFlowCyt filled in, and every count, table cell and saved comparison of one measure;
+     opening it verifies it (every number computed again from the files, sample by sample, with
+     the window's code). The change log is hash-chained. `cytoweave verify` (exit status as the
+     verdict), `cytoweave run --certificate`, and agents' `export_certificate` and
+     `verify_certificate`. Compare's statistics moved to lib/compare.js. Validated by the
+     `certificates` suite (14 examples, 2,413 numbers identical; six kinds of tampering caught),
+     headless-run (Chrome and Node in both directions) and the agent session.
+   - Found by slice 1: browsers' and Node's logarithms and exponentials differ in the last bit
+     (Chrome 152 and 154 against Node 22), so numbers through them, such as confidence limits,
+     are bit for bit only within one engine; across engines they are confirmed when equal to 12
+     significant digits, and the certificate names its engine. Deterministic math of our own
+     would make them identical everywhere: an idea, not planned.
+   - Not yet: re-running derived analyses (clustering, embeddings, unmixing, QC, curve fits) and
+     comparison screens from their seeds; the certificate lists them.
 2. **A review report (R9):** one self-contained HTML file of an analysis (plots, gates, tables,
    every number traced to its source) that a PI, collaborator or reviewer opens without
    CytoWeave.
    - Validation: every number in the report equal to the workspace's; the file makes no network
      requests.
+   - Done (slice 2): Report → Review report (and Workspace → Export) writes one HTML file: samples
+     with checksums, gating, every population's count in every sample, every sample's gates drawn
+     (one plot per population and pair of channels), figures, tables, saved comparisons with a
+     dot plot, methods, MIFlowCyt and the change log; every number a button whose trace (exact
+     value, the counts behind a percentage, sample, checksum, compensation, gates) the inline
+     script shows. Numbers from the certificate's computeNumbers (an onView hook draws each
+     sample while it is loaded). Figures composed in lib/figure-svg.js. `cytoweave run --review`
+     and agents' `export_review_report`. Validated by the `reviews` suite (2,892 numbers equal to
+     the window's own functions' and shown alike; no outside references), headless-run (Chrome:
+     no request beyond the file, no error, a number traced; axe-core in both themes) and the
+     agent session.
 3. **A virtual FMO (C4):** where each population's negative would fall without a given dye,
    predicted from the spread model of wave 4, drawn on the plot as a guide for gating. No tool
    offers it.
    - Validation: two public data sets with real FMO controls (Zenodo 22808501 and 20644656).
+   - Done (slice 3): lib/virtual-fmo.js predicts each event's value without the dye (an unstained
+     event of the population's scatter gates plus the spread of every other dye at the event's
+     brightness, photon and laser terms), seeded, with the 99.5th percentile and a curve along
+     another channel. The spread model is kept where it is fitted (compensation.spread when a
+     matrix is computed from controls; spreading.model in the spectral setup). Plots draw it
+     (guides in plot scenes: canvas, SVG, PDF) beside a real FMO control, with the dyes the spread
+     comes from and Gate above it; agents' `virtual_fmo`. The examples can generate FMO tubes
+     (`fmos`). Validated by the `fmo` suite: simulated panels within 1% of the axis (the unstained
+     control 12–13%); real FMOs, each tube predicting its own channel, 5.8% (LSRFortessa, 7 tubes)
+     and 5.5% (Aurora, 4 tubes) of the axis on average, worst 11.6% and 14.8%. The FMO tubes
+     that do not omit their named dye cleanly (6 of 13; 2 of 6) are found from the data and left
+     out. fetch.mjs reads the first events of large ZIP entries (fcs-subset.mjs).
+   - Found by slice 3: the bead-fitted model overestimates some spread on cells (up to 3× in
+     threshold on the Fortessa) and does not see compensation or unmixing errors, which real FMOs
+     show (a CCR7 FMO leaning against three channels). Calibrating the spread on a sample's own
+     lower tail made it worse (real negatives' lower tails are not their upper tails' mirror) and
+     was dropped. A real FMO stays the reference for dim or critical markers.
 4. **A panel optimizer (S9):** assigns fluorochromes to markers by expression level and
    co-expression, using the user's own instrument model and library, warns of pairs prone to
    energy transfer, and is checked against the panel's result once run.
    - Validation: simulated panels with known best assignments; the predicted spread against the
      run's unmixed controls.
+   - Done (slice 4): lib/panel-optimizer.js predicts each marker's stain index on the cells of
+     each group of co-expressed markers (expression × the dye's relative brightness, against the
+     unstained control's background carried through the unmixing plus the photon and laser
+     spread of every other marker of the group at its brightness) and minimizes Σ σ²/ΔF². The
+     unmixing operator, so every term, is computed for each dye set tried (OLS over all
+     detectors; for a compensation, the inverse on the dyes' own detectors). Every assignment up
+     to 50,000, else a seeded local search (swaps, unused dyes, restarts, perturbations).
+     lib/dyes.js keeps 50 dyes' brightness, absorption and emission maxima and tandem donors
+     for the energy-transfer warnings (a tandem with its donor; emission within 75 nm bluer to
+     20 nm redder than another dye's absorption). The Spectral view's Panel design tab
+     (Optimize the assignment, also from the library alone) and Compensate's Optimize the
+     panel…; a design kept in the instrument's spectral library is checked against the run's
+     spreading matrix; the unstained control's background is kept with the noise. Agents'
+     `design_panel`. Validated by the `panel` suite: simulated 8-marker panels stained for every
+     assignment and measured (predicted against measured cost r = 0.996 spectral, 0.999
+     conventional; the optimum measured best of 26, 4× and 29× less noisy than
+     dimmest-on-brightest; local search finds every exhaustive optimum; a 25-color design in
+     about 8 s); on the public Aurora panel's 25 bead references, a 12-dye panel's spread
+     predicted from the noise of the other 12 dyes' controls within 2× for 65% and 73% of pairs.
+   - Found by slice 4: on real Aurora controls, 244 of BV711's 464 positive events were off scale
+     in a detector other than its peak, which corrupted its spectrum and spread; positives off
+     scale in any detector are now left out (the spreading matrix now gets the data range too).
+     The real Aurora's spread runs above prediction (median ×1.6, mostly into BV421 and
+     BUV661), more than the LSRFortessa's (×1.3).
 5. **A public agent benchmark (V6):** graded tasks on the examples (gate a population, find a
    compensation error, test a difference, export a report), each scored against the simulated
    truth, with published results per agent and model. It extends the validation suite to
    agents, where users' distrust is greatest.
-6. **WebMCP (M7):** the same tools exposed to agents in the browser through WebMCP (Chrome origin
-   trial, 2026), beside the MCP server; it replaces the on-device assistant (M6, now an idea).
-7. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
+   - Done (slice 5): benchmark/. The harness runs "cytoweave mcp" itself, prepares the task's
+     example (its own seed) in its own headless window, removes what would give answers away (the
+     title, the per-cell truth channel, "anomaly" annotations), then starts the agent as a program
+     of its own whose only MCP server relays to that CytoWeave. Claude Code runs with no built-in
+     tools, only this folder's settings, no persistence. 11 tasks (gating, compensation,
+     statistics, QC ×2, spectral, titration, plates, bead assay, kinetics, reporting), each graded
+     by code from the window's state, the files written and an ANSWER line, with partial credit;
+     each has a reference solution through the same MCP tools. CI checks that the references score
+     ≥ 0.9 (all 1.0), that answering nothing scores 0, and the graders' partial credit. The website's
+     Agent benchmark page is built from benchmark/results/. New tool: check_compensation (the
+     controls check of the Compensate view), without which the compensation task could only be
+     solved by reading plots.
+   - Found by slice 5: analyses without an agent tool (cell-cycle and proliferation fits, index
+     sorting, bead Q and B) cannot be benchmarked yet. QC findings word a clog as "possible clog or
+     bubble" and a bubble as "possible clog" with a burst: in the pilot, Haiku swapped them.
+     Example annotations named planted faults ("anomaly"). Faults do not move with the seed, and the
+     examples are public.
+   - First results (2026-10-07, version 2, Claude Code, 3 runs per task): Claude Sonnet 5.5 100%,
+     Claude Opus 5.5 99.7%, Claude Haiku 4.5 95.1%; no run replaced the data, no harness failure.
+     Version 1's prompts that echoed an example's description sent Haiku and Sonnet to open that
+     example (fixed by OPEN_DATA); a headless Chrome that froze once stalled the run (fixed by
+     deadlines, a close that cannot hang, and retries). Haiku still swaps the QC example's clog and
+     bubble in every run, from the QC findings' wording: a product fix for a later slice.
+6. **Teaching mode (V5):** guided exercises on the examples, with the truth revealed afterward.
+   - Done (slice 6): lib/exercises.js and ui/exercises.js. Eighteen exercises (6 beginner, 9
+     intermediate, 3 advanced) across gating, compensation, QC, spectral, statistics, plates,
+     assays, instrument QC and a CyTOF cohort. Each opens its example without the truth, with a
+     seed of the attempt's own (a class code shares it) that varies the planted problem where the
+     example allows. A panel in a column at the right holds hints, answers (gates, samples,
+     channels, choices, numbers) and checks with partial credit (gates by F1 against the true
+     events); Reveal adds the truth channel and colors missed and extra events. The workspace
+     keeps the id, seed, answers and checks; the answer key is regenerated from the seed and
+     refused for files that are not the seed's (SHA-256). Undo keeps the progress. Validated by
+     unit tests (every exercise's true answers score 100%) and `validation/exercise-session.mjs`
+     (41 checks, in CI: every exercise solved in the window with the tools or from the truth,
+     scored 100%).
+   - Done with it: the examples, together, now demonstrate every analysis from the window (an
+     audit of every requirement against the examples found these only scripts could reach: a
+     real FMO, MEF calibration and counting beads, per-sample gate adjustment, the unmixing
+     doctor's faults and the library's flag, folder-watch QC, CSV events and annotations, and
+     the FlowJo 11, FACSDiva and SpectroFlo imports). The PBMC example gained an FMO tube,
+     rainbow beads with their datasheet, a second day and an annotations table; two examples
+     were added (absolute counts, spectral day 2); examples carry other programs' files
+     (attachments, written by lib/example-files.js); QC → Live replays an example; the
+     examples dialog makes ten-times-larger copies. Validation suite `examples` (12 checks).
+   - Found by slice 6: the QC findings' wording (a clog "possibly a bubble", a bubble's signal
+     drop "possibly a clog") misled agents and would mislead learners: findings now name the
+     cause from the flow rate at the same time. An FMO tube annotated with its donor's condition
+     joined that condition's comparisons in code that did not filter by role: FMO tubes are now
+     annotated as controls.
+   - Not covered by the examples: FACSChorus gates (no example comes from a FACSChorus
+     instrument; one would need a FACSMelody- or FACSDiscover-like example of its own) and image
+     cytometry (not built, wave 10).
 
 ## Toward 1.0 (0.9–1.0)
 
@@ -704,6 +817,17 @@ Planned beside wave 7, not started there; they continue beside wave 8.
 - Validation on real expert-gated data as well as simulated truth (V7).
 - At least two core facilities using CytoWeave in production.
 - Documented support, security and release policies.
+
+### Beside waves 9–10: core-facility studies and real data
+
+Planned beside waves 7 and 8 and not started there; they are what 1.0 most needs.
+
+- **Design studies with one or two core facilities** (moved from Later): their files, panels and
+  routines; what blocks daily use; the first institutional users. Findings reorder the waves.
+- **Validation on real expert-gated data (V7):** public studies with expert gates or published
+  counts (FlowCAP, FlowRepository studies such as the ALS cytokine workspaces already used),
+  beside the simulated truth.
+- **Tutorials** built on public FlowRepository studies.
 
 ### Wave 9: shared and audited
 
@@ -737,6 +861,13 @@ Decided but deferred, outside the planned waves (and releases) until what they w
   clients install from the GitHub repository (`remotes::install_github(...,
   subdir = "clients/r")`, `pip install "git+...#subdirectory=clients/python"`), as `clients/README.md`,
   the clients' READMEs and the scripting documentation describe, and that is enough for now.
+- **WebMCP (M7):** the same tools exposed to agents in the browser through WebMCP, beside the MCP
+  server, from the same tool definitions and actions (exports as downloads; no tools that take file
+  paths). Planned as wave 8, slice 6, and parked on 2026-10-07 until browser agents use it: in
+  October 2026 it is a Chrome origin trial (Chrome 149–156) whose API is still being renamed
+  (`navigator.modelContext` to `document.modelContext`), few agents call it, and origin-trial
+  tokens are tied to a website's address, while CytoWeave runs on the user's own computer. Agents
+  reach CytoWeave through `cytoweave mcp` meanwhile.
 
 ## Ideas (unscheduled)
 
@@ -747,6 +878,8 @@ Decided but deferred, outside the planned waves (and releases) until what they w
 - Real-time co-annotation of one workspace by several people.
 - An optional on-device assistant (M6), if local models become good enough to add to the
   external agents.
+- Deterministic math (CytoWeave's own exp, log and pow) so that every number is identical in
+  every browser and in Node, not only equal to 12 digits (found by wave 8, slice 1).
 
 ## Risks
 

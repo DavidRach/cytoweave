@@ -2,6 +2,7 @@
 
 import { computeSpillover, compensate, spilloverSpreading } from '../lib/compensation.js';
 import { population } from '../lib/engine.js';
+import { fitNoise, noiseRecord, spreadModel, spreadRecord } from '../lib/spread.js';
 
 // Whether a channel is one of a sample's fluorescence detectors.
 export function isDetectorOf(sample, channel) {
@@ -16,7 +17,9 @@ export function spectralWorkspace(ws) {
 
 // Computes a spillover matrix from the single-stain controls (role "single-stain" with a stained
 // channel), each restricted to `gateId` (null: all events), with an unstained sample as the
-// negative reference when given. Returns { detectors, matrix, report, spreading, controls }.
+// negative reference when given. Returns { detectors, matrix, report, spreading, spread,
+// controls }: spread is the spread model fitted to the controls (virtual-fmo.js), kept with the
+// compensation, or null with fewer than three controls or when it cannot be fitted.
 export async function spilloverFromControls(data, ws, { gateId = null, unstainedId = null, method = 'median', onProgress } = {}) {
   const stained = ws.samples.filter((s) => s.role === 'single-stain' && s.stain);
   // Each control's stained channel must be one of its file's detectors. Spectral reference
@@ -60,5 +63,18 @@ export async function spilloverFromControls(data, ws, { gateId = null, unstained
   const compensatedControls = inputs.map((input) => ({ channel: input.channel, raw: input.columns, columns: compensate(input.columns, { channels: detectors, matrix: result.matrix }) }));
   const spreading = spilloverSpreading(compensatedControls, detectors, { range: 262144, ranges });
   const report = result.report.map((r, k) => ({ ...r, control: inputs[k]?.name }));
-  return { detectors, matrix: result.matrix, report, spreading, controls: usable };
+  // The instrument's noise, fitted to the controls' spread (spread.js): what virtual FMOs predict
+  // from. A compensation's spectra are its spillover rows.
+  let spread = null;
+  if (spreading.observations.length >= 3) {
+    try {
+      const n = detectors.length;
+      const rows = Array.from({ length: n }, (_, i) => Array.from(result.matrix.slice(i * n, i * n + n)));
+      const model = spreadModel({ names: detectors, detectors, spectra: rows });
+      spread = spreadRecord({ names: detectors, detectors, spectra: rows, channels: detectors, noise: noiseRecord(model, fitNoise(model, spreading.observations), { controls: spreading.observations.length }), source: 'single-stain controls' });
+    } catch {
+      spread = null;
+    }
+  }
+  return { detectors, matrix: result.matrix, report, spreading, spread, controls: usable };
 }

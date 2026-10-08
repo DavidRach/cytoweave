@@ -26,7 +26,8 @@ lede: Where your analysis lives, how to send it to someone, and how CytoWeave st
       </div>
       <p>The dot beside the workspace name shows its state: green when saved, amber while changes wait to be saved, red if saving failed (point at it for the reason). <kbd>⌘S</kbd> saves at once. The status bar shows where the library is; <code>--data-dir</code> moves it.</p>
       <p>The library keeps each FCS file once, under its SHA-256 checksum, and workspaces refer to files by checksum. A workspace therefore keeps working when the original files are moved, renamed or deleted, and adding the same file twice stores it once.</p>
-      <p>The workspace menu (click the workspace name) has <strong>New workspace</strong>, <strong>Open…</strong> (<kbd>⇧⌘O</kbd>, every saved workspace with its sample count and date), <strong>Rename…</strong> and <strong>Save now</strong>. Deleted workspaces go to the library's <code>trash</code> folder rather than disappearing. The start page lists recent workspaces.</p>
+      <p>The workspace menu (click the workspace name) has <strong>New workspace</strong>, <strong>Open…</strong> (<kbd>⇧⌘O</kbd>, every saved workspace with its sample count and date), <strong>Rename…</strong> and <strong>Save now</strong>. Deleted workspaces go to the library's <code>trash</code> folder rather than disappearing.</p>
+      <p>CytoWeave opens on the start page with a new, empty workspace. Its recent workspaces list the ones saved, the one you had open last marked <strong>Last opened</strong>: click it to go on where you left off. Files named on the command line (<code>cytoweave *.fcs</code>) open in that new workspace rather than in the last one.</p>
       <p>With <code>--no-library</code>, workspaces are kept in the browser's own storage instead.</p>
 
       <h2 id="export">Exporting and sharing</h2>

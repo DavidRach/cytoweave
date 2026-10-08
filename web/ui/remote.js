@@ -12,6 +12,7 @@ import { describeProposal, openProposals, proposalHistory, proposeAnnotations, p
 import { spilloverFromControls } from './controls.js';
 import { describe } from '../lib/stats.js';
 import { toast } from './overlays.js';
+import { WorkspaceChangedError, presentSamples } from './store.js';
 
 export class ActionError extends Error {}
 
@@ -497,6 +498,67 @@ export function installRemote(app) {
       return commitGates(gates, { parentId, dims, name: args.name, view, origin: 'agent' });
     },
 
+    // A virtual FMO (lib/virtual-fmo.js): where the population's negative for a channel's dye
+    // would end without that dye, predicted from the spread model.
+    async virtual_fmo(args) {
+      const { DEFAULT_QUANTILE, fmoControlFor, fmoThreshold, spreadFor, virtualFMO } = await import('../lib/virtual-fmo.js');
+      const { unstainedFor } = await import('./virtual-fmo-view.js');
+      const sample = resolveSample(args.sample);
+      const view = await loadedView(sample);
+      const populationId = resolvePopulation(args.population);
+      const channel = resolveChannel(view, args.channel);
+      const versus = args.versus ? resolveChannel(view, args.versus) : null;
+      const quantile = args.quantile === undefined ? DEFAULT_QUANTILE : Number(args.quantile);
+      if (!(quantile > 0.5 && quantile < 1)) throw new ActionError('quantile is between 0.5 and 1 (default 0.995).');
+      const w = ws();
+      const found = spreadFor(w, sample, channel);
+      if (!found) throw new ActionError(`No spread model covers ${channel} in ${sample.name}: compute the compensation from the single-stain controls (propose_compensation, accepted) or the spectral spreading matrix in the Spectral view first.`);
+      const unstainedSample = unstainedFor(w);
+      if (!unstainedSample) throw new ActionError('A virtual FMO needs an unstained control (a sample with the role "unstained").');
+      const unstained = await loadedView(unstainedSample);
+      let result;
+      try {
+        result = virtualFMO({ ws: w, view, unstained, populationId, channel, record: found.record, quantile, yChannel: versus });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const marker = view.channelInfo(channel)?.marker || null;
+      const fmoSample = fmoControlFor(w, channel, marker);
+      let real = null;
+      if (fmoSample) {
+        try {
+          real = fmoThreshold({ ws: w, view: await loadedView(fmoSample), populationId, channel, quantile, yChannel: versus });
+        } catch {
+          real = null;
+        }
+      }
+      const population = populationId === ROOT ? 'All events' : gatePath(w, populationId);
+      const data = {
+        sample: sample.name,
+        population,
+        channel,
+        marker,
+        quantile,
+        threshold: round(result.threshold, 6),
+        unstainedOnly: round(result.unstainedThreshold, 6),
+        realFMO: real ? { sample: fmoSample.name, threshold: round(real.threshold, 6) } : null,
+        events: result.events,
+        spreadFrom: result.contributions.slice(0, 6).map((c) => ({ channel: c.channel, dye: c.dye, share: round(c.share, 4) })),
+        curve: result.curve ? result.curve.map((c) => ({ [versus]: round(c.y, 6), threshold: round(c.threshold, 6), events: c.n })) : null,
+        spreadModel: found.source.label,
+        unstained: unstainedSample.name,
+        method: result.method,
+      };
+      let proposed = null;
+      if (args.addGate) {
+        const tx = channelTransform(w, view, channel);
+        const fx = createTransform(tx).forward;
+        proposed = commitGates([{ type: 'range', geometry: { min: fx(result.threshold), max: null } }], { parentId: populationId === ROOT ? null : populationId, dims: [{ channel, transform: { ...tx } }], name: args.name ?? `${marker || channel}+`, view, origin: 'agent', method: 'virtual FMO', explanation: `From the virtual FMO's ${(100 * quantile).toFixed(1)}th percentile.` });
+      }
+      const message = `Virtual FMO of ${marker ? `${marker} (${channel})` : channel} in ${population} of ${sample.name}: the negative ends at ${round(result.threshold, 4)} (${(100 * quantile).toFixed(1)}th percentile of the predicted values without the dye; the unstained control alone would say ${round(result.unstainedThreshold, 4)}${real ? `; the FMO control ${fmoSample.name} says ${round(real.threshold, 4)}` : ''}). The spread comes mostly from ${data.spreadFrom.slice(0, 3).map((c) => `${c.channel} (${Math.round(100 * c.share)}%)`).join(', ') || 'no other dye'}. It is a prediction of spread, a guide for gating, not a replacement for a real FMO on dim or critical markers.${proposed ? ` ${proposed.message}` : ''}`;
+      return { message, data: { ...data, ...(proposed ? { proposal: proposed.data } : {}) } };
+    },
+
     async auto_gate(args) {
       const sample = resolveSample(args.sample);
       const view = await loadedView(sample);
@@ -634,7 +696,7 @@ export function installRemote(app) {
       const targets = args.samples?.length ? args.samples.map((s) => resolveSample(s)) : ws().samples.filter((s) => s.role !== 'single-stain' && s.role !== 'unstained');
       if (!targets.length) throw new ActionError('No samples to apply the matrix to.');
       const name = `Proposed by ${author} (${method}, ${new Date().toLocaleDateString()})`;
-      const proposed = proposeCompensation(ws(), author, { name, channels: result.detectors, matrix: result.matrix, source: 'computed', method, report: result.report }, targets.map((s) => s.id));
+      const proposed = proposeCompensation(ws(), author, { name, channels: result.detectors, matrix: result.matrix, source: 'computed', method, report: result.report, ...(result.spread ? { spread: result.spread } : {}) }, targets.map((s) => s.id));
       store.commit(proposed.ws, `${author} proposed a compensation matrix`);
       toast(`${author} proposes a compensation matrix from ${result.controls.length} controls. Review the proposal to accept or reject it.`);
       const n = result.detectors.length;
@@ -643,6 +705,46 @@ export function installRemote(app) {
       largest.sort((a, b) => b.spillover - a.spillover);
       const warnings = result.report.flatMap((r) => (r.warnings ?? []).map((w) => `${r.control}: ${w}`));
       return { message: `Proposed a ${n}×${n} matrix from ${result.controls.length} single-stain controls for ${targets.length} sample${targets.length === 1 ? '' : 's'}; it applies when the user accepts your proposal.${warnings.length ? ` Warnings: ${warnings.slice(0, 4).join(' ')}` : ''}`, data: { detectors: result.detectors, largest: largest.slice(0, 12), warnings, proposal: proposalSummary() } };
+    },
+
+    // A compensation checked against the single-stain controls (lib/compensation.js
+    // controlResiduals, as Compensate → Check against the controls): each control compensated
+    // with the matrix, and what remains of its dye in every other detector is that entry's error.
+    async check_compensation(args) {
+      const { compensationOf } = await import('../lib/engine.js');
+      const { controlResiduals } = await import('../lib/compensation.js');
+      const w = ws();
+      const sample = args.sample ? resolveSample(args.sample) : w.samples.find((s) => s.role === 'sample') ?? w.samples[0];
+      if (!sample) throw new ActionError('The workspace has no samples.');
+      let spill;
+      let source;
+      if (args.compensation) {
+        const comp = w.compensations.find((c) => c.name === args.compensation || c.id === args.compensation);
+        if (!comp) throw new ActionError(`No compensation named ${args.compensation}. Compensations: ${w.compensations.map((c) => c.name).join(', ') || 'none'}.`);
+        spill = { channels: comp.channels, matrix: comp.matrix };
+        source = `the compensation "${comp.name}"`;
+      } else {
+        const view = await loadedView(sample);
+        spill = compensationOf(w, sample, view);
+        if (!spill) throw new ActionError(`${sample.name} is not compensated; name a compensation to check.`);
+        source = sample.compensationId === 'file' ? `the matrix in ${sample.name}'s file ($SPILLOVER)` : `the compensation "${w.compensations.find((c) => c.id === sample.compensationId)?.name ?? sample.compensationId}"`;
+      }
+      const controls = w.samples.filter((s) => s.role === 'single-stain' && s.stain && spill.channels.includes(s.stain));
+      if (!controls.length) throw new ActionError('No single-stain controls with a stained channel of the matrix: mark them with annotate_samples (role "single-stain", stain the channel).');
+      const inputs = [];
+      for (const control of controls) {
+        const view = await loadedView(control);
+        inputs.push({ channel: control.stain, columns: Object.fromEntries(spill.channels.filter((c) => view.raw.has(c)).map((c) => [c, view.raw.get(c)])) });
+      }
+      const rows = controlResiduals(inputs, { channels: spill.channels, matrix: spill.matrix }, { threshold: 0.002 });
+      const percent = (v) => round(100 * v, 4);
+      const errors = rows.filter((r) => !r.broad).slice(0, 12).map((r) => ({ from: r.from, into: r.to, current: percent(r.current), suggested: percent(r.suggested), residual: percent(r.residual) }));
+      const broad = [...new Set(rows.filter((r) => r.broad).map((r) => r.from))];
+      const top = errors[0];
+      return {
+        message: `Checked ${source} against ${inputs.length} single-stain controls. ${top ? `The largest error: ${top.from} into ${top.into} is ${top.current}% and the controls say ${top.suggested}% (${top.residual > 0 ? 'under' : 'over'}-compensated by ${Math.abs(top.residual)} points).` : 'No entry is off by 0.2 points or more.'}${broad.length ? ` The positives of ${broad.join(', ')} are brighter than their negatives in several detectors at once, which spillover does not explain (more autofluorescent positive cells, as in a viability control).` : ''} Values are percent spillover (row dye into column detector); a fix is a new matrix (propose_compensation computes one from the controls).`,
+        data: { checked: source, controls: inputs.length, errors, broad },
+      };
     },
 
     async annotate_samples(args) {
@@ -1074,6 +1176,87 @@ export function installRemote(app) {
       };
     },
 
+    // The panel optimizer (lib/panel-optimizer.js through ui/panel-design.js): which dye each
+    // marker should carry, from the experiment's reference or compensation controls, or from an
+    // instrument's spectral library. Nothing in the workspace changes.
+    async design_panel(args) {
+      const design = await import('./panel-design.js');
+      const run = await import('./spectral-run.js');
+      const { SPECTRA_RECORDS } = await import('../lib/spectral-library.js');
+      const { INSTRUMENT_RECORDS, instrumentOf } = await import('../lib/instrument-record.js');
+      const { levelLabel } = await import('../lib/panel-optimizer.js');
+      const w = ws();
+      if (!Array.isArray(args.markers) || !args.markers.length) throw new ActionError('markers: a list of { name, level (high, medium, low or molecules per cell), dye (optional: fixed) }.');
+      const markers = args.markers.map((m) => (typeof m === 'string' ? { name: m, level: 'medium' } : { name: String(m.name ?? '').trim(), level: m.level ?? 'medium', dye: m.dye ?? null }));
+      if (markers.some((m) => !m.name)) throw new ActionError('Every marker needs a name.');
+      const names = markers.map((m) => m.name);
+      const groups = args.groups === undefined ? [{ name: 'All markers', markers: names }] : (args.groups ?? []).map((g, k) => (Array.isArray(g) ? { name: `Group ${k + 1}`, markers: g } : { name: g.name ?? `Group ${k + 1}`, markers: g.markers ?? [] }));
+      for (const g of groups) for (const m of g.markers) if (!names.includes(m)) throw new ActionError(`The group ${g.name} names ${m}, which is not among the markers.`);
+      const library = async (id) => (app.library?.getRecord ? (await app.library.getRecord(SPECTRA_RECORDS, id).catch(() => null)) ?? null : null);
+      const runsOf = async (id) => (app.library?.getRecord ? ((await app.library.getRecord(INSTRUMENT_RECORDS, id).catch(() => null))?.runs ?? []) : []);
+      const state = run.spectralState(w);
+      const want = args.from ?? null;
+      let inputs = null;
+      let from;
+      if ((!want || want === 'spectral') && state.activeRefs().length >= 2) {
+        const inst = instrumentOf((state.controls[0] ?? w.samples[0])?.keywords ?? {});
+        inputs = design.spectralInputs(w, { library: inst ? await library(inst.id) : null, runs: inst ? await runsOf(inst.id) : [], instrumentName: inst?.name });
+        from = 'the reference controls of this experiment and the instrument\'s spectral library';
+      } else if ((!want || want === 'compensation') && w.compensations.some((c) => c.spread?.noise)) {
+        const comp = args.compensation ? w.compensations.find((c) => c.name === args.compensation || c.id === args.compensation) : w.compensations.find((c) => c.spread?.noise);
+        if (!comp?.spread?.noise) throw new ActionError(`No compensation named ${args.compensation} has a spread model (compute it from single-stain controls).`);
+        inputs = design.compensationInputs(w, comp);
+        from = `the single-stain controls of the compensation "${comp.name}"`;
+      } else if (!want || want === 'library') {
+        const records = app.library?.listRecords ? (await app.library.listRecords(SPECTRA_RECORDS).catch(() => [])) ?? [] : [];
+        const pick = args.instrument ? records.find((r) => r.id === args.instrument || r.name === args.instrument) : records[0];
+        if (!pick) throw new ActionError(records.length ? `No spectral library is kept for ${args.instrument}; there are: ${records.map((r) => r.name || r.id).join(', ')}.` : 'There is nothing to design from: no reference controls with spectra, no compensation computed from single-stain controls, and no spectral library of an instrument.');
+        const record = await library(pick.id);
+        inputs = design.libraryInputs(record, design.libraryDetectors(record), await runsOf(pick.id));
+        from = `the spectral library of ${record?.name ?? pick.id}`;
+      } else throw new ActionError(`Nothing to design from ${want}: from is spectral (reference controls), compensation (a compensation computed from single-stain controls) or library.`);
+      const exclude = Array.isArray(args.dyes) ? inputs.candidates.map((c) => c.name).filter((n) => !args.dyes.some((d) => String(d).toLowerCase() === n.toLowerCase())) : [];
+      const unknown = Array.isArray(args.dyes) ? args.dyes.filter((d) => !inputs.candidates.some((c) => c.name.toLowerCase() === String(d).toLowerCase())) : [];
+      if (unknown.length) throw new ActionError(`${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not among the dyes: ${inputs.candidates.map((c) => c.name).join(', ')}.`);
+      let result;
+      try {
+        result = await design.runDesign(app, inputs, { markers, groups, exclude, brightness: args.brightness ?? {}, source: args.noise ?? null, seed: args.seed ?? 1 });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const r = result.result;
+      const compared = r.compared.find((c) => c.rows);
+      const data = {
+        from,
+        kind: inputs.kind,
+        noise: result.noise,
+        background: result.background,
+        method: r.method,
+        assignmentsTried: r.assignmentsTried ?? undefined,
+        dyeSetsTried: r.method === 'local search' ? r.evaluations : undefined,
+        cost: round(r.cost, 6),
+        assignments: r.assignments.map((a) => ({
+          marker: a.marker,
+          expression: levelLabel(a.level),
+          dye: a.dye,
+          fixed: a.fixed || undefined,
+          stainIndex: round(a.stainIndex, 4),
+          group: a.group ?? undefined,
+          background: round(a.background, 3),
+          spreadFrom: a.from.slice(0, 3).map((f) => ({ marker: f.marker, dye: f.dye, share: round(f.share, 3) })),
+          alternatives: a.alternatives.map((x) => ({ dye: x.dye, swapWith: x.swapWith ?? undefined, stainIndex: round(x.stainIndex, 4), costIncrease: round(x.increase, 6) })),
+        })),
+        comparedWithThisPanel: compared ? { costRatio: round(r.cost / compared.cost, 4), assignments: compared.rows.map((x) => ({ marker: x.marker, dye: x.dye, stainIndex: round(x.stainIndex, 4) })) } : undefined,
+        dimmestOnBrightestCostRatio: r.rule ? round(r.cost / r.rule.cost, 4) : undefined,
+        energyTransfer: r.energyTransfer.map((e) => ({ markers: e.markers, kind: e.kind, donor: e.donor, acceptor: e.acceptor, note: e.note })),
+        warnings: r.warnings,
+        settings: r.settings,
+      };
+      const worst = [...r.assignments].sort((a, b) => a.stainIndex - b.stainIndex)[0];
+      const message = `Designed ${r.assignments.length} markers from ${from} (${r.method === 'exhaustive' ? `best of all ${r.assignmentsTried} assignments` : `local search, ${r.evaluations} dye sets tried`}; noise: ${result.noise}; background: ${result.background}): ${r.assignments.map((a) => `${a.marker} ${a.dye}`).join(', ')}. The least resolved marker is ${worst.marker} on ${worst.dye} (predicted stain index ${round(worst.stainIndex, 3)}).${compared ? ` Its noise-to-signal is ${Math.round((100 * r.cost) / compared.cost)}% of this experiment's panel.` : ''}${args.groups === undefined ? ' No groups were given, so every marker was taken to be on the same cells (the most conservative assumption).' : ''}${r.energyTransfer.length ? ` ${r.energyTransfer.length} pair(s) of dyes on the same cells can pass energy (see energyTransfer).` : ''} A prediction from the spread model: it assumes the expression levels given and does not predict degraded tandems.`;
+      return { message, data };
+    },
+
     async diagnose_unmixing(args) {
       const run = await import('./spectral-run.js');
       const { SPECTRA_RECORDS } = await import('../lib/spectral-library.js');
@@ -1272,6 +1455,92 @@ export function installRemote(app) {
       const w = ws();
       const open = openProposals(w);
       return { file: serializeWorkspace(w), message: `The workspace ${w.name}: ${w.samples.length} samples, ${w.gates.length} populations, ${w.tables.length} tables, ${w.figures.length} figures${open.length ? `; ${open.length} proposal${open.length === 1 ? '' : 's'} still open (saved as proposals)` : ''}.` };
+    },
+
+    // A reproducibility certificate of the analysis (lib/certificate.js), and its verification.
+    async export_certificate(args) {
+      requireExtension(args.path, ['.acs'], 'a certificate');
+      const { makeCertificate } = await import('./certificates.js');
+      const { shortFingerprint } = await import('../lib/certificate.js');
+      const includeData = args.includeData !== false;
+      let out;
+      try {
+        out = await makeCertificate(app, { includeData });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const c = out.certificate;
+      return {
+        file: out.bytes,
+        message: `A certificate of ${c.workspace.name}: ${c.total.toLocaleString('en-US')} numbers from ${c.inputs.length} files${includeData ? ' (included)' : ' (not included: verifying needs them)'}; fingerprint ${c.fingerprint} (short ${shortFingerprint(c.fingerprint)}).${c.notChecked.length ? ` Not computed again: ${c.notChecked.map((n) => n.what).join('; ')}.` : ''}${out.warnings.length ? ` Warnings: ${out.warnings.join(' ')}` : ''}`,
+        data: { fingerprint: c.fingerprint, numbers: c.total, files: c.inputs.length, includeData, warnings: out.warnings, notChecked: c.notChecked, log: c.log },
+      };
+    },
+
+    async export_review_report(args) {
+      requireExtension(args.path, ['.html', '.htm'], 'a review report');
+      const { makeReviewReport } = await import('./review.js');
+      const plots = args.plots ?? 'all';
+      if (!['all', 'none'].includes(plots)) throw new ActionError('plots is "all" (every sample\'s gates drawn) or "none".');
+      let out;
+      try {
+        out = await makeReviewReport(app, { plots, includeControls: Boolean(args.includeControls) });
+      } catch (error) {
+        throw new ActionError(error.message);
+      }
+      const numbers = (out.html.match(/<button type="button" class="n/g) ?? []).length;
+      const w = ws();
+      return {
+        file: out.html,
+        message: `A review report of ${w.name}: one HTML file (${(out.html.length / 1e6).toFixed(1)} MB) with ${numbers.toLocaleString('en-US')} numbers, each traced to its source${plots === 'all' ? ', and every sample\'s gates drawn' : ''}. It opens in any browser without CytoWeave and loads nothing from the network.${out.warnings.length ? ` Warnings: ${out.warnings.join(' ')}` : ''}`,
+        data: { numbers, bytes: out.html.length, samples: w.samples.length, figures: w.figures.length, tables: w.tables.length, comparisons: out.model.comparisons.length, warnings: out.warnings },
+      };
+    },
+
+    async verify_certificate(args, event) {
+      const { readCertificate, verifyCertificate } = await import('../lib/certificate.js');
+      const { sha256 } = await import('../lib/sha256.js');
+      const [first, ...rest] = event.files ?? [];
+      if (!first) throw new ActionError('verify_certificate needs the path of the certificate.');
+      const fetchBytes = async (file) => {
+        const response = await fetch(file.url);
+        if (!response.ok) throw new ActionError(`${file.name} could not be read.`);
+        return new Uint8Array(await response.arrayBuffer());
+      };
+      let read;
+      try {
+        read = await readCertificate(await fetchBytes(first));
+      } catch (error) {
+        throw new ActionError(`${first.name}: ${error.message}`);
+      }
+      // Supplied files, by checksum, read only when the certificate asks for one.
+      const wanted = new Set(read.certificate.inputs.filter((i) => !i.path).map((i) => i.sha256));
+      const data = new Map();
+      for (const file of rest) {
+        if (!wanted.size) break;
+        const bytes = await fetchBytes(file);
+        const digest = sha256(bytes);
+        if (wanted.has(digest)) data.set(digest, bytes);
+      }
+      const report = await verifyCertificate(read, { version: app.version, data });
+      const c = read.certificate;
+      return {
+        message: report.summary,
+        data: {
+          verdict: report.verdict,
+          analysis: c.workspace.name,
+          certified: { created: c.created, version: c.software.version, fingerprint: c.fingerprint },
+          verifiedWith: app.version,
+          fingerprintOK: report.fingerprint.ok,
+          workspaceOK: report.workspace.ok && report.inputsMatch,
+          files: { total: report.inputs.length, ok: report.inputs.filter((i) => i.status === 'ok').length, missing: report.inputs.filter((i) => i.status === 'missing').map((i) => i.fileName), changed: report.inputs.filter((i) => i.status === 'changed').map((i) => i.fileName) },
+          storedChannels: { total: report.derived.length, ok: report.derived.filter((d) => d.status === 'ok').length },
+          log: report.log,
+          engines: report.engine,
+          numbers: { checked: report.numbers.checked, identical: report.numbers.same, equalTo12Digits: report.numbers.close, largestRelativeDifference: report.numbers.largestRelative, differ: report.numbers.differ.length, notComputed: report.numbers.missing, firstDifferences: report.numbers.differ.slice(0, 50) },
+          notChecked: report.notChecked,
+        },
+      };
     },
 
     async export_events(args) {
@@ -1813,13 +2082,16 @@ export function installRemote(app) {
   //   perSample: Map(sampleId → { channel: Float32Array }).
   async function proposeResult(record, perSample, label) {
     const files = { ...(record.files ?? {}) };
-    for (const [sampleId, columns] of perSample) {
+    const sameWorkspace = store.sameWorkspace();
+    for (const [sampleId, columns] of presentSamples(ws(), perSample)) {
       files[sampleId] = {};
       for (const [name, column] of Object.entries(columns)) {
         data.setDerived(sampleId, name, column);
         files[sampleId][name] = await data.persistColumn(column);
       }
     }
+    // Storing the columns takes a while: another workspace may have been opened meanwhile.
+    if (!sameWorkspace()) throw new WorkspaceChangedError();
     const result = proposeDerived(ws(), author, { ...record, files });
     store.commit(result.ws, label, ['derived', 'data']);
     return result.derived;

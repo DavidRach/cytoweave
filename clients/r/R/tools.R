@@ -457,6 +457,27 @@ cw_check_robustness <- function(population, group_by, channel = NULL, groups = N
   cw_call("check_robustness", population = population, groupBy = group_by, channel = channel, groups = .cw_array(groups), pairBy = pair_by, rerunQC = rerun_qc, statistic = statistic, cw = cw)
 }
 
+#' Check a compensation against the controls
+#'
+#' Check a compensation matrix against the single-stain controls: each control is compensated
+#' with the matrix, and what remains of its dye in every other detector is that matrix entry's
+#' error. Checks the matrix a sample uses (sample; default the first stained sample: often the
+#' one in its FCS file, $SPILLOVER) or a compensation of the workspace by name (compensation).
+#' Returns the entries that are off, largest first, each with its current and suggested percent
+#' spillover, and controls whose positives are brighter in several detectors at once
+#' (autofluorescence, not spillover). Changes nothing; propose_compensation computes a new
+#' matrix.
+#'
+#' @param compensation A compensation of the workspace to check, by name. Optional; a string.
+#' @param sample Sample whose matrix to check (default: the first stained sample). Optional; a
+#' string.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_check_compensation <- function(compensation = NULL, sample = NULL, cw = cw_default()) {
+  cw_call("check_compensation", compensation = compensation, sample = sample, cw = cw)
+}
+
 #' Propose a compensation matrix from the controls
 #'
 #' Compute a spillover matrix from the workspace's single-stain controls (samples with the role
@@ -1143,6 +1164,142 @@ cw_methods <- function(cw = cw_default()) {
 #' @export
 cw_export_workspace <- function(path, overwrite = NULL, cw = cw_default()) {
   cw_call("export_workspace", path = path, overwrite = overwrite, cw = cw)
+}
+
+#' Predict a virtual FMO
+#'
+#' Where a population's negative for a channel's dye would end without that dye: a virtual FMO
+#' control, predicted from the panel's spread model (fitted to the single-stain or reference
+#' controls when the compensation or the spectral spreading matrix was computed) and the
+#' unstained control's autofluorescence. Each event's value without the dye is drawn from its
+#' own brightness of every other dye; the threshold is the given percentile (quantile, default
+#' 0.995). Returns the threshold in the channel's data units, the unstained control's alone,
+#' the real FMO control's when the workspace has one (role fmo), the dyes the spread comes
+#' from, and with versus (another channel) the threshold binned along it, as an FMO shows on a
+#' plot. It is a guide, not a replacement for a real FMO on dim or critical markers. addGate
+#' proposes a range gate from the threshold up (named name).
+#'
+#' @param sample Sample name. Required; a string.
+#' @param channel The channel (or its marker) whose dye is left out. Required; a string.
+#' @param add_gate Propose a range gate from the threshold up. Optional; TRUE or FALSE (Python:
+#' True or False).
+#' @param name Name of the proposed gate. Optional; a string.
+#' @param population Population (path or name; default all events). Optional; a string.
+#' @param quantile Percentile of the predicted negative (default 0.995). Optional; a number.
+#' @param versus Optional: another channel to bin the threshold along. Optional; a string.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_virtual_fmo <- function(sample, channel, add_gate = NULL, name = NULL, population = NULL, quantile = NULL, versus = NULL, cw = cw_default()) {
+  cw_call("virtual_fmo", sample = sample, channel = channel, addGate = add_gate, name = name, population = population, quantile = quantile, versus = versus, cw = cw)
+}
+
+#' Design a panel
+#'
+#' Which dye each marker of a panel should carry: the panel optimizer predicts every marker's
+#' resolution (stain index) from the dyes' spectra, the instrument's noise (photon noise per
+#' detector and laser fluctuations, fitted to the controls, kept for the instrument or from
+#' bead runs) and the unstained control's background, with the spread every co-expressed marker
+#' adds at its own brightness, and searches the assignments for the one with the least noise
+#' relative to signal (every assignment for small panels, local search for large ones). It
+#' designs from this experiment's spectral reference controls and the instrument's spectral
+#' library (from spectral), from a compensation computed from single-stain controls (from
+#' compensation: each dye in its own detector), or from an instrument's spectral library alone
+#' (from library, instrument). Give each marker its expression (high ≈ 10^5 molecules per cell,
+#' medium 10^4, low 10^3, or a number) and optionally a fixed dye; groups lists the markers
+#' found on the same cells (without groups every marker is taken to be on the same cells). dyes
+#' limits the candidates, brightness overrides a dye's relative brightness (PE 0.5, FITC 0.12;
+#' built in for common dyes). Returns each marker's dye, predicted stain index, what limits it
+#' and the next-best dyes, the comparison with this experiment's panel, pairs of dyes prone to
+#' energy transfer, and warnings. Nothing in the workspace changes.
+#'
+#' @param markers The markers: { name, level (high, medium, low or molecules per cell; default
+#' medium), dye (optional: fixed) }. Required; a list of strings.
+#' @param brightness Relative brightness of dyes, by name. Optional; a named list (Python: a
+#' dict).
+#' @param compensation With from compensation: the compensation's name (default: the first
+#' computed from controls). Optional; a string.
+#' @param dyes Only these candidate dyes. Optional; a list of strings.
+#' @param from What to design from (default: the first available, in this order). Optional; one
+#' of "spectral", "compensation", "library".
+#' @param groups Groups of markers found on the same cells: { name, markers }. Optional; a list
+#' of strings.
+#' @param instrument With from library: the instrument's library (name or id; default the
+#' first). Optional; a string.
+#' @param noise The noise model (default: this experiment's controls, else the one kept for the
+#' instrument, else bead runs). Optional; one of "controls", "library", "beads".
+#' @param seed Seed of the search (default 1). Optional; any value.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_design_panel <- function(markers, brightness = NULL, compensation = NULL, dyes = NULL, from = NULL, groups = NULL, instrument = NULL, noise = NULL, seed = NULL, cw = cw_default()) {
+  cw_call("design_panel", markers = .cw_array(markers), brightness = brightness, compensation = compensation, dyes = .cw_array(dyes), from = from, groups = .cw_array(groups), instrument = instrument, noise = noise, seed = seed, cw = cw)
+}
+
+#' Make a reproducibility certificate
+#'
+#' Write a reproducibility certificate of the analysis (.acs, an ISAC Archival Cytometry
+#' Standard archive): the workspace, the FCS files (unless includeData is false: then only
+#' their SHA-256), the channels the analysis stored, the gates as Gating-ML, the methods, and
+#' certificate.json, which records the CytoWeave version, every input's SHA-256, the analyses
+#' and their seeds, the head of the hash-chained change log, MIFlowCyt and every number
+#' reported: each population's count in each sample, every table cell, and every saved
+#' comparison of one measure. Every number is computed from the files to make it;
+#' verify_certificate computes them again. Returns the fingerprint (SHA-256 of
+#' certificate.json) to quote with the analysis, and warnings (a saved comparison that no
+#' longer matches the analysis). The file must not exist unless overwrite is true.
+#'
+#' @param path Absolute path of the file to write (.acs). Required; a string.
+#' @param include_data Include the FCS files (default true); without them, verifying needs the
+#' files. Optional; TRUE or FALSE (Python: True or False).
+#' @param overwrite Optional; TRUE or FALSE (Python: True or False).
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_export_certificate <- function(path, include_data = NULL, overwrite = NULL, cw = cw_default()) {
+  cw_call("export_certificate", path = path, includeData = include_data, overwrite = overwrite, cw = cw)
+}
+
+#' Write a review report
+#'
+#' Write a review report of the analysis: one self-contained HTML file (.html) for a PI,
+#' collaborator or reviewer, opened in any browser without CytoWeave: the samples with their
+#' SHA-256 checksums, the gating hierarchy and every population's count in every sample, every
+#' sample's gates drawn on its own events (plots "all", the default; "none" leaves them out;
+#' includeControls draws the controls too), the workspace's figures and tables, the saved
+#' comparisons, the methods, MIFlowCyt and the change log. Every number is traced (a click
+#' shows its sample, file checksum, gates and the counts behind it); the numbers are those a
+#' reproducibility certificate records. The file loads nothing from the network. The file must
+#' not exist unless overwrite is true.
+#'
+#' @param path Absolute path of the file to write (.html). Required; a string.
+#' @param include_controls Optional; TRUE or FALSE (Python: True or False).
+#' @param overwrite Optional; TRUE or FALSE (Python: True or False).
+#' @param plots Optional; one of "all", "none".
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_export_review_report <- function(path, include_controls = NULL, overwrite = NULL, plots = NULL, cw = cw_default()) {
+  cw_call("export_review_report", path = path, includeControls = include_controls, overwrite = overwrite, plots = plots, cw = cw)
+}
+
+#' Verify a reproducibility certificate
+#'
+#' Verify a CytoWeave reproducibility certificate (absolute path of the .acs file): check every
+#' file's SHA-256, the workspace, the change log's chain and certificate.json's fingerprint,
+#' compute every number again from the files and compare them bit for bit. A certificate
+#' written without its data needs data (a folder, or FCS file paths; files are recognized by
+#' their checksums). Returns the verdict (confirmed, incomplete or differs), a summary, and the
+#' numbers that differ. The analysis in the window is not changed.
+#'
+#' @param path Absolute path of the certificate (.acs). Required; a string.
+#' @param data A folder with the FCS files, or a list of FCS file paths, for a certificate
+#' without its data. Optional; any value.
+#' @param cw A connection from cw_connect() (default: the last one made).
+#' @return A cytoweave_result: the message and the data CytoWeave answered with.
+#' @export
+cw_verify_certificate <- function(path, data = NULL, cw = cw_default()) {
+  cw_call("verify_certificate", path = path, data = data, cw = cw)
 }
 
 #' Export gates as Gating-ML

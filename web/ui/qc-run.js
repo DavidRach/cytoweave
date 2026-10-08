@@ -7,6 +7,7 @@ import { channelTransform } from '../lib/engine.js';
 import { addDerived } from '../lib/workspace.js';
 import { peacoQCLayout } from '../lib/qc.js';
 import { WorkerClient } from './workers.js';
+import { WorkspaceChangedError, presentSamples } from './store.js';
 
 export const QC_CHANNEL = 'QC pass';
 export const QC_GREEN = '#1f9d55';
@@ -248,7 +249,8 @@ export async function saveDerivedMergedIn(app, record, perSample, label, options
   const existing = store.ws.derived.find((d) => d.kind === record.kind && sameSet(d.outputs, record.outputs));
   if (!existing) return app.saveDerived({ ...record, perSample }, label);
   const files = { ...(existing.files ?? {}) };
-  for (const [sampleId, columns] of perSample) {
+  const sameWorkspace = store.sameWorkspace();
+  for (const [sampleId, columns] of presentSamples(store.ws, perSample)) {
     files[sampleId] = {};
     for (const [name, column] of Object.entries(columns)) {
       data.setDerived(sampleId, name, column);
@@ -260,6 +262,8 @@ export async function saveDerivedMergedIn(app, record, perSample, label, options
     ...(record.summary ?? {}),
     perSample: { ...(existing.summary?.perSample ?? {}), ...(record.summary?.perSample ?? {}) },
   };
+  // Storing the columns takes a while: another workspace may have been opened meanwhile.
+  if (!sameWorkspace()) throw new WorkspaceChangedError();
   const merged = { ...existing, ...record, params: options.keepParams ? existing.params : record.params, id: existing.id, created: existing.created, files, summary };
   store.commit(addDerived(store.ws, merged).ws, label, ['derived', 'data']);
   return merged;

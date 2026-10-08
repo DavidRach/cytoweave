@@ -1,0 +1,57 @@
+---
+title: Agent benchmark
+layout: page
+heading: Agent benchmark
+description: A public benchmark of AI agents analyzing flow cytometry data with CytoWeave's tools, graded automatically against the simulated truth of each experiment.
+lede: AI agents can now drive cytometry software. This benchmark measures whether they get the analysis right: graded tasks on simulated experiments whose true answers are known, worded as a user would ask, with nothing but CytoWeave's tools.
+---
+      <h2 id="what">What it measures</h2>
+      <p>Each task is a request a user could make of an agent: gate a population, find an error in a compensation matrix, test whether a treatment changes a population, name what went wrong during acquisition, read a concentration from a bead assay, write a report. Every task runs on an example experiment generated with a seed of its own, so its answer cannot be recalled from the example's defaults, and is graded against the simulator's own record of that experiment: the true population of every cell, the planted fault, the true spillover, the true concentration.</p>
+      <p>Grading is deterministic: code reads the analysis the agent left in CytoWeave (its gates, results and files) and the answer line the task asks for, and gives partial credit by a fixed rubric. No model judges another.</p>
+
+      <h2 id="results">Results</h2>
+      <p>The score is the mean over tasks of each task's mean score over runs. The reference solution, scripted through the same tools without a model, scores 100% and shows that every task can be solved with CytoWeave's tools; an agent that answers nothing scores 0%. Cost is Claude Code's own estimate of each run's API cost (on a subscription, usage of the plan).</p>
+      <benchmark-results></benchmark-results>
+
+      <h2 id="how">How a run works</h2>
+      <ol>
+        <li>The harness starts CytoWeave (built from the benchmark's commit) with an empty library, opens its window, generates the task's example with the task's seed, and prepares it as the task says (for some tasks, the example's suggested gates). The example's title, the simulator's per-cell truth and any annotation naming a planted fault are removed.</li>
+        <li>The agent is started as a program of its own, in an empty folder, with CytoWeave's MCP server as its only tools: no files, shell or web. Claude Code runs with <code>--tools ""</code>, <code>--strict-mcp-config</code>, the settings of that empty folder only (not the user's hooks, plugins or defaults) and the model and effort given; each run is a fresh session.</li>
+        <li>The agent gets the task's prompt, which starts as every one does: the data are already open in CytoWeave, in the workspace "Experiment". It works through CytoWeave's tools in the window the harness watches and ends its reply with the answer line the prompt asks for. A run stops after 60 turns or 20 minutes.</li>
+        <li>The harness grades the window's state, the files in the task's output folder and the answer, and records the score, the tool calls, the tokens and the time.</li>
+      </ol>
+
+      <h2 id="tasks">Tasks</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Task</th><th>Example</th><th>Graded against</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Gate T cells and report their frequency</strong></td><td>PBMC, 14 colors</td><td>The F1 of the agent's "T cells" gate against every cell's true type (full credit from 0.9), and the reported percentage of all events (within 1.5 points)</td></tr>
+            <tr><td><strong>Find the wrong value in a spillover matrix</strong></td><td>PBMC, 14 colors</td><td>The planted error (APC into Alexa Fluor 700), and the corrected value against the true spillover (within 1.5 points)</td></tr>
+            <tr><td><strong>Test whether stimulation changes CD25+ CD4 T cells</strong></td><td>PBMC, 14 colors, suggested gates</td><td>The direction (up, as simulated), significance, and a test paired by donor</td></tr>
+            <tr><td><strong>Name each acquisition's problem</strong></td><td>Acquisition QC showcase</td><td>Each of four files: clean, a clog, drift or an air bubble, as simulated</td></tr>
+            <tr><td><strong>Find the sample with an acquisition problem</strong></td><td>PBMC, 14 colors</td><td>The sample with the simulated clog, and the kind of problem</td></tr>
+            <tr><td><strong>Find what is wrong with one dye in a spectral panel</strong></td><td>Spectral 25-color, PE-Cy7 degraded by 10% in the samples</td><td>The dye and the cause (a degraded tandem)</td></tr>
+            <tr><td><strong>Choose an antibody amount from a titration</strong></td><td>Titration and voltage walk</td><td>The amount following Bonilla et al. 2024 from the true binding curve (125 ng)</td></tr>
+            <tr><td><strong>Find the most potent compound on a plate</strong></td><td>96-well drug screen, suggested gates</td><td>The most potent compound, its IC50 against the simulated one (within 2×), and the inactive compound</td></tr>
+            <tr><td><strong>Read a serum concentration from a bead assay</strong></td><td>Cytokine bead assay, suggested gates</td><td>The serum's true IL-6 concentration (within 20%)</td></tr>
+            <tr><td><strong>Compare calcium responses to stimuli</strong></td><td>Calcium flux</td><td>The strongest stimulus and the true share of responding cells (within 10 points)</td></tr>
+            <tr><td><strong>Write a gating report as a PDF</strong></td><td>PBMC, 14 colors, suggested gates</td><td>The PDF written where asked, a page per stained sample, and the gating strategy on its pages</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Before results are published, the benchmark checks itself: every reference solution must score at least 90% (all score 100%), an agent that answers nothing must score 0, and unit tests give each grader plausible wrong answers to check its partial credit. These checks run in continuous integration with the rest of the validation.</p>
+
+      <h2 id="limits">Limits</h2>
+      <ul>
+        <li><strong>Simulated data.</strong> The truth is the simulator's. Real data are messier, and an agent good here may still be wrong on a real panel; CytoWeave's own analyses are validated on real data separately (<a href="science.html#validation">Science</a>).</li>
+        <li><strong>The examples are public.</strong> Their code is on GitHub, so a model trained on it could know where faults were planted. Seeds change every task's data, but not which fault an example carries; later versions of the benchmark will move the faults with the seed.</li>
+        <li><strong>CytoWeave's tools.</strong> The benchmark measures agents through CytoWeave. Analyses without an agent tool yet (cell-cycle and proliferation fits, index sorting, bead Q and B) are not among the tasks, and a tool's wording can mislead an agent: QC findings that call a clog "possibly a bubble" and a bubble "possibly a clog" led Claude Haiku to swap them in every run (and Sonnet and Opus in some runs of version 1). CytoWeave 0.8.0's findings name the cause from what the flow rate did at the same time, and on 0.8.0 every model named each problem right in every run; Haiku 5.5 is also a newer model than Haiku 4.5, so the two changes cannot be told apart.</li>
+        <li><strong>Prompts matter.</strong> In version 1, two prompts described their experiment in the words of an example's description, and agents opened that example, replacing the task's data with another copy of it, then answered about that. Version 2 starts every prompt by saying where the data are; a run that still analyzes another experiment is scored 0 and counted as such in the results.</li>
+        <li><strong>Few runs.</strong> Agents vary from run to run; results give the number of runs per task, and differences of a few points between models are within that variation.</li>
+      </ul>
+
+      <h2 id="run">Run it, or submit results</h2>
+      <p>The benchmark is in the repository's <a href="{{github}}/tree/main/benchmark"><code>benchmark</code></a> folder. With Go, Chrome and Claude Code installed and logged in:</p>
+      <pre><code>node benchmark/run.mjs --agent claude-code --model sonnet --repeat 3</code></pre>
+      <p>writes a results file to <code>benchmark/results/</code>. Other agents that speak MCP can be added as adapters in <code>benchmark/harness.mjs</code>. To submit results, open a pull request with the results file: it records the agent's program and model, the CytoWeave commit, every run's score, tool calls, tokens and time, and the reply.</p>

@@ -9,17 +9,17 @@
 // Exits with status 1 when a check fails.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from '../docs/capture/cdp.mjs';
-import { generateExample } from '../web/lib/examples.js';
+import { PBMC_PANEL, generateExample } from '../web/lib/examples.js';
 import { parseFCS } from '../web/lib/fcs.js';
 import { readZip } from '../web/lib/zip.js';
 import { readFigureProvenance } from '../web/lib/figure-provenance.js';
 import { adjustedRandIndex } from '../web/lib/cluster-summary.js';
-import { encodeFCS } from '../web/lib/simulate.js';
+import { INSTRUMENTS, buildPanel, encodeFCS } from '../web/lib/simulate.js';
 import { BEAD_MEF, BEAD_TRUTH, simulatedBeads } from './calibration-cases.mjs';
 import { BEAD_SPEC, beadWells, exampleWorkspace, screenInput, screenWells } from './curve-cases.mjs';
 import { fitLogLogistic } from '../web/lib/curves.js';
@@ -578,6 +578,59 @@ try {
   const wrote = await tool('export_workspace', { path: cwzPath }, 'Plates agent');
   const cwz = JSON.parse(readFileSync(cwzPath, 'utf8'));
   check('export_workspace: the workspace written as a .cwz file, its samples, annotations and gates as the app holds them', `${wrote.message.split('.')[0]}; ${cwz.samples.length} samples, ${cwz.gates.length} gates, ${cwz.samples.filter((x) => x.meta?.standard).length} standards annotated`, cwz.format === 'cytoweave-workspace' && cwz.samples.length === 56 && cwz.gates.length === 2 && cwz.samples.filter((x) => x.meta?.standard).length === 16, '56 samples, 2 gates, 16 standards');
+  // A reproducibility certificate, and its verification (with and without the FCS files).
+  const certificatePath = join(temp, 'beads.certificate.acs');
+  const certified = await tool('export_certificate', { path: certificatePath }, 'Plates agent');
+  const verified = await tool('verify_certificate', { path: certificatePath }, 'Plates agent');
+  check('export_certificate and verify_certificate: the analysis certified (its files included) and every number computed again from the archive', `${certified.data.numbers} numbers, fingerprint ${certified.data.fingerprint.slice(0, 16)}…; ${verified.data.verdict}: ${verified.data.numbers.identical} identical of ${verified.data.numbers.checked}`, existsSync(certificatePath) && certified.data.files === 56 && verified.data.verdict === 'confirmed' && verified.data.numbers.identical === certified.data.numbers && verified.data.certified.fingerprint === certified.data.fingerprint, 'confirmed');
+  const leanPath = join(temp, 'beads.lean.acs');
+  await tool('export_certificate', { path: leanPath, includeData: false }, 'Plates agent');
+  const lean = await tool('verify_certificate', { path: leanPath }, 'Plates agent');
+  const logged = (await page(`return app.store.ws.provenance.filter((e) => e.action === 'certify').length;`));
+  check('a certificate without its files: incomplete until they are supplied, the missing files named; both certificates recorded in the change log', `${lean.data.verdict}: ${lean.data.files.missing.length} files missing (${lean.data.files.missing[0]}, …); ${logged} certificates in the log`, statSync(leanPath).size < statSync(certificatePath).size / 10 && lean.data.verdict === 'incomplete' && lean.data.files.missing.length === 56 && logged === 2, 'incomplete; 2 in the log');
+  const reviewPath = join(temp, 'beads.review.html');
+  const reviewed = await tool('export_review_report', { path: reviewPath, plots: 'none' }, 'Plates agent');
+  const reviewText = readFileSync(reviewPath, 'utf8');
+  const traced = (reviewText.match(/<button type="button" class="n/g) ?? []).length;
+  const wrongPath = await refused('export_review_report', { path: join(temp, 'beads.review.pdf') });
+  check('export_review_report: one self-contained HTML file of the analysis, every number traced; a path that is not .html refused', `${reviewed.data.numbers} numbers (${traced} in the file), ${(reviewed.data.bytes / 1e3).toFixed(0)} kB; ${wrongPath ? 'refused .pdf' : 'accepted .pdf'}`, reviewText.startsWith('<!doctype html>') && traced === reviewed.data.numbers && traced > 56 * 3 && !/<script[^>]+src=|<link\b/i.test(reviewText) && Boolean(wrongPath), 'traced; .pdf refused');
+  // Virtual FMO: the PBMC example with a CD25 FMO tube, compensation proposed from the controls
+  // (with the spread fitted to them) and accepted, then CD25's negative in T cells predicted.
+  await page(`await app.openExample('pbmc-immunophenotyping', { scale: 0.3, fmos: ['CD25'] }); return true;`);
+  await waitFor(`window.cytoweave.store.ws.samples.length === 29 && !document.querySelector('.progress-toast')`);
+  {
+    const gates = generateExample('pbmc-immunophenotyping', { samples: ['Unstained.fcs'] }).workspaceHints.suggestedGates;
+    await page(`const { addGates } = await import('/lib/workspace.js'); app.store.commit(addGates(app.store.ws, ${JSON.stringify(gates)}.map((g) => ({ ...g, overrides: {} })), 'add-suggested-gates').ws, 'Add the suggested gates'); return true;`);
+  }
+  // The files' matrix checked against the controls: the example's planted error (APC under-
+  // compensated into Alexa Fluor 700) named first, with a value near the true spillover.
+  {
+    const checked = (await tool('check_compensation', {}, 'FMO agent')).data;
+    const panel = buildPanel(INSTRUMENTS.fortessa, PBMC_PANEL).spill;
+    const n = panel.channels.length;
+    const truth = 100 * panel.matrix[panel.channels.indexOf('APC-A') * n + panel.channels.indexOf('Alexa Fluor 700-A')];
+    const top = checked.errors[0];
+    check('check_compensation: the files\' matrix checked against the 14 controls, the planted error named first with its value from the controls', `${checked.checked}; ${top.from} into ${top.into}: ${top.current}% → ${top.suggested}% (true ${truth.toFixed(2)}%); next ${checked.errors[1] ? `${checked.errors[1].from} into ${checked.errors[1].into} by ${checked.errors[1].residual} points` : 'none'}`, top.from === 'APC-A' && top.into === 'Alexa Fluor 700-A' && Math.abs(top.suggested - truth) < 0.5 && checked.controls === 14, 'APC-A into Alexa Fluor 700-A first, within 0.5 points');
+  }
+  await tool('propose_compensation', {}, 'FMO agent');
+  await decide('FMO agent', true);
+  const fmoResult = (await tool('virtual_fmo', { sample: 'D01_Unstim', population: 'T cells', channel: 'CD25', versus: 'CD127' }, 'FMO agent')).data;
+  const gated = await tool('virtual_fmo', { sample: 'D01_Unstim', population: 'T cells', channel: 'CD25', addGate: true, name: 'CD25+ (virtual FMO)' }, 'FMO agent');
+  const fmoRatio = fmoResult.realFMO ? fmoResult.threshold / fmoResult.realFMO.threshold : Number.NaN;
+  check('virtual_fmo: CD25 in T cells predicted from the spread model the accepted compensation carries, beside the FMO control and the unstained control; with addGate, a range gate from the threshold proposed', `threshold ${fmoResult.threshold} (FMO control ${fmoResult.realFMO?.threshold}, unstained alone ${fmoResult.unstainedOnly}); spread from ${fmoResult.spreadFrom.slice(0, 2).map((c) => c.channel).join(', ')}; curve along CD127 in ${fmoResult.curve?.length} bins; ${gated.data.proposal ? 'gate proposed' : 'no gate'}`, fmoRatio > 0.75 && fmoRatio < 1.33 && fmoResult.unstainedOnly < fmoResult.realFMO.threshold / 1.5 && fmoResult.curve?.length >= 5 && Boolean(gated.data.proposal?.created?.length), 'within ×1.33 of the FMO; gate proposed');
+  // The panel optimizer from the same compensation: CD25 and CD127 dim on T cells with the
+  // lineage markers bright; nothing in the workspace changes.
+  {
+    const before = await page('return JSON.stringify(app.store.ws).length;');
+    const markers = [['CD3', 'high'], ['CD4', 'high'], ['CD8', 'high'], ['CD45RA', 'high'], ['CCR7', 'low'], ['CD25', 'low'], ['CD127', 'medium']].map(([name, level]) => ({ name, level }));
+    const designed = (await tool('design_panel', { markers, groups: [{ name: 'CD4 T', markers: ['CD3', 'CD4', 'CD45RA', 'CCR7', 'CD25', 'CD127'] }, { name: 'CD8 T', markers: ['CD3', 'CD8', 'CD45RA', 'CCR7', 'CD127'] }] }, 'Panel agent')).data;
+    const after = await page('return JSON.stringify(app.store.ws).length;');
+    const fixed = (await tool('design_panel', { markers: markers.map((m) => (m.name === 'CD25' ? { ...m, dye: 'FITC' } : m)), groups: [markers.map((m) => m.name)], dyes: ['BV421', 'BV605', 'BV711', 'FITC', 'PE', 'PE-Cy7', 'APC', 'Alexa Fluor 700'] }, 'Panel agent')).data;
+    const wrong = await refused('design_panel', { markers: [{ name: 'CD3', level: 'bright' }] });
+    const dyes = new Set(designed.assignments.map((a) => a.dye));
+    const dim = designed.assignments.filter((a) => a.expression === 'low');
+    check('design_panel: a 7-marker T-cell panel chosen from the accepted compensation\'s 14 dyes and their spread (local search), compared with the example\'s own panel; a fixed dye and a subset of dyes honored; an unknown level refused; the workspace unchanged', `${designed.assignments.map((a) => `${a.marker} ${a.dye} ${a.stainIndex}`).join(', ')}; ${designed.method}, noise ${designed.noise}, background ${designed.background}; cost ${designed.comparedWithThisPanel?.costRatio ?? '?'} of the example's; fixed CD25 → ${fixed.assignments.find((a) => a.marker === 'CD25').dye}`, designed.method === 'local search' && dyes.size === 7 && designed.background === 'unstained' && designed.comparedWithThisPanel?.costRatio <= 1 && dim.every((a) => a.stainIndex > 0) && fixed.assignments.find((a) => a.marker === 'CD25').dye === 'FITC' && fixed.assignments.every((a) => ['BV421', 'BV605', 'BV711', 'FITC', 'PE', 'PE-Cy7', 'APC', 'Alexa Fluor 700'].includes(a.dye)) && Boolean(wrong) && before === after, 'designed, constraints honored, refused, unchanged');
+  }
 } catch (error) {
   check('session ran', error.stack?.split('\n').slice(0, 3).join(' | ') ?? error.message, false, 'no error');
 } finally {

@@ -11,6 +11,7 @@ import { compensate } from './compensation.js';
 import { combinationKey } from './debarcode.js';
 import { parseFCS } from './fcs.js';
 import { pointTest } from './gates.js';
+import { divaExperiment, eventsCSV, flowJo11Workbench, spectroFloExperiment } from './example-files.js';
 import { createTransform } from './transforms.js';
 import {
   FLUOROCHROMES,
@@ -233,7 +234,10 @@ function round6(v) {
 
 // --- Context and file assembly ------------------------------------------------------------------
 
-function createContext(entry, options) {
+function createContext(entry, given) {
+  // The example's own defaults (entry.defaults), then the options given; an option given as null
+  // or [] turns a default off, one left undefined keeps it.
+  const options = { ...(entry.defaults ?? {}), ...Object.fromEntries(Object.entries(given ?? {}).filter(([, v]) => v !== undefined)) };
   const seed = (options.seed ?? DEFAULT_SEED) >>> 0;
   const scale = options.scale ?? 1;
   if (!(scale > 0)) throw new Error('The example size (options.scale) must be a positive number.');
@@ -261,8 +265,27 @@ function createContext(entry, options) {
     shift: options.instrumentShift ?? null,
     // Laser intensity CV from event to event (a number or { laser: cv }; spectral example).
     laserCV: options.laserCV ?? null,
+    // The donors' subjects (spectral examples).
+    donors: options.donors ?? null,
+    // What an example plants, for exercises that vary it: the population that differs between the
+    // CyTOF cohort's groups ({ population, fold }), the QC wells' problems (A01–A04: 'none',
+    // 'clog', 'drift', 'burst'), the daily beads' events ({ aging: { detector, from }, flowCell:
+    // { detector, from }, laser: { laser, from } }) and the cell-cycle cultures' phases (by file).
+    differential: options.differential ?? null,
+    qcWells: options.qcWells ?? null,
+    beadEvents: options.beadEvents ?? null,
+    phases: options.phases ?? null,
     // The files with a clog (PBMC example; default: D05_Unstim only).
     clogs: options.clogs ?? null,
+    // FMO controls (PBMC and spectral examples): markers, each giving FMO_<marker>.fcs, the first
+    // donor's cells stained with every dye of the panel but that marker's.
+    fmos: options.fmos ?? null,
+    // A tube of 8-peak rainbow beads acquired with the samples' settings, with its datasheet's MEF
+    // values (PBMC example).
+    calibrationBeads: Boolean(options.calibrationBeads),
+    // Donors D04–D06 acquired the next day as batch B2, with every detector's gain changed for
+    // the day by up to ±strength (log-uniform; scatter a quarter of that) (PBMC example).
+    secondBatch: options.secondBatch ?? null,
     random: (...parts) => createRandom(deriveSeed(seed, entry.id, ...parts)),
     // Acquisition start times follow the file's place in the full design, so a file generated
     // on its own is byte-identical to the same file generated with the whole example.
@@ -360,7 +383,7 @@ function simulateBeads(ctx, sample, instrument, panel, marker, targetSignal, rat
 
 // --- 1. PBMC immunophenotyping (conventional, BD LSRFortessa-like) ------------------------------
 
-const PBMC_PANEL = [
+export const PBMC_PANEL = [
   { marker: 'CD45RA', fluor: 'BUV395', detector: 'BUV395-A' },
   { marker: 'CD56', fluor: 'BUV737', detector: 'BUV737-A' },
   { marker: 'CCR7', fluor: 'BV421', detector: 'BV421-A' },
@@ -388,7 +411,7 @@ function bdChannels(assignments, withWidth = true) {
   return [...scatter.map((name) => ({ name, label: '' })), ...assignments.map((a) => ({ name: a.detector, label: a.label ?? a.marker })), { name: 'Time', label: '' }];
 }
 
-function pbmcDesign(scale) {
+function pbmcDesign(scale, ctx = {}) {
   const samples = [{ name: 'Unstained.fcs', events: eventsFor(20000, scale), role: 'unstained', condition: 'Control', subject: 'D01', carrier: 'cells' }];
   for (const a of PBMC_PANEL) {
     if (a.marker === 'Viability') samples.push({ name: `Comp_${a.fluor}.fcs`, events: eventsFor(10000, scale), role: 'single-stain', stain: a.detector, marker: a.marker, carrier: 'cells (50 % heat-killed)', condition: 'Control', subject: 'D01' });
@@ -397,15 +420,48 @@ function pbmcDesign(scale) {
   for (const donor of PBMC_DONORS) {
     for (const condition of ['Unstimulated', 'Stimulated']) {
       const clog = donor === 'D05' && condition === 'Unstimulated';
-      samples.push({ name: `${donor}_${condition === 'Unstimulated' ? 'Unstim' : 'Stim'}.fcs`, events: eventsFor(100000, scale), role: 'sample', condition, subject: donor, batch: 'B1', anomaly: clog ? 'clog' : null });
+      const batch = ctx.secondBatch && PBMC_BATCH2.includes(donor) ? 'B2' : 'B1';
+      samples.push({ name: `${donor}_${condition === 'Unstimulated' ? 'Unstim' : 'Stim'}.fcs`, events: eventsFor(100000, scale), role: 'sample', condition, subject: donor, batch, anomaly: clog ? 'clog' : null });
     }
   }
+  for (const marker of ctx.fmos ?? []) {
+    const a = PBMC_PANEL.find((x) => x.marker === marker);
+    if (!a) throw new Error(`The PBMC panel has no ${marker}.`);
+    // A control: D01's unstimulated cells, annotated as a control so that no comparison of
+    // conditions counts it as a sample.
+    samples.push({ name: `FMO_${marker}.fcs`, events: eventsFor(100000, scale), role: 'fmo', stain: a.detector, marker, condition: 'Control', subject: PBMC_DONORS[0], batch: 'B1' });
+  }
+  if (ctx.calibrationBeads) samples.push({ name: 'Beads_8peak.fcs', events: eventsFor(20000, scale, 2000), role: 'bead', condition: 'Control', carrier: 'beads', batch: 'B1' });
   return samples;
 }
 
+// The second day's donors (secondBatch) and the day they were acquired.
+const PBMC_BATCH2 = ['D04', 'D05', 'D06'];
+const PBMC_DATES = { B1: '2026-03-12', B2: '2026-03-13' };
+
+// The rainbow beads' datasheet: MEF per level for the channels the manufacturer gives, each
+// level's brightness (BEAD_LEVELS) times the channel's MEF per brightness unit. The blank has none.
+const PBMC_BEAD_MEF = { 'BV421-A': ['MEBFP', 30000], 'FITC-A': ['MEFL', 36000], 'PE-A': ['MEPE', 21000], 'PE-Cy7-A': ['MEPCY7', 5000], 'APC-A': ['MEAPC', 9000] };
+function pbmcBeadDatasheet() {
+  return {
+    product: 'Rainbow calibration particles, 8 peaks (simulated)',
+    lot: 'SIM-8P-0312',
+    levels: BEAD_LEVELS.length,
+    values: Object.fromEntries(Object.entries(PBMC_BEAD_MEF).map(([channel, [, perUnit]]) => [channel, BEAD_LEVELS.map((level) => (level ? +(level * perUnit).toPrecision(3) : null))])),
+    units: Object.fromEntries(Object.entries(PBMC_BEAD_MEF).map(([channel, [unit]]) => [channel, unit])),
+  };
+}
+
+// Donor annotations a lab would keep in a spreadsheet (a CSV table to import).
+const PBMC_DONOR_TABLE = { D01: [34, 'F', 'positive'], D02: [52, 'M', 'negative'], D03: [41, 'F', 'negative'], D04: [29, 'M', 'positive'], D05: [63, 'F', 'positive'], D06: [47, 'M', 'negative'] };
+function pbmcAnnotationsCSV(samples) {
+  const rows = samples.filter((s) => s.role === 'sample' || s.role === 'fmo').map((s) => [s.name.replace(/\.fcs$/, ''), ...PBMC_DONOR_TABLE[s.subject]]);
+  return ['sample,age,sex,cmv', ...rows.map((r) => r.join(','))].join('\n') + '\n';
+}
+
 // Multiplies a simulated sample's detectors by random gains (instrumentShift). Returns the gains.
-function shiftSample(ctx, sample, sim, panel, strength) {
-  const random = ctx.random('instrument-shift', sample.name);
+function shiftSample(ctx, sample, sim, panel, strength, key = sample.name) {
+  const random = ctx.random('instrument-shift', key);
   const gains = new Map();
   const scatter = Math.exp((random() * 2 - 1) * strength * 0.25);
   for (const name of sim.order) {
@@ -464,8 +520,21 @@ function* generatePBMC(ctx, samples, all) {
     ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
     let sim;
     let fileSetup = setup;
-    if (sample.role === 'single-stain' && sample.carrier === 'beads') {
+    if (sample.role === 'bead') {
+      // Rainbow beads with the samples' voltages: each detector's response to the beads' dye mix.
+      const random = ctx.random('bead-response');
+      const detectors = panel.detectors.map((d) => ({ name: d.name, k: d.k, sigma: d.sigma, background: 100, response: 15000 * Math.exp(0.3 * random.gaussian()) }));
+      sim = simulateBeadRun({ count: sample.events, instrument, detectors, levels: BEAD_LEVELS, cv0: BEAD_CV0, rate: 800 }, ctx.random(sample.name), { signal: ctx.signal });
+      const sheet = pbmcBeadDatasheet();
+      fileSetup = { ...setup, keywords: { BEADS: sheet.product, 'BEAD LOT': sheet.lot }, truth: { response: Object.fromEntries(detectors.map((d) => [d.name, d.response])), datasheet: sheet } };
+    } else if (sample.role === 'single-stain' && sample.carrier === 'beads') {
       sim = simulateBeads(ctx, sample, instrument, panel, sample.marker, 70000, 1500);
+    } else if (sample.role === 'fmo') {
+      // The donor's unstimulated cells with every dye but one.
+      const { specs, weights } = pbmcComposition(ctx, sample.subject, { stimulated: false });
+      const populations = compilePopulations(specs, panel.markers, { stained: new Set(panel.markers.filter((m) => m !== sample.marker)) });
+      sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: PBMC_MIX, viability: sample.marker === 'Viability' ? null : 'Viability', rate, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers) }, ctx.random(sample.name), { signal: ctx.signal });
+      fileSetup = { ...setup, spill: written };
     } else if (sample.role === 'single-stain' || sample.role === 'unstained') {
       const { specs, weights } = pbmcComposition(ctx, sample.subject);
       const stained = new Set(sample.role === 'unstained' ? [] : [sample.marker]);
@@ -493,6 +562,10 @@ function* generatePBMC(ctx, samples, all) {
       if (ctx.shift && sample !== all.find((x) => x.role === 'sample')) {
         const gains = shiftSample(ctx, sample, sim, panel, ctx.shift);
         fileSetup = { ...fileSetup, spill: shiftedSpill(written, gains), truth: { ...fileSetup.truth, gains: Object.fromEntries(gains) } };
+      } else if (ctx.secondBatch && sample.batch === 'B2') {
+        // The second day: one set of gains for the whole batch, and the matrix written for them.
+        const gains = shiftSample(ctx, sample, sim, panel, ctx.secondBatch, 'batch B2');
+        fileSetup = { ...fileSetup, date: PBMC_DATES.B2, spill: shiftedSpill(written, gains), truth: { ...fileSetup.truth, gains: Object.fromEntries(gains) } };
       }
     }
     files.push(flowFile(ctx, sample, sim, fileSetup));
@@ -503,9 +576,10 @@ function* generatePBMC(ctx, samples, all) {
     files,
     workspaceHints: {
       groups: [
-        { name: 'Compensation controls', color: '#64748b', files: samples.filter((s) => s.role !== 'sample').map((s) => s.name) },
-        { name: 'Unstimulated', color: '#3b82f6', files: samples.filter((s) => s.condition === 'Unstimulated').map((s) => s.name) },
-        { name: 'Stimulated', color: '#ef4444', files: samples.filter((s) => s.condition === 'Stimulated').map((s) => s.name) },
+        { name: 'Compensation controls', color: '#64748b', files: samples.filter((s) => s.role === 'unstained' || s.role === 'single-stain').map((s) => s.name) },
+        ...(samples.some((s) => s.role === 'fmo') ? [{ name: 'FMO controls', color: '#94a3b8', files: samples.filter((s) => s.role === 'fmo').map((s) => s.name) }] : []),
+        { name: 'Unstimulated', color: '#3b82f6', files: samples.filter((s) => s.role === 'sample' && s.condition === 'Unstimulated').map((s) => s.name) },
+        { name: 'Stimulated', color: '#ef4444', files: samples.filter((s) => s.role === 'sample' && s.condition === 'Stimulated').map((s) => s.name) },
       ],
       sampleMeta: Object.fromEntries(samples.map((s) => [s.name, sampleMeta(s)])),
       channelSettings: Object.fromEntries(Object.entries(transforms).map(([k, v]) => [k, { transform: v }])),
@@ -515,7 +589,9 @@ function* generatePBMC(ctx, samples, all) {
         controls: samples.filter((s) => s.role === 'single-stain').map((s) => ({ file: s.name, channel: s.stain, carrier: s.carrier })),
       },
       suggestedGates: pbmcGates(),
+      ...(ctx.calibrationBeads ? { beadDatasheets: { 'Beads_8peak.fcs': pbmcBeadDatasheet() } } : {}),
     },
+    attachments: [{ name: 'PBMC_donors.csv', kind: 'annotations', text: pbmcAnnotationsCSV(samples), about: 'Donor annotations (age, sex, CMV status) as a lab keeps them in a spreadsheet: import them onto the samples.' }],
   };
 }
 
@@ -706,9 +782,18 @@ function* generateFlowJo(ctx, samples, all) {
     return { name: file.name, dataset, counts: flowJoCounts(dataset, spill) };
   });
   const text = flowJoWorkspaceXML(entries, spill);
+  const groups = [{ name: 'Unstimulated', test: (name) => /Unstim/.test(name) }, { name: 'Stimulated', test: (name) => /_Stim/.test(name) }];
   return {
     files: base.files,
-    attachments: [{ name: FLOWJO_WORKSPACE, text, kind: 'flowjo' }],
+    attachments: [
+      { name: FLOWJO_WORKSPACE, text, kind: 'flowjo' },
+      {
+        name: 'PBMC_FlowJo11.flowjo',
+        kind: 'flowjo11',
+        about: 'The same analysis as a FlowJo 11 workbench (.flowjo), as FlowJo 11 saves it after opening the workspace: import it to see the FlowJo 11 migration report.',
+        zip: flowJo11Workbench({ name: 'PBMC_FlowJo11', entries, tree: FLOWJO_TREE, spill, biex: FLOWJO_BIEX, groups }),
+      },
+    ],
     workspaceHints: {
       groups: base.workspaceHints.groups.filter((g) => g.files.length),
       sampleMeta: base.workspaceHints.sampleMeta,
@@ -726,13 +811,18 @@ const SPECTRAL_PANEL = [
   ['CD11c', 'PE-Cy5'], ['CD45', 'PE-Cy7'], ['CD11b', 'APC'], ['CD3', 'Alexa Fluor 700'], ['CD4', 'APC-Cy7'],
 ].map(([marker, fluor]) => ({ marker, fluor, detector: null }));
 
-function spectralDesign(scale) {
+function spectralDesign(scale, ctx = {}) {
   const samples = [{ name: 'Unstained.fcs', events: eventsFor(20000, scale), role: 'unstained', condition: 'Control', subject: 'S1', carrier: 'cells' }];
   for (const a of SPECTRAL_PANEL) {
     const cells = a.marker === 'Viability';
     samples.push({ name: `Ref_${a.fluor}.fcs`, events: eventsFor(cells ? 8000 : 4000, scale), role: 'single-stain', stain: a.fluor, marker: a.marker, carrier: cells ? 'cells (50 % heat-killed)' : 'beads', condition: 'Control', subject: cells ? 'S1' : undefined });
   }
-  for (const subject of ['S1', 'S2', 'S3']) samples.push({ name: `Donor_${subject}.fcs`, events: eventsFor(40000, scale), role: 'sample', condition: 'Healthy', subject, batch: 'B1' });
+  for (const subject of ctx.donors ?? ['S1', 'S2', 'S3']) samples.push({ name: `Donor_${subject}.fcs`, events: eventsFor(40000, scale), role: 'sample', condition: 'Healthy', subject, batch: 'B1' });
+  for (const marker of ctx.fmos ?? []) {
+    const a = SPECTRAL_PANEL.find((x) => x.marker === marker);
+    if (!a) throw new Error(`The spectral panel has no ${marker}.`);
+    samples.push({ name: `FMO_${marker}.fcs`, events: eventsFor(40000, scale), role: 'fmo', stain: a.fluor, marker, condition: 'Healthy', subject: 'S1', batch: 'B1' });
+  }
   return samples;
 }
 
@@ -797,7 +887,12 @@ function* generateSpectral(ctx, samples, all) {
     // What the control's tube really holds (another dye when it was substituted).
     const held = ctx.substitutes?.[sample.stain] ?? sample.stain;
     const heldSignature = () => signatures[held] ?? Array.from(spectralSignature(held, instrument.detectors), (v) => +v.toFixed(5));
-    if (sample.role === 'single-stain' && sample.carrier === 'beads') {
+    if (sample.role === 'fmo') {
+      // Donor S1's cells with every dye but one.
+      const { specs, weights } = pbmcComposition(ctx, sample.subject);
+      const populations = compilePopulations(specs, filePanel.markers, { stained: new Set(filePanel.markers.filter((m) => m !== sample.marker)) });
+      sim = simulateEvents({ count: sample.events, instrument, panel: filePanel, populations, weights, mix: PBMC_MIX, viability: sample.marker === 'Viability' ? null : 'Viability', rate, markerFactors: donorMarkerFactors(ctx, sample.subject, panel.markers), laserCV: ctx.laserCV }, ctx.random(sample.name), { signal: ctx.signal });
+    } else if (sample.role === 'single-stain' && sample.carrier === 'beads') {
       sim = simulateBeads(ctx, sample, instrument, filePanel, sample.marker, 1.2e6, 3000, { laserCV: ctx.laserCV });
       const shift = ctx.beadShift?.[sample.stain];
       truth = { signature: shift && held === sample.stain ? Array.from(spectralSignature(shiftedFluorochrome(held, shift), instrument.detectors), (v) => +v.toFixed(5)) : heldSignature(), fluorochrome: held };
@@ -843,6 +938,18 @@ function* generateSpectral(ctx, samples, all) {
         signatures,
       },
     },
+    // The day-1 experiment as SpectroFlo saved it: which file is which reference control.
+    attachments: ctx.id === 'spectral-25color' ? [{
+      name: 'Spectral 25-color.Expt',
+      kind: 'spectroflo',
+      about: 'The experiment as SpectroFlo saved it (.Expt): which file holds which reference control, with which marker. Importing it marks the controls as a SpectroFlo user had them.',
+      text: spectroFloExperiment({
+        name: 'Spectral 25-color',
+        date: '2026-05-04T09:30:00Z',
+        references: SPECTRAL_PANEL.map((a) => ({ fluorochrome: a.fluor, marker: a.marker, file: `Ref_${a.fluor}.fcs`, vector: signatures[a.fluor] })),
+        unstained: { file: 'Unstained.fcs', vector: signatures.AF.map((v) => 100 * v) },
+      }),
+    }] : [],
   };
 }
 
@@ -861,8 +968,8 @@ const CELL_CYCLE_SAMPLES = [
   { file: 'Nocodazole_16h.fcs', condition: 'Nocodazole (G2/M arrest)', phases: { G1: 0.25, S: 0.3, G2M: 0.45 }, mix: { doublets: 0.07, aggregates: 0.02, debris: 0.09 } },
 ];
 
-function cellCycleDesign(scale) {
-  return CELL_CYCLE_SAMPLES.map((s) => ({ name: s.file, events: eventsFor(30000, scale), role: 'sample', condition: s.condition, subject: 'Jurkat-like line', batch: 'B1', phases: s.phases, mix: s.mix }));
+function cellCycleDesign(scale, ctx = {}) {
+  return CELL_CYCLE_SAMPLES.map((s) => ({ name: s.file, events: eventsFor(30000, scale), role: 'sample', condition: s.condition, subject: 'Jurkat-like line', batch: 'B1', phases: ctx.phases?.[s.file] ?? s.phases, mix: s.mix }));
 }
 
 function* generateCellCycle(ctx, samples, all) {
@@ -899,8 +1006,17 @@ function* generateCellCycle(ctx, samples, all) {
       polygonGate('gsim-dna-singlets', 'Single nuclei', 'gsim-nuclei', ['PI-A', linearAll], ['PI-W', linearAll], [[20000, 50000], [135000, 50000], [135000, 81000], [20000, 77000]], '#0ea5e9', 'Doublets of G1 nuclei have G2 DNA content (PI-A) but a longer pulse (PI-W).'),
     ],
   };
-  return { files, workspaceHints: hints };
+  // A third culture measured on another instrument, whose software exports events as CSV.
+  const attachments = [];
+  if (samples.length === all.length) {
+    const csv = simulateCellCycle({ count: eventsFor(20000, ctx.scale), instrument, phases: CELL_CYCLE_CSV.phases, mix: { doublets: 0.05, aggregates: 0.01, debris: 0.05 }, rate: 300 }, ctx.random(CELL_CYCLE_CSV.file), { signal: ctx.signal });
+    attachments.push({ name: CELL_CYCLE_CSV.file, kind: 'events', about: `${CELL_CYCLE_CSV.about} Import it to add it as a sample (CytoWeave reads events from CSV files).`, text: eventsCSV(csv.columns, ['FSC-A', 'SSC-A', 'PI-A', 'PI-H', 'PI-W'], csv.columns['PI-A'].length) });
+  }
+  return { files, workspaceHints: hints, attachments };
 }
+
+// The culture exported as CSV: arrested at the G1/S boundary by hydroxyurea (true phases).
+const CELL_CYCLE_CSV = { file: 'Hydroxyurea_24h.csv', phases: { G1: 0.68, S: 0.24, G2M: 0.08 }, about: 'The same cell line treated with hydroxyurea for 24 h (arrested at the G1/S boundary: G1 68 %, S 24 %, G2/M 8 %), measured on another cytometer whose software exports events as CSV.' };
 
 function cellCycleChannels() {
   return ['FSC-A', 'FSC-H', 'FSC-W', 'SSC-A', 'SSC-H', 'SSC-W', 'PI-A', 'PI-H', 'PI-W', 'Time'].map((name) => ({ name, label: name.startsWith('PI') ? 'DNA (PI)' : '' }));
@@ -1505,7 +1621,8 @@ function* generateCytof(ctx, samples, all) {
   for (const [index, sample] of samples.entries()) {
     ctx.check();
     ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
-    const factors = sample.condition === 'Case' ? { [CYTOF_DIFFERENTIAL.population]: CYTOF_DIFFERENTIAL.fold } : {};
+    const differential = { ...CYTOF_DIFFERENTIAL, ...(ctx.differential ?? {}) };
+    const factors = sample.condition === 'Case' ? { [differential.population]: differential.fold } : {};
     const { specs, weights } = pbmcComposition(ctx, sample.subject, { factors });
     const populations = compilePopulations(specs, CYTOF_MARKERS, { background: [150, 0.7] });
     const batch = batchFactors(ctx, sample.batch);
@@ -1543,7 +1660,7 @@ function* generateCytof(ctx, samples, all) {
       date: sample.batch === 'Batch1' ? '2026-04-07' : '2026-04-21',
       labels,
       ranges,
-      truth: { differential: sample.condition === 'Case' ? CYTOF_DIFFERENTIAL : null, expectedFrequencies: total, drift: 0.25 },
+      truth: { differential: sample.condition === 'Case' ? differential : null, expectedFrequencies: total, drift: 0.25 },
     }));
     yield;
   }
@@ -1777,7 +1894,11 @@ function* generateIndexSort(ctx, samples, all) {
       const { specs, weights } = pbmcComposition(ctx, sample.subject, { boost });
       const populations = compilePopulations(specs, panel.markers);
       const sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: PBMC_MIX, viability: 'Viability', rate: 8000 }, ctx.random(sample.name), { signal: ctx.signal });
-      files.push(flowFile(ctx, sample, sim, { instrument, panel, date: '2026-06-09', assignments: SORT_PANEL, spill: panel.spill, keywords: { 'SORT MODE': 'Presort analysis' } }));
+      const file = flowFile(ctx, sample, sim, { instrument, panel, date: '2026-06-09', assignments: SORT_PANEL, spill: panel.spill, keywords: { 'SORT MODE': 'Presort analysis' } });
+      // Written with a DATA end offset one byte past the data, a common slip of FCS writers that
+      // CytoWeave's reader corrects and reports.
+      file.bytes = dataEndOffByOne(file.bytes);
+      files.push(file);
       yield;
       continue;
     }
@@ -1851,6 +1972,59 @@ function* generateIndexSort(ctx, samples, all) {
       indexSort: { file: 'Plate1_IndexSort.fcs', reference: 'Presort.fcs', columnChannel: 'Index X', rowChannel: 'Index Y', plate: { rows: 8, columns: 12 } },
       compensation: { fromFile: '$SPILLOVER' },
     },
+    attachments: samples.length === all.length ? [sortDivaExperiment(files, panel)] : [],
+  };
+}
+
+// An FCS file whose HEADER and $ENDDATA point one byte past the DATA segment (when the larger
+// offset has as many digits; otherwise the file is returned as it is).
+function dataEndOffByOne(bytes) {
+  const ascii = (a, b) => String.fromCharCode(...bytes.subarray(a, b));
+  const textStart = Number(ascii(10, 18).trim());
+  const textEnd = Number(ascii(18, 26).trim());
+  const dataEnd = Number(ascii(34, 42).trim());
+  const delimiter = ascii(textStart, textStart + 1);
+  const text = ascii(textStart, textEnd + 1);
+  const key = `${delimiter}$ENDDATA${delimiter}`;
+  const at = text.indexOf(key);
+  if (at < 0 || !(dataEnd > 0)) return bytes;
+  const valueStart = at + key.length;
+  const valueEnd = text.indexOf(delimiter, valueStart);
+  const value = text.slice(valueStart, valueEnd);
+  const next = String(Number(value) + 1);
+  if (next.length !== value.length || String(dataEnd + 1).length > 8) return bytes;
+  const out = Uint8Array.from(bytes);
+  for (let i = 0; i < next.length; i += 1) out[textStart + valueStart + i] = next.charCodeAt(i);
+  const header = String(dataEnd + 1).padStart(8, ' ');
+  for (let i = 0; i < 8; i += 1) out[34 + i] = header.charCodeAt(i);
+  return out;
+}
+
+// The sort's FACSDiva experiment, exported as XML: the presort and sort tubes with the gates the
+// operator drew (fluorescence on Diva's biexponential axes) and Diva's count of each.
+function sortDivaExperiment(files, panel) {
+  const tubes = files.map((file) => {
+    const dataset = parseFCS(file.bytes).datasets[0];
+    return { specimen: 'D01 B cells', name: file.name.startsWith('Presort') ? 'Presort' : 'Plate1 index sort', fileName: file.name, columns: Object.fromEntries(dataset.parameters.map((p) => [p.name, dataset.data[p.index]])), eventCount: dataset.eventCount };
+  });
+  const scales = Object.fromEntries(SORT_PANEL.map((a) => [a.detector, -500]));
+  const parameters = ['FSC-A', 'FSC-H', 'FSC-W', 'SSC-A', 'SSC-H', 'SSC-W', ...SORT_PANEL.map((a) => a.detector), 'Time'];
+  const top = 262143;
+  const gates = [
+    { name: 'Cells', parent: null, kind: 'polygon', x: 'FSC-A', y: 'SSC-A', points: [[26000, 0], [top, 0], [top, top], [45000, top], [26000, 40000]] },
+    { name: 'Singlets', parent: 'Cells', kind: 'polygon', x: 'FSC-A', y: 'FSC-H', points: [[15000, 11200], [top, 195000], [top, top], [215000, top], [15000, 18000]] },
+    { name: 'Live', parent: 'Singlets', kind: 'interval', x: 'BV510-A', points: [[-800, 0], [1500, 0]] },
+    { name: 'CD19+', parent: 'Live', kind: 'interval', x: 'BV421-A', points: [[1500, 0], [top, 0]] },
+    { name: 'Memory B', parent: 'CD19+', kind: 'rectangle', x: 'APC-A', y: 'PE-A', points: [[-800, 2500], [1500, top]] },
+    { name: 'Naive B', parent: 'CD19+', kind: 'rectangle', x: 'APC-A', y: 'PE-A', points: [[3000, -800], [top, 1000]] },
+    { name: 'Plasmablasts', parent: 'CD19+', kind: 'rectangle', x: 'PE-Cy7-A', y: 'PE-A', points: [[20000, 12000], [top, top]] },
+    { name: 'T cells', parent: 'Live', kind: 'rectangle', x: 'FITC-A', y: 'BV421-A', points: [[4000, -800], [top, 1500]] },
+  ];
+  return {
+    name: 'Index sort B cells.xml',
+    kind: 'diva',
+    about: 'The sort\'s FACSDiva experiment, exported as XML (File → Export → Experiment): the presort and sort tubes with the gates the operator drew and Diva\'s count of each population. Importing it brings the gates in and compares every count with Diva\'s.',
+    text: divaExperiment({ name: 'Index sort B cells', spill: panel.spill, scales, parameters, tubes, gates }),
   };
 }
 
@@ -1873,8 +2047,9 @@ const QC_PROBLEMS = {
   burst: { anomalies: [{ kind: 'air bubble', at: 0.62, length: 0.04, rate: 6, signal: 0.5, scatter: 0.6, cv: 0.4, junk: 0.65 }], drift: null },
 };
 
-function qcDesign(scale) {
-  return [['A01', 'none'], ['A02', 'clog'], ['A03', 'drift'], ['A04', 'burst']].map(([well, anomaly]) => ({ name: `${well}.fcs`, events: eventsFor(40000, scale), role: 'sample', condition: 'QC', subject: 'D02', batch: 'B1', well, anomaly }));
+function qcDesign(scale, ctx = {}) {
+  const problems = ctx.qcWells ?? ['none', 'clog', 'drift', 'burst'];
+  return ['A01', 'A02', 'A03', 'A04'].map((well, i) => [well, problems[i]]).map(([well, anomaly]) => ({ name: `${well}.fcs`, events: eventsFor(40000, scale), role: 'sample', condition: 'QC', subject: 'D02', batch: 'B1', well, anomaly }));
 }
 
 function* generateQC(ctx, samples, all) {
@@ -1941,6 +2116,17 @@ function beadQCDesign(scale) {
   return beadRunDates().map((date, i) => ({ name: `Beads_${date}.fcs`, events: eventsFor(15000, scale, 2000), role: 'bead', condition: 'Daily QC', timepoint: `Run ${i + 1}`, date, run: i + 1 }));
 }
 
+// The planted events: an aging PMT (Q falls 7 % per run), a dirty flow cell (one detector's
+// background ×5) and a laser at 70 % power, each from a run on.
+function beadEvents(ctx) {
+  return {
+    aging: { detector: 'BV421-A', from: BEAD_EVENTS['BV421-A'].from },
+    flowCell: { detector: 'FITC-A', from: BEAD_EVENTS['FITC-A'].from },
+    laser: { laser: 'V', from: BEAD_EVENTS.violet.from },
+    ...(ctx.beadEvents ?? {}),
+  };
+}
+
 // Each detector's state on each run: the fixed instrument (k, sigma), a response and stray-light
 // background drawn once, day-to-day wobble, and the planted events.
 function beadDetectors(ctx, run) {
@@ -1954,9 +2140,10 @@ function beadDetectors(ctx, run) {
     let k = d.k * Math.exp(0.012 * gw());
     let r = response * Math.exp(0.015 * gw());
     let bg = background * Math.exp(0.05 * gw());
-    if (d.name === 'BV421-A' && run >= BEAD_EVENTS['BV421-A'].from) k *= 1.07 ** (run - BEAD_EVENTS['BV421-A'].from + 1);
-    if (d.name === 'FITC-A' && run >= BEAD_EVENTS['FITC-A'].from) bg *= 5;
-    if (d.laser === 'V' && run >= BEAD_EVENTS.violet.from) r *= 0.7;
+    const events = beadEvents(ctx);
+    if (d.name === events.aging.detector && run >= events.aging.from) k *= 1.07 ** (run - events.aging.from + 1);
+    if (d.name === events.flowCell.detector && run >= events.flowCell.from) bg *= 5;
+    if (d.laser === events.laser.laser && run >= events.laser.from) r *= 0.7;
     return { name: d.name, k, sigma: d.sigma, background: bg, response: r };
   });
 }
@@ -1978,6 +2165,7 @@ function* generateBeadQC(ctx, samples, all) {
       keywords: { 'BEADS': 'Rainbow 8-peak (simulated)', 'BEAD LOT': 'SIM-8P-0426' },
       truth: {
         run: sample.run,
+        events: beadEvents(ctx),
         detectors: Object.fromEntries(detectors.map((d) => [d.name, { ...beadDetectorTruth(d, BEAD_CV0), brightMean: BEAD_LEVELS[BEAD_LEVELS.length - 1] * d.response }])),
       },
     }));
@@ -2102,16 +2290,93 @@ function titrationGates() {
   ];
 }
 
+// --- 12. Absolute counts in whole blood (counting beads) -----------------------------------------
+//
+// Lyse/no-wash whole blood, as for clinical CD4 counts: 50 µL of blood stained in a tube that holds
+// a known number of fluorescent counting beads (TruCount-like), red cells lysed, no wash. Cells
+// per µL follow from the ratio of cell events to bead events: count / beads × beads in the tube /
+// volume. Three patients, one with few CD4 T cells. Events are drawn in proportion to the true
+// concentrations, beads included, so the ratio estimates them without bias.
+
+export const COUNTING = Object.freeze({ beadsPerTube: 50000, volume: 50 });
+const COUNT_PANEL = [
+  { marker: 'CD3', fluor: 'FITC', detector: 'FITC-A' },
+  { marker: 'CD8', fluor: 'PE', detector: 'PE-A' },
+  { marker: 'CD45', fluor: 'PerCP-Cy5.5', detector: 'PerCP-Cy5-5-A' },
+  { marker: 'CD4', fluor: 'APC', detector: 'APC-A' },
+];
+// Each patient's leukocytes per µL of blood, by type.
+export const COUNT_PATIENTS = {
+  P01: { 'CD4 T': 980, 'CD8 T': 520, 'B cells': 260, 'NK cells': 240, Monocytes: 480, Neutrophils: 3900 },
+  P02: { 'CD4 T': 470, 'CD8 T': 610, 'B cells': 190, 'NK cells': 210, Monocytes: 410, Neutrophils: 3300 },
+  P03: { 'CD4 T': 165, 'CD8 T': 890, 'B cells': 120, 'NK cells': 180, Monocytes: 350, Neutrophils: 2600 },
+};
+const COUNT_SPECS = { 'CD4 T': 'CD4 naive T', 'CD8 T': 'CD8 naive T', 'B cells': 'Naive B', 'NK cells': 'CD56dim NK', Monocytes: 'Classical monocytes', Neutrophils: 'Neutrophils' };
+// Beads brighter than any cell in every channel (as their dyes cover them all), small on scatter.
+const COUNT_BEADS = population('Counting beads', { fsc: [24000, 0.05], ssc: [9000, 0.08], af: 0.2 }, { CD3: [1.4e6, 0.04], CD8: [3.5e5, 0.04], CD45: [1.2e6, 0.04], CD4: [3.5e5, 0.04] });
+
+function countDesign(scale) {
+  return Object.keys(COUNT_PATIENTS).map((patient) => ({ name: `${patient}_TruCount.fcs`, events: eventsFor(60000, scale), role: 'sample', condition: 'Whole blood', subject: patient, batch: 'B1', annotations: { beads: COUNTING.beadsPerTube, volume: `${COUNTING.volume} µL` } }));
+}
+
+function* generateCounts(ctx, samples, all) {
+  ctx.schedule(1500, all);
+  const instrument = INSTRUMENTS.fortessa;
+  const panel = buildPanel(instrument, COUNT_PANEL);
+  const byName = Object.fromEntries(PBMC_POPULATIONS.map((p) => [p.name, p]));
+  const files = [];
+  for (const [index, sample] of samples.entries()) {
+    ctx.check();
+    ctx.onProgress?.(index / samples.length, `Simulating ${sample.name}`);
+    const perUL = COUNT_PATIENTS[sample.subject];
+    const specs = [...Object.entries(COUNT_SPECS).map(([name, spec]) => ({ ...byName[spec], name, corr: null })), COUNT_BEADS];
+    const beadsPerUL = COUNTING.beadsPerTube / COUNTING.volume;
+    const weights = Float64Array.from([...Object.keys(COUNT_SPECS).map((name) => perUL[name]), beadsPerUL]);
+    const populations = compilePopulations(specs, panel.markers);
+    // Lysed red cells leave much debris; few dead cells in fresh blood.
+    const sim = simulateEvents({ count: sample.events, instrument, panel, populations, weights, mix: { dead: 0.01, debris: 0.18, doublets: 0.015 }, viability: null, rate: 1500 }, ctx.random(sample.name), { signal: ctx.signal });
+    files.push(flowFile(ctx, sample, sim, {
+      instrument,
+      panel,
+      date: '2026-04-21',
+      assignments: COUNT_PANEL,
+      spill: panel.spill,
+      keywords: { 'TUBE BEADS': String(COUNTING.beadsPerTube), 'SAMPLE VOLUME': `${COUNTING.volume} uL` },
+      truth: { perUL, beadsPerTube: COUNTING.beadsPerTube, volume: COUNTING.volume },
+    }));
+    yield;
+  }
+  const transforms = channelTransforms(bdChannels(COUNT_PANEL), () => LOGICLE_BD, 262144, 8192);
+  const fsc = ['FSC-A', LINEAR_BD];
+  const ssc = ['SSC-A', LINEAR_BD];
+  return {
+    files,
+    workspaceHints: {
+      groups: [{ name: 'Whole blood', color: '#dc2626', files: samples.map((s) => s.name) }],
+      sampleMeta: Object.fromEntries(samples.map((s) => [s.name, sampleMeta(s)])),
+      channelSettings: Object.fromEntries(Object.entries(transforms).map(([k, v]) => [k, { transform: v }])),
+      suggestedGates: [
+        polygonGate('gsim-beads', 'Counting beads', null, ['PerCP-Cy5-5-A', LOGICLE_BD], ['FITC-A', LOGICLE_BD], [[90000, 60000], [262143, 60000], [262143, 262143], [90000, 262143]], '#f59e0b', 'Counting beads are bright in every fluorescence channel.'),
+        polygonGate('gsim-leukocytes', 'Leukocytes', null, ['PerCP-Cy5-5-A', LOGICLE_BD], ssc, [[2500, 0], [80000, 0], [80000, 262143], [2500, 262143]], '#64748b', 'CD45+ events, without the beads (brighter) or lysed red cells and debris (CD45−).'),
+        polygonGate('gsim-lymph', 'Lymphocytes', 'gsim-leukocytes', ['PerCP-Cy5-5-A', LOGICLE_BD], ssc, [[14000, 0], [80000, 0], [80000, 26000], [14000, 26000]], '#3b82f6', 'CD45 bright, low side scatter.'),
+        rangeGate('gsim-cd3', 'CD3+ T cells', 'gsim-lymph', ['FITC-A', LOGICLE_BD], 3000, null, '#a855f7', 'CD3 (FITC-A) positive.'),
+        polygonGate('gsim-cd4', 'CD4 T cells', 'gsim-cd3', ['APC-A', LOGICLE_BD], ['PE-A', LOGICLE_BD], [[4000, -1000], [262143, -1000], [262143, 3000], [4000, 3000]], '#22c55e', 'CD4+ CD8− among CD3+ T cells.'),
+      ].map((g) => ({ ...g, linkId: null })),
+    },
+  };
+}
+
 // --- Catalog ------------------------------------------------------------------------------------
 
 const DEFINITIONS = [
   {
     id: 'pbmc-immunophenotyping',
     title: 'PBMC immunophenotyping, 14 colors',
-    description: 'Six donors\' PBMC, unstimulated and stimulated, on a 5-laser BD LSRFortessa-like instrument with a 13-marker panel plus viability, and a full set of compensation controls (unstained cells, capture beads, heat-killed cells for the viability dye). Gate singlets, live cells, lymphocytes, T, B and NK cells, Tregs and naive/memory subsets, and compare conditions: stimulation raises CD25 and HLA-DR on T cells. The acquisition matrix in $SPILLOVER under-compensates one pair of channels, so check the compensation diagnostics against the controls; D05_Unstim has a clog worth finding in the time QC.',
+    description: 'Six donors\' PBMC, unstimulated and stimulated, on a 5-laser BD LSRFortessa-like instrument with a 13-marker panel plus viability, a full set of compensation controls (unstained cells, capture beads, heat-killed cells for the viability dye), a CD25 FMO tube, and rainbow beads with their datasheet for MEF calibration. Gate singlets, live cells, lymphocytes, T, B and NK cells, Tregs and naive/memory subsets, and compare conditions: stimulation raises CD25 and HLA-DR on T cells. Donors D04–D06 were acquired the next day with other detector settings, so shared gates need adjusting for them, and a CSV table of the donors\' age, sex and CMV status comes with the files. The acquisition matrix in $SPILLOVER under-compensates one pair of channels, so check the compensation diagnostics against the controls; D05_Unstim has a clog worth finding in the time QC.',
     technology: 'conventional',
     instrument: 'BD LSRFortessa X-20-like (UV, violet, blue, yellow-green, red lasers), range 2^18',
-    tags: ['immunophenotyping', 'PBMC', 'compensation', 'stimulation', 'Treg', 'QC', 'beginner'],
+    tags: ['immunophenotyping', 'PBMC', 'compensation', 'stimulation', 'Treg', 'QC', 'FMO', 'batches', 'MEF', 'beginner'],
+    defaults: { fmos: ['CD25'], calibrationBeads: true, secondBatch: 0.25 },
     design: pbmcDesign,
     channels: () => bdChannels(PBMC_PANEL),
     transforms: () => channelTransforms(bdChannels(PBMC_PANEL), () => LOGICLE_BD, 262144, 8192),
@@ -2128,6 +2393,9 @@ const DEFINITIONS = [
         compensationError: written.error,
         anomalies: { 'D05_Unstim.fcs': 'clog at about 42–54 % of the acquisition time (rate drops ~8×, signals fall), then a short surge' },
         stimulation: 'Stimulated samples: 20–50 % of each T subset activated (CD25 ×8, HLA-DR+, CD127 ×0.5, CD45RA/CCR7 ×0.6, larger FSC).',
+        batches: 'D04–D06 (batch B2) were acquired the next day: every detector\'s gain changed by up to ±28 % (scatter ±6 %), the same for the whole batch (files[i].meta.truth.gains), and their $SPILLOVER was written for those gains.',
+        fmo: 'FMO_CD25.fcs: D01\'s unstimulated cells with every dye but CD25-PE.',
+        beads: 'Beads_8peak.fcs: 8-peak rainbow beads with the samples\' voltages; its datasheet (sample.beadDatasheet) gives MEF values for BV421-A, FITC-A, PE-A, PE-Cy7-A and APC-A; meta.truth.response is each detector\'s signal per brightness unit.',
       };
     },
     generate: generatePBMC,
@@ -2163,6 +2431,24 @@ const DEFINITIONS = [
       labels: 'files[i].meta.truth.labels / names; Donor files also carry meta.truth.abundances (Float32Array per fluorochrome and both autofluorescence types, in signal units at the peak detector).',
       fluorochromes: SPECTRAL_PANEL.map((a) => ({ fluorochrome: a.fluor, marker: a.marker })),
       signatures: 'workspaceHints.spectral.signatures (peak-normalized, 64 detectors) are the generating spectra.',
+    }),
+    generate: generateSpectral,
+  },
+  {
+    id: 'spectral-troubleshooting',
+    title: 'Spectral panel, day 2: troubleshooting',
+    description: 'The 25-color panel of the spectral example, acquired again on the same Aurora-like cytometer with new reference controls and two new donors, and this time the unmixing looks wrong. Unmix the donors, then let the Spectral view\'s Diagnose tab find the causes and propose fixes. Open the day-1 spectral example first and keep its references in the spectral library: today\'s controls are then compared with them too.',
+    technology: 'spectral',
+    instrument: 'Cytek Aurora-like, 5 lasers, 64 fluorescence detectors, range 2^22 (the same cytometer as the 25-color example)',
+    tags: ['spectral', 'unmixing', 'troubleshooting', 'reference controls', 'spectral library', 'advanced'],
+    defaults: { donors: ['S4', 'S5'], tandemDegradation: { 'PE-Cy7': 0.1 }, degradationIn: 'controls', controlSubstitutes: { APC: 'Alexa Fluor 647' } },
+    design: spectralDesign,
+    channels: spectralChannels,
+    transforms: () => channelTransforms(spectralChannels(), () => LOGICLE_AURORA, 4194304, 1 << 20),
+    answerKey: () => ({
+      faults: { 'PE-Cy7': 'the PE-Cy7 reference control was stained with a vial whose tandem had degraded: 10% of its emission comes from PE alone, while the donors\' PE-Cy7 is intact', APC: 'the APC reference control was stained with Alexa Fluor 647 instead of APC' },
+      labels: 'files[i].meta.truth.labels / names; Donor files also carry meta.truth.abundances.',
+      fluorochromes: SPECTRAL_PANEL.map((a) => ({ fluorochrome: a.fluor, marker: a.marker })),
     }),
     generate: generateSpectral,
   },
@@ -2360,10 +2646,27 @@ const DEFINITIONS = [
     }),
     generate: generateTitration,
   },
+  {
+    id: 'absolute-counts',
+    title: 'Absolute counts: CD4 T cells in whole blood',
+    description: 'Lyse/no-wash whole blood from three patients, each 50 µL stained in a tube holding 50,000 fluorescent counting beads (TruCount-like), with CD3, CD4, CD8 and CD45. One patient has few CD4 T cells. Gate the beads and the CD4 T cells, then add an absolute count column (cells per µL from the counting beads) in Tables: the count follows from the ratio of cell events to bead events, the beads in the tube and the volume of blood.',
+    technology: 'conventional',
+    instrument: 'BD LSRFortessa-like, 4 colors, range 2^18',
+    tags: ['absolute counts', 'counting beads', 'whole blood', 'CD4 count', 'clinical', 'beginner'],
+    design: countDesign,
+    channels: () => bdChannels(COUNT_PANEL),
+    transforms: () => channelTransforms(bdChannels(COUNT_PANEL), () => LOGICLE_BD, 262144, 8192),
+    answerKey: () => ({
+      labels: 'files[i].meta.truth.labels / names: CD4 T, CD8 T, B cells, NK cells, Monocytes, Neutrophils, Counting beads, then dead cells, debris and doublets.',
+      perUL: COUNT_PATIENTS,
+      counting: `${COUNTING.beadsPerTube} beads per tube, ${COUNTING.volume} µL of blood: cells/µL = cell events / bead events × ${COUNTING.beadsPerTube} / ${COUNTING.volume}.`,
+    }),
+    generate: generateCounts,
+  },
 ];
 
 function summarize(def) {
-  const samples = def.design(1);
+  const samples = def.design(1, createContext(def, {}));
   return Object.freeze({
     id: def.id,
     title: def.title,
@@ -2397,7 +2700,7 @@ function startGeneration(id, options) {
   const def = DEFINITIONS.find((d) => d.id === id);
   if (!def) throw new Error(`There is no example called "${id}".`);
   const ctx = createContext(def, options);
-  const all = def.design(ctx.scale);
+  const all = def.design(ctx.scale, ctx);
   all.forEach((sample, index) => { sample.index = index; });
   const samples = ctx.only ? all.filter((s) => ctx.only.has(s.name)) : all;
   if (ctx.only && !samples.length) throw new Error(`None of the requested files belong to the example "${id}".`);

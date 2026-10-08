@@ -2,6 +2,7 @@
 // samples, plot export and the cohort review of a gate.
 
 import { prefs } from './storage.js';
+import { WorkspaceChangedError, presentSamples } from './store.js';
 import { h, icon, clear, downloadBlob, formatCount, formatPercent } from './dom.js';
 import { showMenu, showDialog, promptDialog, confirmDialog, toast, progressToast } from './overlays.js';
 import { drawScene, sceneToSVG } from '../lib/plot.js';
@@ -54,19 +55,23 @@ export function installActions(app) {
   //             { [channel]: Float32Array }), summary? }
   app.saveDerived = async (result, label) => {
     const { addDerived } = await import('../lib/workspace.js');
+    const perSample = presentSamples(store.ws, result.perSample);
+    const sameWorkspace = store.sameWorkspace();
     const files = {};
-    for (const [sampleId, columns] of result.perSample) {
+    for (const [sampleId, columns] of perSample) {
       files[sampleId] = {};
       for (const [name, column] of Object.entries(columns)) {
         data.setDerived(sampleId, name, column);
         files[sampleId][name] = await data.persistColumn(column);
       }
     }
+    // Storing the columns takes a while: another workspace may have been opened meanwhile.
+    if (!sameWorkspace()) throw new WorkspaceChangedError();
     // Replacing a result with the same outputs drops the old record's channels first.
     const replaced = store.ws.derived.filter((d) => d.id !== result.id && d.outputs?.some((o) => result.outputs.includes(o)));
     let next = store.ws;
     if (replaced.length) next = { ...next, derived: next.derived.filter((d) => !replaced.includes(d)) };
-    const { perSample, ...record } = result;
+    const { perSample: _all, ...record } = result;
     const added = addDerived(next, { ...record, files });
     store.commit(added.ws, label ?? `${result.kind} result`, ['derived', 'data']);
     return added.derived;
@@ -76,14 +81,17 @@ export function installActions(app) {
   // perSample: Map(sampleId → { channel: Float32Array }); params merge into the record's.
   app.addDerivedSamples = async (recordId, perSample, params, label) => {
     const { extendDerived } = await import('../lib/workspace.js');
+    if (!store.ws.derived.some((d) => d.id === recordId)) throw new WorkspaceChangedError();
+    const sameWorkspace = store.sameWorkspace();
     const files = {};
-    for (const [sampleId, columns] of perSample) {
+    for (const [sampleId, columns] of presentSamples(store.ws, perSample)) {
       files[sampleId] = {};
       for (const [name, column] of Object.entries(columns)) {
         data.setDerived(sampleId, name, column);
         files[sampleId][name] = await data.persistColumn(column);
       }
     }
+    if (!sameWorkspace()) throw new WorkspaceChangedError();
     store.commit(extendDerived(store.ws, recordId, files, params, label), label, ['derived', 'data']);
   };
 

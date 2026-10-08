@@ -360,6 +360,13 @@ export function noiseRecord(model, noise, extra = {}) {
   };
 }
 
+// What the spread prediction of a panel needs, kept with the fit: the dyes (names) with their
+// spectra (spillover rows for compensation) over the detectors, the data channel each dye is read
+// from, and the fitted noise (spread.js noiseRecord).
+export function spreadRecord({ names, detectors, spectra, channels, noise, source }) {
+  return { names: [...names], detectors: [...detectors], spectra: spectra.map((row) => Array.from(row, (v) => +Number(v).toPrecision(6))), channels: [...channels], noise, source: source ?? null };
+}
+
 // A kept noise model on a model's detectors and lasers, or null when it lacks a detector.
 export function noiseOn(model, record) {
   if (!record?.detectors) return null;

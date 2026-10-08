@@ -7,7 +7,12 @@
 //
 // --audit runs axe-core (fetched by node validation/fetch.mjs axe-core) in every scene, with the
 // WCAG 2.1 A and AA rules, and writes the violations to docs/capture/audit.json (one entry per
-// scene and theme) and a summary to the console; with --no-shots, no picture is written.
+// scene and theme) and a summary to the console; with --no-shots, no picture is written. The
+// file keeps every scene's last audit: a run of some scenes replaces only theirs, and scenes no
+// longer here are dropped.
+//
+// A scene's name is the name of its pictures, so two scenes may not share one: the run stops
+// before it starts if they do (a second definition would silently replace the first).
 //
 // Needs Go (to run CytoWeave from source) and Chrome, Chromium, Edge or Brave (CHROME=path).
 
@@ -18,6 +23,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from './cdp.mjs';
 import { generateExample } from '../../web/lib/examples.js';
+import { PBMC_25 } from '../../validation/panel-cases.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const IMAGES = join(ROOT, 'docs/images');
@@ -165,6 +171,36 @@ async function compensateFromControls() {
   await sleep(1200);
   await click('Apply to');
   await click('All samples', 'button.menu-item');
+  await sleep(1200);
+}
+
+// An exercise started with a fixed class code, its example's gating strategy drawn (as a learner
+// would gate it).
+async function startExercise(id) {
+  await app(`await app.startExercise(${JSON.stringify(id)}, { seed: 314159 });`);
+  await waitFor(`window.cytoweave.store.ws.exercise?.id === ${JSON.stringify(id)} && !document.querySelector('.progress-toast')`, 240000);
+  await app(`
+    const { generateExample } = await import('/lib/examples.js');
+    const { exerciseAttempt, exerciseById } = await import('/lib/exercises.js');
+    const ex = exerciseById(${JSON.stringify(id)});
+    const gates = generateExample(ex.example.id, { ...exerciseAttempt(ex, 314159).options, scale: 0.01 }).workspaceHints.suggestedGates;
+    const { addGates } = await import('/lib/workspace.js');
+    app.store.commit(addGates(app.store.ws, gates.map((g) => ({ ...g, overrides: {} })), 'capture').ws, 'Add gates');`);
+  await sleep(1500);
+}
+
+// Answers an exercise through its panel (a population by its gate's name) and checks them.
+async function answerExercise(answers) {
+  await app(`
+    for (const [id, value] of Object.entries(${JSON.stringify(answers)})) {
+      const control = document.querySelector('#exercise-panel [data-question="' + id + '"]');
+      const gate = control.tagName === 'SELECT' ? app.store.ws.gates.find((g) => g.name === value) : null;
+      control.value = gate ? gate.id : value;
+      control.dispatchEvent(new Event('change'));
+    }
+    const before = app.store.ws.exercise.checks.length;
+    document.querySelector('#exercise-panel [data-action="check"]').click();
+    while (app.store.ws.exercise.checks.length === before) await new Promise((r) => setTimeout(r, 200));`);
   await sleep(1200);
 }
 
@@ -567,6 +603,26 @@ const scenes = {
     await waitFor(`window.cytoweave.live.queue.length === ${files.length} && window.cytoweave.live.queue.every((q) => q.state === 'checked') && (window.cytoweave.live.status?.pending ?? []).length === 1`, 180000);
     await sleep(1500);
   },
+  // Teaching mode: the T-cell exercise gated, a hint shown and the answers checked.
+  async exercise() {
+    await startExercise('gate-t-cells');
+    await app(`app.store.replace({ ...app.store.ws, exercise: { ...app.store.ws.exercise, hints: 2 } });`);
+    await answerExercise({ tCells: 'T cells', percent: '39.1' });
+    await selectGate('T cells');
+  },
+  // Teaching mode: the truth revealed for a CD3 threshold set too low, the CD3− events it took in
+  // colored on the plots.
+  async 'exercise-truth'() {
+    await startExercise('gate-t-cells');
+    await app(`const { setGateGeometry } = await import('/lib/workspace.js'); const { createTransform } = await import('/lib/transforms.js'); const g = app.store.ws.gates.find((x) => x.name === 'T cells'); app.store.commit(setGateGeometry(app.store.ws, g.id, { ...g.geometry, min: createTransform(g.dims[0].transform).forward(400) }), 'Lower the CD3 threshold');`);
+    await selectGate('Lymphocytes');
+    await addPlot('Lymphocytes', 'CD3', 'CD19');
+    await answerExercise({ tCells: 'T cells', percent: '48' });
+    await click('Reveal the truth');
+    await click('Reveal', '.dialog button');
+    await waitFor(`Boolean(document.querySelector('#exercise-panel .exercise-truth'))`);
+    await scrollTo('#exercise-panel .exercise-truth');
+  },
   // Spectral: Panel design, with the noise fitted to the controls and BV711 left out.
   async 'spectral-design'() {
     await scenes.spectral();
@@ -578,6 +634,46 @@ const scenes = {
     await sleep(1000);
     await click('BV711', '.spectral-legend .chip');
     await sleep(2500);
+  },
+  // Spectral: Panel design → Optimize the assignment, the example's 25 markers with their
+  // expression and four groups of co-expressed markers, reassigned among its 25 dyes.
+  async 'panel-optimizer'() {
+    await scenes.spectral();
+    await click('Panel quality');
+    await sleep(1000);
+    await click('Compute');
+    await waitFor(`window.cytoweave.store.ws.derived.some((d) => d.kind === 'spectral-setup' && d.spreading?.noise) && !document.querySelector('.progress-toast')`, 400000);
+    await click('Panel design');
+    await sleep(1000);
+    await click('Optimize the assignment');
+    await sleep(1000);
+    const { markers, groups } = PBMC_25;
+    await js(`(async () => {
+      const levels = ${JSON.stringify(Object.fromEntries(markers.map((m) => [m.name, m.level])))};
+      const groups = ${JSON.stringify(groups)};
+      const rows = () => [...document.querySelectorAll('main input[aria-label^="Marker "]')];
+      for (const input of rows()) {
+        const select = document.querySelector('main select[aria-label="Expression of ' + input.getAttribute('aria-label').replace('Marker', 'marker') + '"]');
+        select.value = levels[input.value];
+        select.dispatchEvent(new Event('change'));
+      }
+      for (let k = 1; k < groups.length; k += 1) {
+        [...document.querySelectorAll('main button')].find((b) => b.textContent.trim() === 'Group').click();
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      [...document.querySelectorAll('main input[aria-label^="Name of group"]')].forEach((input, k) => { input.value = groups[k].name; input.dispatchEvent(new Event('change')); });
+      for (const input of rows()) {
+        groups.forEach((g, k) => {
+          const box = [...document.querySelectorAll('main input[type=checkbox]')].find((b) => b.getAttribute('aria-label') === input.value + ' in Group ' + (k + 1) || b.getAttribute('aria-label') === input.value + ' in ' + g.name);
+          const want = g.markers.includes(input.value);
+          if (box && box.checked !== want) { box.checked = want; box.dispatchEvent(new Event('change')); }
+        });
+      }
+    })()`);
+    await js(`[...document.querySelectorAll('main button.btn.primary')].find((e) => e.textContent.trim() === 'Optimize').click()`);
+    await waitFor(`/Dimmest resolution/.test(${mainText})`, 120000);
+    await js(`[...document.querySelectorAll('main h3')].find((e) => /^Design/.test(e.textContent.trim()))?.scrollIntoView({ block: 'start' })`);
+    await sleep(1500);
   },
   // Explore: the cluster heatmap with marker-enrichment names.
   async 'explore-clusters'() {
@@ -779,6 +875,43 @@ const scenes = {
     await compensateFromControls();
     await mode('report');
   },
+  // The PBMC analysis's review report, opened in the browser, a plot's percentage traced.
+  async 'review-report'() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await app(`const ui = await import('./ui/review.js'); const out = await ui.makeReviewReport(app, {}); window.__review = out.html;`);
+    // Opened from a file, as a reader opens it.
+    const file = join(mkdtempSync(join(tmpdir(), 'cytoweave-review-')), 'review.html');
+    writeFileSync(file, await js('window.__review'));
+    await b.goto(`file://${file}`, 1500);
+    await js(`(() => { const section = document.getElementById('plots'); window.scrollTo(0, section.getBoundingClientRect().top + window.scrollY - 12); [...section.querySelectorAll('button.n')][1].click(); return true; })()`);
+    await sleep(600);
+  },
+  // A virtual FMO of CD25 in T cells, beside the example's CD25 FMO control.
+  async 'virtual-fmo'() {
+    await example('pbmc-immunophenotyping', { options: { fmos: ['CD25'] } });
+    await compensateFromControls();
+    await mode('gate');
+    await selectSample('D01_Unstim');
+    await app(`app.selectGate(${gateId('T cells')});`);
+    await sleep(1200);
+    await app(`
+      const { addPlot } = await import('/lib/workspace.js');
+      app.store.commit(addPlot(app.store.ws, { populationId: ${gateId('T cells')}, x: 'PE-A', y: 'PE-Cy7-A', type: 'pseudocolor', options: { virtualFMO: ['PE-A'] } }).ws, 'Add plot', ['plots']);
+    `);
+    await waitFor(`[...document.querySelectorAll('.plot-compare')].some((e) => !e.hidden && /Virtual FMO of CD25: 99/.test(e.textContent) && /FMO control/.test(e.textContent))`, 180000);
+    await js(`[...document.querySelectorAll('.plot-compare')].find((e) => !e.hidden && /Virtual FMO/.test(e.textContent)).closest('.plot-card').scrollIntoView({ block: 'center' })`);
+    await sleep(800);
+  },
+  // A reproducibility certificate of the PBMC analysis, opened and verified.
+  async certificate() {
+    await example('pbmc-immunophenotyping');
+    await compensateFromControls();
+    await mode('report');
+    await app(`const ui = await import('./ui/certificates.js'); const lib = await import('./lib/certificate.js'); const built = await lib.buildCertificate(app.store.ws, ui.certificateSource(app), { version: app.version }); ui.showVerification(app, built.bytes, 'PBMC immunophenotyping.certificate.acs', { open: () => {} });`);
+    await waitFor(`/Confirmed/.test(document.querySelector('.dialog')?.innerText ?? '')`, 180000);
+    await sleep(800);
+  },
 };
 
 // --- Run ------------------------------------------------------------------------------------------
@@ -792,6 +925,18 @@ async function runAxe() {
   })()`);
 }
 const audits = [];
+const AUDIT_FILE = join(ROOT, 'docs/capture/audit.json');
+
+// Scene names, from the definitions in this file: in an object literal a repeated name silently
+// replaces the scene before it, and its pictures overwrite the other's.
+{
+  const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const block = source.slice(source.indexOf('const scenes = {'), source.indexOf('\n};\n', source.indexOf('const scenes = {')));
+  const defined = [...block.matchAll(/^  (?:async )?'?([\w-]+)'?\(\) \{/gm)].map((m) => m[1]);
+  const repeated = defined.filter((name, i) => defined.indexOf(name) !== i);
+  if (repeated.length) throw new Error(`Scenes defined twice: ${[...new Set(repeated)].join(', ')}. Rename one: a scene's name is the name of its pictures.`);
+  if (defined.length !== Object.keys(scenes).length) throw new Error(`Found ${defined.length} scene definitions but ${Object.keys(scenes).length} scenes; keep each scene as "  async name() {" so they can be checked.`);
+}
 
 const names = wanted.length ? wanted : Object.keys(scenes);
 for (const name of names) if (!scenes[name]) throw new Error(`Unknown scene ${name}. Scenes: ${Object.keys(scenes).join(', ')}`);
@@ -830,9 +975,20 @@ try {
 } finally {
   cytoweave.stop();
   if (audit) {
-    writeFileSync(join(ROOT, 'docs/capture/audit.json'), `${JSON.stringify(audits, null, 1)}\n`);
+    // Merged with the audits of the scenes not run now; scenes that no longer exist are dropped.
+    let previous = [];
+    try {
+      previous = JSON.parse(readFileSync(AUDIT_FILE, 'utf8'));
+    } catch { /* none yet */ }
+    const key = (a) => `${a.scene}|${a.theme}`;
+    const fresh = new Map(audits.map((a) => [key(a), a]));
+    const order = Object.keys(scenes);
+    const merged = [...previous.filter((a) => !fresh.has(key(a)) && scenes[a.scene]), ...audits]
+      .sort((a, b) => order.indexOf(a.scene) - order.indexOf(b.scene) || a.theme.localeCompare(b.theme));
+    writeFileSync(AUDIT_FILE, `${JSON.stringify(merged, null, 1)}\n`);
     const byRule = new Map();
     for (const a of audits) for (const v of a.violations) byRule.set(v.id, { ...v, scenes: [...(byRule.get(v.id)?.scenes ?? []), `${a.scene} (${a.theme})`] });
-    console.log(`\naxe-core: ${audits.length} scene captures, ${byRule.size} rules violated${byRule.size ? `: ${[...byRule.values()].map((v) => `${v.id} (${v.impact}) in ${v.scenes.length}`).join('; ')}` : ''}. Details: docs/capture/audit.json`);
+    const failing = merged.filter((a) => a.violations.length);
+    console.log(`\naxe-core: ${audits.length} scene captures, ${byRule.size} rules violated${byRule.size ? `: ${[...byRule.values()].map((v) => `${v.id} (${v.impact}) in ${v.scenes.length}`).join('; ')}` : ''}. docs/capture/audit.json: ${merged.length} captures of ${order.length} scenes, ${failing.length} with violations${failing.length ? ` (${failing.slice(0, 6).map((a) => `${a.scene} ${a.theme}`).join(', ')})` : ''}.`);
   }
 }

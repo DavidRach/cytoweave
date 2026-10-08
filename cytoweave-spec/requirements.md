@@ -1,6 +1,6 @@
 # CytoWeave requirements
 
-What CytoWeave must do, and the status of each requirement in 0.7.0.
+What CytoWeave must do, and the status of each requirement in 0.8.0.
 - `research.md` explains why each requirement is here: the methods and
   standards of §3–4 and the design implications of §8.
 - `design.md` explains how the requirements are met.
@@ -67,16 +67,16 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | C1 | Spillover from single-stain controls (median difference, robust regression); manual editing with undo | done |
 | C2 | Check a matrix against its controls and suggest corrections; recognize autofluorescent positives | done |
 | C3 | Spillover spreading matrix; N×N pair plots | done |
-| C4 | Virtual FMO: each population's negative without a dye, predicted from the spread model | planned (wave 8) |
+| C4 | Virtual FMO: each population's negative without a dye, predicted from the spread model | done (wave 8): each event's value without the dye drawn from its own brightness of every other dye and the unstained control (scatter gates applied), from the spread model kept with a compensation computed from controls or the spectral spreading matrix; threshold and curve drawn on plots beside the real FMO, a gate above it, agents' `virtual_fmo`; within 1% of the axis on simulated panels, about 6% (worst 15%) on real LSRFortessa and Aurora FMOs |
 | S1 | Reference spectra from controls with automatic gating; control quality metrics | done |
 | S2 | Several autofluorescence signatures; per-event autofluorescence | done |
 | S3 | OLS, WLS (fixed and per-event weights) and NNLS unmixing; residual channel | done |
 | S4 | Complexity index, similarity and spreading matrices | done |
 | S5 | Comparison of unmixing models on the user's own sample | done |
-| S6 | Predicted spread for panel design from the user's own references | done: photon and laser noise fitted to the controls, kept per instrument or from bead runs; validated on simulated and real (LSRFortessa) controls |
+| S6 | Predicted spread for panel design from the user's own references | done: photon and laser noise fitted to the controls, kept per instrument or from bead runs; validated on simulated and real (LSRFortessa, Aurora) controls |
 | S7 | Spectral reference library across experiments | done: spectra kept per instrument in the library; controls compared with them (a degraded tandem flagged); library spectra for fluorochromes without a control; validation `spectral` |
 | S8 | Unmixing doctor: the likely cause of a poor unmixing, named with its fix | done (wave 7): a dye without a reference, a wrong reference, a bead control whose dye differs on cells, a tandem degraded in samples or controls, a cell control carrying autofluorescence, and autofluorescence the unstained control lacks; each planted fault named first on two simulated experiments, fixes checked against the truth; AutoSpectral's autofluorescent cell controls and PFA-fixed spleen named |
-| S9 | Panel optimizer from the user's instrument model and library | planned (wave 8) |
+| S9 | Panel optimizer from the user's instrument model and library | done (wave 8): each marker's stain index predicted from expression, dye brightness, the unstained background and the spread of co-expressed markers; every assignment of small panels, local search for large ones; energy-transfer warnings; kept designs checked against the run; spectral and conventional |
 
 ## Quality control and normalization
 
@@ -130,10 +130,10 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | R3 | Methods paragraph with references, from what the workspace did; MIFlowCyt checklist | done |
 | R4 | Publication figures (SVG, PNG, PDF) that stay live until export | done |
 | R5 | Figures with embedded provenance (gates, scales, matrices, file checksums) | done: SVG, PNG and PDF exports carry the record; opening one reports what changed since and rebuilds it from the same files (validation `figures`) |
-| R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | planned: a tamper-evident change log in wave 8; users, audit trail and signatures in wave 9, subject to a decision on GxP |
+| R6 | Audit trail and electronic signatures (21 CFR Part 11 style) | partial: the change log is hash-chained (wave 8), so an entry changed, removed or reordered is detected; users, audit trail and signatures in wave 9, subject to a decision on GxP |
 | R7 | Batch reports (PDF, PowerPoint) and spreadsheet export (Excel, Prism) | done: a figure repeated by sample or by an annotation as PDF or PowerPoint with every number traced to its source; Excel workbooks with provenance sheets and Prism projects; read back by openpyxl, python-pptx, pypdf and R pzfx (validation `reports`) |
-| R8 | Reproducibility certificate that re-runs and confirms every reported number | planned (wave 8) |
-| R9 | A self-contained review report of an analysis, every number traced, opened without CytoWeave | planned (wave 8) |
+| R8 | Reproducibility certificate that re-runs and confirms every reported number | done (wave 8): an ACS archive with certificate.json (inputs' SHA-256, version and engine, analyses and seeds, the change log's head, MIFlowCyt, every count, table cell and saved comparison) verified in the window, by `cytoweave verify` or by agents, every number computed again from the files; identical bit for bit within one JavaScript engine, equal to 12 digits across engines; derived analyses and screens not yet run again |
+| R9 | A self-contained review report of an analysis, every number traced, opened without CytoWeave | done (wave 8): one HTML file (samples with checksums, gating, every sample's gates drawn, figures, tables, saved comparisons, methods, MIFlowCyt, change log), every number traced on click; the numbers equal to the window's own; no network requests; WCAG 2.1 AA in both themes |
 
 ## Interchange
 
@@ -156,8 +156,8 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | M3 | Agent changes arrive as proposals to accept or reject | done: new gates as marked proposals, edits, deletions and compensation matrices held; accepted or rejected as a group; the change log records who proposed and who decided |
 | M4 | Agent tools for every stage: QC, unmixing, clustering and maps, sample annotation, figures, exports and folder watching | done: 11 new tools (29 in all); results and figures proposed, annotations and root gates held; exports write only to the path given and never replace a file unless told to; validation `agent-session.mjs` (15 checks, in CI) |
 | M5 | R and Python clients for remote control | done: `clients/r` and `clients/python`, functions generated from the tools, connection found through `remote.json`, tested in CI against a running CytoWeave (not published to CRAN or PyPI) |
-| M6 | Optional on-device assistant, without network | idea (replaced by WebMCP, M7) |
-| M7 | Tools exposed to browser agents through WebMCP | planned (wave 8) |
+| M6 | Optional on-device assistant, without network | idea |
+| M7 | Tools exposed to browser agents through WebMCP | parked (outside the waves): agents use `cytoweave mcp` for now; to build once browser agents use WebMCP and its API settles |
 | M8 | Headless runs: a template applied to a folder without a window, writing tables, reports and exports | done (wave 7): `cytoweave run` in a headless Chrome, default steps or a steps file of agent actions, tables, report, workspace, methods and a run record with checksums and counts; the same outputs as the window's own exports, every count equal to Node's |
 | M9 | The R and Python clients published (r-universe, PyPI) with each release | parked (outside the waves): installed from the GitHub repository for now, as documented; to publish once CytoWeave has more users |
 | M10 | A tool contract for external algorithms (pinned WASM or container runtimes, results as derived channels) | planned (wave 10) |
@@ -170,6 +170,6 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | V2 | End-to-end validation against simulated truth and published references in CI | done |
 | V3 | Comparison with reference tools (FlowKit, flowCore, PeacoQC, FlowSOM, CytoNorm) on public data | done: ISAC's Gating-ML suite, FlowKit, FlowIO, FlowJo's saved counts, FACSDiva's spillover, and flowCore, PeacoQC, FlowSOM and CytoNorm in R |
 | V4 | Accessible: keyboard operation, labeled controls, color maps safe for color-vision deficiency | done: color-vision-friendly colors (a setting); WCAG AA contrast in both themes; keyboard tree, list, dialogs and scroll regions; plots described in text; axe-core audit of every documentation scene (`capture.mjs --audit`) and validation `accessibility`. Not done: drawing gates without a pointer; testing by screen-reader users |
-| V5 | Teaching mode on the examples | planned (wave 8) |
-| V6 | A public agent benchmark: graded tasks on the examples, scored against the truth, published per agent and model | planned (wave 8) |
-| V7 | Validation on real expert-gated data (FlowCAP, FlowRepository studies) beside the simulated truth | planned (beside wave 7) |
+| V5 | Teaching mode on the examples | done (wave 8): 18 exercises on the examples, opened without the truth with a seed of their own (class codes), hints, answers in a panel, checks with partial credit against the simulator's truth, the truth revealed with missed and extra events colored; the answer key regenerated from the seed and checksums, never stored; validation `exercise-session.mjs` (every exercise solved in the window, 100%) |
+| V6 | A public agent benchmark: graded tasks on the examples, scored against the truth, published per agent and model | done (wave 8): 11 tasks in 8 categories, each on its own seed, graded by code against the simulator's record with partial credit; agents run isolated with CytoWeave's tools only (Claude Code adapter); reference solutions (100%) and no answer (0%) checked in CI; results on the website |
+| V7 | Validation on real expert-gated data (FlowCAP, FlowRepository studies) beside the simulated truth | planned (beside waves 9–10) |

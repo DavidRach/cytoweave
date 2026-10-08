@@ -1,0 +1,570 @@
+{
+ "benchmark": {
+  "version": "2",
+  "tasks": [
+   {
+    "id": "pbmc-t-cells",
+    "category": "gating",
+    "title": "Gate T cells and report their frequency",
+    "seed": 41001
+   },
+   {
+    "id": "pbmc-compensation-error",
+    "category": "compensation",
+    "title": "Find the wrong value in a spillover matrix",
+    "seed": 41002
+   },
+   {
+    "id": "pbmc-stimulation-cd25",
+    "category": "statistics",
+    "title": "Test whether stimulation changes CD25+ CD4 T cells",
+    "seed": 41003
+   },
+   {
+    "id": "qc-acquisition-problems",
+    "category": "quality control",
+    "title": "Name each acquisition's problem",
+    "seed": 41004
+   },
+   {
+    "id": "pbmc-acquisition-problem",
+    "category": "quality control",
+    "title": "Find the sample with an acquisition problem",
+    "seed": 41005
+   },
+   {
+    "id": "spectral-dye-fault",
+    "category": "spectral unmixing",
+    "title": "Find what is wrong with one dye in a spectral panel",
+    "seed": 41006
+   },
+   {
+    "id": "antibody-titration",
+    "category": "assay setup",
+    "title": "Choose an antibody amount from a titration",
+    "seed": 41007
+   },
+   {
+    "id": "plate-dose-response",
+    "category": "plates",
+    "title": "Find the most potent compound on a plate",
+    "seed": 41008
+   },
+   {
+    "id": "bead-assay-concentration",
+    "category": "immunoassay",
+    "title": "Read a serum concentration from a bead assay",
+    "seed": 41009
+   },
+   {
+    "id": "calcium-response",
+    "category": "kinetics",
+    "title": "Compare calcium responses to stimuli",
+    "seed": 41010
+   },
+   {
+    "id": "gating-report",
+    "category": "reporting",
+    "title": "Write a gating report as a PDF",
+    "seed": 41011
+   }
+  ]
+ },
+ "agent": {
+  "id": "expert",
+  "program": null,
+  "model": null,
+  "requestedModel": null,
+  "effort": null,
+  "maxTurns": 60
+ },
+ "cytoweave": {
+  "version": "0.8.0",
+  "commit": "fc63f56",
+  "dirty": false
+ },
+ "date": "2026-10-08T05:40:27.685Z",
+ "repeat": 1,
+ "score": 1,
+ "byTask": {
+  "pbmc-t-cells": 1,
+  "pbmc-compensation-error": 1,
+  "pbmc-stimulation-cd25": 1,
+  "qc-acquisition-problems": 1,
+  "pbmc-acquisition-problem": 1,
+  "spectral-dye-fault": 1,
+  "antibody-titration": 1,
+  "plate-dose-response": 1,
+  "bead-assay-concentration": 1,
+  "calcium-response": 1,
+  "gating-report": 1
+ },
+ "runs": [
+  {
+   "task": "pbmc-t-cells",
+   "category": "gating",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "a \"T cells\" gate matching the true T cells (F1)",
+     "weight": 0.6,
+     "score": 1,
+     "detail": "F1 1.000 (precision 1.000, recall 1.000)"
+    },
+    {
+     "name": "the percentage of all events",
+     "weight": 0.4,
+     "score": 1,
+     "detail": "39.91 (true 39.91)"
+    }
+   ],
+   "answer": {
+    "percent": 39.91
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 7,
+   "failedToolCalls": 0,
+   "tools": [
+    "create_gate",
+    "statistics_table"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 8,
+   "reply": "ANSWER: {\"percent\": 39.91}",
+   "attempts": 1
+  },
+  {
+   "task": "pbmc-compensation-error",
+   "category": "compensation",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the wrong entry (APC into Alexa Fluor 700)",
+     "weight": 0.6,
+     "score": 1,
+     "detail": "APC-A → Alexa Fluor 700-A"
+    },
+    {
+     "name": "its correct value",
+     "weight": 0.4,
+     "score": 1,
+     "detail": "15.8% (true 15.69%)"
+    }
+   ],
+   "answer": {
+    "from": "APC-A",
+    "into": "Alexa Fluor 700-A",
+    "correctPercent": 15.8
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 1,
+   "failedToolCalls": 0,
+   "tools": [
+    "check_compensation"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 5,
+   "reply": "ANSWER: {\"from\":\"APC-A\",\"into\":\"Alexa Fluor 700-A\",\"correctPercent\":15.8}",
+   "attempts": 1
+  },
+  {
+   "task": "pbmc-stimulation-cd25",
+   "category": "statistics",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the direction (CD25+ rises)",
+     "weight": 0.5,
+     "score": 1,
+     "detail": "up"
+    },
+    {
+     "name": "a significant p-value (p < 0.05)",
+     "weight": 0.25,
+     "score": 1,
+     "detail": "7.76709e-7"
+    },
+    {
+     "name": "a test paired by donor",
+     "weight": 0.25,
+     "score": 1,
+     "detail": "paired by subject"
+    }
+   ],
+   "answer": {
+    "direction": "up",
+    "p": 7.76709e-7
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 3,
+   "failedToolCalls": 0,
+   "tools": [
+    "create_gate",
+    "auto_gate",
+    "compare"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 6,
+   "reply": "ANSWER: {\"direction\":\"up\",\"p\":7.76709e-7}",
+   "attempts": 1
+  },
+  {
+   "task": "qc-acquisition-problems",
+   "category": "quality control",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "A01 is clean",
+     "weight": 0.25,
+     "score": 1,
+     "detail": "clean"
+    },
+    {
+     "name": "A02: clog",
+     "weight": 0.25,
+     "score": 1,
+     "detail": "clog"
+    },
+    {
+     "name": "A03: drift",
+     "weight": 0.25,
+     "score": 1,
+     "detail": "drift"
+    },
+    {
+     "name": "A04: bubble",
+     "weight": 0.25,
+     "score": 1,
+     "detail": "bubble"
+    }
+   ],
+   "answer": {
+    "A04": "bubble",
+    "A03": "drift",
+    "A02": "clog",
+    "A01": "clean"
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 1,
+   "failedToolCalls": 0,
+   "tools": [
+    "run_qc"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 5,
+   "reply": "ANSWER: {\"A04\":\"bubble\",\"A03\":\"drift\",\"A02\":\"clog\",\"A01\":\"clean\"}",
+   "attempts": 1
+  },
+  {
+   "task": "pbmc-acquisition-problem",
+   "category": "quality control",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the sample (D05_Unstim)",
+     "weight": 0.7,
+     "score": 1,
+     "detail": "D05_Unstim"
+    },
+    {
+     "name": "the problem (a clog)",
+     "weight": 0.3,
+     "score": 1,
+     "detail": "The flow rate dropped at 5–7 s (a clog slows the flow); 8.0% of events removed."
+    }
+   ],
+   "answer": {
+    "sample": "D05_Unstim",
+    "problem": "The flow rate dropped at 5–7 s (a clog slows the flow); 8.0% of events removed."
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 1,
+   "failedToolCalls": 0,
+   "tools": [
+    "run_qc"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 9,
+   "reply": "ANSWER: {\"sample\":\"D05_Unstim\",\"problem\":\"The flow rate dropped at 5–7 s (a clog slows the flow); 8.0% of events removed.\"}",
+   "attempts": 1
+  },
+  {
+   "task": "spectral-dye-fault",
+   "category": "spectral unmixing",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the dye (PE-Cy7)",
+     "weight": 0.6,
+     "score": 1,
+     "detail": "PE-Cy7"
+    },
+    {
+     "name": "the cause (a degraded tandem)",
+     "weight": 0.4,
+     "score": 1,
+     "detail": "PE-Cy7 in the sample has degraded more than its control"
+    }
+   ],
+   "answer": {
+    "dye": "PE-Cy7",
+    "cause": "PE-Cy7 in the sample has degraded more than its control"
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 2,
+   "failedToolCalls": 0,
+   "tools": [
+    "unmix",
+    "diagnose_unmixing"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 7,
+   "reply": "ANSWER: {\"dye\":\"PE-Cy7\",\"cause\":\"PE-Cy7 in the sample has degraded more than its control\"}",
+   "attempts": 1
+  },
+  {
+   "task": "antibody-titration",
+   "category": "assay setup",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the amount (125 ng: twice the amount near 90% of saturation)",
+     "weight": 1,
+     "score": 1,
+     "detail": "125 ng"
+    }
+   ],
+   "answer": {
+    "amountNg": 125
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 1,
+   "failedToolCalls": 0,
+   "tools": [
+    "titration"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 4,
+   "reply": "ANSWER: {\"amountNg\": 125}",
+   "attempts": 1
+  },
+  {
+   "task": "plate-dose-response",
+   "category": "plates",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the most potent compound (CW-103)",
+     "weight": 0.4,
+     "score": 1,
+     "detail": "CW-103"
+    },
+    {
+     "name": "its IC50 (within 2× of the truth)",
+     "weight": 0.3,
+     "score": 1,
+     "detail": "2.3911 nM (true 4)"
+    },
+    {
+     "name": "the inactive compounds (CW-105; CW-106 either way)",
+     "weight": 0.3,
+     "score": 1,
+     "detail": "cw 105"
+    }
+   ],
+   "answer": {
+    "mostPotent": "CW-103",
+    "ic50nM": 2.3911,
+    "inactive": [
+     "CW-105"
+    ]
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 1,
+   "failedToolCalls": 0,
+   "tools": [
+    "dose_response"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 5,
+   "reply": "ANSWER: {\"mostPotent\":\"CW-103\",\"ic50nM\":2.3911,\"inactive\":[\"CW-105\"]}",
+   "attempts": 1
+  },
+  {
+   "task": "bead-assay-concentration",
+   "category": "immunoassay",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the IL-6 concentration (within 20%)",
+     "weight": 1,
+     "score": 1,
+     "detail": "465.08 pg/mL (true 455.2)"
+    }
+   ],
+   "answer": {
+    "il6": 465.08
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 1,
+   "failedToolCalls": 0,
+   "tools": [
+    "bead_assay"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 4,
+   "reply": "ANSWER: {\"il6\": 465.08}",
+   "attempts": 1
+  },
+  {
+   "task": "calcium-response",
+   "category": "kinetics",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the strongest stimulus (ionomycin)",
+     "weight": 0.5,
+     "score": 1,
+     "detail": "Ionomycin"
+    },
+    {
+     "name": "the percentage responding (within 10 points)",
+     "weight": 0.5,
+     "score": 1,
+     "detail": "88.6 (true 84.3)"
+    }
+   ],
+   "answer": {
+    "strongest": "Ionomycin",
+    "respondingPercent": 88.6
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 1,
+   "failedToolCalls": 0,
+   "tools": [
+    "kinetics"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 4,
+   "reply": "ANSWER: {\"strongest\":\"Ionomycin\",\"respondingPercent\":88.6}",
+   "attempts": 1
+  },
+  {
+   "task": "gating-report",
+   "category": "reporting",
+   "repeat": 1,
+   "score": 1,
+   "parts": [
+    {
+     "name": "the PDF written",
+     "weight": 0.4,
+     "score": 1,
+     "detail": "12 pages"
+    },
+    {
+     "name": "a page per stained sample (12)",
+     "weight": 0.3,
+     "score": 1,
+     "detail": "12 pages"
+    },
+    {
+     "name": "the gating strategy on its pages",
+     "weight": 0.3,
+     "score": 1,
+     "detail": "5 of 5 gates named"
+    }
+   ],
+   "answer": {
+    "path": "/var/folders/lc/lsy0fn113r9394qmn0xmj5zc0000gn/T/cytoweave-bench-wXC79u/outputs/gating-report.pdf",
+    "pages": 12
+   },
+   "answered": true,
+   "replacedWorkspace": false,
+   "toolCalls": 2,
+   "failedToolCalls": 0,
+   "tools": [
+    "build_figure",
+    "export_report"
+   ],
+   "turns": null,
+   "tokens": null,
+   "costUSD": null,
+   "model": null,
+   "timedOut": false,
+   "error": null,
+   "seconds": 5,
+   "reply": "ANSWER: {\"path\":\"/var/folders/lc/lsy0fn113r9394qmn0xmj5zc0000gn/T/cytoweave-bench-wXC79u/outputs/gating-report.pdf\",\"pages\":12}",
+   "attempts": 1
+  }
+ ]
+}

@@ -92,6 +92,47 @@ export function installLiveQC(app, info) {
     await poll();
   };
 
+  // A replay: an example's files handed over one at a time, as if an instrument were writing them
+  // to a watched folder, so live QC can be tried without one (and in the browser).
+  let replayTimer = null;
+  let replaySeq = 0;
+  live.replay = async (exampleId, { interval = 3000 } = {}) => {
+    live.stopReplay();
+    const { EXAMPLES } = await import('../lib/examples.js');
+    const example = EXAMPLES.find((e) => e.id === exampleId);
+    if (!example) throw new Error(`There is no example called "${exampleId}".`);
+    live.replaying = { title: example.title, total: 0, added: 0, generating: true };
+    changed();
+    const result = await app.worker('simulate').call('generateExample', { id: exampleId, options: {} });
+    const files = result.files;
+    Object.assign(live.replaying, { total: files.length, generating: false });
+    changed();
+    let index = 0;
+    const land = () => {
+      if (!live.replaying || index >= files.length) {
+        live.stopReplay();
+        return;
+      }
+      const file = files[index];
+      index += 1;
+      replaySeq -= 1;
+      live.queue.push({ seq: replaySeq, name: file.name, size: file.bytes.byteLength, bytes: new Uint8Array(file.bytes), landed: Date.now(), state: 'waiting', replay: true });
+      live.replaying.added = index;
+      changed();
+      process();
+      replayTimer = setTimeout(land, interval);
+    };
+    land();
+  };
+  live.stopReplay = () => {
+    clearTimeout(replayTimer);
+    replayTimer = null;
+    if (live.replaying) {
+      live.replaying = null;
+      changed();
+    }
+  };
+
   live.subscribe = (listener) => {
     live.listeners.add(listener);
     return () => live.listeners.delete(listener);
@@ -110,7 +151,7 @@ export function installLiveQC(app, info) {
           item.error = error.message;
           toast(`${item.name}: ${error.message}`, { kind: 'error' });
         }
-        prefs.set(handledKey(live.status?.folder), Math.max(prefs.get(handledKey(live.status?.folder), 0), item.seq));
+        if (!item.replay) prefs.set(handledKey(live.status?.folder), Math.max(prefs.get(handledKey(live.status?.folder), 0), item.seq));
         changed();
       }
     } finally {
@@ -123,7 +164,8 @@ export function installLiveQC(app, info) {
   async function handle(item) {
     item.state = 'opening';
     changed();
-    const records = await app.importFCSItems([{ name: item.name, size: item.size, localUrl: item.url, folder: item.folder, order: 0 }], { select: false });
+    const records = await app.importFCSItems([item.bytes ? { name: item.name, bytes: item.bytes, order: 0 } : { name: item.name, size: item.size, localUrl: item.url, folder: item.folder, order: 0 }], { select: false });
+    item.bytes = null;
     const record = records?.[0];
     if (!record) throw new Error('The file could not be read.');
     const sample = app.store.ws.samples.find((s) => s.id === record.id);
@@ -228,6 +270,21 @@ export function createLiveSection(ctx) {
     return h('td.muted', item.finding ?? '');
   }
 
+  // Replaying an example as an acquisition (no instrument or folder needed).
+  function replayPane() {
+    const r = live.replaying;
+    const choice = h('select.input.small', { 'aria-label': 'Example to replay' },
+      h('option', { value: 'qc-showcase' }, 'Four wells with acquisition problems (acquisition QC)'),
+      h('option', { value: 'bead-qc' }, 'Thirty days of rainbow beads (Q, B and Levey–Jennings)'));
+    return h('div.pane',
+      h('h3', icon('play'), 'Try it with an example', h('span.spacer'),
+        r ? h('button.btn.small', { type: 'button', onclick: () => live.stopReplay() }, icon('stop'), 'Stop') : null),
+      r
+        ? h('p', { style: { margin: 0 } }, r.generating ? `Generating ${r.title}…` : `Replaying ${r.title}: ${r.added} of ${r.total} files have landed, one every few seconds.`)
+        : h('div.btn-row', choice, h('button.btn', { type: 'button', onclick: () => live.replay(choice.value).catch((error) => toast(error.message, { kind: 'error' })) }, icon('play'), 'Replay as an acquisition')),
+      r ? null : h('p.muted.small-print', 'An example\'s files land in this workspace one at a time, as an instrument would write them to a watched folder, and each is checked as it lands.'));
+  }
+
   function render(host) {
     unsubscribe?.();
     unsubscribe = live?.subscribe(() => ctx.rerender());
@@ -235,6 +292,8 @@ export function createLiveSection(ctx) {
     if (!live?.available) {
       host.append(h('div.pane', h('div.empty', icon('play'), h('h3', 'QC as files are acquired'),
         h('p', 'Watching a folder needs the CytoWeave program, which reads the folder on this computer: start it with cytoweave --watch <folder>, or open it and choose a folder here.'))));
+      host.append(replayPane());
+      if (live?.queue.length) host.append(filesPane());
       return;
     }
     const status = live.status;
@@ -273,8 +332,14 @@ export function createLiveSection(ctx) {
         status.problem ? h('div.callout.warn', { style: { marginTop: '8px' } }, icon('warning'), h('span', status.problem)) : null,
         optionsRow));
     }
+    if (!watching) host.append(replayPane());
+    host.append(filesPane());
+  }
+
+  function filesPane() {
+    const watching = live.status?.watching;
     const rows = [...live.queue].reverse();
-    host.append(h('div.pane',
+    return h('div.pane',
       h('h3', 'Files', h('span.muted', { style: { fontWeight: 500 } }, rows.length ? `${rows.length}, newest first` : 'none yet')),
       rows.length
         ? h('div', { style: { overflow: 'auto', maxHeight: '560px' } }, h('table.data',
@@ -288,7 +353,7 @@ export function createLiveSection(ctx) {
           h('td.r', item.events ? formatCount(item.events) : '—'),
           resultCell(item),
           noteCell(item))))))
-        : h('p.muted', { style: { margin: 0 } }, watching ? 'Waiting for the first file.' : 'Start watching a folder to check files as they arrive.')));
+        : h('p.muted', { style: { margin: 0 } }, watching || live.replaying ? 'Waiting for the first file.' : 'Start watching a folder to check files as they arrive.'));
   }
 
   return { render, dispose: () => unsubscribe?.() };

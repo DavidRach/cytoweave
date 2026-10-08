@@ -40,6 +40,9 @@ export function plotMargins(width, height, options = {}) {
 //                                null for all events)
 //   overlays                     [{ xs, ys, indices, color, label, alpha }]
 //   gates                        [{ outline, name, label, color, selected, id }]
+//   guides                       [{ axis: 'x' | 'y', value, color, dash, label }] a line at a value
+//                                of one axis, or [{ points: [[x, y], …], color, dash, label }] a
+//                                polyline, in data units (virtual FMOs draw their thresholds)
 //   options                      { colormap, dotSize, smoothing, densityScale, histogramMode,
 //                                  offset (ridgeline overlays), title, subtitle, theme, bare,
 //                                  showAxes, contourFractions, fill }
@@ -72,10 +75,12 @@ export function buildPlotScene(input) {
   };
   const xTransform = createTransform(input.x.transform);
   scene.axes.x = { label: input.x.label ?? input.x.channel, ticks: xTransform.ticks(), transform: input.x.transform };
+  let yTransform = null;
   if (input.y) {
-    const yTransform = createTransform(input.y.transform);
+    yTransform = createTransform(input.y.transform);
     scene.axes.y = { label: input.y.label ?? input.y.channel, ticks: yTransform.ticks(), transform: input.y.transform };
   }
+  scene.guides = buildGuides(input.guides, xTransform, yTransform);
   const dotSize = Math.max(1, options.dotSize ?? 1);
   const gridW = Math.max(16, Math.round(plotRect.w * (options.resolution ?? 1) / dotSize));
   const gridH = Math.max(16, Math.round(plotRect.h * (options.resolution ?? 1) / dotSize));
@@ -201,6 +206,19 @@ function hexAlpha(hex, alpha) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
+// Guides in the plot's unit square: [{ points: [[u, v], …], color, dash, label }].
+function buildGuides(guides, xT, yT) {
+  const out = [];
+  for (const g of guides ?? []) {
+    let points = null;
+    if (g.points) points = g.points.map(([x, y]) => [xT.forward(x), yT ? yT.forward(y) : 0.5]).filter(([u, v]) => Number.isFinite(u) && Number.isFinite(v));
+    else if (g.axis === 'x' && Number.isFinite(g.value)) points = [[xT.forward(g.value), 0], [xT.forward(g.value), 1]];
+    else if (g.axis === 'y' && yT && Number.isFinite(g.value)) points = [[0, yT.forward(g.value)], [1, yT.forward(g.value)]];
+    if (points?.length >= 2) out.push({ points, color: g.color ?? '#b45309', dash: g.dash ?? true, label: g.label ?? '', labelAt: g.labelAt ?? 'top', width: g.width ?? 1.6 });
+  }
+  return out;
+}
+
 // --- Coordinates ------------------------------------------------------------------------------
 
 export function toPixel(scene, u, v) {
@@ -259,6 +277,23 @@ export function drawScene(ctx, scene, makeImage, options = {}) {
     ctx.lineWidth = 1.4;
     ctx.stroke();
   }
+  for (const guide of scene.guides ?? []) {
+    ctx.strokeStyle = guide.color;
+    ctx.lineWidth = guide.width;
+    ctx.setLineDash(guide.dash ? [6, 4] : []);
+    ctx.beginPath();
+    guide.points.forEach(([u, v], i) => (i ? ctx.lineTo(r.x + u * r.w, r.y + (1 - v) * r.h) : ctx.moveTo(r.x + u * r.w, r.y + (1 - v) * r.h)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (guide.label) {
+      const [u, v] = guideLabelPoint(guide);
+      ctx.fillStyle = guide.color;
+      ctx.font = `600 ${scene.margins.compact ? 9 : 10.5}px ${theme.font}`;
+      ctx.textAlign = u > 0.7 ? 'right' : 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(guide.label, r.x + u * r.w + (u > 0.7 ? -4 : 4), r.y + (1 - v) * r.h + 4);
+    }
+  }
   if (options.gates !== false) drawGates(ctx, scene, options);
   ctx.restore();
   if (scene.margins.left > 6) drawAxes(ctx, scene);
@@ -271,6 +306,15 @@ export function drawScene(ctx, scene, makeImage, options = {}) {
     ctx.fillText(ellipsize(ctx, scene.title, scene.width - 12), r.x, scene.margins.compact ? 13 : 19);
   }
   ctx.restore();
+}
+
+// Where a guide's label goes: at the top of a vertical line (or its bottom with labelAt
+// 'bottom', a little above the axis), at the right end of a horizontal one.
+export function guideLabelPoint(guide) {
+  const vertical = guide.points.every(([u]) => Math.abs(u - guide.points[0][0]) < 1e-9);
+  if (vertical) return [Math.min(0.97, Math.max(0, guide.points[0][0])), guide.labelAt === 'bottom' ? 0.09 : 1];
+  const end = guide.points.reduce((best, p) => (p[0] > best[0] ? p : best), guide.points[0]);
+  return guide.labelAt === 'bottom' ? [end[0], end[1] - 0.05] : end;
 }
 
 function ellipsize(ctx, text, width) {
@@ -531,6 +575,14 @@ export function sceneToSVG(scene, options = {}) {
     for (let i = 2; i < p.length; i += 2) d += `L${f(r.x + p[i] * r.w)} ${f(r.y + (1 - p[i + 1]) * r.h)}`;
     parts.push(`<path d="${d}" fill="${curve.fill ?? 'none'}" stroke="${curve.stroke}" stroke-width="1.4"/>`);
   }
+  for (const guide of scene.guides ?? []) {
+    const d = guide.points.map(([u, v], i) => `${i ? 'L' : 'M'}${f(r.x + u * r.w)} ${f(r.y + (1 - v) * r.h)}`).join('');
+    parts.push(`<path d="${d}" fill="none" stroke="${guide.color}" stroke-width="${guide.width}"${guide.dash ? ' stroke-dasharray="6 4"' : ''}/>`);
+    if (guide.label) {
+      const [u, v] = guideLabelPoint(guide);
+      parts.push(`<text x="${f(r.x + u * r.w + (u > 0.7 ? -4 : 4))}" y="${f(r.y + (1 - v) * r.h + 4 + (compact ? 9 : 10.5) * 0.8)}" font-size="${compact ? 9 : 10.5}" font-weight="600" fill="${guide.color}" text-anchor="${u > 0.7 ? 'end' : 'start'}">${esc(guide.label)}</text>`);
+    }
+  }
   for (const gate of scene.gates) {
     const o = gate.outline;
     if (!o) continue;
@@ -633,6 +685,17 @@ export function sceneToPDF(page, scene, ox = 0, oy = 0, options = {}) {
       for (let i = 2; i < p.length; i += 2) page.lineTo(px(p[i]), py(p[i + 1]));
     }
     page.draw({ stroke: curve.stroke, width: 1.4, join: 1 });
+  }
+  for (const guide of scene.guides ?? []) {
+    guide.points.forEach(([u, v], i) => (i ? page.lineTo(px(u), py(v)) : page.moveTo(px(u), py(v))));
+    page.draw({ stroke: guide.color, width: guide.width, dash: guide.dash ? [6, 4] : null, join: 1 });
+    if (guide.label) {
+      const [u, v] = guideLabelPoint(guide);
+      const size = compact ? 8 : 9.5;
+      const text = guide.label;
+      const x = u > 0.7 ? px(u) - 4 - textWidth(text, size, true) : px(u) + 4;
+      page.text(text, x, py(v) + 4, { size, bold: true, color: guide.color, baseline: 'top' });
+    }
   }
   for (const gate of scene.gates) {
     const o = gate.outline;

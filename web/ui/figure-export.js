@@ -5,11 +5,11 @@
 // the record of every number it prints. The Figures view downloads them; agents write them to a
 // file (remote.js).
 
-import { drawScene, sceneToSVG } from '../lib/plot.js';
+import { drawScene } from '../lib/plot.js';
+import { STATS_FONT, figureItemScene, figurePageSVG } from '../lib/figure-svg.js';
 import { writePDF } from '../lib/pdf.js';
 import { REPORT_ATTACHMENT, expandReport, fillStatistics, plotTrace, reportPDFPage, reportRecord, reportSlide, statsLayout, unionFigure } from '../lib/reports.js';
 
-const STATS_FONT = 'Helvetica, Arial, sans-serif';
 
 function rasterImage(raster) {
   const canvas = new OffscreenCanvas(raster.width, raster.height);
@@ -25,25 +25,9 @@ function rasterDataURL(raster) {
   return canvas.toDataURL('image/png');
 }
 
-function esc(text) {
-  return String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// The plot scene of a figure item (null when it cannot be drawn); a highlighted gate keeps its
-// color and the others are grayed.
+// The plot scene of a figure item (lib/figure-svg.js), in the window's colormap.
 export function figureScene(app, item, view, dotSize = 1) {
-  try {
-    const spec = { ...item.spec, options: { ...(item.spec.options ?? {}), dotSize: item.spec.options?.dotSize ?? dotSize } };
-    const scene = app.buildExportScene(app.store.ws, view, spec, { width: item.w, height: item.h, theme: 'light', title: item.title ?? '' });
-    if (item.highlight) {
-      for (const gate of scene.gates) {
-        if (gate.id !== item.highlight) gate.color = '#9aa3b2';
-      }
-    }
-    return scene;
-  } catch {
-    return null;
-  }
+  return figureItemScene(app.store.ws, item, view, { colormap: app.store.ui.colormap, dotSize });
 }
 
 const viewOf = (app) => (id) => app.data.view(id);
@@ -142,21 +126,6 @@ export function drawStats(ctx, item) {
   ctx.restore();
 }
 
-function statsSVG(item) {
-  const content = item.content;
-  if (!content || content.missing || !content.rows?.length) return `<text x="${item.x + 4}" y="${item.y + 14}" font-family="${STATS_FONT}" font-size="11" fill="#8a93a6">${esc(content?.missing ?? 'No samples to list.')}</text>`;
-  const layout = statsLayout(content, item.w, item.h, item.size ?? 11);
-  const parts = [`<g transform="translate(${item.x},${item.y})" font-family="${STATS_FONT}" font-size="${layout.size}">`];
-  for (const rule of layout.rules) parts.push(`<path d="M${rule.x0} ${rule.y}H${rule.x1}" stroke="${rule.strong ? '#3b4252' : '#d5dae3'}" stroke-width="${rule.strong ? 1 : 0.6}"/>`);
-  const shift = { top: 0.8, middle: 0.33, bottom: -0.2, alphabetic: 0 };
-  for (const cell of layout.cells) {
-    const x = cell.align === 'right' ? cell.x + cell.w - 2 : cell.x + 2;
-    cell.lines.forEach((line, k) => parts.push(`<text x="${+x.toFixed(2)}" y="${+(cell.y + k * layout.lineHeight + (shift[cell.baseline] ?? 0) * layout.size).toFixed(2)}" text-anchor="${cell.align === 'right' ? 'end' : 'start'}"${cell.bold ? ' font-weight="700"' : ''} fill="${cell.muted ? '#8a93a6' : '#171b26'}">${esc(line)}</text>`));
-  }
-  parts.push('</g>');
-  return parts.join('');
-}
-
 function drawMissing(ctx, item) {
   ctx.strokeStyle = '#c3c9d4';
   ctx.setLineDash([4, 4]);
@@ -216,24 +185,7 @@ async function provenanceFor(app, fig) {
 export async function figureSVG(app, fig, { provenance = true } = {}) {
   const page = (await prepareReport(app, fig, { by: null })).report.pages[0];
   const scenes = await scenesFor(app, page);
-  const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${fig.width}" height="${fig.height}" viewBox="0 0 ${fig.width} ${fig.height}">`, `<rect width="${fig.width}" height="${fig.height}" fill="${fig.background ?? '#ffffff'}"/>`];
-  for (const item of page.items) {
-    if (item.kind === 'plot' && scenes.get(item.id)) {
-      const scene = scenes.get(item.id);
-      parts.push(sceneToSVG(scene, { embedded: true, x: item.x, y: item.y, rasterHref: scene.raster ? rasterDataURL(scene.raster) : null }));
-    } else if (item.kind === 'text') {
-      const anchor = item.align === 'center' ? 'middle' : item.align === 'right' ? 'end' : 'start';
-      const x = item.x + (item.align === 'center' ? item.w / 2 : item.align === 'right' ? item.w : 0);
-      String(item.text).split('\n').forEach((line, i) => parts.push(`<text x="${x}" y="${item.y + (item.size ?? 14) * (0.9 + 1.25 * i)}" font-family="Inter, Helvetica, Arial, sans-serif" font-size="${item.size ?? 14}" font-weight="${item.weight ?? 400}" fill="${item.color ?? '#171b26'}" text-anchor="${anchor}">${esc(line)}</text>`));
-    } else if (item.kind === 'arrow') {
-      const y = item.y + item.h / 2;
-      parts.push(`<path d="M${item.x} ${y}H${item.x + item.w - 8}" stroke="#8a93a6" stroke-width="2"/><path d="M${item.x + item.w} ${y}l-10 -6v12z" fill="#8a93a6"/>`);
-    } else if (item.kind === 'stats') {
-      parts.push(statsSVG(item));
-    }
-  }
-  parts.push('</svg>');
-  let svg = parts.join('');
+  let svg = figurePageSVG(fig, page, scenes, (scene) => rasterDataURL(scene.raster));
   if (provenance) svg = (await import('../lib/figure-provenance.js')).embedSVG(svg, await provenanceFor(app, fig));
   return svg;
 }
