@@ -33,11 +33,13 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
   const profile = mkdtempSync(join(tmpdir(), 'cytoweave-capture-'));
   const chrome = spawn(findChrome(), ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb', `--window-size=${width},${height}`, 'about:blank'], { stdio: 'ignore' });
   let page = null;
-  for (let i = 0; i < 100 && !page; i += 1) {
+  // A Chrome that hangs while starting must not hang its caller: each request has a deadline, and
+  // so has the start (a cold start on a CI runner can take tens of seconds).
+  const deadline = Date.now() + 60000;
+  while (!page && Date.now() < deadline) {
     try {
       const active = port || Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]);
-      // A Chrome that hangs while starting must not hang its caller: each request has a deadline.
-      if (active) page = (await (await fetch(`http://127.0.0.1:${active}/json`, { signal: AbortSignal.timeout(2000) })).json()).find((t) => t.type === 'page');
+      if (active) page = (await (await fetch(`http://127.0.0.1:${active}/json`, { signal: AbortSignal.timeout(5000) })).json()).find((t) => t.type === 'page');
     } catch { /* not up yet */ }
     if (!page) await sleep(200);
   }
