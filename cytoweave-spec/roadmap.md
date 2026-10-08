@@ -629,13 +629,18 @@ Publishing the R and Python clients, first planned here, is parked.
 Publishing the R and Python clients (M9), first planned as item 7 of this wave, is parked until
 there is more adoption (see the parking lot below).
 
-## Next (0.8)
+## 0.8.0: designed, explained, certified (released 2026-10-08)
 
-The order of waves 5–8 (wave 5 released as 0.5.0, wave 6 as 0.6.0, wave 7 as 0.7.0) comes from `research.md` §8
-and a parity and differentiation study (October 2026) of FlowJo 10 and 11, FCS Express, OMIQ,
-Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada and the open-source tools, and of what users
-asked for in 2024–2026. Within each wave: trust first, then the daily workbench, then what no
-single tool combines. Wave 8 is a plan, to be revised as it lands.
+Wave 8 makes an analysis provable and explainable: a reproducibility certificate that computes
+every reported number again from the files, a self-contained review report with every number
+traced, virtual FMO controls from the spread model, a panel optimizer, a public agent benchmark
+graded against the simulated truth, and teaching mode with exercises on examples that, together,
+now demonstrate every analysis. WebMCP, planned here, is parked.
+
+The order of waves 5–8 came from `research.md` §8 and a parity and differentiation study (October
+2026) of FlowJo 10 and 11, FCS Express, OMIQ, Cytobank, Kaluza, SpectroFlo, CellEngine, Floreada
+and the open-source tools, and of what users asked for in 2024–2026: within each wave, trust
+first, then the daily workbench, then what no single tool combines.
 
 Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-05,
 `product_research/feature-comparison.html`):
@@ -653,17 +658,6 @@ Revised after a comparison with FlowJo, FCS Express, OMIQ and Cytobank (2026-10-
   reviewer reading an analysis) before any multi-user work.
 - **Automation for cores:** headless runs of a template on a folder. (Publishing the clients, also
   planned here, is parked until there is more adoption.)
-
-### Beside wave 8: core-facility studies and real data
-
-Planned beside wave 7, not started there; they continue beside wave 8.
-
-- **Design studies with one or two core facilities** (moved from Later): their files, panels and
-  routines; what blocks daily use; the first institutional users. Findings reorder the waves.
-- **Validation on real expert-gated data (V7):** public studies with expert gates or published
-  counts (FlowCAP, FlowRepository studies such as the ALS cytokine workspaces already used),
-  beside the simulated truth.
-- **Tutorials** built on public FlowRepository studies.
 
 ### Wave 8: designed, explained, certified
 
@@ -823,6 +817,17 @@ Planned beside wave 7, not started there; they continue beside wave 8.
 - Validation on real expert-gated data as well as simulated truth (V7).
 - At least two core facilities using CytoWeave in production.
 - Documented support, security and release policies.
+
+### Beside waves 9–10: core-facility studies and real data
+
+Planned beside waves 7 and 8 and not started there; they are what 1.0 most needs.
+
+- **Design studies with one or two core facilities** (moved from Later): their files, panels and
+  routines; what blocks daily use; the first institutional users. Findings reorder the waves.
+- **Validation on real expert-gated data (V7):** public studies with expert gates or published
+  counts (FlowCAP, FlowRepository studies such as the ALS cytokine workspaces already used),
+  beside the simulated truth.
+- **Tutorials** built on public FlowRepository studies.
 
 ### Wave 9: shared and audited
 

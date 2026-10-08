@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 (2026-10-08)
+
+CytoWeave 0.8 makes an analysis provable, explainable and teachable. A reproducibility certificate packs an analysis with its files and records every number it reported, so anyone can compute them again (in the window, with `cytoweave verify` or by an agent) and see each one confirmed; a review report is one HTML file a PI or reviewer opens without CytoWeave, every number traced to its source; the change log is hash-chained. Virtual FMO controls predict where a population's negative would end without a dye, and the panel optimizer chooses each marker's dye from the instrument's own noise model. A public agent benchmark grades AI agents working through CytoWeave's tools against the simulated truth. Teaching mode adds eighteen exercises that check a learner's answers against that truth, on examples that together now demonstrate every analysis, with files from FlowJo 11, FACSDiva and SpectroFlo to try the imports on.
 
 ### Added
 

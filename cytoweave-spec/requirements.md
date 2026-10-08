@@ -1,6 +1,6 @@
 # CytoWeave requirements
 
-What CytoWeave must do, and the status of each requirement in 0.7.0.
+What CytoWeave must do, and the status of each requirement in 0.8.0.
 - `research.md` explains why each requirement is here: the methods and
   standards of §3–4 and the design implications of §8.
 - `design.md` explains how the requirements are met.
@@ -172,4 +172,4 @@ Status: **done**, **partial** (the gap is noted) or **planned** (see
 | V4 | Accessible: keyboard operation, labeled controls, color maps safe for color-vision deficiency | done: color-vision-friendly colors (a setting); WCAG AA contrast in both themes; keyboard tree, list, dialogs and scroll regions; plots described in text; axe-core audit of every documentation scene (`capture.mjs --audit`) and validation `accessibility`. Not done: drawing gates without a pointer; testing by screen-reader users |
 | V5 | Teaching mode on the examples | done (wave 8): 18 exercises on the examples, opened without the truth with a seed of their own (class codes), hints, answers in a panel, checks with partial credit against the simulator's truth, the truth revealed with missed and extra events colored; the answer key regenerated from the seed and checksums, never stored; validation `exercise-session.mjs` (every exercise solved in the window, 100%) |
 | V6 | A public agent benchmark: graded tasks on the examples, scored against the truth, published per agent and model | done (wave 8): 11 tasks in 8 categories, each on its own seed, graded by code against the simulator's record with partial credit; agents run isolated with CytoWeave's tools only (Claude Code adapter); reference solutions (100%) and no answer (0%) checked in CI; results on the website |
-| V7 | Validation on real expert-gated data (FlowCAP, FlowRepository studies) beside the simulated truth | planned (beside wave 7) |
+| V7 | Validation on real expert-gated data (FlowCAP, FlowRepository studies) beside the simulated truth | planned (beside waves 9–10) |
