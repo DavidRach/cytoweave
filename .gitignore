@@ -12,3 +12,4 @@ __pycache__/
 *.egg-info/
 /clients/r/*.tar.gz
 /cytoweave.Rcheck/
+/*.acs
