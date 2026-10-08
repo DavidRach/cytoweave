@@ -75,6 +75,8 @@ jobs:
         run: node validation/agent-session.mjs --verbose
         env:
           CHROME: /usr/bin/google-chrome
+      - name: axe-core, for the review report's accessibility check
+        run: node validation/fetch.mjs axe-core
       - name: cytoweave run, against the same analysis in the window and in Node
         run: node validation/headless-run.mjs --verbose
         env:
