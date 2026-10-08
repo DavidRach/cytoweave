@@ -36,7 +36,8 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
   for (let i = 0; i < 100 && !page; i += 1) {
     try {
       const active = port || Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]);
-      if (active) page = (await (await fetch(`http://127.0.0.1:${active}/json`)).json()).find((t) => t.type === 'page');
+      // A Chrome that hangs while starting must not hang its caller: each request has a deadline.
+      if (active) page = (await (await fetch(`http://127.0.0.1:${active}/json`, { signal: AbortSignal.timeout(2000) })).json()).find((t) => t.type === 'page');
     } catch { /* not up yet */ }
     if (!page) await sleep(200);
   }
@@ -45,7 +46,16 @@ export async function launch({ width = 1600, height = 1000, scale = 1.25, port =
     throw new Error('Chrome did not start.');
   }
   const socket = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));
+  const opened = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 15000);
+    socket.addEventListener('open', () => { clearTimeout(timer); resolve(true); }, { once: true });
+    socket.addEventListener('error', () => { clearTimeout(timer); resolve(false); }, { once: true });
+  });
+  if (!opened) {
+    socket.close();
+    chrome.kill('SIGKILL');
+    throw new Error('Chrome did not open its debugging connection.');
+  }
   let next = 1;
   const pending = new Map();
   const listeners = new Map();

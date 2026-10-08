@@ -60,40 +60,51 @@ export async function startCytoWeave(binary, options = {}) {
     socket.on('error', () => {});
   });
   await new Promise((done) => server.listen(socketPath, done));
-  const mcpConfig = join(temp, 'mcp.json');
-  writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { cytoweave: { command: process.execPath, args: [RELAY, socketPath] } } }, null, 1));
+  // A window that fails to start (a Chrome that hangs, say) must leave nothing running: the
+  // relay's socket and cytoweave mcp would keep the benchmark from exiting.
+  let browser = null;
+  try {
+    const mcpConfig = join(temp, 'mcp.json');
+    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { cytoweave: { command: process.execPath, args: [RELAY, socketPath] } } }, null, 1));
 
-  let url = null;
-  for (let i = 0; i < 300 && !url; i += 1) {
-    url = /(http:\/\/127\.0\.0\.1:\d+)/.exec(log)?.[1] ?? null;
-    if (!url) await sleep(100);
-  }
-  if (!url) {
-    mcp.kill();
-    throw new Error(`cytoweave mcp did not start: ${log.trim()}`);
-  }
-  const browser = await launch({ width: options.width ?? 1400, height: options.height ?? 900 });
-  await withTimeout(browser.goto(`${url}/`), 60000, 'The CytoWeave window did not open');
-  // Every call into the window has a deadline: a browser that hangs must fail the run, not stall
-  // the benchmark.
-  const page = (code, timeout = PAGE_TIMEOUT) => withTimeout(browser.eval(`(async () => { const app = window.cytoweave; ${code} })()`), timeout, 'The CytoWeave window did not answer');
-  const waitFor = async (expression, timeout = 240000) => {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      if (await withTimeout(browser.eval(expression), Math.max(1000, timeout - (Date.now() - start)), 'The CytoWeave window did not answer')) return;
-      await sleep(300);
+    let url = null;
+    for (let i = 0; i < 300 && !url; i += 1) {
+      url = /(http:\/\/127\.0\.0\.1:\d+)/.exec(log)?.[1] ?? null;
+      if (!url) await sleep(100);
     }
-    throw new Error(`Timed out waiting for ${expression}`);
-  };
-  await waitFor('Boolean(window.cytoweave?.remote)', 60000);
-  const stop = async () => {
-    await browser.close().catch(() => {});
+    if (!url) {
+      mcp.kill();
+      throw new Error(`cytoweave mcp did not start: ${log.trim()}`);
+    }
+    browser = await launch({ width: options.width ?? 1400, height: options.height ?? 900 });
+    await withTimeout(browser.goto(`${url}/`), 60000, 'The CytoWeave window did not open');
+    // Every call into the window has a deadline: a browser that hangs must fail the run, not stall
+    // the benchmark.
+    const page = (code, timeout = PAGE_TIMEOUT) => withTimeout(browser.eval(`(async () => { const app = window.cytoweave; ${code} })()`), timeout, 'The CytoWeave window did not answer');
+    const waitFor = async (expression, timeout = 240000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        if (await withTimeout(browser.eval(expression), Math.max(1000, timeout - (Date.now() - start)), 'The CytoWeave window did not answer')) return;
+        await sleep(300);
+      }
+      throw new Error(`Timed out waiting for ${expression}`);
+    };
+    await waitFor('Boolean(window.cytoweave?.remote)', 60000);
+    const stop = async () => {
+      await browser.close().catch(() => {});
+      server.close();
+      mcp.stdin.end();
+      mcp.kill();
+      rmSync(temp, { recursive: true, force: true });
+    };
+    return { url, page, waitFor, mcpConfig, socketPath, workdir, outputs, log: () => log, stop };
+  } catch (error) {
+    await browser?.close().catch(() => {});
     server.close();
-    mcp.stdin.end();
     mcp.kill();
     rmSync(temp, { recursive: true, force: true });
-  };
-  return { url, page, waitFor, mcpConfig, socketPath, workdir, outputs, log: () => log, stop };
+    throw error;
+  }
 }
 
 // An example opened in the window as the task prepares it: generated with the task's options

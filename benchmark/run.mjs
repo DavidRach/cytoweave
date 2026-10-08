@@ -165,7 +165,9 @@ const overall = mean(Object.values(byTask));
 const result = {
   benchmark: { version: BENCHMARK_VERSION, tasks: tasks.map((t) => ({ id: t.id, category: t.category, title: t.title, seed: t.example.options?.seed ?? null })) },
   agent: { id: agent, program: claudeVersion, model: runs.find((r) => r.model)?.model ?? model, requestedModel: model, effort, maxTurns },
-  cytoweave: { version: cytoweaveVersion, commit: git('rev-parse --short HEAD'), dirty: Boolean(git('status --porcelain')) },
+  // Results files are not part of what is measured: earlier results waiting to be committed do not
+  // make a run's CytoWeave or benchmark modified.
+  cytoweave: { version: cytoweaveVersion, commit: git('rev-parse --short HEAD'), dirty: Boolean(git('status --porcelain -- . ":(exclude)benchmark/results"')) },
   date: new Date().toISOString(),
   repeat,
   score: +overall.toFixed(4),
@@ -188,3 +190,5 @@ if (check) {
   }
   console.log(agent === 'none' ? 'Check passed: doing nothing scores 0 on every task.' : 'Check passed: every reference solution scores at least 0.9.');
 }
+// Everything is written: exit even if a failed run left a handle open.
+process.exit(0);
